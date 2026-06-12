@@ -9,10 +9,14 @@ public sealed class ProcessRunnerTests
     {
         var runner = new ProcessRunner();
         var streamedLines = new List<string>();
+        var command = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh";
+        var arguments = OperatingSystem.IsWindows()
+            ? new[] { "/c", "echo stdout-line & echo stderr-line 1>&2 & exit 3" }
+            : new[] { "-c", "printf 'stdout-line\n'; printf 'stderr-line\n' >&2; exit 3" };
 
         var result = await runner.RunAsync(
-            "cmd.exe",
-            new[] { "/c", "echo stdout-line & echo stderr-line 1>&2 & exit 3" },
+            command,
+            arguments,
             onOutput: (isError, line) => streamedLines.Add($"{(isError ? "err" : "out")}:{line}"));
 
         Assert.Equal(3, result.ExitCode);
