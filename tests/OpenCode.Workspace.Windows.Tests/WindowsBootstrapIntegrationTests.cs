@@ -1,5 +1,6 @@
 using System.IO;
 using System.Threading;
+using System.Windows;
 using OpenCode.Workspace.Manager;
 using OpenCode.Workspace.Manager.Services;
 
@@ -17,7 +18,7 @@ public sealed class WindowsBootstrapIntegrationTests
         var slovenian = new PoLocalizationService(localizationRoot, "sl");
 
         Assert.Equal("OpenCode Workspace Manager", english.Get("app.title"));
-        Assert.Equal("Nadzorna plosca delovnih prostorov", slovenian.Get("dashboard.title"));
+        Assert.Equal("Nadzorna plošča delovnih prostorov", slovenian.Get("dashboard.title"));
     }
 
     [Fact]
@@ -41,8 +42,14 @@ public sealed class WindowsBootstrapIntegrationTests
         {
             try
             {
+                var application = Application.Current ?? new App
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+
                 var window = new MainWindow();
                 Assert.NotNull(window);
+                application.Shutdown();
             }
             catch (Exception exception)
             {
