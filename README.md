@@ -7,7 +7,7 @@ Package tools, services, knowledge, automation, and AI into a reusable workspace
 Windows is currently the primary supported host platform. Workspaces run in reproducible Ubuntu environments powered by Docker, WSL2, and OpenCode.
 
 <img
-    src="docs/images/opencode-stuff-satchel.png"
+    src="docs/images/opencode-stuff-satchel.jpg"
     alt="opencode stuff"
     width="240"
 />
