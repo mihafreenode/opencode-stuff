@@ -2,6 +2,7 @@
 name: CI
 
 "on":
+  workflow_dispatch:
   push:
     # Only run CI when source, tests, build inputs, or workflow files change.
     paths:
