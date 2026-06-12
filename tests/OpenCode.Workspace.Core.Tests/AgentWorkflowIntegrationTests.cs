@@ -29,8 +29,8 @@ public sealed class AgentWorkflowIntegrationTests
             File.WriteAllText(filePath, persistedDefinition);
 
             var result = yaml.Read(filePath);
-            var selectedSkill = Assert.Single(provider.LoadSkills().Where(skill => result.Skills.Contains(skill.Id, StringComparer.OrdinalIgnoreCase)));
-            var invokedMcp = Assert.Single(provider.LoadMcpModules().Where(module => result.Mcp.Contains(module.Id, StringComparer.OrdinalIgnoreCase)));
+            var selectedSkill = Assert.Single(provider.LoadSkills(), skill => result.Skills.Contains(skill.Id, StringComparer.OrdinalIgnoreCase));
+            var invokedMcp = Assert.Single(provider.LoadMcpModules(), module => result.Mcp.Contains(module.Id, StringComparer.OrdinalIgnoreCase));
             var resolvedAgent = resolver.Resolve(result);
 
             Assert.Contains("playwright", result.Skills);

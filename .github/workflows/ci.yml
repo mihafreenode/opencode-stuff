@@ -61,6 +61,7 @@ jobs:
 
       - name: Run portable/core tests
         working-directory: tests/OpenCode.Workspace.Core.Tests
+        shell: bash
         run: |
           dotnet test \
             OpenCode.Workspace.Core.Tests.csproj \
@@ -98,10 +99,11 @@ jobs:
 
       - name: Run Windows tests
         working-directory: tests/OpenCode.Workspace.Windows.Tests
+        shell: pwsh
         run: |
-          dotnet test \
-            OpenCode.Workspace.Windows.Tests.csproj \
-            -c Release \
+          dotnet test `
+            OpenCode.Workspace.Windows.Tests.csproj `
+            -c Release `
             --no-build
 
       - name: Publish launcher
