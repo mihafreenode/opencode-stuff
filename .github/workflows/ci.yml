@@ -4,6 +4,8 @@ name: CI
 "on":
   workflow_dispatch:
   push:
+    tags:
+      - "v*"
     # Only run CI when source, tests, build inputs, or workflow files change.
     paths:
       - "src/**"
@@ -30,6 +32,9 @@ name: CI
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   linux-validation:
@@ -77,8 +82,6 @@ jobs:
       DOTNET_NOLOGO: true
     # Future stage: add MSIX packaging after launcher output is validated.
     # Future stage: add code signing once certificate handling is decided.
-    # Future stage: add release publishing after packaging and signing
-    # are in place.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -130,3 +133,9 @@ jobs:
         with:
           name: opencode-stuff-win-x64
           path: artifacts/opencode-stuff-win-x64.zip
+
+      - name: Attach zip to GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/opencode-stuff-win-x64.zip
