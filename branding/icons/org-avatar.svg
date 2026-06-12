@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">opencode stuff organization avatar</title>
+  <rect width="512" height="512" rx="112" fill="#1F2933"/>
+  <path d="M120 200c0-33 27-60 60-60h152c33 0 60 27 60 60v106c0 33-27 60-60 60H140c-33 0-60-27-60-60z" fill="#F7F8FA"/>
+  <path d="M142 200c19-40 56-60 112-60h20c56 0 93 20 112 60v14H142z" fill="#CBD2D9"/>
+  <path d="M216 140c13-38 45-58 96-58s83 20 96 58" fill="none" stroke="#F7F8FA" stroke-width="18" stroke-linecap="round"/>
+  <rect x="208" y="238" width="96" height="20" rx="10" fill="#1F2933"/>
+  <rect x="242" y="228" width="28" height="44" rx="8" fill="#F28C28"/>
+  <circle cx="356" cy="304" r="18" fill="#F28C28"/>
+</svg>

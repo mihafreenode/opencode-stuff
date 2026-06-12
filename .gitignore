@@ -1,0 +1,15 @@
+# Build outputs
+bin/
+obj/
+
+# User and IDE state
+.vs/
+*.user
+*.suo
+
+# Test outputs
+TestResults/
+coverage/
+
+# Local workspaces used while validating the app
+.workspaces/

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420">
+  <rect width="1600" height="420" fill="#F7F8FA"/>
+  <rect x="64" y="56" width="1472" height="308" rx="28" fill="#FFFFFF" stroke="#CBD2D9" stroke-width="2"/>
+  <image href="../logo/opencode-stuff-logo.svg" x="96" y="92" width="760" height="236"/>
+  <text x="920" y="166" fill="#1F2933" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="34" font-weight="700">Useful things for developers</text>
+  <text x="920" y="220" fill="#52606D" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="26">Workspaces, terminals, services, skills, and tooling</text>
+  <text x="920" y="260" fill="#52606D" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="26">organized into one practical bag of stuff.</text>
+</svg>

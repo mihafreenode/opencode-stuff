@@ -1,0 +1,12 @@
+# Built-in feature manifest: ocr-processing
+
+id: ocr-processing
+displayName: OCR Processing
+description: OCR tooling for English and Slovenian documents.
+dependencies:
+  apt:
+    - tesseract-ocr
+    - tesseract-ocr-eng
+    - tesseract-ocr-slv
+    - imagemagick
+    - poppler-utils

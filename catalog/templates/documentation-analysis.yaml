@@ -1,0 +1,8 @@
+id: documentation-analysis
+displayName: Documentation Analysis
+description: Documentation-focused workspace with PDF and OCR utilities.
+features:
+  - core
+  - document-processing
+  - ocr-processing
+services: []

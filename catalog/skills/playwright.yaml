@@ -1,0 +1,9 @@
+# Skill manifests are placeholders in the MVP structure so contributors can see
+# where future reusable OpenCode capabilities belong.
+
+id: playwright
+displayName: Playwright
+description: Browser automation skill backed by the Playwright feature.
+dependencies:
+  features:
+    - playwright

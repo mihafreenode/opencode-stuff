@@ -1,0 +1,346 @@
+# English fallback strings for the MVP UI.
+
+msgid "app.title"
+msgstr "OpenCode Workspace Manager"
+
+msgid "dashboard.title"
+msgstr "Workspace Dashboard"
+
+msgid "dashboard.subtitle"
+msgstr "Open, update, and manage local OpenCode workspaces without exposing Docker internals."
+
+msgid "workspaces.title"
+msgstr "Workspaces"
+
+msgid "health.title"
+msgstr "Health Checks"
+
+msgid "actions.create"
+msgstr "Create Workspace"
+
+msgid "actions.provision"
+msgstr "Provision"
+
+msgid "actions.openWorkspace"
+msgstr "Open Workspace"
+
+msgid "actions.prepareWorkspace"
+msgstr "Set Up Workspace"
+
+msgid "actions.prepareUpdate"
+msgstr "Update"
+
+msgid "actions.updateNow"
+msgstr "Update"
+
+msgid "actions.shutDown"
+msgstr "Shut Down"
+
+msgid "actions.remove"
+msgstr "Remove"
+
+msgid "actions.start"
+msgstr "Start"
+
+msgid "actions.stop"
+msgstr "Stop"
+
+msgid "actions.attach"
+msgstr "Attach"
+
+msgid "actions.refresh"
+msgstr "Refresh"
+
+msgid "actions.delete"
+msgstr "Delete"
+
+msgid "actions.openFolder"
+msgstr "Open Folder"
+
+msgid "actions.copyPath"
+msgstr "Copy Path"
+
+msgid "actions.cancel"
+msgstr "Cancel"
+
+msgid "actions.viewError"
+msgstr "View Error"
+
+msgid "create.name"
+msgstr "Workspace Name"
+
+msgid "create.path"
+msgstr "Workspace Folder"
+
+msgid "create.template"
+msgstr "Template"
+
+msgid "create.dialog.title"
+msgstr "New Workspace"
+
+msgid "create.dialog.description"
+msgstr "Create a new workspace when you need one. The main dashboard stays focused on opening and managing existing workspaces."
+
+msgid "create.disabled.workspaceRunning"
+msgstr "Stop the open workspace before creating a new one."
+
+msgid "create.features"
+msgstr "Features"
+
+msgid "create.services"
+msgstr "Services"
+
+msgid "terminal.title"
+msgstr "Terminal Settings"
+
+msgid "terminal.prompt"
+msgstr "Prompt"
+
+msgid "terminal.font"
+msgstr "Font"
+
+msgid "terminal.installIfMissing"
+msgstr "Install terminal tools if missing"
+
+msgid "terminal.zoxide"
+msgstr "Install zoxide"
+
+msgid "terminal.fzf"
+msgstr "Install fzf"
+
+msgid "terminal.installFont"
+msgstr "Install Selected Font"
+
+msgid "selected.title"
+msgstr "Details"
+
+msgid "field.name"
+msgstr "Name"
+
+msgid "field.path"
+msgstr "Path"
+
+msgid "field.image"
+msgstr "Image"
+
+msgid "field.features"
+msgstr "Features"
+
+msgid "field.services"
+msgstr "Services"
+
+msgid "field.agent"
+msgstr "Agent"
+
+msgid "field.status"
+msgstr "Workspace Status"
+
+msgid "field.dockerStatus"
+msgstr "Docker Status"
+
+msgid "field.lastOperation"
+msgstr "Last Operation"
+
+msgid "field.servicesStatus"
+msgstr "Services"
+
+msgid "field.encodingValidation"
+msgstr "UTF-8 Validation"
+
+msgid "utf8.validation"
+msgstr "ČŠŽ čšž"
+
+msgid "workspace.none"
+msgstr "None"
+
+msgid "workspace.status.running"
+msgstr "Ready"
+
+msgid "workspace.status.stopped"
+msgstr "Stopped"
+
+msgid "workspace.status.needsPrepare"
+msgstr "Update Available"
+
+msgid "workspace.status.updateAvailable"
+msgstr "Update Available"
+
+msgid "workspace.status.error"
+msgstr "Error"
+
+msgid "workspace.docker.running"
+msgstr "Docker running"
+
+msgid "workspace.docker.stopped"
+msgstr "Docker stopped"
+
+msgid "workspace.docker.unavailable"
+msgstr "Docker status unavailable"
+
+msgid "workspace.lastOperation.none"
+msgstr "No operations recorded yet."
+
+msgid "workspace.services.noneEnabled"
+msgstr "No add-on services enabled."
+
+msgid "workspace.services.state.running"
+msgstr "running"
+
+msgid "workspace.services.state.stopped"
+msgstr "stopped"
+
+msgid "workspace.services.state.unknown"
+msgstr "unknown"
+
+msgid "workspace.result.prepared"
+msgstr "Workspace is ready."
+
+msgid "workspace.result.updated"
+msgstr "Workspace updated and ready to use."
+
+msgid "workspace.result.created"
+msgstr "Workspace created."
+
+msgid "workspace.result.opened"
+msgstr "Workspace opened."
+
+msgid "workspace.result.stopped"
+msgstr "Workspace shut down successfully."
+
+msgid "operation.prepare"
+msgstr "Prepare / Update"
+
+msgid "operation.update"
+msgstr "Update Workspace"
+
+msgid "operation.open"
+msgstr "Open Workspace"
+
+msgid "operation.shutdown"
+msgstr "Shut Down"
+
+msgid "operation.remove"
+msgstr "Remove Workspace"
+
+msgid "status.loadedWorkspaces"
+msgstr "Loaded {0} workspace(s)."
+
+msgid "status.workspaceCreated"
+msgstr "Created workspace '{0}'."
+
+msgid "status.fontInstalled"
+msgstr "Installed '{0}'."
+
+msgid "status.workspacePrepared"
+msgstr "Prepared workspace '{0}'."
+
+msgid "status.workspaceUpdated"
+msgstr "Updated workspace '{0}'."
+
+msgid "status.workspaceOpened"
+msgstr "Opened workspace '{0}'."
+
+msgid "status.workspaceStopped"
+msgstr "Shut down workspace '{0}'."
+
+msgid "status.workspaceRemoved"
+msgstr "Removed workspace '{0}' from the app."
+
+msgid "status.workspaceNeedsPreparation"
+msgstr "Workspace '{0}' has an update available."
+
+msgid "status.workspaceUpdateRequired"
+msgstr "Workspace '{0}' needs an update before it can be opened."
+
+msgid "status.pathCopied"
+msgstr "Copied path for '{0}'."
+
+msgid "dialog.prepareBeforeOpen.title"
+msgstr "Update Available"
+
+msgid "dialog.prepareBeforeOpen.message"
+msgstr "An update is available for workspace '{0}'.\n\nContinue with the update now?"
+
+msgid "dialog.restartForUpdate.title"
+msgstr "Update Required"
+
+msgid "dialog.restartForUpdate.message"
+msgstr "Workspace '{0}' needs to restart to apply changes.\n\nContinue with update and restart?"
+
+msgid "empty.selection.title"
+msgstr "Select a Workspace"
+
+msgid "empty.selection.description"
+msgstr "Select an existing workspace from the list or create a new one."
+
+msgid "empty.selection.hintPrimary"
+msgstr "Select a workspace from the middle of the screen"
+
+msgid "empty.selection.hintSecondary"
+msgstr "or create a new one on the left side"
+
+msgid "onboarding.title"
+msgstr "Welcome to OpenCode Stuff"
+
+msgid "onboarding.description"
+msgstr "Create your first workspace to get started."
+
+msgid "validation.workspaceNameRequired"
+msgstr "Enter a workspace name."
+
+msgid "validation.workspacePathRequired"
+msgstr "Enter a workspace folder."
+
+msgid "dialog.workspaceError.title"
+msgstr "Workspace Error: {0}"
+
+msgid "remove.dialog.title"
+msgstr "Remove Workspace"
+
+msgid "remove.dialog.description"
+msgstr "Choose how much to remove. You can keep Docker resources and files, remove Docker resources but keep files, or remove everything."
+
+msgid "remove.dialog.workspace"
+msgstr "Workspace"
+
+msgid "remove.option.registrationOnly.title"
+msgstr "Remove workspace registration only"
+
+msgid "remove.option.registrationOnly.files"
+msgstr "Keeps files."
+
+msgid "remove.option.registrationOnly.docker"
+msgstr "Keeps Docker resources."
+
+msgid "remove.option.docker.title"
+msgstr "Remove Docker containers/services too"
+
+msgid "remove.option.docker.description"
+msgstr "Keeps user files and mounts."
+
+msgid "remove.option.deleteFiles.title"
+msgstr "Remove Docker resources and delete local files"
+
+msgid "remove.option.deleteFiles.description"
+msgstr "Destructive. This removes Docker containers/services and then deletes the workspace folder."
+
+msgid "remove.confirmDeleteFiles.title"
+msgstr "Confirm File Deletion"
+
+msgid "remove.confirmDeleteFiles.message"
+msgstr "Delete all workspace files for '{0}'?\n\nFolder: {1}\n\nThis cannot be undone."
+
+msgid "remove.deleteFailed.title"
+msgstr "Workspace deletion failed"
+
+msgid "remove.deleteFailed.message"
+msgstr "The files in this folder could not be deleted:\n{0}\n\nFiles that may have been created by Docker:\n{1}\n\nRepair permissions and retry?"
+
+msgid "remove.deleteCancelled.message"
+msgstr "The workspace folder was not deleted: {0}"
+
+msgid "remove.deleteRetryFailed.message"
+msgstr "The permissions could not be repaired or the folder still could not be deleted:\n{0}\n\nCheck these paths:\n{1}"
+
+msgid "status.none"
+msgstr "No workspace selected."

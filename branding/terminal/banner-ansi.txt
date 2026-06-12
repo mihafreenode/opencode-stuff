@@ -1,0 +1,4 @@
+\e[38;5;208mopencode stuff\e[0m
+
+\e[37mThere is no magic.\e[0m
+\e[38;5;208mOnly stuff.\e[0m

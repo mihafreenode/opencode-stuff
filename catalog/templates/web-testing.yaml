@@ -1,0 +1,7 @@
+id: web-testing
+displayName: Web Testing
+description: Browser testing workspace with Playwright support.
+features:
+  - core
+  - playwright
+services: []

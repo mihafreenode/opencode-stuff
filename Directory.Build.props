@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep default compiler settings in one place so new projects inherit the same baseline. -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

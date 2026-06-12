@@ -1,0 +1,8 @@
+id: data-processing
+displayName: Data Processing
+description: Data workspace with PostgreSQL and pgAdmin examples enabled.
+features:
+  - core
+services:
+  - postgres
+  - pgadmin

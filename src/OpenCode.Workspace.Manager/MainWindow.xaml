@@ -1,0 +1,234 @@
+<Window x:Class="OpenCode.Workspace.Manager.MainWindow"
+         x:Name="MainWindowRoot"
+         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:controls="clr-namespace:OpenCode.Workspace.Manager.Controls"
+         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+         xmlns:models="clr-namespace:OpenCode.Workspace.Core.Models;assembly=OpenCode.Workspace.Core"
+         mc:Ignorable="d"
+         Title="{Binding Title}" Height="880" Width="1400" MinWidth="1200" MinHeight="760" Icon="Assets/Icons/opencode-stuff-app.ico">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="220" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="390" />
+            <ColumnDefinition Width="20" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Padding="20" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="{Binding DashboardTitle}" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Margin="0,8,0,0" Text="{Binding DashboardSubtitle}" Foreground="{StaticResource BrandTextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Padding="16" Margin="0,20,0,0" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="{Binding CreateWorkspaceDialogTitle}" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,8,0,0" Text="{Binding CreateWorkspaceDialogDescription}" Foreground="{StaticResource BrandTextSecondaryBrush}" TextWrapping="Wrap" />
+                        <Button Margin="0,16,0,0"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="12,8"
+                                Content="{Binding CreateLabel}"
+                                Click="OpenCreateWorkspaceDialog_OnClick"
+                                HorizontalAlignment="Left"
+                                IsEnabled="{Binding CanStartCreateWorkspaceFlow}"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="{Binding CreateWorkspaceDisabledReason}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Padding="16" Margin="0,20,0,0" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="{Binding HealthTitle}" FontSize="20" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                            <Button Padding="12,6" Content="{Binding RefreshLabel}" Command="{Binding RefreshCommand}" HorizontalAlignment="Right" />
+                        </DockPanel>
+
+                        <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Diagnostics}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:DiagnosticResult}">
+                                    <Border Margin="0,0,0,10" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" BorderThickness="1" CornerRadius="8">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                                            <TextBlock Margin="0,4,0,0" Text="{Binding Message}" TextWrapping="Wrap" />
+                                            <TextBlock Margin="0,4,0,0" Text="{Binding TechnicalDetails}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="1" Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Padding="16" Margin="0,20,0,0" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+                <DockPanel>
+                    <TextBlock Text="{Binding WorkspacesTitle}" FontSize="20" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                    <Button Padding="12,6" Content="{Binding RefreshLabel}" Command="{Binding RefreshCommand}" HorizontalAlignment="Right" />
+                </DockPanel>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="0,20,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.1*" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="0.9*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Padding="12" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
+                        Visibility="{Binding HasAnyWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ListBox x:Name="WorkspaceListBox"
+                             ItemsSource="{Binding Workspaces}"
+                             SelectedItem="{Binding SelectedWorkspace}"
+                             BorderThickness="0"
+                             MouseDoubleClick="WorkspaceListBox_OnMouseDoubleClick"
+                             KeyDown="WorkspaceListBox_OnKeyDown">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Cursor" Value="Hand" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="WorkspaceListItem_OnPreviewMouseRightButtonDown" />
+                                <EventSetter Event="ContextMenuOpening" Handler="WorkspaceListItem_OnContextMenuOpening" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="WorkspaceCard" Margin="0,0,0,12" Padding="14" Background="{StaticResource BrandSurfaceSubtleBrush}" BorderThickness="1" CornerRadius="10">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                                            <controls:WorkspaceStatusIndicator DockPanel.Dock="Right" />
+                                        </DockPanel>
+
+                                        <TextBlock Margin="0,8,0,0" Text="{Binding ShortRootPath}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextMutedBrush}" />
+
+                                        <TextBlock Margin="0,10,0,0" Text="{Binding LastOperationSummary}" TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,4,0,0" Text="{Binding ServicesStatusSummary}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Border Grid.Column="0" Grid.ColumnSpan="3" Padding="48" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
+                        Visibility="{Binding ShowOnboardingState, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
+                        <TextBlock Text="{Binding OnboardingTitle}" FontSize="30" FontWeight="SemiBold" TextAlignment="Center" />
+                        <TextBlock Margin="0,12,0,0" Text="{Binding OnboardingDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                        <Button Margin="0,24,0,0"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="18,10"
+                                Content="{Binding OnboardingActionLabel}"
+                                Click="OpenCreateWorkspaceDialog_OnClick"
+                                HorizontalAlignment="Center"
+                                IsEnabled="{Binding CanStartCreateWorkspaceFlow}"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="{Binding CreateWorkspaceDisabledReason}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Padding="16" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
+                        Visibility="{Binding HasAnyWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid>
+                        <StackPanel Visibility="{Binding ShowWorkspaceDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="{Binding SelectedWorkspaceTitle}" FontSize="20" FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,16,0,0">
+                                <Button Style="{StaticResource PrimaryButtonStyle}" Padding="14,8" Content="{Binding SelectedPrimaryActionLabel}" Command="{Binding PrimaryWorkspaceActionCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ShutDownLabel}" Command="{Binding ShutDownWorkspaceCommand}" IsEnabled="{Binding CanShutDownSelectedWorkspace}" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Padding="14,8" Content="{Binding OpenFolderLabel}" Command="{Binding OpenFolderCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CopyPathLabel}" Command="{Binding CopyWorkspacePathCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding RemoveLabel}" Command="{Binding RemoveWorkspaceCommand}" />
+                            </WrapPanel>
+
+                            <TextBlock Margin="0,16,0,4" Text="{Binding SelectedStatusLabel}" FontWeight="SemiBold" />
+                            <controls:WorkspaceStatusIndicator DataContext="{Binding SelectedWorkspace}" />
+
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedLastOperationLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceLastOperation}" TextWrapping="Wrap" />
+
+                            <TextBlock Margin="0,16,0,4" Text="{Binding SelectedNameLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceName}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedPathLabel}" FontWeight="SemiBold" />
+                            <TextBox Text="{Binding SelectedWorkspacePath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" />
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedImageLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceImage}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedFeaturesLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceFeatures}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedServicesLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceServices}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedServicesStatusLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceServicesStatus}" TextWrapping="Wrap" />
+
+                            <TextBlock Margin="0,12,0,4" Text="{Binding SelectedAgentLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceAgent}" TextWrapping="Wrap" />
+
+                            <TextBlock Margin="0,12,0,4" Text="{Binding EncodingValidationLabel}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding EncodingValidationSample}" TextWrapping="Wrap" />
+
+                            <Border Margin="0,20,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8">
+                                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Visibility="{Binding ShowSelectionGuidanceState, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="340">
+                            <TextBlock Text="{Binding EmptySelectionTitle}" FontSize="26" FontWeight="SemiBold" TextAlignment="Center" />
+                            <TextBlock Margin="0,12,0,0" Text="{Binding EmptySelectionDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                            <TextBlock Margin="0,16,0,0" Text="{Binding EmptySelectionHintPrimary}" TextAlignment="Center" />
+                            <TextBlock Margin="0,6,0,0" Text="{Binding EmptySelectionHintSecondary}" TextAlignment="Center" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,20,0,0" Padding="12" Background="#FF222222" CornerRadius="8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Foreground="White" Text="{Binding StatusMessage}" TextWrapping="Wrap" FontWeight="SemiBold" />
+
+                <TextBox x:Name="LogTextBox"
+                         Grid.Row="1"
+                         Margin="0,12,0,0"
+                         Text="{Binding CurrentLogText, Mode=OneWay}"
+                         Background="#FF222222"
+                         BorderThickness="0"
+                         Foreground="White"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Disabled"
+                         Loaded="LogTextBox_OnLoaded"
+                         TextChanged="LogTextBox_OnTextChanged" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

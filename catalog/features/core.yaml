@@ -1,0 +1,32 @@
+# Built-in feature manifest: core
+#
+# This feature is always selected for MVP workspaces because it defines the base
+# toolchain needed to make the Ubuntu container useful as an OpenCode workspace.
+
+id: core
+displayName: Core
+description: Base tools required for a usable OpenCode workspace.
+alwaysEnabled: true
+dependencies:
+  apt:
+    - build-essential
+    - git
+    - curl
+    - wget
+    - bash
+    - screen
+    - sudo
+    - zip
+    - unzip
+    - tar
+    - jq
+    - ripgrep
+    - less
+    - nano
+    - vim
+    - python3
+    - python3-pip
+    - python3-venv
+    - nodejs
+    - npm
+    - ca-certificates

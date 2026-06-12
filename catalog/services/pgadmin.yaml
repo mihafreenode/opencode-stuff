@@ -1,0 +1,13 @@
+# Built-in service manifest: pgadmin
+
+id: pgadmin
+displayName: pgAdmin
+description: pgAdmin web UI that pairs with the built-in PostgreSQL service.
+image: dpage/pgadmin4:9
+hostPorts:
+  - 18080:80
+environment:
+  PGADMIN_DEFAULT_EMAIL: admin@example.com
+  PGADMIN_DEFAULT_PASSWORD: admin
+dependsOn:
+  - postgres

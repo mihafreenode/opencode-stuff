@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="240" viewBox="0 0 1440 240">
+  <rect width="1440" height="240" fill="#1F2933"/>
+  <image href="../logo/opencode-stuff-mark.svg" x="56" y="36" width="168" height="168"/>
+  <text x="260" y="104" fill="#F7F8FA" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="52" font-weight="700">opencode stuff</text>
+  <text x="260" y="154" fill="#CBD2D9" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="28">There is no magic. Only stuff.</text>
+</svg>

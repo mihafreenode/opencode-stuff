@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">opencode stuff master logo</title>
+  <desc id="desc">A practical satchel mark with subtle developer tools and an orange accent, followed by the opencode stuff wordmark.</desc>
+  <defs>
+    <style>
+      .charcoal { fill: #1F2933; }
+      .slate { fill: #52606D; }
+      .line { fill: #CBD2D9; }
+      .paper { fill: #F7F8FA; }
+      .orange { fill: #F28C28; }
+      .none { fill: none; }
+      .stroke-charcoal { stroke: #1F2933; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
+      .stroke-slate { stroke: #52606D; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+      .wordmark { font-family: Inter, 'Segoe UI', Arial, sans-serif; }
+      .name { font-size: 96px; font-weight: 700; letter-spacing: -1px; }
+      .tagline { font-size: 32px; font-weight: 500; letter-spacing: 0.2px; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="420" fill="#FFFFFF"/>
+
+  <g transform="translate(72 52)">
+    <path class="paper stroke-charcoal" d="M62 120c0-24 20-44 44-44h142c24 0 44 20 44 44v98c0 24-20 44-44 44H82c-24 0-44-20-44-44z"/>
+    <path class="line stroke-charcoal" d="M78 120c14-32 44-48 92-48h20c48 0 78 16 92 48v10H78z"/>
+    <path class="none stroke-charcoal" d="M146 74c10-30 34-46 74-46 40 0 64 16 74 46"/>
+    <rect x="148" y="148" width="56" height="70" rx="8" class="paper stroke-slate"/>
+    <line x1="162" y1="168" x2="190" y2="168" class="stroke-slate"/>
+    <line x1="162" y1="186" x2="188" y2="186" class="stroke-slate"/>
+    <path class="none stroke-slate" d="M110 178h18l10 12"/>
+    <circle cx="238" cy="178" r="18" class="line stroke-slate"/>
+    <circle cx="238" cy="178" r="6" class="paper stroke-slate"/>
+    <path class="none stroke-slate" d="M238 154v12m0 24v12m-24-24h12m24 0h12m-17-17 8 8m-8 25 8-8m-25 8 8-8m0-17-8-8"/>
+    <path class="none stroke-slate" d="M102 228l28-28m-8 36-20-20"/>
+    <circle cx="256" cy="218" r="12" class="orange stroke-charcoal"/>
+    <rect x="126" y="236" width="96" height="18" rx="9" class="charcoal"/>
+    <rect x="160" y="228" width="28" height="34" rx="8" class="orange stroke-charcoal"/>
+  </g>
+
+  <g transform="translate(430 132)">
+    <text x="0" y="86" class="wordmark name charcoal">opencode stuff</text>
+    <text x="2" y="148" class="wordmark tagline slate">There is no magic. Only stuff.</text>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+# Built-in feature manifest: document-processing
+
+id: document-processing
+displayName: Document Processing
+description: Tools for document conversion, PDF handling, and image work.
+dependencies:
+  apt:
+    - pandoc
+    - imagemagick
+    - poppler-utils
+    - ghostscript
+    - qpdf

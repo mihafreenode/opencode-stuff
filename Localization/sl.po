@@ -1,0 +1,343 @@
+# Slovene strings for the MVP UI.
+
+msgid "app.title"
+msgstr "OpenCode Workspace Manager"
+
+msgid "dashboard.title"
+msgstr "Nadzorna plošča delovnih prostorov"
+
+msgid "dashboard.subtitle"
+msgstr "Odprite, posodobite in upravljajte lokalne OpenCode delovne prostore brez izpostavljanja Docker podrobnosti."
+
+msgid "workspaces.title"
+msgstr "Delovni prostori"
+
+msgid "health.title"
+msgstr "Preverjanje stanja"
+
+msgid "actions.create"
+msgstr "Ustvari delovni prostor"
+
+msgid "actions.provision"
+msgstr "Pripravi"
+
+msgid "actions.openWorkspace"
+msgstr "Odpri delovni prostor"
+
+msgid "actions.prepareWorkspace"
+msgstr "Nastavi delovni prostor"
+
+msgid "actions.prepareUpdate"
+msgstr "Posodobi"
+
+msgid "actions.updateNow"
+msgstr "Posodobi"
+
+msgid "actions.shutDown"
+msgstr "Ugasni"
+
+msgid "actions.remove"
+msgstr "Odstrani"
+
+msgid "actions.start"
+msgstr "Zaženi"
+
+msgid "actions.stop"
+msgstr "Ustavi"
+
+msgid "actions.attach"
+msgstr "Pripni"
+
+msgid "actions.refresh"
+msgstr "Osveži"
+
+msgid "actions.delete"
+msgstr "Izbriši"
+
+msgid "actions.openFolder"
+msgstr "Odpri mapo"
+
+msgid "actions.copyPath"
+msgstr "Kopiraj pot"
+
+msgid "actions.cancel"
+msgstr "Prekliči"
+
+msgid "actions.viewError"
+msgstr "Prikaži napako"
+
+msgid "create.name"
+msgstr "Ime delovnega prostora"
+
+msgid "create.path"
+msgstr "Mapa delovnega prostora"
+
+msgid "create.template"
+msgstr "Predloga"
+
+msgid "create.dialog.title"
+msgstr "Nov delovni prostor"
+
+msgid "create.dialog.description"
+msgstr "Ustvarite nov delovni prostor, ko ga potrebujete. Glavna nadzorna plošča ostane osredotočena na odpiranje in upravljanje obstoječih delovnih prostorov."
+
+msgid "create.disabled.workspaceRunning"
+msgstr "Ustavite odprt delovni prostor, preden ustvarite novega."
+
+msgid "create.features"
+msgstr "Zmožnosti"
+
+msgid "create.services"
+msgstr "Storitve"
+
+msgid "terminal.title"
+msgstr "Nastavitve terminala"
+
+msgid "terminal.prompt"
+msgstr "Poziv"
+
+msgid "terminal.font"
+msgstr "Pisava"
+
+msgid "terminal.installIfMissing"
+msgstr "Namesti terminalska orodja, če manjkajo"
+
+msgid "terminal.zoxide"
+msgstr "Namesti zoxide"
+
+msgid "terminal.fzf"
+msgstr "Namesti fzf"
+
+msgid "terminal.installFont"
+msgstr "Namesti izbrano pisavo"
+
+msgid "selected.title"
+msgstr "Podrobnosti"
+
+msgid "field.name"
+msgstr "Ime"
+
+msgid "field.path"
+msgstr "Pot"
+
+msgid "field.image"
+msgstr "Slika"
+
+msgid "field.features"
+msgstr "Zmožnosti"
+
+msgid "field.services"
+msgstr "Storitve"
+
+msgid "field.agent"
+msgstr "Agent"
+
+msgid "field.status"
+msgstr "Stanje delovnega prostora"
+
+msgid "field.lastOperation"
+msgstr "Zadnja operacija"
+
+msgid "field.servicesStatus"
+msgstr "Storitve"
+
+msgid "field.encodingValidation"
+msgstr "UTF-8 preverjanje"
+
+msgid "utf8.validation"
+msgstr "ČŠŽ čšž"
+
+msgid "workspace.none"
+msgstr "Brez"
+
+msgid "workspace.status.running"
+msgstr "Deluje"
+
+msgid "workspace.status.stopped"
+msgstr "Ustavljen"
+
+msgid "workspace.status.needsPrepare"
+msgstr "Posodobitev na voljo"
+
+msgid "workspace.status.updateAvailable"
+msgstr "Posodobitev na voljo"
+
+msgid "workspace.status.error"
+msgstr "Napaka"
+
+msgid "workspace.docker.running"
+msgstr "Docker teče"
+
+msgid "workspace.docker.stopped"
+msgstr "Docker je ustavljen"
+
+msgid "workspace.docker.unavailable"
+msgstr "Stanje Dockerja ni na voljo"
+
+msgid "workspace.lastOperation.none"
+msgstr "Operacij še ni bilo."
+
+msgid "workspace.services.noneEnabled"
+msgstr "Dodatne storitve niso omogočene."
+
+msgid "workspace.services.state.running"
+msgstr "teče"
+
+msgid "workspace.services.state.stopped"
+msgstr "ustavljeno"
+
+msgid "workspace.services.state.unknown"
+msgstr "neznano"
+
+msgid "workspace.result.prepared"
+msgstr "Delovni prostor je pripravljen."
+
+msgid "workspace.result.updated"
+msgstr "Delovni prostor je posodobljen in pripravljen za uporabo."
+
+msgid "workspace.result.created"
+msgstr "Delovni prostor je ustvarjen."
+
+msgid "workspace.result.opened"
+msgstr "Delovni prostor je odprt."
+
+msgid "workspace.result.stopped"
+msgstr "Delovni prostor je uspešno ugasnjen."
+
+msgid "operation.prepare"
+msgstr "Nastavi delovni prostor"
+
+msgid "operation.update"
+msgstr "Posodobi"
+
+msgid "operation.open"
+msgstr "Odpri delovni prostor"
+
+msgid "operation.shutdown"
+msgstr "Ugasni"
+
+msgid "operation.remove"
+msgstr "Odstrani delovni prostor"
+
+msgid "status.loadedWorkspaces"
+msgstr "Naloženih delovnih prostorov: {0}."
+
+msgid "status.workspaceCreated"
+msgstr "Delovni prostor '{0}' je ustvarjen."
+
+msgid "status.fontInstalled"
+msgstr "Pisava '{0}' je nameščena."
+
+msgid "status.workspacePrepared"
+msgstr "Delovni prostor '{0}' je pripravljen."
+
+msgid "status.workspaceUpdated"
+msgstr "Delovni prostor '{0}' je posodobljen."
+
+msgid "status.workspaceOpened"
+msgstr "Delovni prostor '{0}' je odprt."
+
+msgid "status.workspaceStopped"
+msgstr "Delovni prostor '{0}' je ugasnjen."
+
+msgid "status.workspaceRemoved"
+msgstr "Delovni prostor '{0}' je odstranjen iz aplikacije."
+
+msgid "status.workspaceNeedsPreparation"
+msgstr "Delovni prostor '{0}' ima na voljo posodobitev."
+
+msgid "status.workspaceUpdateRequired"
+msgstr "Delovni prostor '{0}' je treba posodobiti, preden ga lahko odprete."
+
+msgid "status.pathCopied"
+msgstr "Pot za '{0}' je kopirana."
+
+msgid "dialog.prepareBeforeOpen.title"
+msgstr "Posodobitev na voljo"
+
+msgid "dialog.prepareBeforeOpen.message"
+msgstr "Za delovni prostor '{0}' je na voljo posodobitev.\n\nŽelite nadaljevati s posodobitvijo?"
+
+msgid "dialog.restartForUpdate.title"
+msgstr "Potrebna je posodobitev"
+
+msgid "dialog.restartForUpdate.message"
+msgstr "Delovni prostor '{0}' se mora znova zagnati, da uporabi spremembe.\n\nŽelite nadaljevati s posodobitvijo in ponovnim zagonom?"
+
+msgid "empty.selection.title"
+msgstr "Izberite delovni prostor"
+
+msgid "empty.selection.description"
+msgstr "Izberite obstoječ delovni prostor na seznamu ali ustvarite novega."
+
+msgid "empty.selection.hintPrimary"
+msgstr "Izberite delovni prostor na sredini zaslona"
+
+msgid "empty.selection.hintSecondary"
+msgstr "ali ustvarite novega na levi strani"
+
+msgid "onboarding.title"
+msgstr "Dobrodošli v OpenCode Stuff"
+
+msgid "onboarding.description"
+msgstr "Ustvarite prvi delovni prostor za začetek."
+
+msgid "validation.workspaceNameRequired"
+msgstr "Vnesite ime delovnega prostora."
+
+msgid "validation.workspacePathRequired"
+msgstr "Vnesite mapo delovnega prostora."
+
+msgid "dialog.workspaceError.title"
+msgstr "Napaka delovnega prostora: {0}"
+
+msgid "remove.dialog.title"
+msgstr "Odstrani delovni prostor"
+
+msgid "remove.dialog.description"
+msgstr "Izberite, koliko želite odstraniti. Lahko obdržite Docker vire in datoteke, odstranite Docker vire in obdržite datoteke, ali odstranite vse."
+
+msgid "remove.dialog.workspace"
+msgstr "Delovni prostor"
+
+msgid "remove.option.registrationOnly.title"
+msgstr "Odstrani samo registracijo delovnega prostora"
+
+msgid "remove.option.registrationOnly.files"
+msgstr "Datoteke ostanejo."
+
+msgid "remove.option.registrationOnly.docker"
+msgstr "Docker viri ostanejo."
+
+msgid "remove.option.docker.title"
+msgstr "Odstrani tudi Docker vsebnike in storitve"
+
+msgid "remove.option.docker.description"
+msgstr "Uporabniške datoteke in priklopi ostanejo."
+
+msgid "remove.option.deleteFiles.title"
+msgstr "Odstrani Docker vire in izbriši krajevne datoteke"
+
+msgid "remove.option.deleteFiles.description"
+msgstr "Uničevalno. To odstrani Docker vsebnike in storitve ter nato izbriše mapo delovnega prostora."
+
+msgid "remove.confirmDeleteFiles.title"
+msgstr "Potrdi brisanje datotek"
+
+msgid "remove.confirmDeleteFiles.message"
+msgstr "Izbrišem vse datoteke delovnega prostora za '{0}'?\n\nMapa: {1}\n\nTega ni mogoče razveljaviti."
+
+msgid "remove.deleteFailed.title"
+msgstr "Brisanje delovnega prostora ni uspelo"
+
+msgid "remove.deleteFailed.message"
+msgstr "Datotek v tej mapi ni bilo mogoče izbrisati:\n{0}\n\nDatoteke, ki jih je morda ustvaril Docker:\n{1}\n\nŽelite znova popraviti dovoljenja in poskusiti še enkrat?"
+
+msgid "remove.deleteCancelled.message"
+msgstr "Mapa delovnega prostora ni bila izbrisana: {0}"
+
+msgid "remove.deleteRetryFailed.message"
+msgstr "Dovoljenj ni bilo mogoče popraviti ali mape ni bilo mogoče izbrisati:\n{0}\n\nPreverite te poti:\n{1}"
+
+msgid "status.none"
+msgstr "Ni izbranega delovnega prostora."

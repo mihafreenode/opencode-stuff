@@ -1,0 +1,16 @@
+<UserControl x:Class="OpenCode.Workspace.Manager.Controls.WorkspaceStatusIndicator"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinHeight="20">
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Ellipse Width="12"
+                 Height="12"
+                 VerticalAlignment="Center"
+                 Fill="{Binding StatusForegroundBrush}" />
+        <TextBlock Margin="8,0,0,0"
+                   VerticalAlignment="Center"
+                   FontWeight="SemiBold"
+                   Foreground="{Binding StatusForegroundBrush}"
+                   Text="{Binding StatusLabel}" />
+    </StackPanel>
+</UserControl>

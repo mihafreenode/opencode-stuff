@@ -1,0 +1,10 @@
+# Built-in feature manifest: playwright
+
+id: playwright
+displayName: Playwright
+description: Browser automation support for testing and scraping workflows.
+dependencies:
+  npm:
+    - playwright
+postInstall:
+  - npx playwright install

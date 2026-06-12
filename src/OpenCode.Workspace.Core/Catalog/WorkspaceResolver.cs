@@ -1,0 +1,67 @@
+using OpenCode.Workspace.Core.Models;
+
+namespace OpenCode.Workspace.Core.Catalog;
+
+/// <summary>
+/// Resolves the small, human-owned workspace.yaml selections into the concrete
+/// package and service plan used by compose and provisioning generation.
+/// </summary>
+public sealed class WorkspaceResolver
+{
+    private readonly IReadOnlyDictionary<string, FeatureManifest> _featuresById;
+    private readonly IReadOnlyDictionary<string, ServiceManifest> _servicesById;
+
+    public WorkspaceResolver(IEnumerable<FeatureManifest> features, IEnumerable<ServiceManifest> services)
+    {
+        _featuresById = features.ToDictionary(feature => feature.Id, StringComparer.OrdinalIgnoreCase);
+        _servicesById = services.ToDictionary(service => service.Id, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public ResolvedWorkspace Resolve(WorkspaceDefinition definition)
+    {
+        var selectedFeatures = new List<FeatureManifest>();
+
+        foreach (var feature in _featuresById.Values.Where(feature => feature.AlwaysEnabled).OrderBy(feature => feature.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            selectedFeatures.Add(feature);
+        }
+
+        foreach (var featureId in definition.Features)
+        {
+            if (!_featuresById.TryGetValue(featureId, out var feature))
+            {
+                throw new InvalidOperationException($"Unknown feature '{featureId}'. Add a built-in manifest or fix workspace.yaml.");
+            }
+
+            if (selectedFeatures.All(existing => !string.Equals(existing.Id, feature.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedFeatures.Add(feature);
+            }
+        }
+
+        var selectedServices = new List<ServiceManifest>();
+        foreach (var serviceId in definition.Services)
+        {
+            if (!_servicesById.TryGetValue(serviceId, out var service))
+            {
+                throw new InvalidOperationException($"Unknown service '{serviceId}'. Add a built-in manifest or fix workspace.yaml.");
+            }
+
+            if (selectedServices.All(existing => !string.Equals(existing.Id, service.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedServices.Add(service);
+            }
+        }
+
+        return new ResolvedWorkspace
+        {
+            Definition = definition,
+            Features = selectedFeatures,
+            Services = selectedServices,
+            AptPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Apt).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
+            NpmPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Npm).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
+            PipPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Pip).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
+            PostInstallCommands = selectedFeatures.SelectMany(feature => feature.PostInstall).Distinct(StringComparer.Ordinal).ToList(),
+        };
+    }
+}
