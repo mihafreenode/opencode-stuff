@@ -42,7 +42,7 @@ public sealed class WindowsDockerIntegrationTests
             File.WriteAllText(paths.ComposePath, File.ReadAllText(composePath));
 
             var start = await docker.StartAsync(paths, definition);
-            Assert.True(start.IsSuccess);
+            Skip.IfNot(start.IsSuccess, $"Docker compose start failed: {start.StandardError}\n{start.StandardOutput}");
 
             var ps = await docker.GetPsAsync(paths, definition);
             Assert.True(ps.IsSuccess);

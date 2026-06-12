@@ -42,10 +42,15 @@ public sealed class WindowsBootstrapIntegrationTests
         {
             try
             {
-                var application = Application.Current ?? new App
+                var application = Application.Current as App;
+                if (application is null)
                 {
-                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
-                };
+                    application = new App
+                    {
+                        ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                    };
+                    application.InitializeComponent();
+                }
 
                 var window = new MainWindow();
                 Assert.NotNull(window);
