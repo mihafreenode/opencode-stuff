@@ -4,6 +4,8 @@ name: CI
 "on":
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
     # Only run CI when source, tests, build inputs, or workflow files change.
