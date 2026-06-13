@@ -191,6 +191,12 @@ OpenCode Stuff may:
 - create and manage its own generated Starship configuration
 - manage clearly marked OpenCode Stuff sections in the workspace user's shell configuration
 
+Local tool baseline:
+
+- when Node.js is needed for local contributor workflows, assume a modern LTS or newer runtime
+- the current local baseline used during validation is Node.js 22
+- do not introduce a repo-level Node version pin unless the repository actually starts depending on Node-based build or test tooling that requires one
+
 OpenCode Stuff must not:
 
 - modify unrelated Windows Terminal profiles

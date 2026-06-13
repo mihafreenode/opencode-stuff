@@ -50,10 +50,10 @@ jobs:
       EnableWindowsTargeting: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.204
 
@@ -86,10 +86,10 @@ jobs:
     # Future stage: add code signing once certificate handling is decided.
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.204
 
@@ -130,7 +130,7 @@ jobs:
             -Force
 
       - name: Upload launcher artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opencode-stuff-win-x64
           path: artifacts/opencode-stuff-win-x64.zip
