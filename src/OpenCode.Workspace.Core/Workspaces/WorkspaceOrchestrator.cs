@@ -214,6 +214,7 @@ public sealed class WorkspaceOrchestrator
             RepositoryPath = repositoryRoot,
             WorkspaceName = folderName,
             Repository = inspection,
+            HasWorkspaceYaml = File.Exists(Path.Combine(repositoryRoot, "workspace.yaml")),
         };
     }
 
@@ -263,30 +264,58 @@ public sealed class WorkspaceOrchestrator
                 break;
         }
 
-        var definition = new WorkspaceDefinition
-        {
-            Workspace = new WorkspaceMetadata
-            {
-                Id = WorkspacePathBuilder.Slugify(request.WorkspaceName),
-                Name = request.WorkspaceName.Trim(),
-                Image = "ubuntu:24.04",
-            },
-            Provider = new WorkspaceProviderDefinition
-            {
-                Type = gitProvider.Type,
-                Url = inspection.RemoteUrl,
-            },
-            Runtime = new WorkspaceRuntimeDefinition
-            {
-                Default = "default",
-            },
-            Features = new List<string> { "core" },
-            Services = new List<string>(),
-            Skills = new List<string>(),
-            Mcp = new List<string>(),
-        };
-
         var paths = WorkspacePathBuilder.Build(request.RepositoryPath);
+        var definition = File.Exists(paths.WorkspaceYamlPath)
+            ? _workspaceYamlService.Read(paths.WorkspaceYamlPath)
+            : request.InitialDefinition is not null
+                ? new WorkspaceDefinition
+                {
+                    Workspace = new WorkspaceMetadata
+                    {
+                        Id = string.IsNullOrWhiteSpace(request.InitialDefinition.Workspace.Id)
+                            ? WorkspacePathBuilder.Slugify(request.WorkspaceName)
+                            : request.InitialDefinition.Workspace.Id,
+                        Name = string.IsNullOrWhiteSpace(request.InitialDefinition.Workspace.Name)
+                            ? request.WorkspaceName.Trim()
+                            : request.InitialDefinition.Workspace.Name,
+                        Image = request.InitialDefinition.Workspace.Image,
+                    },
+                    Provider = new WorkspaceProviderDefinition
+                    {
+                        Type = string.IsNullOrWhiteSpace(request.InitialDefinition.Provider.Type) ? gitProvider.Type : request.InitialDefinition.Provider.Type,
+                        Url = string.IsNullOrWhiteSpace(request.InitialDefinition.Provider.Url) ? inspection.RemoteUrl : request.InitialDefinition.Provider.Url,
+                    },
+                    Runtime = request.InitialDefinition.Runtime,
+                    Features = request.InitialDefinition.Features,
+                    Services = request.InitialDefinition.Services,
+                    Skills = request.InitialDefinition.Skills,
+                    Mcp = request.InitialDefinition.Mcp,
+                    Terminal = request.InitialDefinition.Terminal,
+                    Agent = request.InitialDefinition.Agent,
+                }
+                : new WorkspaceDefinition
+                {
+                    Workspace = new WorkspaceMetadata
+                    {
+                        Id = WorkspacePathBuilder.Slugify(request.WorkspaceName),
+                        Name = request.WorkspaceName.Trim(),
+                        Image = "ubuntu:24.04",
+                    },
+                    Provider = new WorkspaceProviderDefinition
+                    {
+                        Type = gitProvider.Type,
+                        Url = inspection.RemoteUrl,
+                    },
+                    Runtime = new WorkspaceRuntimeDefinition
+                    {
+                        Default = "default",
+                    },
+                    Features = new List<string> { "core" },
+                    Services = new List<string>(),
+                    Skills = new List<string>(),
+                    Mcp = new List<string>(),
+                };
+
         CreateFolderStructure(paths);
         EnsureWorkspaceScaffolding(paths, definition);
         WriteGeneratedFiles(paths, definition);

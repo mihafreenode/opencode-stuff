@@ -28,6 +28,7 @@
                             <TextBlock Margin="0,10,0,0" Text="{Binding CurrentBranchSummary}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,6,0,0" Text="{Binding DefaultBranchSummary}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,6,0,0" Text="{Binding RemoteOriginSummary}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0" Text="{Binding WorkspaceDefinitionSummary}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
                             <TextBlock Margin="0,6,0,0" Text="{Binding DirtyStatusSummary}" TextWrapping="Wrap" FontWeight="SemiBold" />
                             <TextBlock Margin="0,6,0,0" Text="{Binding AheadBehindSummary}" TextWrapping="Wrap" />
                         </StackPanel>

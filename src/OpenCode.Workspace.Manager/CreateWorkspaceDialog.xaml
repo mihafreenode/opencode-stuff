@@ -64,9 +64,10 @@
                             <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="Workspace files stay inside the selected repository folder." TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <StackPanel Visibility="{Binding IsNewWorkspaceSource, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Visibility="{Binding ShowCatalogSelectionOptions, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Margin="0,14,0,0" Text="{Binding TemplateLabel}" FontWeight="SemiBold" />
                             <ComboBox Margin="0,6,0,0" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="DisplayName" />
+                            <TextBlock Margin="0,6,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="When an existing Git checkout does not have workspace.yaml yet, these selections become the initial workspace tools." TextWrapping="Wrap" />
 
                             <TextBlock Margin="0,14,0,0" Text="{Binding FeaturesLabel}" FontWeight="SemiBold" />
                             <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableFeatures}">

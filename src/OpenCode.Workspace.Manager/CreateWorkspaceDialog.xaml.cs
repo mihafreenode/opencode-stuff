@@ -93,6 +93,15 @@ public partial class CreateWorkspaceDialog : Window
         }
 
         var request = branchDialog.BuildRequest();
+        request = new ExistingGitCheckoutImportRequest
+        {
+            RepositoryPath = request.RepositoryPath,
+            WorkspaceName = request.WorkspaceName,
+            BranchMode = request.BranchMode,
+            NamedBranch = request.NamedBranch,
+            ReuseExistingNamedBranch = request.ReuseExistingNamedBranch,
+            InitialDefinition = viewModel.BuildWorkspaceDefinitionFromSelections(request.WorkspaceName),
+        };
         if (request.BranchMode == ExistingGitCheckoutBranchMode.CreateNamedFeatureBranch)
         {
             var validation = await viewModel.ValidateExistingGitCheckoutBranchAsync(request.RepositoryPath, request.NamedBranch);
@@ -122,6 +131,7 @@ public partial class CreateWorkspaceDialog : Window
                     BranchMode = request.BranchMode,
                     NamedBranch = request.NamedBranch,
                     ReuseExistingNamedBranch = true,
+                    InitialDefinition = request.InitialDefinition,
                 };
             }
         }

@@ -405,6 +405,15 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _existingRepositoryPath, value))
             {
+                if (string.IsNullOrWhiteSpace(_newWorkspaceName))
+                {
+                    var folderName = GetWorkspaceNameFromPath(value);
+                    if (!string.IsNullOrWhiteSpace(folderName))
+                    {
+                        NewWorkspaceName = folderName;
+                    }
+                }
+
                 RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
                 RaisePropertyChanged(nameof(ExistingRepositoryPathValidationMessage));
             }
@@ -625,6 +634,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool CanCreateWorkspaceForDialog => CanCreateWorkspace();
     public bool IsNewWorkspaceSource => SelectedWorkspaceSourceType == WorkspaceSourceType.NewWorkspace;
     public bool IsExistingGitCheckoutSource => SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout;
+    public bool ShowCatalogSelectionOptions => true;
     public string CreateWorkspaceDisabledReason => string.Empty;
     public string WorkspaceNameValidationMessage => string.IsNullOrWhiteSpace(NewWorkspaceName)
         ? _localization.Get("validation.workspaceNameRequired")
@@ -748,46 +758,49 @@ public sealed class MainWindowViewModel : ObservableObject
         return Workspaces.Any(item => string.Equals(item.RootPath, request.RepositoryPath, StringComparison.OrdinalIgnoreCase));
     }
 
+    public WorkspaceDefinition BuildWorkspaceDefinitionFromSelections(string workspaceName)
+        => new()
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Name = workspaceName,
+                Image = "ubuntu:24.04",
+            },
+            Features = AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
+            Services = AvailableServices.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
+            Skills = new List<string>(),
+            Mcp = new List<string>(),
+            Agent = new AgentPreferences
+            {
+                Profile = AgentProfileResolver.BuiltInDefault.ProfileId,
+            },
+            Terminal = new TerminalPreferences
+            {
+                InstallIfMissing = InstallTerminalIfMissing,
+                Font = new TerminalFontPreferences
+                {
+                    Provider = "nerd-fonts",
+                    Family = SelectedFontFamily,
+                },
+                Prompt = new TerminalPromptPreferences
+                {
+                    Provider = SelectedPromptProvider,
+                },
+                Utilities = new TerminalUtilityPreferences
+                {
+                    Zoxide = InstallZoxide,
+                    Fzf = InstallFzf,
+                },
+            },
+        };
+
     private async Task CreateWorkspaceAsync()
     {
         await RunBusyAsync(
             async () =>
             {
                 AppendCurrentLog("app", $"Creating workspace '{NewWorkspaceName.Trim()}'.");
-                var definition = new WorkspaceDefinition
-                {
-                    Workspace = new WorkspaceMetadata
-                    {
-                        Name = NewWorkspaceName.Trim(),
-                        Image = "ubuntu:24.04",
-                    },
-                    Features = AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
-                    Services = AvailableServices.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
-                    Skills = new List<string>(),
-                    Mcp = new List<string>(),
-                    Agent = new AgentPreferences
-                    {
-                        Profile = AgentProfileResolver.BuiltInDefault.ProfileId,
-                    },
-                    Terminal = new TerminalPreferences
-                    {
-                        InstallIfMissing = InstallTerminalIfMissing,
-                        Font = new TerminalFontPreferences
-                        {
-                            Provider = "nerd-fonts",
-                            Family = SelectedFontFamily,
-                        },
-                        Prompt = new TerminalPromptPreferences
-                        {
-                            Provider = SelectedPromptProvider,
-                        },
-                        Utilities = new TerminalUtilityPreferences
-                        {
-                            Zoxide = InstallZoxide,
-                            Fzf = InstallFzf,
-                        },
-                    },
-                };
+                var definition = BuildWorkspaceDefinitionFromSelections(NewWorkspaceName.Trim());
 
                 var snapshot = _workspaceOrchestrator.CreateWorkspace(NewWorkspacePath.Trim(), definition, CreateWorkspaceLogAppender(NewWorkspacePath.Trim()));
                 var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
@@ -1509,6 +1522,17 @@ public sealed class MainWindowViewModel : ObservableObject
             ? !string.IsNullOrWhiteSpace(ExistingRepositoryPath)
             : !string.IsNullOrWhiteSpace(NewWorkspacePath);
     }
+
+    private static string GetWorkspaceNameFromPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        return Path.GetFileName(path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+    }
+
     private bool HasSelectedWorkspace() => SelectedWorkspace is not null && !IsBusy;
 
     private string FormatRelativeTime(DateTimeOffset? value)

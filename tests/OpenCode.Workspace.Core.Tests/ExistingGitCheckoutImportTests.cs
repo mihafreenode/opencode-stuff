@@ -87,6 +87,148 @@ public sealed class ExistingGitCheckoutImportTests
         }
     }
 
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_CreatesWorkspaceYamlWhenMissing()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "My Project",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            });
+
+            Assert.True(File.Exists(Path.Combine(rootPath, "workspace.yaml")));
+            Assert.Equal("My Project", snapshot.Definition.Workspace.Name);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_UsesSelectedToolsWhenCreatingWorkspaceYaml()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "My Project",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+                InitialDefinition = new WorkspaceDefinition
+                {
+                    Workspace = new WorkspaceMetadata
+                    {
+                        Name = "My Project",
+                        Image = "ubuntu:24.04",
+                    },
+                    Features = new List<string> { "core" },
+                    Services = new List<string> { "postgres" },
+                    Skills = new List<string>(),
+                    Mcp = new List<string>(),
+                },
+            });
+
+            Assert.Contains("postgres", snapshot.Definition.Services, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_PreservesExistingWorkspaceYaml()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var yaml = new WorkspaceYamlService().Write(new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Id = "existing-workspace",
+                    Name = "Existing Workspace",
+                    Image = "ubuntu:24.04",
+                },
+                Provider = new WorkspaceProviderDefinition
+                {
+                    Type = "git",
+                },
+                Runtime = new WorkspaceRuntimeDefinition
+                {
+                    Default = "default",
+                },
+                Features = new List<string> { "core" },
+                Services = new List<string> { "postgres" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            });
+            File.WriteAllText(Path.Combine(rootPath, "workspace.yaml"), yaml);
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "Ignored Name",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            });
+
+            Assert.Equal("Existing Workspace", snapshot.Definition.Workspace.Name);
+            Assert.Contains("postgres", snapshot.Definition.Services, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
     private static WorkspaceOrchestrator CreateOrchestrator(string appDataRoot)
     {
         var processRunner = new ProcessRunner();
