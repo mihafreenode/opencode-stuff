@@ -7,7 +7,7 @@ msgid "dashboard.title"
 msgstr "Workspace Dashboard"
 
 msgid "dashboard.subtitle"
-msgstr "Open, update, and manage local OpenCode workspaces without exposing Docker internals."
+msgstr "Open, protect, and manage durable workspaces without exposing runtime internals."
 
 msgid "workspaces.title"
 msgstr "Workspaces"
@@ -35,6 +35,39 @@ msgstr "Update"
 
 msgid "actions.shutDown"
 msgstr "Shut Down"
+
+msgid "actions.createSavePoint"
+msgstr "Create Save Point"
+
+msgid "actions.createCheckpoint"
+msgstr "Create Checkpoint"
+
+msgid "actions.publish"
+msgstr "Publish"
+
+msgid "actions.exportBackup"
+msgstr "Export Backup"
+
+msgid "actions.configureRemoteBackup"
+msgstr "Configure Remote Backup"
+
+msgid "actions.continueWorking"
+msgstr "Continue Working"
+
+msgid "actions.openAdvancedGitView"
+msgstr "Open Advanced Git View"
+
+msgid "actions.exportPatch"
+msgstr "Export Patch"
+
+msgid "actions.updateWorkspace"
+msgstr "Update Workspace"
+
+msgid "actions.publishReviewWorkingCopy"
+msgstr "Publish to Review Working Copy"
+
+msgid "actions.dismiss"
+msgstr "Dismiss"
 
 msgid "actions.remove"
 msgstr "Remove"
@@ -121,7 +154,7 @@ msgid "field.path"
 msgstr "Path"
 
 msgid "field.image"
-msgstr "Image"
+msgstr "Runtime"
 
 msgid "field.features"
 msgstr "Features"
@@ -136,7 +169,7 @@ msgid "field.status"
 msgstr "Workspace Status"
 
 msgid "field.dockerStatus"
-msgstr "Docker Status"
+msgstr "Runtime Engine Status"
 
 msgid "field.lastOperation"
 msgstr "Last Operation"
@@ -169,13 +202,13 @@ msgid "workspace.status.error"
 msgstr "Error"
 
 msgid "workspace.docker.running"
-msgstr "Docker running"
+msgstr "Runtime engine running"
 
 msgid "workspace.docker.stopped"
-msgstr "Docker stopped"
+msgstr "Runtime engine stopped"
 
 msgid "workspace.docker.unavailable"
-msgstr "Docker status unavailable"
+msgstr "Runtime engine status unavailable"
 
 msgid "workspace.lastOperation.none"
 msgstr "No operations recorded yet."
@@ -221,6 +254,27 @@ msgstr "Shut Down"
 
 msgid "operation.remove"
 msgstr "Remove Workspace"
+
+msgid "operation.createSavePoint"
+msgstr "Create Save Point"
+
+msgid "operation.createCheckpoint"
+msgstr "Create Checkpoint"
+
+msgid "operation.publish"
+msgstr "Publish"
+
+msgid "operation.exportBackup"
+msgstr "Export Backup"
+
+msgid "operation.exportPatch"
+msgstr "Export Patch"
+
+msgid "operation.updateWorkingCopy"
+msgstr "Update Working Copy"
+
+msgid "operation.publishReviewWorkingCopy"
+msgstr "Publish Review Working Copy"
 
 msgid "status.loadedWorkspaces"
 msgstr "Loaded {0} workspace(s)."
@@ -344,3 +398,165 @@ msgstr "The permissions could not be repaired or the folder still could not be d
 
 msgid "status.none"
 msgstr "No workspace selected."
+
+msgid "status.savePointCreated"
+msgstr "Created a new Save Point."
+
+msgid "status.savePointSkipped"
+msgstr "No local changes were available for a Save Point."
+
+msgid "status.checkpointCreated"
+msgstr "Created checkpoint '{0}'."
+
+msgid "status.backupExported"
+msgstr "Exported workspace backup to '{0}'."
+
+msgid "status.patchExported"
+msgstr "Exported workspace patch to '{0}'."
+
+msgid "status.reviewWorkingCopyPublished"
+msgstr "Published review Working Copy '{0}'."
+
+msgid "workspace.result.savePointCreated"
+msgstr "Save Point created."
+
+msgid "workspace.result.savePointSkipped"
+msgstr "No local changes were available for a Save Point."
+
+msgid "workspace.result.checkpointCreated"
+msgstr "Checkpoint '{0}' created."
+
+msgid "workspace.result.backupExported"
+msgstr "Workspace backup exported to '{0}'."
+
+msgid "workspace.result.patchExported"
+msgstr "Workspace patch exported to '{0}'."
+
+msgid "savePoint.dialog.title"
+msgstr "Create Save Point"
+
+msgid "savePoint.dialog.description"
+msgstr "Review the suggested Save Point message before saving. You can edit it to better describe what changed and why."
+
+msgid "safety.title"
+msgstr "Workspace Safety"
+
+msgid "safety.localRecovery"
+msgstr "Local Recovery"
+
+msgid "safety.offMachineBackup"
+msgstr "Off-Machine Backup"
+
+msgid "safety.workingCopy"
+msgstr "Working Copy"
+
+msgid "safety.remoteName"
+msgstr "Remote"
+
+msgid "safety.remoteBranch"
+msgstr "Remote Branch"
+
+msgid "safety.aheadBehind"
+msgstr "Ahead / Behind"
+
+msgid "safety.conflictingFiles"
+msgstr "Conflicting Files"
+
+msgid "safety.latestSavePoint"
+msgstr "Latest Save Point"
+
+msgid "safety.latestCheckpoint"
+msgstr "Latest Checkpoint"
+
+msgid "safety.uncommittedChanges"
+msgstr "Uncommitted Changes"
+
+msgid "safety.untrackedFiles"
+msgstr "Untracked Files"
+
+msgid "safety.remoteConfigured"
+msgstr "Remote Backup Configured"
+
+msgid "safety.unpublishedSavePoints"
+msgstr "Local Save Points Not Published"
+
+msgid "safety.workingCopyPublished"
+msgstr "Current Working Copy Published"
+
+msgid "safety.lastPublish"
+msgstr "Last Successful Publish"
+
+msgid "safety.status.protected"
+msgstr "Protected"
+
+msgid "safety.status.partiallyProtected"
+msgstr "Partially Protected"
+
+msgid "safety.status.atRisk"
+msgstr "At Risk"
+
+msgid "safety.status.needsReview"
+msgstr "Needs Review"
+
+msgid "safety.noneRecorded"
+msgstr "Not recorded yet"
+
+msgid "safety.justNow"
+msgstr "Just now"
+
+msgid "safety.workingCopyUnavailable"
+msgstr "No Safe Working Copy yet"
+
+msgid "safety.minutesAgo"
+msgstr "{0} minute(s) ago"
+
+msgid "safety.hoursAgo"
+msgstr "{0} hour(s) ago"
+
+msgid "safety.daysAgo"
+msgstr "{0} day(s) ago"
+
+msgid "safety.yes"
+msgstr "Yes"
+
+msgid "safety.no"
+msgstr "No"
+
+msgid "safety.changedFiles"
+msgstr "{0} file(s) changed"
+
+msgid "safety.aheadBehindValue"
+msgstr "Ahead {0}, Behind {1}"
+
+msgid "safety.noUncommittedChanges"
+msgstr "No uncommitted changes"
+
+msgid "safety.noUntrackedFiles"
+msgstr "No untracked files"
+
+msgid "safety.noConflictingFiles"
+msgstr "No conflicting files"
+
+msgid "safety.untrackedProtected"
+msgstr "{0} protected by checkpoint"
+
+msgid "safety.untrackedNotProtected"
+msgstr "{0} not yet protected"
+
+msgid "safety.configureRemoteBackup.title"
+msgstr "Configure Remote Backup"
+
+msgid "safety.configureRemoteBackup.message"
+msgstr "Remote backup setup is not available in the V1 form yet. You can add a provider URL in this workspace file:\n\n{0}\n\nYour local Save Points remain available."
+
+msgid "safety.continueWorking.message"
+msgstr "You can keep working. Local recovery remains available."
+
+msgid "safety.updateWorkspace.message"
+msgstr "The remote workspace changed. Update the Working Copy only when it can be done safely without discarding local work."
+
+msgid "safety.publishReviewWorkingCopy.message"
+msgstr "Publish to a review Working Copy only when you want an explicit remote review path. This never replaces the current Working Copy silently."
+
+msgid "safety.dismiss.message"
+msgstr "Workspace safety remains visible in the details panel."

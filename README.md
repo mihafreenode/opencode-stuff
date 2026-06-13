@@ -1,115 +1,124 @@
 # opencode stuff
 
-OpenCode Stuff makes workspaces portable.
+## What Is OpenCode Stuff?
 
-Package tools, services, knowledge, automation, and AI into a reusable workspace that can be recreated, shared, and reopened whenever you need it.
+OpenCode Stuff helps package tools, documentation, automation, and AI into reusable workspaces that can be opened on another machine with minimal setup.
 
-Windows is currently the primary supported host platform. Workspaces run in reproducible Ubuntu environments powered by Docker, WSL2, and OpenCode.
+A workspace is the durable body of work. A runtime is the replaceable tool environment. A session is the temporary execution where work happens.
 
-<img
-    src="docs/images/opencode-stuff-satchel.jpg"
-    alt="opencode stuff"
-    width="240"
-/>
-
-## Mission
-
-Make workspaces portable.
-
-Instead of manually recreating tools, services, configuration, and project knowledge, define them once in a workspace and reopen them whenever you need them. Workspaces can be recreated, shared, versioned, and eventually promoted to hosted environments.
-
-OpenCode Stuff focuses on local workspaces today. The same workspace model is intended to support shared and hosted environments in the future.
-
-> There is no magic. Only stuff.
+Read more: [docs/philosophy.md](docs/philosophy.md)
 
 ## Screenshots
 
-### Launcher
+### Workspace Launcher
 
 <img src="docs/screenshots/launcher-window.png" alt="Application launcher" width="560" />
 
-Current desktop launcher for creating, opening, updating, and removing workspaces on Windows.
+Create, open, protect, and manage durable workspaces.
 
-### Terminal Environment
+### Runtime Environment
 
-<img src="docs/screenshots/terminal-window.png" alt="Terminal environment" width="560" />
+<img src="docs/screenshots/terminal-window.png" alt="Runtime environment" width="560" />
 
-OpenCode running inside the current Ubuntu and Docker-backed workspace environment.
+Disposable runtime environment attached to the workspace.
 
-### Current Terminal Session
+### Active Terminal Session
 
-<img src="docs/screenshots/terminal-window-current.png" alt="Current terminal session" width="560" />
+<img src="docs/screenshots/terminal-window-current.png" alt="Active terminal session" width="560" />
 
-Current Windows Terminal session with the latest workspace environment and terminal configuration.
+Temporary session inside the current runtime.
 
 ## Quick Start
 
-1. Read the Windows setup guide: [docs/windows-prerequisites.md](docs/windows-prerequisites.md)
-2. Install prerequisites.
-3. Verify Docker and Ubuntu integration.
-4. Create a workspace.
-5. Open the workspace.
-6. Start working.
+1. Install prerequisites.
+2. Configure Git credentials.
+3. Create or open a workspace.
+4. Start the runtime.
+5. Start working.
 
-Primary entry point for new users:
+Detailed setup:
 
-- Windows Setup Guide: [docs/windows-prerequisites.md](docs/windows-prerequisites.md)
+- [Windows Setup](docs/windows-prerequisites.md)
+- [First Workspace Guide](docs/first-workspace.md)
 
-## What is this?
+## Why Workspaces?
 
-This repository contains practical tools, skills, workflows, workspace utilities, and experiments built around OpenCode.
+Workspaces help avoid repeated setup, package useful tools and knowledge, preserve work, and make onboarding easier.
 
-In practical terms, it is focused on:
+The goal is to make work durable, reproducible, portable, and recoverable.
 
-- a Windows workspace launcher
-- Ubuntu and WSL2 integration
-- Docker-based workspaces
-- OpenCode workspaces
-- local development productivity
-- skills and automation
-- documentation-driven workflows
-- reproducible development environments
+## Workspace / Runtime / Session
 
-The goal is to make environments portable, repeatable, and easy to bootstrap.
+Workspace:
 
-## Why workspaces exist
+- durable body of work
+- sources
+- knowledge
+- work
+- artifacts
+- history
 
-Setting up development environments repeatedly is wasteful.
+Runtime:
 
-Tools, documentation, automation, prompts, configuration, and validation logic are often recreated on every machine.
+- disposable tool environment
+- tools
+- automation
+- AI capabilities
+- MCP integrations
 
-A workspace packages those pieces into a reusable unit so you can start from a known state instead of rebuilding the environment from scratch.
+Session:
 
-## Workspace Model
+- temporary execution
 
-A workspace packages the things needed to work effectively into a reusable unit:
+Runtimes can change. Work should survive.
 
-- Tools
-- Documentation
-- Skills
-- Automation
-- Configuration
-- Validation
+## Safety & Recovery
 
-The intent is that a developer can open a workspace and become productive immediately.
+- Save Point protects local progress.
+- Publish is explicit.
+- Backup is optional but recommended.
+- Restore favors recovery over overwrite.
+- Timeline records key recovery and publish events.
+- Working Copy is the normal place to make local changes safely.
 
-Over time, the same workspace definition should be reusable across:
+Git is the persistence engine underneath.
 
-- local Docker environments
-- shared development servers
-- remote Linux machines
-- cloud-hosted workspaces
+The workspace provides the experience.
 
-while keeping the same logical structure.
+### Workspace Safety
+
+- Save Points protect work.
+- Backups protect against machine loss.
+- Secrets are protected.
+- Disposable files are ignored.
+- Important work is preserved.
+
+Your work is protected locally. Remote backup is optional but recommended.
 
 ## Documentation
 
-- Windows Setup Guide: [docs/windows-prerequisites.md](docs/windows-prerequisites.md)
-- Architecture: [docs/architecture.md](docs/architecture.md)
+- Windows Setup: [docs/windows-prerequisites.md](docs/windows-prerequisites.md)
+- First Workspace Guide: [docs/first-workspace.md](docs/first-workspace.md)
+- Fact Sheet: [docs/fact-sheet.md](docs/fact-sheet.md)
 - Workspace Guide: [docs/workspace-yaml.md](docs/workspace-yaml.md)
-- Skills and Catalogs: [docs/catalogs.md](docs/catalogs.md)
+- Runtime Guide: [docs/concepts/runtime.md](docs/concepts/runtime.md)
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
+
+## Learn More
+
+For the reasoning behind the project and the Durable Workspace model, see [docs/philosophy.md](docs/philosophy.md).
+
+- Philosophy: [docs/philosophy.md](docs/philosophy.md)
+- Workspace Concepts: [docs/concepts/workspace.md](docs/concepts/workspace.md)
+- Runtime Concepts: [docs/concepts/runtime.md](docs/concepts/runtime.md)
+- Session Concepts: [docs/concepts/session.md](docs/concepts/session.md)
+- Save Points: [docs/concepts/save-point.md](docs/concepts/save-point.md)
+- Content Classification: [docs/concepts/content-classification.md](docs/concepts/content-classification.md)
+- Fact Sheet: [docs/fact-sheet.md](docs/fact-sheet.md)
+- Architecture: [docs/architecture.md](docs/architecture.md)
 - Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ## Philosophy
 
-The project prefers explicit tools, readable configuration, repeatable workflows, and useful automation over hidden behavior.
+> There is no magic. Only stuff.

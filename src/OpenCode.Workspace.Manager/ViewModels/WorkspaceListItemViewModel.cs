@@ -16,6 +16,8 @@ public sealed class WorkspaceListItemViewModel : ObservableObject
     private static readonly Brush NeedsPrepareForegroundBrush = CreateBrush("#FF92400E");
     private static readonly Brush ErrorBrush = CreateBrush("#FFFEE2E2");
     private static readonly Brush ErrorForegroundBrush = CreateBrush("#FFB91C1C");
+    private static readonly Brush ProtectedBrush = CreateBrush("#FFDBEAFE");
+    private static readonly Brush ProtectedForegroundBrush = CreateBrush("#FF1D4ED8");
 
     private readonly PoLocalizationService _localization;
     private WorkspaceSnapshot _snapshot;
@@ -60,6 +62,18 @@ public sealed class WorkspaceListItemViewModel : ObservableObject
         ? _localization.Get("workspace.lastOperation.none")
         : Snapshot.Record.LastOperationResult!;
     public string LastOperationSummary => ShortenLine(LastOperationResult, 96);
+    public string SafetyStatusLabel => Snapshot.Safety.OverallStatus switch
+    {
+        WorkspaceSafetyLevel.Protected => _localization.Get("safety.status.protected"),
+        WorkspaceSafetyLevel.PartiallyProtected => _localization.Get("safety.status.partiallyProtected"),
+        WorkspaceSafetyLevel.AtRisk => _localization.Get("safety.status.atRisk"),
+        WorkspaceSafetyLevel.NeedsReview => _localization.Get("safety.status.needsReview"),
+        _ => Snapshot.Safety.Headline,
+    };
+    public string SafetyMessage => Snapshot.Safety.Message;
+    public string SafetySummary => ShortenLine(Snapshot.Safety.Message, 96);
+    public Brush SafetyBrush => Snapshot.Safety.OverallStatus == WorkspaceSafetyLevel.Protected ? ProtectedBrush : StatusBrush;
+    public Brush SafetyForegroundBrush => Snapshot.Safety.OverallStatus == WorkspaceSafetyLevel.Protected ? ProtectedForegroundBrush : StatusForegroundBrush;
     public Brush StatusBrush => HasError
         ? ErrorBrush
         : HasUpdateAvailable
@@ -91,6 +105,11 @@ public sealed class WorkspaceListItemViewModel : ObservableObject
         RaisePropertyChanged(nameof(StatusLabel));
         RaisePropertyChanged(nameof(LastOperationResult));
         RaisePropertyChanged(nameof(LastOperationSummary));
+        RaisePropertyChanged(nameof(SafetyStatusLabel));
+        RaisePropertyChanged(nameof(SafetyMessage));
+        RaisePropertyChanged(nameof(SafetySummary));
+        RaisePropertyChanged(nameof(SafetyBrush));
+        RaisePropertyChanged(nameof(SafetyForegroundBrush));
         RaisePropertyChanged(nameof(StatusBrush));
         RaisePropertyChanged(nameof(StatusForegroundBrush));
     }

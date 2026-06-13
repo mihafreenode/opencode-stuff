@@ -7,7 +7,7 @@ msgid "dashboard.title"
 msgstr "Nadzorna plošča delovnih prostorov"
 
 msgid "dashboard.subtitle"
-msgstr "Odprite, posodobite in upravljajte lokalne OpenCode delovne prostore brez izpostavljanja Docker podrobnosti."
+msgstr "Odprite, zaščitite in upravljajte trajne delovne prostore brez izpostavljanja podrobnosti izvajalnega okolja."
 
 msgid "workspaces.title"
 msgstr "Delovni prostori"
@@ -35,6 +35,39 @@ msgstr "Posodobi"
 
 msgid "actions.shutDown"
 msgstr "Ugasni"
+
+msgid "actions.createSavePoint"
+msgstr "Ustvari točko shranitve"
+
+msgid "actions.createCheckpoint"
+msgstr "Ustvari kontrolno točko"
+
+msgid "actions.publish"
+msgstr "Objavi"
+
+msgid "actions.exportBackup"
+msgstr "Izvozi varnostno kopijo"
+
+msgid "actions.configureRemoteBackup"
+msgstr "Nastavi oddaljeno varnostno kopijo"
+
+msgid "actions.continueWorking"
+msgstr "Nadaljuj z delom"
+
+msgid "actions.openAdvancedGitView"
+msgstr "Odpri napredni Git pogled"
+
+msgid "actions.exportPatch"
+msgstr "Izvozi popravek"
+
+msgid "actions.updateWorkspace"
+msgstr "Posodobi delovni prostor"
+
+msgid "actions.publishReviewWorkingCopy"
+msgstr "Objavi v pregledno delovno kopijo"
+
+msgid "actions.dismiss"
+msgstr "Zapri"
 
 msgid "actions.remove"
 msgstr "Odstrani"
@@ -121,7 +154,7 @@ msgid "field.path"
 msgstr "Pot"
 
 msgid "field.image"
-msgstr "Slika"
+msgstr "Izvajalno okolje"
 
 msgid "field.features"
 msgstr "Zmožnosti"
@@ -134,6 +167,9 @@ msgstr "Agent"
 
 msgid "field.status"
 msgstr "Stanje delovnega prostora"
+
+msgid "field.dockerStatus"
+msgstr "Stanje pogona izvajalnega okolja"
 
 msgid "field.lastOperation"
 msgstr "Zadnja operacija"
@@ -166,13 +202,13 @@ msgid "workspace.status.error"
 msgstr "Napaka"
 
 msgid "workspace.docker.running"
-msgstr "Docker teče"
+msgstr "Pogon izvajalnega okolja teče"
 
 msgid "workspace.docker.stopped"
-msgstr "Docker je ustavljen"
+msgstr "Pogon izvajalnega okolja je ustavljen"
 
 msgid "workspace.docker.unavailable"
-msgstr "Stanje Dockerja ni na voljo"
+msgstr "Stanje pogona izvajalnega okolja ni na voljo"
 
 msgid "workspace.lastOperation.none"
 msgstr "Operacij še ni bilo."
@@ -218,6 +254,27 @@ msgstr "Ugasni"
 
 msgid "operation.remove"
 msgstr "Odstrani delovni prostor"
+
+msgid "operation.createSavePoint"
+msgstr "Ustvari točko shranitve"
+
+msgid "operation.createCheckpoint"
+msgstr "Ustvari kontrolno točko"
+
+msgid "operation.publish"
+msgstr "Objavi"
+
+msgid "operation.exportBackup"
+msgstr "Izvozi varnostno kopijo"
+
+msgid "operation.exportPatch"
+msgstr "Izvozi popravek"
+
+msgid "operation.updateWorkingCopy"
+msgstr "Posodobi delovno kopijo"
+
+msgid "operation.publishReviewWorkingCopy"
+msgstr "Objavi pregledno delovno kopijo"
 
 msgid "status.loadedWorkspaces"
 msgstr "Naloženih delovnih prostorov: {0}."
@@ -341,3 +398,165 @@ msgstr "Dovoljenj ni bilo mogoče popraviti ali mape ni bilo mogoče izbrisati:\
 
 msgid "status.none"
 msgstr "Ni izbranega delovnega prostora."
+
+msgid "status.savePointCreated"
+msgstr "Ustvarjena je nova točka shranitve."
+
+msgid "status.savePointSkipped"
+msgstr "Za točko shranitve ni bilo krajevnih sprememb."
+
+msgid "status.checkpointCreated"
+msgstr "Ustvarjena je kontrolna točka '{0}'."
+
+msgid "status.backupExported"
+msgstr "Varnostna kopija delovnega prostora je izvožena v '{0}'."
+
+msgid "status.patchExported"
+msgstr "Popravek delovnega prostora je izvožen v '{0}'."
+
+msgid "status.reviewWorkingCopyPublished"
+msgstr "Pregledna delovna kopija '{0}' je objavljena."
+
+msgid "workspace.result.savePointCreated"
+msgstr "Točka shranitve je ustvarjena."
+
+msgid "workspace.result.savePointSkipped"
+msgstr "Za točko shranitve ni bilo krajevnih sprememb."
+
+msgid "workspace.result.checkpointCreated"
+msgstr "Kontrolna točka '{0}' je ustvarjena."
+
+msgid "workspace.result.backupExported"
+msgstr "Varnostna kopija delovnega prostora je izvožena v '{0}'."
+
+msgid "workspace.result.patchExported"
+msgstr "Popravek delovnega prostora je izvožen v '{0}'."
+
+msgid "savePoint.dialog.title"
+msgstr "Ustvari točko shranitve"
+
+msgid "savePoint.dialog.description"
+msgstr "Preglejte predlagano sporočilo točke shranitve pred shranjevanjem. Po potrebi ga lahko uredite."
+
+msgid "safety.title"
+msgstr "Varnost delovnega prostora"
+
+msgid "safety.localRecovery"
+msgstr "Krajevno obnavljanje"
+
+msgid "safety.offMachineBackup"
+msgstr "Varnostna kopija zunaj naprave"
+
+msgid "safety.workingCopy"
+msgstr "Delovna kopija"
+
+msgid "safety.remoteName"
+msgstr "Oddaljeni repozitorij"
+
+msgid "safety.remoteBranch"
+msgstr "Oddaljena veja"
+
+msgid "safety.aheadBehind"
+msgstr "Pred / za"
+
+msgid "safety.conflictingFiles"
+msgstr "Konfliktne datoteke"
+
+msgid "safety.latestSavePoint"
+msgstr "Zadnja točka shranitve"
+
+msgid "safety.latestCheckpoint"
+msgstr "Zadnja kontrolna točka"
+
+msgid "safety.uncommittedChanges"
+msgstr "Nezapisane spremembe"
+
+msgid "safety.untrackedFiles"
+msgstr "Nespremljane datoteke"
+
+msgid "safety.remoteConfigured"
+msgstr "Oddaljena varnostna kopija nastavljena"
+
+msgid "safety.unpublishedSavePoints"
+msgstr "Krajevne točke shranitve še niso objavljene"
+
+msgid "safety.workingCopyPublished"
+msgstr "Trenutna delovna kopija objavljena"
+
+msgid "safety.lastPublish"
+msgstr "Zadnja uspešna objava"
+
+msgid "safety.status.protected"
+msgstr "Zaščiteno"
+
+msgid "safety.status.partiallyProtected"
+msgstr "Delno zaščiteno"
+
+msgid "safety.status.atRisk"
+msgstr "Tvegano"
+
+msgid "safety.status.needsReview"
+msgstr "Potreben pregled"
+
+msgid "safety.noneRecorded"
+msgstr "Še ni zabeleženo"
+
+msgid "safety.justNow"
+msgstr "Pravkar"
+
+msgid "safety.workingCopyUnavailable"
+msgstr "Varna delovna kopija še ne obstaja"
+
+msgid "safety.minutesAgo"
+msgstr "pred {0} minuto/minutami"
+
+msgid "safety.hoursAgo"
+msgstr "pred {0} uro/urami"
+
+msgid "safety.daysAgo"
+msgstr "pred {0} dnem/dnevi"
+
+msgid "safety.yes"
+msgstr "Da"
+
+msgid "safety.no"
+msgstr "Ne"
+
+msgid "safety.changedFiles"
+msgstr "Spremenjenih datotek: {0}"
+
+msgid "safety.aheadBehindValue"
+msgstr "Pred {0}, za {1}"
+
+msgid "safety.noUncommittedChanges"
+msgstr "Ni nezapisanih sprememb"
+
+msgid "safety.noUntrackedFiles"
+msgstr "Ni nespremljanih datotek"
+
+msgid "safety.noConflictingFiles"
+msgstr "Ni konfliktnih datotek"
+
+msgid "safety.untrackedProtected"
+msgstr "{0} zaščitenih s kontrolno točko"
+
+msgid "safety.untrackedNotProtected"
+msgstr "{0} še ni zaščitenih"
+
+msgid "safety.configureRemoteBackup.title"
+msgstr "Nastavi oddaljeno varnostno kopijo"
+
+msgid "safety.configureRemoteBackup.message"
+msgstr "Nastavitev oddaljene varnostne kopije v obrazcu V1 še ni na voljo. URL ponudnika lahko dodate v to datoteko delovnega prostora:\n\n{0}\n\nKrajevne točke shranitve ostanejo na voljo."
+
+msgid "safety.continueWorking.message"
+msgstr "Lahko nadaljujete z delom. Krajevno obnavljanje ostane na voljo."
+
+msgid "safety.updateWorkspace.message"
+msgstr "Oddaljeni delovni prostor se je spremenil. Delovno kopijo posodobite le, kadar je to mogoče storiti varno brez izgube krajevnega dela."
+
+msgid "safety.publishReviewWorkingCopy.message"
+msgstr "V pregledno delovno kopijo objavite le, kadar želite izrecno oddaljeno pot pregleda. Trenutne delovne kopije to nikoli ne zamenja tiho."
+
+msgid "safety.dismiss.message"
+msgstr "Varnost delovnega prostora ostane vidna v podrobnostih."

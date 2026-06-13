@@ -67,6 +67,16 @@ public sealed class WindowsCapabilityIntegrationTests
             },
             Paths = OpenCode.Workspace.Core.Workspaces.WorkspacePathBuilder.Build("C:\\Workspaces With Spaces\\smoke data workspace"),
             RuntimeState = OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running,
+            Safety = new OpenCode.Workspace.Core.Models.WorkspaceSafetySnapshot
+            {
+                OverallStatus = OpenCode.Workspace.Core.Models.WorkspaceSafetyLevel.Protected,
+                Headline = "Protected",
+                Message = "Test snapshot",
+                LocalRecovery = new OpenCode.Workspace.Core.Models.WorkspaceLocalRecoverySnapshot(),
+                Backup = new OpenCode.Workspace.Core.Models.WorkspaceBackupSnapshot(),
+                IgnorePolicy = new OpenCode.Workspace.Core.Models.WorkspaceIgnorePolicyReview(),
+                AdvancedGit = new OpenCode.Workspace.Core.Models.WorkspaceAdvancedGitSnapshot(),
+            },
         });
 
         Assert.Equal("wt.exe", command.FileName);

@@ -123,8 +123,11 @@ public partial class MainWindow : Window
     {
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = viewModel.OpenWorkspaceLabel, Command = viewModel.PrimaryWorkspaceActionCommand });
+        menu.Items.Add(new MenuItem { Header = viewModel.CreateSavePointLabel, Command = viewModel.CreateSavePointCommand });
+        menu.Items.Add(new MenuItem { Header = viewModel.PublishLabel, Command = viewModel.PublishWorkspaceCommand });
         menu.Items.Add(new MenuItem { Header = viewModel.OpenFolderLabel, Command = viewModel.OpenFolderCommand });
         menu.Items.Add(new MenuItem { Header = viewModel.CopyPathLabel, Command = viewModel.CopyWorkspacePathCommand });
+        menu.Items.Add(new MenuItem { Header = viewModel.OpenAdvancedGitViewLabel, Command = viewModel.OpenAdvancedGitViewCommand });
         menu.Items.Add(new MenuItem { Header = viewModel.ShutDownLabel, Command = viewModel.ShutDownWorkspaceCommand });
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = viewModel.RemoveLabel, Command = viewModel.RemoveWorkspaceCommand });

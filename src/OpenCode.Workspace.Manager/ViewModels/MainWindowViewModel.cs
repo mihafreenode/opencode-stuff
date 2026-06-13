@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Windows;
 using OpenCode.Workspace.Core.Catalog;
@@ -22,6 +23,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly WindowsTerminalProfileManager _profileManager;
     private readonly DockerService _dockerService;
     private readonly NerdFontInstaller _nerdFontInstaller;
+    private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly AgentProfileResolver _agentProfileResolver = new();
     private readonly Dictionary<string, List<WorkspaceLogLineViewModel>> _workspaceLogsByPath = new(StringComparer.OrdinalIgnoreCase);
     private WorkspaceListItemViewModel? _selectedWorkspace;
@@ -45,7 +47,8 @@ public sealed class MainWindowViewModel : ObservableObject
         WindowsHostCapabilities windowsHostCapabilities,
         WindowsTerminalProfileManager profileManager,
         DockerService dockerService,
-        NerdFontInstaller nerdFontInstaller)
+        NerdFontInstaller nerdFontInstaller,
+        WorkspaceSavePointMessageService savePointMessageService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _catalogProvider = catalogProvider;
@@ -55,6 +58,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _profileManager = profileManager;
         _dockerService = dockerService;
         _nerdFontInstaller = nerdFontInstaller;
+        _savePointMessageService = savePointMessageService;
 
         var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspaces");
         _newWorkspacePath = Path.Combine(defaultRoot, _newWorkspaceName);
@@ -80,6 +84,17 @@ public sealed class MainWindowViewModel : ObservableObject
         PrepareUpdateLabel = localization.Get("actions.prepareUpdate");
         UpdateNowLabel = localization.Get("actions.updateNow");
         ShutDownLabel = localization.Get("actions.shutDown");
+        CreateSavePointLabel = localization.Get("actions.createSavePoint");
+        CreateCheckpointLabel = localization.Get("actions.createCheckpoint");
+        PublishLabel = localization.Get("actions.publish");
+        ExportBackupLabel = localization.Get("actions.exportBackup");
+        ConfigureRemoteBackupLabel = localization.Get("actions.configureRemoteBackup");
+        ContinueWorkingLabel = localization.Get("actions.continueWorking");
+        OpenAdvancedGitViewLabel = localization.Get("actions.openAdvancedGitView");
+        ExportPatchLabel = localization.Get("actions.exportPatch");
+        UpdateWorkspaceLabel = localization.Get("actions.updateWorkspace");
+        PublishReviewWorkingCopyLabel = localization.Get("actions.publishReviewWorkingCopy");
+        DismissLabel = localization.Get("actions.dismiss");
         RemoveLabel = localization.Get("actions.remove");
         RefreshLabel = localization.Get("actions.refresh");
         OpenFolderLabel = localization.Get("actions.openFolder");
@@ -108,6 +123,22 @@ public sealed class MainWindowViewModel : ObservableObject
         SelectedLastOperationLabel = localization.Get("field.lastOperation");
         SelectedServicesStatusLabel = localization.Get("field.servicesStatus");
         EncodingValidationLabel = localization.Get("field.encodingValidation");
+        SafetyTitle = localization.Get("safety.title");
+        LocalRecoveryLabel = localization.Get("safety.localRecovery");
+        BackupLabel = localization.Get("safety.offMachineBackup");
+        WorkingCopyLabel = localization.Get("safety.workingCopy");
+        RemoteNameLabel = localization.Get("safety.remoteName");
+        RemoteBranchLabel = localization.Get("safety.remoteBranch");
+        AheadBehindLabel = localization.Get("safety.aheadBehind");
+        ConflictingFilesLabel = localization.Get("safety.conflictingFiles");
+        LatestSavePointLabel = localization.Get("safety.latestSavePoint");
+        LatestCheckpointLabel = localization.Get("safety.latestCheckpoint");
+        UncommittedChangesLabel = localization.Get("safety.uncommittedChanges");
+        UntrackedFilesLabel = localization.Get("safety.untrackedFiles");
+        RemoteConfiguredLabel = localization.Get("safety.remoteConfigured");
+        UnpublishedSavePointsLabel = localization.Get("safety.unpublishedSavePoints");
+        WorkingCopyPublishedLabel = localization.Get("safety.workingCopyPublished");
+        LastPublishLabel = localization.Get("safety.lastPublish");
         EncodingValidationSample = localization.Get("utf8.validation");
         EmptySelectionTitle = localization.Get("empty.selection.title");
         EmptySelectionDescription = localization.Get("empty.selection.description");
@@ -124,6 +155,17 @@ public sealed class MainWindowViewModel : ObservableObject
         OpenWorkspaceCommand = new AsyncRelayCommand(OpenWorkspaceAsync, HasSelectedWorkspace);
         PrepareWorkspaceCommand = new AsyncRelayCommand(PrepareWorkspaceAsync, HasSelectedWorkspace);
         ShutDownWorkspaceCommand = new AsyncRelayCommand(ShutDownWorkspaceAsync, HasSelectedWorkspace);
+        CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, HasSelectedWorkspace);
+        CreateCheckpointCommand = new AsyncRelayCommand(CreateCheckpointAsync, HasSelectedWorkspace);
+        PublishWorkspaceCommand = new AsyncRelayCommand(PublishWorkspaceAsync, HasSelectedWorkspace);
+        ExportBackupCommand = new AsyncRelayCommand(ExportBackupAsync, HasSelectedWorkspace);
+        ConfigureRemoteBackupCommand = new RelayCommand(ConfigureRemoteBackup, HasSelectedWorkspace);
+        ContinueWorkingCommand = new RelayCommand(ContinueWorking, HasSelectedWorkspace);
+        OpenAdvancedGitViewCommand = new RelayCommand(OpenAdvancedGitView, HasSelectedWorkspace);
+        ExportPatchCommand = new AsyncRelayCommand(ExportPatchAsync, HasSelectedWorkspace);
+        UpdateWorkspaceFromRemoteCommand = new AsyncRelayCommand(UpdateWorkspaceFromRemoteAsync, HasSelectedWorkspace);
+        PublishReviewWorkingCopyCommand = new AsyncRelayCommand(PublishReviewWorkingCopyAsync, HasSelectedWorkspace);
+        DismissSafetyNoticeCommand = new RelayCommand(DismissSafetyNotice, HasSelectedWorkspace);
         RefreshCommand = new AsyncRelayCommand(InitializeAsync, () => !IsBusy);
         OpenFolderCommand = new RelayCommand(OpenSelectedWorkspaceFolder, () => HasSelectedWorkspace() && !IsBusy);
         CopyWorkspacePathCommand = new RelayCommand(CopySelectedWorkspacePath, () => HasSelectedWorkspace() && !IsBusy);
@@ -155,6 +197,17 @@ public sealed class MainWindowViewModel : ObservableObject
     public string PrepareUpdateLabel { get; }
     public string UpdateNowLabel { get; }
     public string ShutDownLabel { get; }
+    public string CreateSavePointLabel { get; }
+    public string CreateCheckpointLabel { get; }
+    public string PublishLabel { get; }
+    public string ExportBackupLabel { get; }
+    public string ConfigureRemoteBackupLabel { get; }
+    public string ContinueWorkingLabel { get; }
+    public string OpenAdvancedGitViewLabel { get; }
+    public string ExportPatchLabel { get; }
+    public string UpdateWorkspaceLabel { get; }
+    public string PublishReviewWorkingCopyLabel { get; }
+    public string DismissLabel { get; }
     public string RemoveLabel { get; }
     public string RefreshLabel { get; }
     public string OpenFolderLabel { get; }
@@ -183,6 +236,22 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedLastOperationLabel { get; }
     public string SelectedServicesStatusLabel { get; }
     public string EncodingValidationLabel { get; }
+    public string SafetyTitle { get; }
+    public string LocalRecoveryLabel { get; }
+    public string BackupLabel { get; }
+    public string WorkingCopyLabel { get; }
+    public string RemoteNameLabel { get; }
+    public string RemoteBranchLabel { get; }
+    public string AheadBehindLabel { get; }
+    public string ConflictingFilesLabel { get; }
+    public string LatestSavePointLabel { get; }
+    public string LatestCheckpointLabel { get; }
+    public string UncommittedChangesLabel { get; }
+    public string UntrackedFilesLabel { get; }
+    public string RemoteConfiguredLabel { get; }
+    public string UnpublishedSavePointsLabel { get; }
+    public string WorkingCopyPublishedLabel { get; }
+    public string LastPublishLabel { get; }
     public string EncodingValidationSample { get; }
     public string EmptySelectionTitle { get; }
     public string EmptySelectionDescription { get; }
@@ -199,6 +268,17 @@ public sealed class MainWindowViewModel : ObservableObject
     public AsyncRelayCommand OpenWorkspaceCommand { get; }
     public AsyncRelayCommand PrepareWorkspaceCommand { get; }
     public AsyncRelayCommand ShutDownWorkspaceCommand { get; }
+    public AsyncRelayCommand CreateSavePointCommand { get; }
+    public AsyncRelayCommand CreateCheckpointCommand { get; }
+    public AsyncRelayCommand PublishWorkspaceCommand { get; }
+    public AsyncRelayCommand ExportBackupCommand { get; }
+    public RelayCommand ConfigureRemoteBackupCommand { get; }
+    public RelayCommand ContinueWorkingCommand { get; }
+    public RelayCommand OpenAdvancedGitViewCommand { get; }
+    public AsyncRelayCommand ExportPatchCommand { get; }
+    public AsyncRelayCommand UpdateWorkspaceFromRemoteCommand { get; }
+    public AsyncRelayCommand PublishReviewWorkingCopyCommand { get; }
+    public RelayCommand DismissSafetyNoticeCommand { get; }
     public AsyncRelayCommand RefreshCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyWorkspacePathCommand { get; }
@@ -221,6 +301,21 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspaceStatus));
                 RaisePropertyChanged(nameof(SelectedWorkspaceLastOperation));
                 RaisePropertyChanged(nameof(SelectedWorkspaceServicesStatus));
+                RaisePropertyChanged(nameof(SelectedWorkspaceSafetyStatus));
+                RaisePropertyChanged(nameof(SelectedWorkspaceSafetyMessage));
+                RaisePropertyChanged(nameof(SelectedWorkspaceWorkingCopy));
+                RaisePropertyChanged(nameof(SelectedWorkspaceRemoteName));
+                RaisePropertyChanged(nameof(SelectedWorkspaceRemoteBranch));
+                RaisePropertyChanged(nameof(SelectedWorkspaceAheadBehind));
+                RaisePropertyChanged(nameof(SelectedWorkspaceConflictingFiles));
+                RaisePropertyChanged(nameof(SelectedWorkspaceLatestSavePoint));
+                RaisePropertyChanged(nameof(SelectedWorkspaceLatestCheckpoint));
+                RaisePropertyChanged(nameof(SelectedWorkspaceUncommittedChanges));
+                RaisePropertyChanged(nameof(SelectedWorkspaceUntrackedFiles));
+                RaisePropertyChanged(nameof(SelectedWorkspaceRemoteConfigured));
+                RaisePropertyChanged(nameof(SelectedWorkspaceUnpublishedSavePoints));
+                RaisePropertyChanged(nameof(SelectedWorkspaceWorkingCopyPublished));
+                RaisePropertyChanged(nameof(SelectedWorkspaceLastPublish));
                 RaisePropertyChanged(nameof(SelectedWorkspaceShortPath));
                 RaisePropertyChanged(nameof(SelectedPrimaryActionLabel));
                 RaisePropertyChanged(nameof(HasSelectedWorkspaceItem));
@@ -228,6 +323,9 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(ShowOnboardingState));
                 RaisePropertyChanged(nameof(ShowSelectionGuidanceState));
                 RaisePropertyChanged(nameof(ShowWorkspaceDetails));
+                RaisePropertyChanged(nameof(ShowNoRemoteActions));
+                RaisePropertyChanged(nameof(ShowUnpublishedSavePointActions));
+                RaisePropertyChanged(nameof(ShowNeedsReviewActions));
                 LoadVisibleLogsForSelectedWorkspace();
                 RaiseCommandStates();
             }
@@ -343,6 +441,48 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedWorkspaceStatus => SelectedWorkspace?.StatusLabel ?? "-";
     public string SelectedWorkspaceLastOperation => SelectedWorkspace?.LastOperationResult ?? "-";
     public string SelectedWorkspaceServicesStatus => SelectedWorkspace?.ServicesStatusSummary ?? "-";
+    public string SelectedWorkspaceSafetyStatus => SelectedWorkspace is null
+        ? "-"
+        : GetSafetyStatusLabel(SelectedWorkspace.Snapshot.Safety.OverallStatus);
+    public string SelectedWorkspaceSafetyMessage => SelectedWorkspace?.SafetyMessage ?? "-";
+    public string SelectedWorkspaceWorkingCopy => string.IsNullOrWhiteSpace(SelectedWorkspace?.Snapshot.Safety.WorkingCopyName)
+        ? _localization.Get("safety.workingCopyUnavailable")
+        : SelectedWorkspace.Snapshot.Safety.WorkingCopyName;
+    public string SelectedWorkspaceRemoteName => string.IsNullOrWhiteSpace(SelectedWorkspace?.Snapshot.Safety.AdvancedGit.RemoteName)
+        ? _localization.Get("safety.noneRecorded")
+        : SelectedWorkspace.Snapshot.Safety.AdvancedGit.RemoteName;
+    public string SelectedWorkspaceRemoteBranch => string.IsNullOrWhiteSpace(SelectedWorkspace?.Snapshot.Safety.AdvancedGit.RemoteBranch)
+        ? _localization.Get("safety.noneRecorded")
+        : SelectedWorkspace.Snapshot.Safety.AdvancedGit.RemoteBranch;
+    public string SelectedWorkspaceAheadBehind => SelectedWorkspace is null
+        ? "-"
+        : string.Format(
+            _localization.Get("safety.aheadBehindValue"),
+            SelectedWorkspace.Snapshot.Safety.AdvancedGit.AheadCount,
+            SelectedWorkspace.Snapshot.Safety.AdvancedGit.BehindCount);
+    public string SelectedWorkspaceConflictingFiles => SelectedWorkspace is null
+        ? "-"
+        : SelectedWorkspace.Snapshot.Safety.AdvancedGit.ConflictingFiles.Count == 0
+            ? _localization.Get("safety.noConflictingFiles")
+            : string.Join(Environment.NewLine, SelectedWorkspace.Snapshot.Safety.AdvancedGit.ConflictingFiles);
+    public string SelectedWorkspaceLatestSavePoint => FormatRelativeTime(SelectedWorkspace?.Snapshot.Safety.LocalRecovery.LatestSavePointUtc);
+    public string SelectedWorkspaceLatestCheckpoint => FormatRelativeTime(SelectedWorkspace?.Snapshot.Safety.LocalRecovery.LatestCheckpointUtc);
+    public string SelectedWorkspaceUncommittedChanges => SelectedWorkspace is null
+        ? "-"
+        : SelectedWorkspace.Snapshot.Safety.LocalRecovery.HasUncommittedChanges
+            ? string.Format(_localization.Get("safety.changedFiles"), SelectedWorkspace.Snapshot.Safety.LocalRecovery.UncommittedChangeCount)
+            : _localization.Get("safety.noUncommittedChanges");
+    public string SelectedWorkspaceUntrackedFiles => SelectedWorkspace is null
+        ? "-"
+        : SelectedWorkspace.Snapshot.Safety.LocalRecovery.UntrackedFileCount == 0
+            ? _localization.Get("safety.noUntrackedFiles")
+            : SelectedWorkspace.Snapshot.Safety.LocalRecovery.AreUntrackedFilesProtected
+                ? string.Format(_localization.Get("safety.untrackedProtected"), SelectedWorkspace.Snapshot.Safety.LocalRecovery.UntrackedFileCount)
+                : string.Format(_localization.Get("safety.untrackedNotProtected"), SelectedWorkspace.Snapshot.Safety.LocalRecovery.UntrackedFileCount);
+    public string SelectedWorkspaceRemoteConfigured => FormatYesNo(SelectedWorkspace?.Snapshot.Safety.Backup.HasRemoteConfigured);
+    public string SelectedWorkspaceUnpublishedSavePoints => FormatYesNo(SelectedWorkspace?.Snapshot.Safety.Backup.HasUnpublishedSavePoints);
+    public string SelectedWorkspaceWorkingCopyPublished => FormatYesNo(SelectedWorkspace?.Snapshot.Safety.Backup.IsCurrentWorkingCopyPublished);
+    public string SelectedWorkspaceLastPublish => FormatRelativeTime(SelectedWorkspace?.Snapshot.Safety.Backup.LastSuccessfulPublishUtc);
     public string SelectedPrimaryActionLabel => SelectedWorkspace is null
         ? OpenWorkspaceLabel
         : SelectedWorkspace.HasError
@@ -357,6 +497,10 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool ShowOnboardingState => !HasAnyWorkspaces;
     public bool ShowSelectionGuidanceState => HasAnyWorkspaces && !HasSelectedWorkspaceItem;
     public bool ShowWorkspaceDetails => HasSelectedWorkspaceItem;
+    public bool ShowNoRemoteActions => SelectedWorkspace?.Snapshot.Safety.Backup.HasRemoteConfigured == false;
+    public bool ShowUnpublishedSavePointActions => SelectedWorkspace?.Snapshot.Safety.Backup.HasUnpublishedSavePoints == true;
+    public bool ShowNeedsReviewActions => SelectedWorkspace?.Snapshot.Safety.Backup.NeedsReviewBeforePublish == true
+        || SelectedWorkspace?.Snapshot.Safety.Backup.IsOnProtectedBranch == true;
     public bool CanShutDownSelectedWorkspace => SelectedWorkspace is not null && !IsBusy && SelectedWorkspace.Snapshot.RuntimeState == WorkspaceRuntimeState.Running;
     public bool CanStartCreateWorkspaceFlow => !IsBusy && !HasRunningWorkspace;
     public bool CanCreateWorkspaceForDialog => CanCreateWorkspace();
@@ -432,7 +576,7 @@ public sealed class MainWindowViewModel : ObservableObject
                     },
                 };
 
-                var snapshot = _workspaceOrchestrator.CreateWorkspace(NewWorkspacePath.Trim(), definition);
+                var snapshot = _workspaceOrchestrator.CreateWorkspace(NewWorkspacePath.Trim(), definition, CreateWorkspaceLogAppender(NewWorkspacePath.Trim()));
                 var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
                 _profileManager.EnsureManagedProfile(snapshot.Definition, snapshot.Definition.Terminal.Font, resolvedFace);
                 PersistWorkspaceRecord(snapshot, CreateLabel, _localization.Get("workspace.result.created"), succeeded: true);
@@ -461,6 +605,91 @@ public sealed class MainWindowViewModel : ObservableObject
         });
     }
 
+    private async Task CreateSavePointAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        var suggestion = await _savePointMessageService.SuggestAsync(SelectedWorkspace.RootPath);
+        var dialog = new SavePointDialog(_localization, suggestion)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.createSavePoint"),
+            async snapshot =>
+            {
+                var created = await _workspaceOrchestrator.CreateSavePointAsync(snapshot, dialog.ViewModel.SavePointMessage.Trim(), CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.createSavePoint"), created ? _localization.Get("workspace.result.savePointCreated") : _localization.Get("workspace.result.savePointSkipped"), succeeded: true);
+                StatusMessage = created ? _localization.Get("status.savePointCreated") : _localization.Get("status.savePointSkipped");
+            });
+    }
+
+    private async Task CreateCheckpointAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.createCheckpoint"),
+            async snapshot =>
+            {
+                var checkpoint = await _workspaceOrchestrator.CreateCheckpointAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.createCheckpoint"), string.Format(_localization.Get("workspace.result.checkpointCreated"), checkpoint.Id), succeeded: true);
+                StatusMessage = string.Format(_localization.Get("status.checkpointCreated"), checkpoint.Id);
+            });
+    }
+
+    private async Task PublishWorkspaceAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.publish"),
+            async snapshot =>
+            {
+                var review = await _workspaceOrchestrator.PublishAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.publish"), review.Message, succeeded: true);
+                StatusMessage = review.Message;
+            });
+    }
+
+    private async Task ExportBackupAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.exportBackup"),
+            async snapshot =>
+            {
+                var exportDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspace Backups");
+                Directory.CreateDirectory(exportDirectory);
+                var archivePath = Path.Combine(exportDirectory, $"{WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip");
+                if (File.Exists(archivePath))
+                {
+                    File.Delete(archivePath);
+                }
+
+                ZipFile.CreateFromDirectory(snapshot.Paths.RootPath, archivePath, CompressionLevel.Fastest, includeBaseDirectory: false);
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.exportBackup"), string.Format(_localization.Get("workspace.result.backupExported"), archivePath), succeeded: true);
+                StatusMessage = string.Format(_localization.Get("status.backupExported"), archivePath);
+                await Task.CompletedTask;
+            });
+    }
+
+    private async Task ExportPatchAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.exportPatch"),
+            async snapshot =>
+            {
+                var patchPath = await _workspaceOrchestrator.ExportPatchAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.exportPatch"), string.Format(_localization.Get("workspace.result.patchExported"), patchPath), succeeded: true);
+                StatusMessage = string.Format(_localization.Get("status.patchExported"), patchPath);
+            });
+    }
+
     private Task ExecutePrimaryWorkspaceActionAsync()
     {
         if (SelectedWorkspace?.HasError == true)
@@ -470,6 +699,82 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return OpenWorkspaceAsync();
+    }
+
+    private void ConfigureRemoteBackup()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        MessageBox.Show(
+            string.Format(_localization.Get("safety.configureRemoteBackup.message"), SelectedWorkspace.Snapshot.Paths.WorkspaceYamlPath),
+            _localization.Get("safety.configureRemoteBackup.title"),
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void ContinueWorking()
+    {
+        StatusMessage = _localization.Get("safety.continueWorking.message");
+    }
+
+    private void OpenAdvancedGitView()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        var git = SelectedWorkspace.Snapshot.Safety.AdvancedGit;
+        var details = string.Join(Environment.NewLine, new[]
+        {
+            $"Working Copy: {SelectedWorkspaceWorkingCopy}",
+            $"Branch: {git.CurrentBranch}",
+            $"Remote: {git.RemoteName}",
+            $"Tracking: {git.RemoteBranch}",
+            $"Ahead/Behind: {git.AheadCount}/{git.BehindCount}",
+            $"Latest SHA: {git.LatestCommitSha}",
+            $"Status: {git.StatusSummary}",
+            $"Protected branch: {(git.IsProtectedBranch ? "Yes" : "No")}",
+            $"Conflicting files: {(git.ConflictingFiles.Count == 0 ? "None" : string.Join(", ", git.ConflictingFiles))}",
+            $"Patch export: {(git.PatchExportSupported ? "Available" : "Unavailable")}",
+            $"Latest patch export status: {SelectedWorkspace.LastOperationResult}",
+        });
+
+        MessageBox.Show(details, OpenAdvancedGitViewLabel, MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async Task UpdateWorkspaceFromRemoteAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.updateWorkingCopy"),
+            async snapshot =>
+            {
+                var review = await _workspaceOrchestrator.UpdateWorkingCopyAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.updateWorkingCopy"), review.Message, succeeded: true);
+                StatusMessage = review.Message;
+            });
+    }
+
+    private async Task PublishReviewWorkingCopyAsync()
+    {
+        await RunWorkspaceActionAsync(
+            _localization.Get("operation.publishReviewWorkingCopy"),
+            async snapshot =>
+            {
+                var review = await _workspaceOrchestrator.PublishToReviewWorkingCopyAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, _localization.Get("operation.publishReviewWorkingCopy"), review.Message, succeeded: true);
+                StatusMessage = review.IsBlocked
+                    ? review.Message
+                    : string.Format(_localization.Get("status.reviewWorkingCopyPublished"), review.ReviewWorkingCopyBranch);
+            });
+    }
+
+    private void DismissSafetyNotice()
+    {
+        StatusMessage = _localization.Get("safety.dismiss.message");
     }
 
     private async Task PrepareWorkspaceAsync()
@@ -970,6 +1275,54 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool CanCreateWorkspace() => CanStartCreateWorkspaceFlow && !string.IsNullOrWhiteSpace(NewWorkspaceName) && !string.IsNullOrWhiteSpace(NewWorkspacePath);
     private bool HasSelectedWorkspace() => SelectedWorkspace is not null && !IsBusy;
 
+    private string FormatRelativeTime(DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            return _localization.Get("safety.noneRecorded");
+        }
+
+        var age = DateTimeOffset.UtcNow - value.Value;
+        if (age.TotalMinutes < 1)
+        {
+            return _localization.Get("safety.justNow");
+        }
+
+        if (age.TotalHours < 1)
+        {
+            return string.Format(_localization.Get("safety.minutesAgo"), Math.Max(1, (int)Math.Floor(age.TotalMinutes)));
+        }
+
+        if (age.TotalDays < 1)
+        {
+            return string.Format(_localization.Get("safety.hoursAgo"), Math.Max(1, (int)Math.Floor(age.TotalHours)));
+        }
+
+        return string.Format(_localization.Get("safety.daysAgo"), Math.Max(1, (int)Math.Floor(age.TotalDays)));
+    }
+
+    private string FormatYesNo(bool? value)
+    {
+        return value switch
+        {
+            true => _localization.Get("safety.yes"),
+            false => _localization.Get("safety.no"),
+            _ => "-",
+        };
+    }
+
+    private string GetSafetyStatusLabel(WorkspaceSafetyLevel value)
+    {
+        return value switch
+        {
+            WorkspaceSafetyLevel.Protected => _localization.Get("safety.status.protected"),
+            WorkspaceSafetyLevel.PartiallyProtected => _localization.Get("safety.status.partiallyProtected"),
+            WorkspaceSafetyLevel.AtRisk => _localization.Get("safety.status.atRisk"),
+            WorkspaceSafetyLevel.NeedsReview => _localization.Get("safety.status.needsReview"),
+            _ => value.ToString(),
+        };
+    }
+
     private async Task RunBusyAsync(Func<Task> action)
     {
         if (IsBusy)
@@ -1092,6 +1445,17 @@ public sealed class MainWindowViewModel : ObservableObject
         OpenWorkspaceCommand.RaiseCanExecuteChanged();
         PrepareWorkspaceCommand.RaiseCanExecuteChanged();
         ShutDownWorkspaceCommand.RaiseCanExecuteChanged();
+        CreateSavePointCommand.RaiseCanExecuteChanged();
+        CreateCheckpointCommand.RaiseCanExecuteChanged();
+        PublishWorkspaceCommand.RaiseCanExecuteChanged();
+        ExportBackupCommand.RaiseCanExecuteChanged();
+        ExportPatchCommand.RaiseCanExecuteChanged();
+        ConfigureRemoteBackupCommand.RaiseCanExecuteChanged();
+        ContinueWorkingCommand.RaiseCanExecuteChanged();
+        OpenAdvancedGitViewCommand.RaiseCanExecuteChanged();
+        UpdateWorkspaceFromRemoteCommand.RaiseCanExecuteChanged();
+        PublishReviewWorkingCopyCommand.RaiseCanExecuteChanged();
+        DismissSafetyNoticeCommand.RaiseCanExecuteChanged();
         RefreshCommand.RaiseCanExecuteChanged();
         OpenFolderCommand.RaiseCanExecuteChanged();
         CopyWorkspacePathCommand.RaiseCanExecuteChanged();

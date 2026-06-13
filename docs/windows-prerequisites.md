@@ -1,201 +1,110 @@
-# Windows Prerequisites
+# Windows Setup
 
-## Overview
+This guide is for first-time setup on Windows.
 
-OpenCode Stuff runs OpenCode inside Docker on Windows.
+The goal is simple: get the machine ready so you can create or open a workspace and start working.
 
-That means the Windows WPF app depends on a working Docker Desktop + WSL2 setup, a supported terminal, and the .NET Desktop Runtime needed to run the launcher itself.
+## You Need
 
-## Required Components
+1. WSL2 available
+2. Docker Desktop installed and running
+3. Git installed with credentials configured
+4. Windows Terminal installed
+5. .NET 10 Desktop Runtime installed
 
-You need:
-
-1. hardware virtualization enabled in BIOS or UEFI
-2. Docker Desktop for Windows
-3. WSL2 backend enabled for Docker Desktop
-4. Windows Terminal
-5. .NET 10 Desktop Runtime
-
-## Recommended Install Commands
+## Quick Install
 
 ```powershell
 winget install Docker.DockerDesktop
 winget install Microsoft.WindowsTerminal
+winget install Git.Git
 winget install Microsoft.DotNet.DesktopRuntime.10
 ```
 
-If the .NET package id differs on your system:
+If WSL is not installed yet:
 
 ```powershell
-winget search "Microsoft .NET Desktop Runtime 10"
+wsl --install
 ```
 
-## Virtualization
+Reboot if Windows asks you to.
 
-Docker Desktop on Windows depends on WSL2, and WSL2 depends on hardware virtualization.
+## Verify The Basics
 
-### How to check virtualization
-
-- open Task Manager
-- go to the `Performance` tab
-- select `CPU`
-- confirm `Virtualization: Enabled`
-
-### High-level BIOS or UEFI guidance
-
-If virtualization is disabled:
-
-1. reboot into BIOS or UEFI firmware settings
-2. look for Intel VT-x, Intel Virtualization Technology, SVM Mode, or AMD-V
-3. enable the virtualization option
-4. save and reboot
-
-The exact setting name varies by motherboard and laptop vendor.
-
-## Docker Desktop
-
-Install Docker Desktop and make sure it is configured to use WSL2.
-
-### How to confirm WSL2 backend
-
-Open Docker Desktop settings and verify:
-
-- `Use the WSL 2 based engine` is enabled
-
-### Commands to verify Docker
-
-```powershell
-docker version
-docker compose version
-```
-
-If Docker Desktop has just enabled WSL2 integration, a reboot may be required.
-
-## WSL2
-
-Verify WSL is available and using version 2.
-
-```powershell
-wsl --status
-```
-
-Expected output should indicate:
-
-- a default distribution
-- default version `2`
-
-## Windows Terminal
-
-Install Windows Terminal for the interactive attach experience.
-
-Verification command:
-
-```powershell
-wt --version
-```
-
-If `wt` is not found, install Windows Terminal or enable its App Execution Alias.
-
-## .NET 10 Desktop Runtime
-
-The WPF launcher requires the Windows Desktop runtime.
-
-Verification command:
-
-```powershell
-dotnet --list-runtimes
-```
-
-Look for a line similar to:
-
-```text
-Microsoft.WindowsDesktop.App 10.x
-```
-
-## Verify Everything Together
-
-These commands are useful after setup:
+Run these commands:
 
 ```powershell
 wsl --status
 docker version
 docker compose version
+git --version
 wt --version
 dotnet --list-runtimes
 ```
 
-## Common Failures
+You are ready for first use when:
 
-### Virtualization disabled
+- `wsl --status` works
+- Docker Desktop is running
+- `git --version` works
+- `wt --version` works
+- `Microsoft.WindowsDesktop.App 10.x` appears in `dotnet --list-runtimes`
 
-Symptoms:
+## Configure Git Credentials
 
-- WSL2 unavailable
-- Docker Desktop cannot start correctly
+Before creating or publishing workspaces, configure Git with your name and email:
 
-Fix:
+```powershell
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
 
-- enable virtualization in BIOS or UEFI
-- reboot Windows
+## Next Step
 
-### Docker Desktop installed but engine unreachable
+Once the checks pass, continue with:
 
-Symptoms:
+- [First Workspace Guide](first-workspace.md)
+- [WSL Windows Interop Troubleshooting](troubleshooting/wsl-windows-interop.md)
 
-- `docker version` shows client output but server connection fails
-- OpenCode Stuff reports Docker Engine unavailable
+## Where People Usually Get Stuck
 
-Fix:
+### Docker Desktop is installed but not running
 
-- start Docker Desktop
-- wait for startup to complete
-- confirm WSL2 backend is enabled
+Action:
 
-### WSL2 unavailable
+1. Start Docker Desktop.
+2. Wait for it to finish starting.
+3. Run `docker version` again.
 
-Symptoms:
+### WSL is missing or not ready
 
-- `wsl --status` fails
-- Docker Desktop reports WSL issues
+Action:
 
-Fix:
+1. Run `wsl --install` if needed.
+2. Reboot if prompted.
+3. Run `wsl --status` again.
 
-- enable WSL and Virtual Machine Platform features
-- reboot if prompted
-- make sure Docker Desktop uses the WSL2 backend
+### Git credentials are missing
 
-### Windows Terminal missing
+Action:
 
-Symptoms:
+1. Run the `git config --global` commands above.
+2. Try again.
 
-- attach cannot launch
-- `wt --version` fails
+### Windows Terminal is missing
 
-Fix:
+Action:
 
-- install Windows Terminal
-- enable the App Execution Alias if necessary
+1. Install Windows Terminal.
+2. Run `wt --version` again.
 
-### .NET Desktop Runtime missing
+### The launcher will not start
 
-Symptoms:
+Action:
 
-- the launcher does not start
-- `Microsoft.WindowsDesktop.App 10.x` is missing from `dotnet --list-runtimes`
+1. Check `dotnet --list-runtimes`.
+2. Confirm `Microsoft.WindowsDesktop.App 10.x` is installed.
 
-Fix:
+### Windows executables fail from Ubuntu/WSL
 
-- install the .NET 10 Desktop Runtime
-
-### Nerd Font installed incorrectly
-
-Symptoms:
-
-- OpenCode launches but decorative glyphs render as diamonds or replacement characters
-- the OpenCode Stuff terminal profile exists but the configured font face is not actually registered in Windows
-
-Fix:
-
-- install the recommended Nerd Font from the app or manually
-- confirm the font family is registered, not just copied into the fonts folder
-- reopen Windows Terminal after installation
+If `cmd.exe`, `powershell.exe`, or `pwsh.exe` are found on `PATH` but fail with `Exec format error`, see [Debugging WSL Windows Interop](troubleshooting/wsl-windows-interop.md).

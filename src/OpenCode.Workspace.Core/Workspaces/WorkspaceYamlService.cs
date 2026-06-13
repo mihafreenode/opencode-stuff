@@ -45,8 +45,18 @@ public sealed class WorkspaceYamlService
         {
             Workspace = new WorkspaceMetadata
             {
+                Id = string.IsNullOrWhiteSpace(definition.Workspace.Id) ? WorkspacePathBuilder.Slugify(definition.Workspace.Name) : WorkspacePathBuilder.Slugify(definition.Workspace.Id),
                 Name = definition.Workspace.Name.Trim(),
                 Image = string.IsNullOrWhiteSpace(definition.Workspace.Image) ? "ubuntu:24.04" : definition.Workspace.Image.Trim(),
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = string.IsNullOrWhiteSpace(definition.Provider.Type) ? "git" : definition.Provider.Type.Trim(),
+                Url = string.IsNullOrWhiteSpace(definition.Provider.Url) ? null : definition.Provider.Url.Trim(),
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = string.IsNullOrWhiteSpace(definition.Runtime.Default) ? "default" : definition.Runtime.Default.Trim(),
             },
             Features = definition.Features.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Skills = definition.Skills.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

@@ -1,10 +1,16 @@
 # workspace.yaml
 
+`workspace.yaml` is the durable definition of a workspace.
+
+If you want to change lasting workspace behavior, this is the file to edit.
+
+Read this after the README and first-workspace guide if you want to understand how a workspace is described on disk.
+
 ## Purpose
 
 `workspace.yaml` is the canonical definition of a workspace.
 
-It is user-owned, durable, and intended to stay portable between the local-first OpenCode Stuff environment and future hosted Workspace Stuff environments.
+It is user-owned, durable, and intended to stay portable between the local-first OpenCode Stuff environment and future hosted workspace environments.
 
 ## Ownership Rules
 
@@ -12,12 +18,26 @@ It is user-owned, durable, and intended to stay portable between the local-first
 - do not edit generated `compose.yaml` for durable changes
 - do not rely on container IDs or Windows-specific paths as portable configuration
 
+In practice:
+
+- the workspace is the durable asset
+- the runtime can be replaced
+- generated runtime files can be recreated
+
 ## Current MVP Shape
 
 ```yaml
 workspace:
+  id: documentation-analysis
   name: documentation-analysis
   image: ubuntu:24.04
+
+provider:
+  type: git
+  url: null
+
+runtime:
+  default: default
 
 features:
   - core
@@ -55,8 +75,22 @@ terminal:
 
 Top-level workspace identity and runtime defaults.
 
+- `id`: stable workspace identifier
 - `name`: user-facing and filesystem-friendly workspace name
 - `image`: base container image, `ubuntu:24.04` by default in the MVP
+
+### `provider`
+
+Workspace persistence provider settings.
+
+- `type`: `git` by default
+- `url`: optional remote backup location
+
+### `runtime`
+
+Runtime selection settings.
+
+- `default`: default runtime definition name under `runtimes/`
 
 ### `features`
 

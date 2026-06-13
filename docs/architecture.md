@@ -1,8 +1,20 @@
 # Architecture
 
+This document explains how OpenCode Stuff implements the Durable Workspace model.
+
+Read this after the README and concept docs if you want the implementation view.
+
+Core idea:
+
+- Workspace: durable body of work
+- Runtime: replaceable tool environment
+- Session: temporary execution
+
+Git provides the persistence engine underneath. Generated runtime artifacts and Docker-backed execution remain implementation details.
+
 ## Goal
 
-OpenCode Workspace Manager creates and operates local OpenCode workspaces on Windows by generating runtime artifacts from a canonical YAML definition.
+OpenCode Workspace Manager creates and operates durable local workspaces on Windows by combining a canonical YAML definition, Git-backed persistence, and generated runtime artifacts.
 
 The design optimizes for:
 
@@ -10,6 +22,7 @@ The design optimizes for:
 - official sources over custom images
 - user-owned YAML over opaque application state
 - portable definitions over machine-specific runtime details
+- recoverability over convenience
 
 ## High-Level Design
 
@@ -18,7 +31,7 @@ The MVP is split into two projects:
 - `OpenCode.Workspace.Core`: portable domain and generation logic
 - `OpenCode.Workspace.Manager`: WPF shell plus Windows-only runtime behavior
 
-This separation exists so the core logic can stay useful if future Workspace Stuff services consume the same portable artifacts.
+This separation exists so the durable workspace logic stays portable while the Windows app handles host-specific runtime behavior.
 
 ## Canonical Vs Generated Artifacts
 
@@ -41,18 +54,25 @@ This separation exists so the core logic can stay useful if future Workspace Stu
 - current container process state
 - Windows-specific UI state
 
+### Durable persistence details
+
+- Git repository state inside the workspace
+- Save Points and timeline events
+- checkpoint metadata under `history/`
+
 ## Workspace Lifecycle
 
 1. The user creates or opens a workspace.
 2. The application reads or writes `workspace.yaml`.
-3. Built-in manifests expand selected features and services into packages and service containers.
-4. Agent configuration resolves from workspace settings, user preferences, future catalog defaults, or the built-in OpenCode default profile.
-5. The application generates `compose.yaml`, `.env`, and provisioning scripts.
-6. Docker Compose starts the workspace and optional service containers.
-7. Provisioning installs core tools and OpenCode inside the Ubuntu container and creates the `opencode` Linux user.
-8. Windows Terminal attaches to the running workspace container as the `opencode` user.
-9. A generated workspace shell helper recreates or reattaches the `opencode` screen session.
-10. Inside that loop, OpenCode is restored with `opencode -s` and restarted if it exits.
+3. Git provides local durability, working-copy history, and optional remote backup.
+4. Built-in manifests expand selected features and services into packages and service containers.
+5. Agent configuration resolves from workspace settings, user preferences, future catalog defaults, or the built-in OpenCode default profile.
+6. The application generates `compose.yaml`, `.env`, and provisioning scripts.
+7. Docker Compose starts the workspace and optional service containers.
+8. Provisioning installs core tools and OpenCode inside the Ubuntu container and creates the `opencode` Linux user.
+9. Windows Terminal attaches to the running workspace container as the `opencode` user.
+10. A generated workspace shell helper recreates or reattaches the `opencode` screen session.
+11. Inside that loop, OpenCode is restored with `opencode -s` and restarted if it exits.
 
 ## Why Provisioning Is Script-Based
 

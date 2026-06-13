@@ -1,11 +1,22 @@
 # Troubleshooting
 
-## Docker Desktop Is Not Running
+Start here if the first-use flow gets stuck.
+
+Normal path:
+
+1. create or open a workspace
+2. open the workspace
+3. wait for the runtime to start
+4. begin working in the terminal session
+
+If one of those steps fails, match it to the section below.
+
+## I Cannot Start The Runtime
 
 Symptoms:
 
-- health checks show Docker Engine unavailable
-- start or provision fails before the container launches
+- health checks show the runtime engine is unavailable
+- start or provision fails before the runtime launches
 
 Action:
 
@@ -13,7 +24,9 @@ Action:
 2. Wait for the engine to finish starting.
 3. Run the health checks again.
 
-## Windows Terminal Is Not Available
+If Docker still does not respond, go back to [Windows Setup](windows-prerequisites.md) and verify the install commands and checks.
+
+## I Cannot Open The Terminal Session
 
 Symptoms:
 
@@ -25,6 +38,10 @@ Action:
 1. Install Windows Terminal.
 2. Ensure the App Execution Alias for `wt.exe` is enabled.
 3. Try attach again.
+
+If the workspace itself is running, this is usually a terminal setup issue, not a workspace data-loss issue.
+
+If Windows executables cannot be launched from Ubuntu/WSL at all, see [Debugging WSL Windows Interop](troubleshooting/wsl-windows-interop.md).
 
 ## Selected Nerd Font Is Missing
 
@@ -55,13 +72,19 @@ Action:
 
 OpenCode Stuff writes only its own fragment under the Windows Terminal fragments directory and does not edit unrelated user profiles.
 
-## Workspace Starts But Provisioning Fails
+## The Workspace Opens But Setup Fails
 
-Most provisioning failures come from:
+Most setup failures come from:
 
 - missing internet access
 - temporary package repository failures
 - upstream package name changes
+
+What to do next:
+
+1. Try again in case it was a temporary network or package issue.
+2. Confirm internet access is working.
+3. If it keeps failing, inspect the generated setup script below.
 
 Check the generated provisioning script under:
 
@@ -71,19 +94,29 @@ mounts/config/provision.sh
 
 That file is generated intentionally so contributors can inspect the exact installation plan.
 
-## Docker Desktop Restarted And Containers Disappeared
+## The Runtime Stopped Unexpectedly
 
 During the smoke test, the workspace, PostgreSQL, and pgAdmin containers all exited together with code `255` after a Docker Desktop interruption.
 
-Interpret that as a container lifecycle event first, not automatically as an application attach failure.
+Interpret that as a runtime interruption first, not automatically as a workspace failure.
 
 Recommended recovery path:
 
 1. confirm Docker Desktop is reachable again
 2. restart the workspace from the app
-3. re-run any validation that depends on the containers still being alive
+3. re-run any validation that depends on the runtime still being alive
 
-## Attach Restores Nothing
+This usually means the tool environment stopped. It does not automatically mean your workspace was lost.
+
+## The Session Does Not Restore
+
+If the workspace opens but the terminal session does not restore correctly, the most common fix is:
+
+1. stop the workspace
+2. open it again
+3. try attach again
+
+If that still fails, use the details below.
 
 The attach flow runs:
 
@@ -100,6 +133,8 @@ If attach still fails, confirm the workspace was provisioned successfully and th
 
 ## Attach Validation Note
 
+This section is mainly for contributors and advanced troubleshooting.
+
 The app can verify the container state and can request attach through Windows Terminal, but some parts of the final terminal interaction are inherently interactive.
 
 For automated smoke testing, prefer validating:
@@ -115,6 +150,8 @@ For `v0.1`, a clean manual terminal screenshot is acceptable if automated window
 ## Terminal Diagnostics
 
 Normal `Attach` should open OpenCode directly without extra diagnostic output.
+
+Most users should not need this. Use it only if the terminal session keeps failing after the normal recovery steps above.
 
 If you need terminal-specific troubleshooting, run the generated diagnostics wrapper for a workspace manually:
 

@@ -21,6 +21,11 @@ public sealed class WorkspaceOrchestrator
     private readonly TerminalArtifactsGenerator _terminalArtifactsGenerator;
     private readonly AttachArtifactsGenerator _attachArtifactsGenerator;
     private readonly WorkspaceAppliedStateService _workspaceAppliedStateService;
+    private readonly WorkspaceCheckpointService _workspaceCheckpointService;
+    private readonly WorkspaceTimelineService _workspaceTimelineService;
+    private readonly WorkspaceSafetyService _workspaceSafetyService;
+    private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
+    private readonly IWorkspaceProvider _workspaceProvider;
     private readonly DockerService _dockerService;
     private readonly ITerminalLauncher _terminalLauncher;
 
@@ -34,6 +39,11 @@ public sealed class WorkspaceOrchestrator
         TerminalArtifactsGenerator terminalArtifactsGenerator,
         AttachArtifactsGenerator attachArtifactsGenerator,
         WorkspaceAppliedStateService workspaceAppliedStateService,
+        WorkspaceCheckpointService workspaceCheckpointService,
+        WorkspaceTimelineService workspaceTimelineService,
+        WorkspaceSafetyService workspaceSafetyService,
+        WorkspaceIgnorePolicyService workspaceIgnorePolicyService,
+        IWorkspaceProvider workspaceProvider,
         DockerService dockerService,
         ITerminalLauncher terminalLauncher)
     {
@@ -46,6 +56,11 @@ public sealed class WorkspaceOrchestrator
         _terminalArtifactsGenerator = terminalArtifactsGenerator;
         _attachArtifactsGenerator = attachArtifactsGenerator;
         _workspaceAppliedStateService = workspaceAppliedStateService;
+        _workspaceCheckpointService = workspaceCheckpointService;
+        _workspaceTimelineService = workspaceTimelineService;
+        _workspaceSafetyService = workspaceSafetyService;
+        _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
+        _workspaceProvider = workspaceProvider;
         _dockerService = dockerService;
         _terminalLauncher = terminalLauncher;
     }
@@ -68,6 +83,11 @@ public sealed class WorkspaceOrchestrator
         var generatedArtifacts = GenerateArtifacts(definition, paths);
         var appliedState = _workspaceAppliedStateService.Read(paths.AppliedStatePath);
         var updateRequired = IsUpdateRequired(paths, generatedArtifacts, appliedState);
+        var latestCheckpoint = _workspaceCheckpointService.GetLatest(paths.CheckpointIndexPath);
+        var lastSuccessfulPublishUtc = _workspaceTimelineService.GetLastPublishUtc(paths.TimelinePath);
+        var gitState = _workspaceProvider.GetGitStateAsync(paths, definition).GetAwaiter().GetResult();
+        var ignorePolicyReview = _workspaceIgnorePolicyService.ReviewWorkspace(paths.RootPath);
+        var safety = _workspaceSafetyService.Build(gitState, latestCheckpoint, lastSuccessfulPublishUtc, ignorePolicyReview);
 
         var state = File.Exists(paths.ComposePath) && Directory.Exists(paths.RootPath)
             ? WorkspaceRuntimeState.Unknown
@@ -79,6 +99,7 @@ public sealed class WorkspaceOrchestrator
             Definition = definition,
             Paths = paths,
             RuntimeState = state,
+            Safety = safety,
             AppliedState = appliedState,
             UpdateRequired = updateRequired,
         };
@@ -94,16 +115,20 @@ public sealed class WorkspaceOrchestrator
             Definition = snapshot.Definition,
             Paths = snapshot.Paths,
             RuntimeState = runtimeState,
+            Safety = snapshot.Safety,
             AppliedState = snapshot.AppliedState,
             UpdateRequired = snapshot.UpdateRequired,
         };
     }
 
-    public WorkspaceSnapshot CreateWorkspace(string rootPath, WorkspaceDefinition definition)
+    public WorkspaceSnapshot CreateWorkspace(string rootPath, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null)
     {
         var paths = WorkspacePathBuilder.Build(rootPath);
         CreateFolderStructure(paths);
-        var generatedArtifacts = WriteGeneratedFiles(paths, definition);
+        EnsureWorkspaceScaffolding(paths, definition);
+        WriteGeneratedFiles(paths, definition);
+        _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: true, log).GetAwaiter().GetResult();
+        _workspaceTimelineService.Append(paths.TimelinePath, "save-point", "Created initial Save Point", "Initialized the workspace repository and captured the first local Save Point.");
 
         var now = DateTimeOffset.UtcNow;
         var record = new WorkspaceRecord
@@ -120,15 +145,41 @@ public sealed class WorkspaceOrchestrator
 
         _workspaceRepository.Save(record);
 
-        return new WorkspaceSnapshot
+        return LoadSnapshot(rootPath);
+    }
+
+    public WorkspaceSnapshot OpenFolderAsWorkspace(string rootPath, string? workspaceName = null, Action<CommandLogEntry>? log = null)
+    {
+        var paths = WorkspacePathBuilder.Build(rootPath);
+        if (File.Exists(paths.WorkspaceYamlPath))
         {
-            Record = record,
-            Definition = definition,
-            Paths = paths,
-            RuntimeState = WorkspaceRuntimeState.Stopped,
-            AppliedState = null,
-            UpdateRequired = IsUpdateRequired(paths, generatedArtifacts, null),
+            return LoadSnapshot(rootPath);
+        }
+
+        var folderName = string.IsNullOrWhiteSpace(workspaceName) ? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) : workspaceName.Trim();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Id = WorkspacePathBuilder.Slugify(folderName),
+                Name = folderName,
+                Image = "ubuntu:24.04",
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = _workspaceProvider.Type,
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+            },
+            Features = new List<string> { "core" },
+            Services = new List<string>(),
+            Skills = new List<string>(),
+            Mcp = new List<string>(),
         };
+
+        return CreateWorkspace(rootPath, definition, log);
     }
 
     public async Task RegenerateAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
@@ -187,6 +238,120 @@ public sealed class WorkspaceOrchestrator
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
 
         await _terminalLauncher.LaunchAttachSessionAsync(snapshot, log, cancellationToken);
+    }
+
+    public async Task<bool> CreateSavePointAsync(WorkspaceSnapshot snapshot, string message, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var saved = await _workspaceProvider.CreateSavePointAsync(snapshot.Paths, snapshot.Definition, message, log, cancellationToken);
+        if (saved)
+        {
+            _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "save-point", "Created Save Point", message);
+        }
+
+        return saved;
+    }
+
+    public async Task<WorkspaceCheckpointRecord> CreateCheckpointAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var gitProvider = _workspaceProvider as GitWorkspaceProvider ?? throw new InvalidOperationException("Checkpoint creation currently requires the Git workspace provider.");
+        var gitState = await _workspaceProvider.GetGitStateAsync(snapshot.Paths, snapshot.Definition, cancellationToken);
+        var checkpointId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var checkpointPath = Path.Combine(snapshot.Paths.CheckpointsPath, checkpointId);
+        Directory.CreateDirectory(checkpointPath);
+
+        var patch = await gitProvider.GetTrackedChangesPatchAsync(snapshot.Paths.RootPath, cancellationToken);
+        File.WriteAllText(Path.Combine(checkpointPath, "tracked.patch"), patch.Replace("\r\n", "\n", StringComparison.Ordinal));
+
+        // Checkpoints complement Save Points by preserving local state that Git may
+        // not yet describe safely enough for recovery, especially untracked files.
+        var untrackedFiles = await gitProvider.GetUntrackedFilesAsync(snapshot.Paths.RootPath, cancellationToken);
+        var copiedFiles = new List<string>();
+        if (untrackedFiles.Count > 0)
+        {
+            var untrackedRoot = Path.Combine(checkpointPath, "untracked");
+            Directory.CreateDirectory(untrackedRoot);
+            foreach (var relativePath in untrackedFiles)
+            {
+                var sourcePath = Path.Combine(snapshot.Paths.RootPath, relativePath);
+                if (!File.Exists(sourcePath))
+                {
+                    continue;
+                }
+
+                var destinationPath = Path.Combine(untrackedRoot, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                File.Copy(sourcePath, destinationPath, overwrite: true);
+                copiedFiles.Add(relativePath);
+            }
+        }
+
+        if (File.Exists(snapshot.Paths.WorkspaceYamlPath))
+        {
+            File.Copy(snapshot.Paths.WorkspaceYamlPath, Path.Combine(checkpointPath, "workspace.yaml"), overwrite: true);
+        }
+
+        if (File.Exists(snapshot.Paths.ArtifactIndexPath))
+        {
+            File.Copy(snapshot.Paths.ArtifactIndexPath, Path.Combine(checkpointPath, "artifact-index.json"), overwrite: true);
+        }
+
+        var record = new WorkspaceCheckpointRecord
+        {
+            Id = checkpointId,
+            CreatedUtc = DateTimeOffset.UtcNow,
+            CurrentBranch = gitState.CurrentBranch,
+            CurrentCommitSha = gitState.LatestCommitSha,
+            CapturedUntrackedFiles = copiedFiles.Count == untrackedFiles.Count,
+            UntrackedFiles = copiedFiles,
+        };
+
+        _workspaceCheckpointService.SaveMetadata(Path.Combine(checkpointPath, "checkpoint.yaml"), record);
+        _workspaceCheckpointService.AddCheckpoint(snapshot.Paths.CheckpointIndexPath, record);
+        _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "checkpoint", "Created checkpoint", $"Checkpoint {checkpointId} captured {copiedFiles.Count} untracked file(s).");
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"Created checkpoint '{checkpointId}'." });
+        return record;
+    }
+
+    public async Task<WorkspacePublishReview> PublishAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "publish-attempted", "Publish attempted", $"Attempted to publish Working Copy '{snapshot.Safety.WorkingCopyName}'.");
+        var review = await _workspaceProvider.PublishAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        _workspaceTimelineService.Append(
+            snapshot.Paths.TimelinePath,
+            review.IsBlocked ? "publish-blocked" : "publish-succeeded",
+            review.IsBlocked ? "Publish needs review" : "Published workspace",
+            review.Message);
+        return review;
+    }
+
+    public async Task<WorkspacePublishReview> UpdateWorkingCopyAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var review = await _workspaceProvider.UpdateWorkingCopyAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        _workspaceTimelineService.Append(
+            snapshot.Paths.TimelinePath,
+            review.SafeUpdateApplied ? "working-copy-updated" : "publish-blocked",
+            review.SafeUpdateApplied ? "Working Copy updated" : "Update needs review",
+            review.Message);
+        return review;
+    }
+
+    public async Task<WorkspacePublishReview> PublishToReviewWorkingCopyAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var review = await _workspaceProvider.PublishToReviewWorkingCopyAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        _workspaceTimelineService.Append(
+            snapshot.Paths.TimelinePath,
+            review.IsBlocked ? "publish-blocked" : "publish-succeeded",
+            review.IsBlocked ? "Publish to review Working Copy blocked" : "Published review Working Copy",
+            review.IsBlocked ? review.Message : $"{review.Message} Review Working Copy: {review.ReviewWorkingCopyBranch}");
+        return review;
+    }
+
+    public async Task<string> ExportPatchAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var patchFileName = $"{WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.patch";
+        var outputPath = Path.Combine(snapshot.Paths.HistoryPath, patchFileName);
+        Directory.CreateDirectory(snapshot.Paths.HistoryPath);
+        return await _workspaceProvider.ExportPatchAsync(snapshot.Paths, snapshot.Definition, outputPath, log, cancellationToken);
     }
 
     public async Task LaunchAttachForRunningWorkspaceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -301,6 +466,46 @@ public sealed class WorkspaceOrchestrator
         Directory.CreateDirectory(paths.UserPath);
         Directory.CreateDirectory(paths.HomePath);
         Directory.CreateDirectory(paths.ConfigPath);
+        Directory.CreateDirectory(paths.HistoryPath);
+        Directory.CreateDirectory(paths.CheckpointsPath);
+        Directory.CreateDirectory(paths.RuntimesPath);
+        Directory.CreateDirectory(paths.ArtifactsPath);
+        Directory.CreateDirectory(paths.ArtifactRunsPath);
+    }
+
+    private void EnsureWorkspaceScaffolding(WorkspacePaths paths, WorkspaceDefinition definition)
+    {
+        _workspaceCheckpointService.EnsureCreated(paths.CheckpointIndexPath);
+        _workspaceTimelineService.EnsureCreated(paths.TimelinePath);
+
+        if (!File.Exists(paths.ArtifactIndexPath))
+        {
+            File.WriteAllText(paths.ArtifactIndexPath, "{\n  \"runs\": []\n}");
+        }
+
+        if (!File.Exists(paths.GitIgnorePath))
+        {
+            var gitIgnore = string.Join("\n",
+                "mounts/home/",
+                "mounts/user/",
+                "mounts/inbox/",
+                "history/checkpoints/",
+                "artifacts/runs/",
+                string.Empty);
+            File.WriteAllText(paths.GitIgnorePath, gitIgnore.Replace("\r\n", "\n", StringComparison.Ordinal));
+        }
+
+        if (!File.Exists(paths.DefaultRuntimePath))
+        {
+            var content = string.Join("\n",
+                "id: default",
+                "name: Default Runtime",
+                $"image: {definition.Workspace.Image}",
+                "mounts:",
+                "  - workspace",
+                string.Empty);
+            File.WriteAllText(paths.DefaultRuntimePath, content.Replace("\r\n", "\n", StringComparison.Ordinal));
+        }
     }
 
     private async Task ValidateWorkspaceRunningAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)

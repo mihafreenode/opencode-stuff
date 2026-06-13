@@ -21,6 +21,7 @@ public sealed class WorkspaceRecord
 public sealed class WorkspacePaths
 {
     public required string RootPath { get; init; }
+    public required string GitIgnorePath { get; init; }
     public required string WorkspaceYamlPath { get; init; }
     public required string ComposePath { get; init; }
     public required string EnvironmentFilePath { get; init; }
@@ -38,6 +39,15 @@ public sealed class WorkspacePaths
     public required string AttachWrapperScriptPath { get; init; }
     public required string TerminalDiagnosticsScriptPath { get; init; }
     public required string AppliedStatePath { get; init; }
+    public required string HistoryPath { get; init; }
+    public required string CheckpointsPath { get; init; }
+    public required string CheckpointIndexPath { get; init; }
+    public required string TimelinePath { get; init; }
+    public required string RuntimesPath { get; init; }
+    public required string DefaultRuntimePath { get; init; }
+    public required string ArtifactsPath { get; init; }
+    public required string ArtifactRunsPath { get; init; }
+    public required string ArtifactIndexPath { get; init; }
 }
 
 public sealed class WorkspaceAppliedState
@@ -61,6 +71,7 @@ public sealed class WorkspaceSnapshot
     public required WorkspaceDefinition Definition { get; init; }
     public required WorkspacePaths Paths { get; init; }
     public required WorkspaceRuntimeState RuntimeState { get; init; }
+    public required WorkspaceSafetySnapshot Safety { get; init; }
     public WorkspaceAppliedState? AppliedState { get; init; }
     public bool UpdateRequired { get; init; }
 }

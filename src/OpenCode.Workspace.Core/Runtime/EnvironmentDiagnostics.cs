@@ -20,6 +20,7 @@ public sealed class EnvironmentDiagnostics
     {
         var results = new List<DiagnosticResult>
         {
+            await CheckGitCliAsync(cancellationToken),
             await CheckDockerCliAsync(cancellationToken),
             await CheckDockerEngineAsync(cancellationToken),
             await CheckWindowsTerminalAsync(cancellationToken),
@@ -41,6 +42,21 @@ public sealed class EnvironmentDiagnostics
         catch (Exception exception)
         {
             return Error("docker.cli", "Docker CLI", "Docker is not available. Install Docker Desktop and try again.", exception.Message);
+        }
+    }
+
+    private async Task<DiagnosticResult> CheckGitCliAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _processRunner.RunAsync("git", new[] { "--version" }, cancellationToken: cancellationToken);
+            return result.IsSuccess
+                ? Success("git.cli", "Git", "Git is available for Save Points, Publish, and Recovery.", result.StandardOutput.Trim())
+                : Error("git.cli", "Git", "Git is not available. Install Git before using durable workspace recovery features.", result.StandardError);
+        }
+        catch (Exception exception)
+        {
+            return Error("git.cli", "Git", "Git is not available. Install Git before using durable workspace recovery features.", exception.Message);
         }
     }
 

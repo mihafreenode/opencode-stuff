@@ -29,11 +29,17 @@ public sealed class AppBootstrapper
         var terminalArtifactsGenerator = new TerminalArtifactsGenerator();
         var attachArtifactsGenerator = new AttachArtifactsGenerator();
         var appliedStateService = new WorkspaceAppliedStateService();
+        var checkpointService = new WorkspaceCheckpointService();
+        var timelineService = new WorkspaceTimelineService();
+        var safetyService = new WorkspaceSafetyService();
+        var ignorePolicyService = new WorkspaceIgnorePolicyService();
+        var workspaceProvider = new GitWorkspaceProvider(processRunner, ignorePolicyService);
         var dockerService = new DockerService(processRunner);
         var terminalLauncher = new WindowsTerminalLauncher(new AttachCommandBuilder());
         var profileManager = new WindowsTerminalProfileManager();
         var hostCapabilities = new WindowsHostCapabilities(processRunner);
         var nerdFontInstaller = new NerdFontInstaller(processRunner);
+        var savePointMessageService = new WorkspaceSavePointMessageService(processRunner);
         var orchestrator = new WorkspaceOrchestrator(
             yamlService,
             repository,
@@ -44,11 +50,16 @@ public sealed class AppBootstrapper
             terminalArtifactsGenerator,
             attachArtifactsGenerator,
             appliedStateService,
+            checkpointService,
+            timelineService,
+            safetyService,
+            ignorePolicyService,
+            workspaceProvider,
             dockerService,
             terminalLauncher);
 
         var localization = new PoLocalizationService(localizationRoot, languageCode);
         var diagnostics = new EnvironmentDiagnostics(processRunner);
-        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller);
+        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService);
     }
 }

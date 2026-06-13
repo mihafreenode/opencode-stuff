@@ -61,7 +61,7 @@ Templates select a friendly starting combination of features and services, but t
 
 ## Portability Rule
 
-Catalog content should stay portable enough for future hosted Workspace Stuff use.
+Catalog content should stay portable enough for future hosted workspace use.
 
 Avoid encoding:
 

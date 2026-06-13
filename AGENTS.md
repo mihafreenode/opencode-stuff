@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository contains `OpenCode Workspace Manager`, a Windows WPF application that creates, provisions, manages, and launches local OpenCode workspaces from official Ubuntu LTS containers.
+This repository contains `OpenCode Workspace Manager`, a Windows WPF application for durable workspaces. It creates, provisions, manages, protects, and launches local OpenCode workspaces using disposable Ubuntu LTS runtimes.
 
 This file captures the working guidance for contributors and coding agents so the repository remains understandable without external conversation history.
 
@@ -36,6 +36,7 @@ When publishing the GitHub repository, set:
 Priorities:
 
 - ship a usable Windows executable
+- present the product as a durable workspace system first
 - keep the code and manifests readable
 - prefer canonical YAML over opaque runtime state
 - prefer official sources over custom images
@@ -47,15 +48,18 @@ Avoid:
 - reflection-heavy plugin designs
 - service locators
 - modifying unrelated user terminal profiles or shell configuration
+- leading onboarding docs with implementation details instead of first-use workflow
 
 ## User Experience Model
 
 Main UI mental model:
 
-- the app is a workspace launcher and manager first, not a Docker console
+- the app is a durable workspace manager first, not a Docker console or Git client
 - primary user intent is `Open Workspace`
 - the app should decide when start, update, restart, attach, and validation are required
 - Docker lifecycle details belong in diagnostics and troubleshooting, not in the main dashboard
+- Git is the persistence engine, but normal UI should speak in terms of Save Points, Publish, Backup, Working Copy, and Restore
+- normal users should work in Safe Working Copies, not protected or mainline branches
 
 Primary user-facing workspace states:
 
@@ -87,9 +91,59 @@ Projects:
 Key principle:
 
 - `workspace.yaml` is canonical and portable
+- Git is the default persistence engine for workspace history and recovery
 - generated files are implementation details
 - containers are disposable
 - mounted folders hold durable state
+
+Working Copy convention:
+
+- Safe Working Copy maps internally to a local Git branch
+- naming pattern: `users/{user}/{title}-{yyyyMMdd-HHmm}`
+- sanitize user and title, lowercase them, replace whitespace with hyphens, and remove unsafe Git branch characters
+- normal UI must call this a `Working Copy`, not a branch
+- actual branch names belong in Advanced Git diagnostics
+
+Protected/mainline guidance:
+
+- `main`, `master`, `staging`, `production`, `release/*`, and protected branches are advanced Git operations outside the normal V1 workflow
+- do not auto-publish to protected or mainline branches
+- if the current branch is protected or mainline, guide the user to create a Safe Working Copy
+
+Publish safety rules:
+
+- Publish is explicit
+- never auto-publish
+- fetch remote state before Publish
+- if remote changed, only attempt a safe update when the operation is clean and conflict-free
+- if a safe update succeeds, stop and ask for confirmation before Publish
+- if a conflict or uncertainty appears, stop immediately and keep local work safe
+- never auto-resolve conflicts
+- never force-push by default
+
+Conflict principle:
+
+- `Conflict is not failure. Lost work is failure.`
+
+Ignore policy:
+
+- classify content as `Tracked`, `Ignored`, or `Needs Review`
+- do not automatically ignore unknown hidden folders
+- do not automatically commit unknown hidden folders
+- when uncertain, explain findings, ask for review, and preserve work
+
+Artifact policy:
+
+- track reports, documentation, presentations, generated deliverables, and other durable outputs
+- ignore caches, previews, rebuildable outputs, and dependency folders
+
+Secret policy:
+
+- never commit credentials, API keys, private keys, token files, or secret configuration
+- warn or block before Save Point creation when obvious secret candidates are present
+- Save Point validation should inspect changed and untracked content, not only top-level workspace entries
+- nested secrets and unknown hidden content anywhere in the workspace may require review
+- dangerous ignore rules that hide durable workspace content must trigger review
 
 ## Canonical Inputs
 
@@ -232,7 +286,7 @@ OpenCode Stuff requires:
 - Windows Terminal
 - .NET 10 Desktop Runtime
 
-Keep the README brief and user-facing, and put detailed setup guidance in `docs/windows-prerequisites.md`.
+Keep the README brief and user-facing, prioritize first-use success in onboarding docs, and put detailed setup guidance in `docs/windows-prerequisites.md`.
 
 Health checks should explain clearly when any of these are missing:
 
@@ -291,6 +345,15 @@ These validate Windows-specific behavior such as:
 
 If prerequisites are missing, tests must skip with explicit reasons rather than fail ambiguously.
 
+Windows validation rules:
+
+- when running from WSL, do not treat Linux `dotnet` results as a substitute for Windows results
+- for WPF, Windows Desktop runtime validation, packaging, screenshots, and Windows capability tests, execute `dotnet` through Windows PowerShell
+- from WSL, convert the working directory with `WINPWD=$(wslpath -w "$PWD")` and run Windows validation with `powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.Manager.slnx"`
+- report Linux and Windows results separately
+- if Windows executables fail from WSL with `cannot execute binary file: Exec format error`, verify `cat /proc/sys/fs/binfmt_misc/WSLInterop` before assuming a `PATH` problem
+- WSL interop troubleshooting is documented in `docs/troubleshooting/wsl-windows-interop.md`
+
 ## Contributor Coding Guidance
 
 Prefer:
@@ -300,6 +363,7 @@ Prefer:
 - boring readable code
 - comments about intent and ownership boundaries
 - manifest-driven extension points
+- updating docs and tests whenever behavior or user-facing terminology changes
 
 Avoid:
 
@@ -325,7 +389,8 @@ WPF and Windows-specific artifacts must be built on the Windows host .NET SDK.
 Example from WSL:
 
 ```bash
-cmd.exe /c "cd /d C:\Users\miha.pirnat\source\repos\opencode-stuff-init && dotnet build OpenCode.Workspace.Manager.slnx"
+WINPWD=$(wslpath -w "$PWD")
+powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet build OpenCode.Workspace.Manager.slnx"
 ```
 
 Do not attempt to build WPF inside Linux containers.

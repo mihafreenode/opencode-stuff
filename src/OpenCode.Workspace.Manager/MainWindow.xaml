@@ -154,10 +154,14 @@
                             <WrapPanel Margin="0,16,0,0">
                                 <Button Style="{StaticResource PrimaryButtonStyle}" Padding="14,8" Content="{Binding SelectedPrimaryActionLabel}" Command="{Binding PrimaryWorkspaceActionCommand}" />
                                 <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ShutDownLabel}" Command="{Binding ShutDownWorkspaceCommand}" IsEnabled="{Binding CanShutDownSelectedWorkspace}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateSavePointLabel}" Command="{Binding CreateSavePointCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateCheckpointLabel}" Command="{Binding CreateCheckpointCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding PublishLabel}" Command="{Binding PublishWorkspaceCommand}" />
                             </WrapPanel>
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Padding="14,8" Content="{Binding OpenFolderLabel}" Command="{Binding OpenFolderCommand}" />
                                 <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CopyPathLabel}" Command="{Binding CopyWorkspacePathCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding OpenAdvancedGitViewLabel}" Command="{Binding OpenAdvancedGitViewCommand}" />
                                 <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding RemoveLabel}" Command="{Binding RemoveWorkspaceCommand}" />
                             </WrapPanel>
 
@@ -179,6 +183,63 @@
                             <TextBlock Text="{Binding SelectedWorkspaceServices}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedServicesStatusLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceServicesStatus}" TextWrapping="Wrap" />
+
+                            <Border Margin="0,16,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SafetyTitle}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding SelectedWorkspaceSafetyStatus}" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,4,0,0" Text="{Binding SelectedWorkspaceSafetyMessage}" TextWrapping="Wrap" />
+
+                                    <TextBlock Margin="0,12,0,4" Text="{Binding LocalRecoveryLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding WorkingCopyLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceWorkingCopy}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LatestSavePointLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceLatestSavePoint}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding LatestCheckpointLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceLatestCheckpoint}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding UncommittedChangesLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceUncommittedChanges}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding UntrackedFilesLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceUntrackedFiles}" TextWrapping="Wrap" />
+
+                                    <TextBlock Margin="0,12,0,4" Text="{Binding BackupLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding RemoteNameLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceRemoteName}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding RemoteBranchLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceRemoteBranch}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding AheadBehindLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceAheadBehind}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding RemoteConfiguredLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceRemoteConfigured}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding UnpublishedSavePointsLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceUnpublishedSavePoints}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding WorkingCopyPublishedLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceWorkingCopyPublished}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding LastPublishLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceLastPublish}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding ConflictingFilesLabel}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedWorkspaceConflictingFiles}" TextWrapping="Wrap" />
+
+                                    <WrapPanel Margin="0,12,0,0" Visibility="{Binding ShowNoRemoteActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Button Padding="14,8" Content="{Binding ConfigureRemoteBackupLabel}" Command="{Binding ConfigureRemoteBackupCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ExportBackupLabel}" Command="{Binding ExportBackupCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding DismissLabel}" Command="{Binding DismissSafetyNoticeCommand}" />
+                                    </WrapPanel>
+
+                                    <WrapPanel Margin="0,12,0,0" Visibility="{Binding ShowUnpublishedSavePointActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Button Padding="14,8" Content="{Binding PublishLabel}" Command="{Binding PublishWorkspaceCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ExportBackupLabel}" Command="{Binding ExportBackupCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ContinueWorkingLabel}" Command="{Binding ContinueWorkingCommand}" />
+                                    </WrapPanel>
+
+                                    <WrapPanel Margin="0,12,0,0" Visibility="{Binding ShowNeedsReviewActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Button Padding="14,8" Content="{Binding UpdateWorkspaceLabel}" Command="{Binding UpdateWorkspaceFromRemoteCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding PublishReviewWorkingCopyLabel}" Command="{Binding PublishReviewWorkingCopyCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ExportPatchLabel}" Command="{Binding ExportPatchCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding OpenAdvancedGitViewLabel}" Command="{Binding OpenAdvancedGitViewCommand}" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
 
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedAgentLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceAgent}" TextWrapping="Wrap" />

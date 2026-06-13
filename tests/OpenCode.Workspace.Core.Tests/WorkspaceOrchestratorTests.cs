@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
@@ -11,6 +12,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void CreateWorkspace_WritesCanonicalAndGeneratedFiles()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -28,10 +30,15 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(File.Exists(snapshot.Paths.ScreenConfigPath));
             Assert.True(File.Exists(snapshot.Paths.AttachWrapperScriptPath));
             Assert.True(File.Exists(snapshot.Paths.TerminalDiagnosticsScriptPath));
+            Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
+            Assert.True(File.Exists(snapshot.Paths.TimelinePath));
+            Assert.True(File.Exists(snapshot.Paths.CheckpointIndexPath));
+            Assert.Contains("save-point", File.ReadAllText(snapshot.Paths.TimelinePath));
             Assert.Contains("GENERATED FILE", File.ReadAllText(snapshot.Paths.ComposePath));
             Assert.Contains("npm install -g opencode-ai", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("/home/opencode/.local/share/opencode/log", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("Initializing OpenCode user directories", File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath));
+            Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
         }
         finally
         {
@@ -42,6 +49,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void WriteAppliedState_WritesAppliedStateFile()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -62,6 +70,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void LoadSnapshot_AfterAppliedState_DoesNotRequireUpdate()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -83,6 +92,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void LoadSnapshot_AfterRuntimeOnlyReload_DoesNotRequireUpdate()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -98,6 +108,7 @@ public sealed class WorkspaceOrchestratorTests
                 Definition = reloaded.Definition,
                 Paths = reloaded.Paths,
                 RuntimeState = WorkspaceRuntimeState.Running,
+                Safety = reloaded.Safety,
                 AppliedState = reloaded.AppliedState,
                 UpdateRequired = reloaded.UpdateRequired,
             };
@@ -113,6 +124,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void LoadSnapshot_WhenWorkspaceYamlChanges_RequiresUpdate()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -136,6 +148,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void LoadSnapshot_WhenSelectedFeaturesChange_RequiresUpdate()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -160,6 +173,7 @@ public sealed class WorkspaceOrchestratorTests
     [Fact]
     public void LoadSnapshot_WhenRelevantCatalogPlanChanges_RequiresUpdate()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
 
         try
@@ -191,6 +205,125 @@ public sealed class WorkspaceOrchestratorTests
         Assert.Contains("ubuntu:24.04", arguments);
         Assert.Contains("C:\\Workspaces\\Demo:/target", arguments);
         Assert.Contains("chmod -R u+rwX,go+rwX /target || true", arguments[^1]);
+    }
+
+    [Fact]
+    public void OpenFolderAsWorkspace_InitializesGitAndCreatesInitialSavePoint()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            Directory.CreateDirectory(tempRoot);
+            File.WriteAllText(Path.Combine(tempRoot, "notes.txt"), "draft notes");
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+
+            var snapshot = orchestrator.OpenFolderAsWorkspace(tempRoot);
+
+            Assert.True(File.Exists(snapshot.Paths.WorkspaceYamlPath));
+            Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
+            Assert.NotNull(snapshot.Safety.LocalRecovery.LatestSavePointUtc);
+            Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task PublishAsync_RecordsBlockedPublishInTimeline()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var timelineService = new WorkspaceTimelineService();
+            var orchestrator = CreateOrchestratorWithProvider(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), timelineService);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core"));
+
+            var review = await orchestrator.PublishAsync(snapshot);
+            var timeline = timelineService.Load(snapshot.Paths.TimelinePath);
+
+            Assert.True(review.IsBlocked);
+            Assert.Contains(timeline.Events, item => item.Type == "publish-attempted");
+            Assert.Contains(timeline.Events, item => item.Type == "publish-blocked");
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void LoadSnapshot_WhenUnknownHiddenFolderExists_ReturnsNeedsReview()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core"));
+            Directory.CreateDirectory(Path.Combine(tempRoot, ".foo"));
+            File.WriteAllText(Path.Combine(tempRoot, ".foo", "state.json"), "{}");
+
+            var reloaded = orchestrator.LoadSnapshot(tempRoot);
+
+            Assert.Equal(WorkspaceSafetyLevel.NeedsReview, reloaded.Safety.OverallStatus);
+            Assert.True(reloaded.Safety.IgnorePolicy.HasUnknownHiddenFolders);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void LoadSnapshot_WhenSecretCandidateExists_ReturnsAtRisk()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core"));
+            File.WriteAllText(Path.Combine(tempRoot, ".env"), "API_KEY=secret");
+
+            var reloaded = orchestrator.LoadSnapshot(tempRoot);
+
+            Assert.Equal(WorkspaceSafetyLevel.AtRisk, reloaded.Safety.OverallStatus);
+            Assert.True(reloaded.Safety.IgnorePolicy.HasSecretCandidates);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void LoadSnapshot_WhenTimelineIsIgnored_ReturnsNeedsReview()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core"));
+            File.AppendAllText(Path.Combine(tempRoot, ".gitignore"), "history/*.yaml\n");
+
+            var reloaded = orchestrator.LoadSnapshot(tempRoot);
+
+            Assert.Equal(WorkspaceSafetyLevel.NeedsReview, reloaded.Safety.OverallStatus);
+            Assert.True(reloaded.Safety.IgnorePolicy.HasDurableIgnoreConflicts);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
     }
 
     private static WorkspaceDefinition CreateDefinition(params string[] features)
@@ -253,9 +386,15 @@ public sealed class WorkspaceOrchestratorTests
 
     private static WorkspaceOrchestrator CreateOrchestrator(string tempRoot, WorkspaceResolver resolver)
     {
+        var ignorePolicyService = new WorkspaceIgnorePolicyService();
+        return CreateOrchestratorWithProvider(tempRoot, resolver, new GitWorkspaceProvider(new ProcessRunner(), ignorePolicyService), new WorkspaceTimelineService(), ignorePolicyService);
+    }
+
+    private static WorkspaceOrchestrator CreateOrchestratorWithProvider(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, WorkspaceTimelineService timelineService, WorkspaceIgnorePolicyService? ignorePolicyService = null)
+    {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
-            new WorkspaceRepository(Path.Combine(tempRoot, ".appdata")),
+            new WorkspaceRepository(GetAppDataRoot(tempRoot)),
             resolver,
             new ComposeGenerator(),
             new EnvironmentFileGenerator(),
@@ -263,6 +402,11 @@ public sealed class WorkspaceOrchestratorTests
             new TerminalArtifactsGenerator(),
             new AttachArtifactsGenerator(),
             new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            timelineService,
+            new WorkspaceSafetyService(),
+            ignorePolicyService ?? new WorkspaceIgnorePolicyService(),
+            provider,
             new DockerService(new ProcessRunner()),
             new NoOpTerminalLauncher());
     }
@@ -271,9 +415,41 @@ public sealed class WorkspaceOrchestratorTests
 
     private static void DeleteTempRoot(string tempRoot)
     {
+        var appDataRoot = GetAppDataRoot(tempRoot);
         if (Directory.Exists(tempRoot))
         {
-            Directory.Delete(tempRoot, recursive: true);
+            TestFileSystem.DeleteDirectoryIfExists(tempRoot);
+        }
+
+        if (Directory.Exists(appDataRoot))
+        {
+            TestFileSystem.DeleteDirectoryIfExists(appDataRoot);
+        }
+    }
+
+    private static string GetAppDataRoot(string tempRoot)
+        => Path.Combine(Path.GetDirectoryName(tempRoot) ?? Path.GetTempPath(), $"{Path.GetFileName(tempRoot)}-appdata");
+
+    private static bool CanRunGit()
+    {
+        try
+        {
+            using var process = Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            process?.WaitForExit(5000);
+            return process is not null && process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -281,5 +457,55 @@ public sealed class WorkspaceOrchestratorTests
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class FakeWorkspaceProvider : IWorkspaceProvider
+    {
+        public string Type => "git";
+
+        public Task InitializeWorkspaceAsync(WorkspacePaths paths, WorkspaceDefinition definition, bool createInitialSavePoint, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<WorkspaceGitState> GetGitStateAsync(WorkspacePaths paths, WorkspaceDefinition definition, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new WorkspaceGitState
+            {
+                IsRepository = true,
+                WorkingCopyName = "users/test/demo-20260613-1542",
+                CurrentBranch = "users/test/demo-20260613-1542",
+                LatestCommitSha = "abc123",
+                LatestCommitUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                IsSafeWorkingCopy = true,
+                StatusSummary = "clean",
+            });
+        }
+
+        public Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
+
+        public Task<WorkspacePublishReview> PublishAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new WorkspacePublishReview
+            {
+                IsBlocked = true,
+                Message = "Your local work is safe. The remote workspace changed and needs review before publishing.",
+                WorkingCopyName = "users/test/demo-20260613-1542",
+                RemoteName = "origin",
+                RemoteBranch = "origin/users/test/demo-20260613-1542",
+                AheadCount = 1,
+                BehindCount = 1,
+                LatestCommitSha = "abc123",
+                LatestSavePointUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+            });
+        }
+
+        public Task<WorkspacePublishReview> UpdateWorkingCopyAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspacePublishReview { Message = "Updated." });
+
+        public Task<WorkspacePublishReview> PublishToReviewWorkingCopyAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspacePublishReview { Message = "Published review Working Copy." });
+
+        public Task<string> ExportPatchAsync(WorkspacePaths paths, WorkspaceDefinition definition, string outputPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(outputPath);
     }
 }

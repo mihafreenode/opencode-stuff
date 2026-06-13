@@ -75,7 +75,7 @@ public sealed class PortablePipelineIntegrationTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                TestFileSystem.DeleteDirectoryIfExists(root);
             }
         }
     }
@@ -83,6 +83,7 @@ public sealed class PortablePipelineIntegrationTests
     [Fact]
     public void GeneratedArtifacts_ContainSourceOfTruthHeaders()
     {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = Path.Combine(Path.GetTempPath(), $"portable-headers-{Guid.NewGuid():N}");
 
         try
@@ -99,6 +100,11 @@ public sealed class PortablePipelineIntegrationTests
                 new TerminalArtifactsGenerator(),
                 new AttachArtifactsGenerator(),
                 new WorkspaceAppliedStateService(),
+                new WorkspaceCheckpointService(),
+                new WorkspaceTimelineService(),
+                new WorkspaceSafetyService(),
+                new WorkspaceIgnorePolicyService(),
+                new GitWorkspaceProvider(new OpenCode.Workspace.Core.Runtime.ProcessRunner(), new WorkspaceIgnorePolicyService()),
                 new OpenCode.Workspace.Core.Runtime.DockerService(new OpenCode.Workspace.Core.Runtime.ProcessRunner()),
                 new NoOpTerminalLauncher());
 
@@ -120,7 +126,7 @@ public sealed class PortablePipelineIntegrationTests
         {
             if (Directory.Exists(tempRoot))
             {
-                Directory.Delete(tempRoot, recursive: true);
+                TestFileSystem.DeleteDirectoryIfExists(tempRoot);
             }
         }
     }
@@ -129,5 +135,28 @@ public sealed class PortablePipelineIntegrationTests
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private static bool CanRunGit()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            process?.WaitForExit(5000);
+            return process is not null && process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

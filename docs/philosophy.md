@@ -2,12 +2,14 @@
 
 ## There Is No Magic. Only Stuff.
 
-`opencode stuff` starts from a simple observation: most productive engineering environments are not built from a single breakthrough idea. They are built from accumulated useful things.
+If you want the concise overview first, see the [fact sheet](fact-sheet.md).
 
-Over time, engineers collect practices that improve quality, repeatability, and speed:
+`opencode stuff` starts from a simple observation: productive work rarely depends on one big idea. It depends on useful things that were discovered, written down, validated, and preserved.
+
+Over time, teams accumulate:
 
 - reproducible environments
-- version control
+- version history
 - automation
 - documentation
 - validation
@@ -15,113 +17,160 @@ Over time, engineers collect practices that improve quality, repeatability, and 
 - repeatable workflows
 - shared conventions
 
-None of these are mysterious on their own. Their value comes from being preserved, organized, and reused.
-
 The project philosophy is summarized by the phrase:
 
 > There is no magic. Only stuff.
 
-That is not an attempt to make engineering seem smaller or simpler than it is. It is a reminder that useful systems usually come from understandable parts assembled carefully over time.
+That is not a joke about complexity. It is an engineering reminder that reliable systems come from understandable parts assembled carefully over time.
 
 ## The Setup Problem
 
-Many effective working environments depend on a combination of:
-
-- repositories
-- containers
-- terminals
-- scripts
-- automation
-- documentation
-- knowledge bases
-- accumulated operational knowledge
+Many effective working environments depend on a combination of repositories, terminals, scripts, automation, notes, and operational knowledge.
 
 For developers, these systems are often tolerable because the setup steps become familiar. For everyone else, the setup itself becomes the barrier.
 
-This is a recurring problem. The practices that make engineering teams productive are often difficult to share with analysts, consultants, support teams, project managers, domain experts, and other non-developers because the environment depends on too many moving parts.
+Recreating useful environments manually is slow, error-prone, and difficult to share. It encourages drift: one machine has the fix, another has the script, and a third depends on memory that was never written down.
 
-Recreating those environments manually is slow, error-prone, and difficult to scale. It also encourages drift: one machine has a missing package, another has an undocumented workaround, and a third depends on knowledge that lives only in one person’s memory.
+`opencode stuff` exists because repeated setup work is wasteful, and because useful environments should be easier to preserve and reopen than they usually are.
 
-`opencode stuff` exists because repeated setup work is wasteful, and because useful environments should be easier to share than they usually are.
+## Durable Workspaces
+
+The project is built around the idea that the work should outlive the tool environment.
+
+Work should survive:
+
+- tool changes
+- runtime replacement
+- AI model changes
+- machine replacement
+
+To make that practical, the system separates three concepts:
+
+- Workspace: the durable body of work
+- Runtime: the disposable execution environment
+- Session: a temporary running instance attached to a workspace
+
+This separation exists because they change at different speeds.
+
+A workspace may live for months or years. A runtime may be upgraded or replaced many times. A session may last minutes or hours.
+
+Treating them as separate concepts makes recovery, migration, and replacement much easier to reason about.
+
+## Git As A Persistence Engine
+
+Git is used because it already solves several hard problems well: durability, history, branching, synchronization, and recovery.
+
+Most users should not need Git expertise to benefit from that.
+
+Instead, the normal experience is framed in workspace terms:
+
+- Save Point maps to a commit
+- Publish maps to a push
+- Working Copy usually maps to a local branch
+- Restore maps to recovering a prior state as a new copy
+
+Advanced Git remains available when needed.
+
+> Git provides the storage engine. The workspace provides the user experience.
+
+This is an important design constraint. The application should simplify Git for normal use without hiding the underlying repository from an expert who needs to inspect or recover it with standard tools.
+
+## Recoverability Over Convenience
+
+The project prefers recoverability over cleverness.
+
+That means:
+
+- lost work is failure
+- destructive actions should be avoided
+- restore as copy is preferred over overwrite
+- local recovery and off-machine backup are separate concerns
+- conflicts should be preserved for review rather than hidden
+
+> Conflict is not failure. Lost work is failure.
+
+This changes the default behavior.
+
+If the system is unsure whether work is protected, it should report that it is not protected. If publication is risky, it should stop and ask for review. If recovery is needed, it should create a new copy by default instead of mutating the current workspace in place.
+
+## Preserve Work, Not Noise
+
+Workspaces should preserve:
+
+- sources
+- knowledge
+- decisions
+- artifacts
+- history
+
+Workspaces should avoid preserving:
+
+- caches
+- temporary files
+- rebuildable dependencies
+- machine-specific state
+
+> Preserve work. Ignore noise.
+
+Lost work is worse than an oversized repository.
+
+That is why unknown hidden folders are reviewed instead of being silently ignored, and why durable artifacts are preserved even when they make the workspace larger.
+
+## Knowledge Work
+
+The project is not only about software development.
+
+Workspaces are also relevant for:
+
+- analysts
+- researchers
+- consultants
+- technical writers
+- engineers
+
+These users produce more than code. They also produce sources, decisions, artifacts, knowledge, and history.
+
+The workspace model is intended to preserve that broader body of work, not just a source tree.
 
 ## Packaging Useful Things
 
 The purpose of `opencode stuff` is not to pretend complexity does not exist. Complexity is often real and necessary.
 
-The goal is to package complexity into reusable, portable units.
+The goal is to package complexity into reusable, inspectable, portable units.
 
-This distinction matters. The project is not based on hidden behavior or a claim that infrastructure, tooling, or automation can disappear. Instead, it tries to make those things inspectable, repeatable, and easier to distribute.
+That means keeping the implementation readable enough that contributors can understand how a workspace works, while keeping the day-to-day user experience focused on opening, saving, publishing, and recovering work.
 
-The inspirations are practical rather than ideological. The project sits somewhere between:
+## Preserve Discoveries
 
-- GitHub Codespaces
-- Docker Compose
-- Vagrant
-- reproducible CI environments
-- workstation provisioning
-- classic LAMP/XAMPP-style installer bundles
+Useful discoveries should not remain accidental.
 
-All of these systems address some version of the same problem: once a working environment has been assembled, how can it be preserved and recreated without relying on memory or heroic effort?
-
-## Workspaces as Portable Units
-
-The central concept in `opencode stuff` is the workspace.
-
-A workspace is a portable package containing the tools, knowledge, automation, and documentation required to perform a task.
-
-In principle, a user should be able to:
-
-- install a workspace
-- open a workspace
-- start working
-
-without first becoming an expert in Git, Docker, Linux, CI/CD, MCP, or other implementation details.
-
-That does not mean those details are unimportant. It means they should be carried by the workspace instead of being rediscovered by every new user.
-
-The preferred implementation today combines:
-
-- a Windows desktop experience
-- Docker Compose
-- Ubuntu-based container environments
-
-This provides a predictable runtime while keeping the user-facing workflow relatively simple. The implementation details remain important, but they should stay behind the basic experience of opening and using a workspace.
-
-Over time, the same logical workspace should also be portable across local machines, shared development servers, remote Linux hosts, containers, and cloud environments.
-
-## Preserving Discoveries
-
-Engineering productivity often improves when useful discoveries are preserved instead of repeated.
-
-In practice, that tends to follow a familiar progression:
+In practice, preservation often follows a progression:
 
 - a lesson becomes documentation
 - a repeated lesson becomes automation
 - a recurring mistake becomes validation
-- a proven workflow becomes a reusable workspace
+- a useful checkpoint becomes a Save Point
+- a proven workflow becomes reusable workspace structure
+- a useful result becomes durable knowledge
 
 This is one of the main ideas behind the repository.
 
-Useful knowledge should not remain accidental. If a team has already learned how to assemble a good environment, connect the right tools, document the workflow, and avoid predictable mistakes, that work should become something others can reuse.
+Save Points, validation, reusable workflows, and durable knowledge are all ways of turning one-time effort into assets that can be reused later.
 
-`opencode stuff` treats workspaces as a way to preserve those discoveries in an operational form.
-
-## Why the Satchel?
+## Why The Satchel?
 
 The project’s visual metaphor is a satchel: a bag of useful things.
 
-That idea is loosely inspired by Nakor from Raymond E. Feist’s Riftwar novels. Readers do not need to know the character to understand the reference. Nakor is memorable because he insists that there is no magic, only useful things accumulated over time and applied appropriately.
+It is not a bag of surprises. It is a bag of prepared, reusable, and understandable things that were worth keeping.
 
 That is the relevant part of the metaphor.
 
-`opencode stuff` is not interested in mystical abstractions. It is interested in carrying the right tools, the right notes, the right automation, and the right conventions so they are available when needed.
-
-The satchel is therefore a practical symbol: not a bag of surprises, but a bag of prepared, reusable, and useful things.
+`opencode stuff` is interested in carrying the right tools, the right notes, the right automation, and the right conventions so they remain available when needed.
 
 ## Closing Thoughts
 
-At its core, `opencode stuff` is a way to package useful tools, knowledge, automation, and documentation into reproducible workspaces that can be shared and reused.
+At its core, `opencode stuff` is an attempt to make useful work easier to preserve, reopen, recover, and reuse.
 
-It assumes that productive environments are usually built from many small, understandable parts. It also assumes that those parts become far more valuable when they are preserved, organized, and made portable.
+It assumes that productive environments are built from many small, understandable parts. It also assumes those parts become far more valuable when they are durable, portable, and recoverable instead of temporary and machine-bound.
 
 There is no magic. Only stuff.

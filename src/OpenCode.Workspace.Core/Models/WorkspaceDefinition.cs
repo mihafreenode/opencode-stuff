@@ -12,6 +12,12 @@ public sealed class WorkspaceDefinition
     [YamlMember(Alias = "workspace")]
     public WorkspaceMetadata Workspace { get; init; } = new();
 
+    [YamlMember(Alias = "provider")]
+    public WorkspaceProviderDefinition Provider { get; init; } = new();
+
+    [YamlMember(Alias = "runtime")]
+    public WorkspaceRuntimeDefinition Runtime { get; init; } = new();
+
     [YamlMember(Alias = "features")]
     public List<string> Features { get; init; } = new();
 
@@ -33,11 +39,29 @@ public sealed class WorkspaceDefinition
 
 public sealed class WorkspaceMetadata
 {
+    [YamlMember(Alias = "id")]
+    public string Id { get; init; } = string.Empty;
+
     [YamlMember(Alias = "name")]
     public string Name { get; init; } = string.Empty;
 
     [YamlMember(Alias = "image")]
     public string Image { get; init; } = "ubuntu:24.04";
+}
+
+public sealed class WorkspaceProviderDefinition
+{
+    [YamlMember(Alias = "type")]
+    public string Type { get; init; } = "git";
+
+    [YamlMember(Alias = "url")]
+    public string? Url { get; init; }
+}
+
+public sealed class WorkspaceRuntimeDefinition
+{
+    [YamlMember(Alias = "default")]
+    public string Default { get; init; } = "default";
 }
 
 /// <summary>
