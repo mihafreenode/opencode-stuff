@@ -117,8 +117,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("completion.bash", shellInit);
         Assert.Contains("COLORTERM=truecolor", shellInit);
         Assert.Contains("LC_ALL", shellInit);
-        Assert.Contains("opencode -s || true", workspaceShell);
-        Assert.Contains("opencode -s", workspaceShell);
+        Assert.Contains("opencode session list", workspaceShell);
+        Assert.Contains("opencode --session", workspaceShell);
+        Assert.Contains("Found 0 OpenCode sessions. Starting new session.", workspaceShell);
         Assert.Contains("screen-256color", screenConfig);
         Assert.Contains("defutf8 on", screenConfig);
     }

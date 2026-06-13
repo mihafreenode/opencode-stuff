@@ -49,7 +49,7 @@ public sealed class AttachArtifactsGenerator
         builder.AppendLine("Write-Host \"[attach] User: opencode\"");
         builder.AppendLine("Write-Host \"[attach] Container: $containerName\"");
         builder.AppendLine("Write-Host \"[attach] Command: $dockerExe exec -it --user opencode -w /workspace $containerName bash -lc <diagnostics>\"");
-        builder.AppendLine("& $dockerExe exec -it --user opencode -w /workspace $containerName bash -lc 'echo TERM=$TERM; echo LANG=$LANG; echo LC_ALL=$LC_ALL; screen -v; printf '\''UTF8: ✓ λ € — • │ ─  \\n'\''; exec bash'");
+        builder.AppendLine("& $dockerExe exec -it --user opencode -w /workspace $containerName bash -lc 'echo TERM=$TERM; echo LANG=$LANG; echo LC_ALL=$LC_ALL; opencode session list || true; printf '\''UTF8: ✓ λ € — • │ ─  \\n'\''; exec bash'");
         return builder.ToString();
     }
 

@@ -96,6 +96,15 @@ msgstr "Copy Path"
 msgid "actions.cancel"
 msgstr "Cancel"
 
+msgid "actions.ok"
+msgstr "OK"
+
+msgid "actions.yes"
+msgstr "Yes"
+
+msgid "actions.no"
+msgstr "No"
+
 msgid "actions.viewError"
 msgstr "View Error"
 
@@ -319,7 +328,40 @@ msgid "dialog.restartForUpdate.title"
 msgstr "Update Required"
 
 msgid "dialog.restartForUpdate.message"
-msgstr "Workspace '{0}' needs to restart to apply changes.\n\nContinue with update and restart?"
+msgstr "The workspace must restart to apply the update.\n\nRestart now?"
+
+msgid "dialog.singleInstance.title"
+msgstr "OpenCode Workspace Manager"
+
+msgid "dialog.singleInstance.activated"
+msgstr "OpenCode Workspace Manager is already running. The existing window was activated."
+
+msgid "dialog.singleInstance.notActivated"
+msgstr "OpenCode Workspace Manager is already running. Close the existing window before starting another instance."
+
+msgid "dialog.branchNameRequired.title"
+msgstr "Branch Name Required"
+
+msgid "dialog.branchNameRequired.message"
+msgstr "Enter a branch name."
+
+msgid "dialog.invalidBranchName.title"
+msgstr "Invalid Branch Name"
+
+msgid "dialog.invalidBranchName.message"
+msgstr "Enter a valid branch name."
+
+msgid "dialog.branchExists.title"
+msgstr "Branch Already Exists"
+
+msgid "dialog.branchExists.message"
+msgstr "That branch already exists. Use the existing branch instead?"
+
+msgid "dialog.uncommittedChanges.title"
+msgstr "Uncommitted Local Changes Present"
+
+msgid "dialog.uncommittedChanges.message"
+msgstr "Uncommitted local changes are present. Creating or switching branches will keep those changes. Nothing will be discarded. Continue?"
 
 msgid "empty.selection.title"
 msgstr "Select a Workspace"

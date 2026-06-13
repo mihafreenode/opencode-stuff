@@ -211,7 +211,7 @@ public sealed class WorkspaceSafetyServiceTests
             DateTimeOffset.UtcNow.AddMinutes(-2));
 
         Assert.Equal(WorkspaceSafetyLevel.NeedsReview, snapshot.OverallStatus);
-        Assert.Equal("Your local work is safe. Create a Working Copy before publishing from a protected branch.", snapshot.Message);
+        Assert.Equal("Working directly on protected branch.", snapshot.Message);
     }
 
     [Fact]

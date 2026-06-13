@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#f3f4f6"/>
+  <rect x="32" y="32" width="896" height="476" rx="20" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>
+  <text x="480" y="220" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="32" fill="#111827">TODO: replace with screenshot of detected repository summary</text>
+  <text x="480" y="280" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#4b5563">Show branch, default branch, dirty status, and remote origin</text>
+</svg>

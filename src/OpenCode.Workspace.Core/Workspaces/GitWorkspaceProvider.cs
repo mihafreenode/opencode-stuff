@@ -1,4 +1,3 @@
-using System.Globalization;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
@@ -8,29 +7,33 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
 {
     private readonly ProcessRunner _processRunner;
     private readonly WorkspaceIgnorePolicyService _ignorePolicyService;
+    private readonly GitRepositoryService _gitRepositoryService;
 
     public GitWorkspaceProvider(ProcessRunner processRunner, WorkspaceIgnorePolicyService? ignorePolicyService = null)
     {
         _processRunner = processRunner;
         _ignorePolicyService = ignorePolicyService ?? new WorkspaceIgnorePolicyService();
+        _gitRepositoryService = new GitRepositoryService(processRunner);
     }
 
     public string Type => "git";
+
+    public GitRepositoryService RepositoryService => _gitRepositoryService;
 
     public async Task InitializeWorkspaceAsync(WorkspacePaths paths, WorkspaceDefinition definition, bool createInitialSavePoint, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         EnsureProviderType(definition);
 
-        if (!(await IsRepositoryAsync(paths.RootPath, cancellationToken)))
+        if (!(await _gitRepositoryService.IsRepositoryAsync(paths.RootPath, cancellationToken)))
         {
             await RunGitAsync(paths.RootPath, ["init", "-b", "main"], log, cancellationToken);
         }
 
-        await EnsureRemoteConfiguredAsync(paths.RootPath, definition.Provider.Url, log, cancellationToken);
+        await _gitRepositoryService.EnsureRemoteConfiguredAsync(paths.RootPath, definition.Provider.Url, log, cancellationToken);
 
         if (createInitialSavePoint)
         {
-            var hasCommit = await HasCommitsAsync(paths.RootPath, cancellationToken);
+            var hasCommit = await _gitRepositoryService.HasCommitsAsync(paths.RootPath, cancellationToken);
             if (!hasCommit)
             {
                 await CreateSavePointAsync(paths, definition, "Create initial workspace Save Point", log, cancellationToken);
@@ -45,103 +48,30 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
     public async Task<WorkspaceGitState> GetGitStateAsync(WorkspacePaths paths, WorkspaceDefinition definition, CancellationToken cancellationToken = default)
     {
         EnsureProviderType(definition);
-
-        if (!(await IsRepositoryAsync(paths.RootPath, cancellationToken)))
-        {
-            return new WorkspaceGitState
-            {
-                IsRepository = false,
-                StatusSummary = "Git is not initialized.",
-            };
-        }
-
-        var statusResult = await TryRunGitAsync(paths.RootPath, ["status", "--porcelain"], cancellationToken);
-        var remoteResult = await TryRunGitAsync(paths.RootPath, ["remote", "-v"], cancellationToken);
-        var branchResult = await TryRunGitAsync(paths.RootPath, ["branch", "--show-current"], cancellationToken);
-        var trackingResult = await TryRunGitAsync(paths.RootPath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cancellationToken);
-        var latestCommitResult = await TryRunGitAsync(paths.RootPath, ["log", "-1", "--format=%H|%cI"], cancellationToken);
-        var conflictResult = await TryRunGitAsync(paths.RootPath, ["diff", "--name-only", "--diff-filter=U"], cancellationToken);
-
-        var remoteLine = remoteResult.StandardOutputLines.FirstOrDefault(line => line.Contains("(fetch)", StringComparison.OrdinalIgnoreCase))?.Trim() ?? string.Empty;
-        var remoteParts = remoteLine.Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries);
-        var remoteName = remoteParts.Length > 0 ? remoteParts[0] : string.Empty;
-        var remoteUrl = remoteParts.Length > 1 ? remoteParts[1] : string.Empty;
-        var currentBranch = branchResult.StandardOutput.Trim();
-        var trackingBranch = trackingResult.IsSuccess ? trackingResult.StandardOutput.Trim() : string.Empty;
-        var isProtectedBranch = WorkingCopyNaming.IsProtectedBranch(currentBranch);
-        var isSafeWorkingCopy = WorkingCopyNaming.IsSafeWorkingCopy(currentBranch);
-
-        var aheadCount = 0;
-        var behindCount = 0;
-        if (!string.IsNullOrWhiteSpace(trackingBranch))
-        {
-            var aheadBehindResult = await TryRunGitAsync(paths.RootPath, ["rev-list", "--left-right", "--count", $"{trackingBranch}...HEAD"], cancellationToken);
-            if (aheadBehindResult.IsSuccess)
-            {
-                var counts = aheadBehindResult.StandardOutput.Trim().Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries);
-                if (counts.Length == 2)
-                {
-                    _ = int.TryParse(counts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out behindCount);
-                    _ = int.TryParse(counts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out aheadCount);
-                }
-            }
-        }
-
-        var uncommittedCount = 0;
-        var untrackedCount = 0;
-        foreach (var line in statusResult.StandardOutputLines.Select(item => item.Trim()).Where(item => !string.IsNullOrWhiteSpace(item)))
-        {
-            if (line.StartsWith("??", StringComparison.Ordinal))
-            {
-                untrackedCount++;
-            }
-            else
-            {
-                uncommittedCount++;
-            }
-        }
-
-        var latestSha = string.Empty;
-        DateTimeOffset? latestUtc = null;
-        if (latestCommitResult.IsSuccess)
-        {
-            var parts = latestCommitResult.StandardOutput.Trim().Split('|', 2);
-            if (parts.Length == 2)
-            {
-                latestSha = parts[0];
-                if (DateTimeOffset.TryParse(parts[1], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
-                {
-                    latestUtc = parsed;
-                }
-            }
-        }
-
-        var conflictingFiles = conflictResult.StandardOutputLines
-            .Select(line => line.Trim())
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var inspection = await _gitRepositoryService.InspectAsync(paths.RootPath, cancellationToken);
 
         return new WorkspaceGitState
         {
-            IsRepository = true,
-            HasRemoteConfigured = !string.IsNullOrWhiteSpace(remoteName),
-            RemoteName = remoteName,
-            RemoteUrl = remoteUrl,
-            WorkingCopyName = isSafeWorkingCopy ? currentBranch : string.Empty,
-            CurrentBranch = currentBranch,
-            TrackingBranch = trackingBranch,
-            AheadCount = aheadCount,
-            BehindCount = behindCount,
-            LatestCommitSha = latestSha,
-            LatestCommitUtc = latestUtc,
-            HasUncommittedChanges = uncommittedCount > 0,
-            UncommittedChangeCount = uncommittedCount,
-            UntrackedFileCount = untrackedCount,
-            StatusSummary = BuildStatusSummary(uncommittedCount, untrackedCount, aheadCount, behindCount, currentBranch, trackingBranch, conflictingFiles.Count),
-            IsProtectedBranch = isProtectedBranch,
-            IsSafeWorkingCopy = isSafeWorkingCopy,
-            ConflictingFiles = conflictingFiles,
+            IsRepository = inspection.IsRepository,
+            HasRemoteConfigured = inspection.HasRemoteConfigured,
+            RemoteName = inspection.RemoteName,
+            RemoteUrl = inspection.RemoteUrl,
+            WorkingCopyName = inspection.WorkingCopyName,
+            CurrentBranch = inspection.CurrentBranch,
+            DefaultBranch = inspection.DefaultBranch,
+            TrackingBranch = inspection.TrackingBranch,
+            AheadCount = inspection.AheadCount,
+            BehindCount = inspection.BehindCount,
+            LatestCommitSha = inspection.LatestCommitSha,
+            LatestCommitUtc = inspection.LatestCommitUtc,
+            HasUncommittedChanges = inspection.HasUncommittedChanges,
+            UncommittedChangeCount = inspection.UncommittedChangeCount,
+            UntrackedFileCount = inspection.UntrackedFileCount,
+            StatusSummary = inspection.StatusSummary,
+            IsProtectedBranch = inspection.IsProtectedBranch,
+            IsSafeWorkingCopy = inspection.IsSafeWorkingCopy,
+            IsWorkspaceBranch = inspection.IsWorkspaceBranch,
+            ConflictingFiles = inspection.ConflictingFiles ?? [],
         };
     }
 
@@ -289,7 +219,10 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
             return CreateBlockedReview(gitState, "Your work is protected locally. Configure remote backup before publishing a review Working Copy.");
         }
 
-        var reviewBranch = await GetUniqueBranchNameAsync(paths.RootPath, WorkingCopyNaming.CreateReview(Environment.UserName, definition.Workspace.Name, DateTimeOffset.UtcNow), cancellationToken);
+        var reviewBranch = await _gitRepositoryService.GetUniqueBranchNameAsync(
+            paths.RootPath,
+            WorkingCopyNaming.CreateReview(Environment.UserName, definition.Workspace.Name, DateTimeOffset.UtcNow),
+            cancellationToken);
         await RunGitAsync(paths.RootPath, ["push", gitState.RemoteName, $"HEAD:refs/heads/{reviewBranch}"], log, cancellationToken);
 
         return new WorkspacePublishReview
@@ -343,31 +276,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
             return;
         }
 
-        var desiredBranchName = await GetUniqueBranchNameAsync(
-            repositoryRoot,
-            WorkingCopyNaming.Create(Environment.UserName, workspaceTitle, DateTimeOffset.UtcNow),
-            cancellationToken);
-
-        await RunGitAsync(repositoryRoot, ["checkout", "-b", desiredBranchName], log, cancellationToken);
-    }
-
-    private async Task<string> GetUniqueBranchNameAsync(string repositoryRoot, string baseBranchName, CancellationToken cancellationToken)
-    {
-        var candidate = baseBranchName;
-        var suffix = 2;
-        while (await BranchExistsAsync(repositoryRoot, candidate, cancellationToken))
-        {
-            candidate = $"{baseBranchName}-{suffix}";
-            suffix++;
-        }
-
-        return candidate;
-    }
-
-    private async Task<bool> BranchExistsAsync(string repositoryRoot, string branchName, CancellationToken cancellationToken)
-    {
-        var result = await TryRunGitAsync(repositoryRoot, ["show-ref", "--verify", $"refs/heads/{branchName}"], cancellationToken);
-        return result.IsSuccess;
+        var desiredBranchName = await _gitRepositoryService.CreateUniqueWorkspaceBranchNameAsync(repositoryRoot, workspaceTitle, DateTimeOffset.UtcNow, cancellationToken);
+        await _gitRepositoryService.CreateBranchAsync(repositoryRoot, desiredBranchName, log, cancellationToken);
     }
 
     private async Task<WorkspacePublishReview> TrySafeUpdateAsync(string repositoryRoot, WorkspaceGitState gitState, Action<CommandLogEntry>? log, CancellationToken cancellationToken)

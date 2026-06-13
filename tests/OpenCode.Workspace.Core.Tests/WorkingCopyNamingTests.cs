@@ -37,4 +37,18 @@ public sealed class WorkingCopyNamingTests
     {
         Assert.True(WorkingCopyNaming.IsSafeWorkingCopy("users/miha/workspace-safety-20260613-1542"));
     }
+
+    [Fact]
+    public void CreateImportedWorkspace_SanitizesTitleAndIncludesTimestamp()
+    {
+        var branchName = WorkingCopyNaming.CreateImportedWorkspace("My Project", new DateTimeOffset(2026, 6, 13, 14, 30, 0, TimeSpan.Zero));
+
+        Assert.Equal("workspace/my-project-20260613-1430", branchName);
+    }
+
+    [Fact]
+    public void IsWorkspaceBranch_ReturnsTrueForWorkspacePrefix()
+    {
+        Assert.True(WorkingCopyNaming.IsWorkspaceBranch("workspace/my-project-20260613-1430"));
+    }
 }

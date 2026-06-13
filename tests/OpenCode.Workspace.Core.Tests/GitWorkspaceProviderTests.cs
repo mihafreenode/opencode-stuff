@@ -24,7 +24,7 @@ public sealed class GitWorkspaceProviderTests
             var state = await provider.GetGitStateAsync(WorkspacePathBuilder.Build(rootPath), definition);
 
             Assert.True(state.IsSafeWorkingCopy);
-            Assert.Matches(@"^users/[a-z0-9-]+/[a-z0-9-]+-\d{8}-\d{4}(-\d+)?$", state.CurrentBranch);
+            Assert.Matches(@"^workspace/[a-z0-9-]+-\d{8}-\d{4}(-\d+)?$", state.CurrentBranch);
         }
         finally
         {

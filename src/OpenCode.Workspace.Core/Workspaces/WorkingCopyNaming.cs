@@ -18,6 +18,12 @@ public static class WorkingCopyNaming
         return $"reviews/{safeUser}/{safeTitle}-{timestamp:yyyyMMdd-HHmm}";
     }
 
+    public static string CreateImportedWorkspace(string title, DateTimeOffset timestamp)
+    {
+        var safeTitle = SanitizeSegment(title, "workspace");
+        return $"workspace/{safeTitle}-{timestamp:yyyyMMdd-HHmm}";
+    }
+
     public static string SanitizeSegment(string value, string fallback)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -69,6 +75,17 @@ public static class WorkingCopyNaming
 
     public static bool IsSafeWorkingCopy(string branchName)
     {
-        return branchName.StartsWith("users/", StringComparison.OrdinalIgnoreCase);
+        return IsWorkspaceBranch(branchName);
+    }
+
+    public static bool IsWorkspaceBranch(string branchName)
+    {
+        if (string.IsNullOrWhiteSpace(branchName))
+        {
+            return false;
+        }
+
+        return branchName.StartsWith("users/", StringComparison.OrdinalIgnoreCase)
+            || branchName.StartsWith("workspace/", StringComparison.OrdinalIgnoreCase);
     }
 }

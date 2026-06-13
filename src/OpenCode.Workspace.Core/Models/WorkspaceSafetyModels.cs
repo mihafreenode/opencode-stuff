@@ -45,7 +45,9 @@ public sealed class WorkspaceAdvancedGitSnapshot
 {
     public string WorkingCopyName { get; init; } = string.Empty;
     public string CurrentBranch { get; init; } = string.Empty;
+    public string DefaultBranch { get; init; } = string.Empty;
     public string RemoteName { get; init; } = string.Empty;
+    public string RemoteUrl { get; init; } = string.Empty;
     public string RemoteBranch { get; init; } = string.Empty;
     public int AheadCount { get; init; }
     public int BehindCount { get; init; }
@@ -53,6 +55,7 @@ public sealed class WorkspaceAdvancedGitSnapshot
     public string StatusSummary { get; init; } = string.Empty;
     public bool PatchExportSupported { get; init; }
     public bool IsProtectedBranch { get; init; }
+    public bool IsWorkspaceBranch { get; init; }
     public List<string> ConflictingFiles { get; init; } = new();
     public string LastPatchExportPath { get; init; } = string.Empty;
 }
@@ -94,6 +97,7 @@ public sealed class WorkspaceGitState
     public string RemoteUrl { get; init; } = string.Empty;
     public string WorkingCopyName { get; init; } = string.Empty;
     public string CurrentBranch { get; init; } = string.Empty;
+    public string DefaultBranch { get; init; } = string.Empty;
     public string TrackingBranch { get; init; } = string.Empty;
     public int AheadCount { get; init; }
     public int BehindCount { get; init; }
@@ -105,6 +109,7 @@ public sealed class WorkspaceGitState
     public string StatusSummary { get; init; } = string.Empty;
     public bool IsProtectedBranch { get; init; }
     public bool IsSafeWorkingCopy { get; init; }
+    public bool IsWorkspaceBranch { get; init; }
     public List<string> ConflictingFiles { get; init; } = new();
 }
 

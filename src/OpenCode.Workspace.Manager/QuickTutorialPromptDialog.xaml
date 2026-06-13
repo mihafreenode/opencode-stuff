@@ -1,0 +1,30 @@
+<Window x:Class="OpenCode.Workspace.Manager.QuickTutorialPromptDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Show quick tutorial?"
+        Width="480"
+        Height="260"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Icon="Assets/Icons/opencode-stuff-app.ico">
+    <Border Padding="24">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="Show quick tutorial?" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1"
+                       Margin="0,14,0,0"
+                       Text="A short first-run walkthrough explains Workspaces, Open Workspace, Save Points, Checkpoints, Publish, and the safety panel."
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource BrandTextSecondaryBrush}" />
+            <DockPanel Grid.Row="2" Margin="0,22,0,0" LastChildFill="False">
+                <Button DockPanel.Dock="Right" Width="140" Height="36" Style="{StaticResource PrimaryButtonStyle}" Content="Start Tutorial" Click="StartTutorial_OnClick" />
+                <Button DockPanel.Dock="Right" Width="100" Height="36" Margin="0,0,10,0" Content="Skip" Click="Skip_OnClick" />
+            </DockPanel>
+        </Grid>
+    </Border>
+</Window>

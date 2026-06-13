@@ -96,6 +96,15 @@ msgstr "Kopiraj pot"
 msgid "actions.cancel"
 msgstr "Prekliči"
 
+msgid "actions.ok"
+msgstr "V redu"
+
+msgid "actions.yes"
+msgstr "Da"
+
+msgid "actions.no"
+msgstr "Ne"
+
 msgid "actions.viewError"
 msgstr "Prikaži napako"
 
@@ -319,7 +328,40 @@ msgid "dialog.restartForUpdate.title"
 msgstr "Potrebna je posodobitev"
 
 msgid "dialog.restartForUpdate.message"
-msgstr "Delovni prostor '{0}' se mora znova zagnati, da uporabi spremembe.\n\nŽelite nadaljevati s posodobitvijo in ponovnim zagonom?"
+msgstr "Delovni prostor se mora znova zagnati, da uporabi posodobitev.\n\nŽelite zdaj znova zagnati?"
+
+msgid "dialog.singleInstance.title"
+msgstr "OpenCode Workspace Manager"
+
+msgid "dialog.singleInstance.activated"
+msgstr "OpenCode Workspace Manager že deluje. Obstoječe okno je bilo aktivirano."
+
+msgid "dialog.singleInstance.notActivated"
+msgstr "OpenCode Workspace Manager že deluje. Zaprite obstoječe okno, preden zaženete drugo instanco."
+
+msgid "dialog.branchNameRequired.title"
+msgstr "Potrebno je ime veje"
+
+msgid "dialog.branchNameRequired.message"
+msgstr "Vnesite ime veje."
+
+msgid "dialog.invalidBranchName.title"
+msgstr "Neveljavno ime veje"
+
+msgid "dialog.invalidBranchName.message"
+msgstr "Vnesite veljavno ime veje."
+
+msgid "dialog.branchExists.title"
+msgstr "Veja že obstaja"
+
+msgid "dialog.branchExists.message"
+msgstr "Ta veja že obstaja. Želite uporabiti obstoječo vejo?"
+
+msgid "dialog.uncommittedChanges.title"
+msgstr "Prisotne so neoddane krajevne spremembe"
+
+msgid "dialog.uncommittedChanges.message"
+msgstr "Prisotne so neoddane krajevne spremembe. Ustvarjanje ali preklop veje bo te spremembe ohranilo. Nič ne bo zavrženo. Želite nadaljevati?"
 
 msgid "empty.selection.title"
 msgstr "Izberite delovni prostor"

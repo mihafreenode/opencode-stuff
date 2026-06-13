@@ -35,7 +35,9 @@ public sealed class WorkspaceSafetyService
         {
             WorkingCopyName = gitState.WorkingCopyName,
             CurrentBranch = gitState.CurrentBranch,
+            DefaultBranch = gitState.DefaultBranch,
             RemoteName = gitState.RemoteName,
+            RemoteUrl = gitState.RemoteUrl,
             RemoteBranch = gitState.TrackingBranch,
             AheadCount = gitState.AheadCount,
             BehindCount = gitState.BehindCount,
@@ -43,6 +45,7 @@ public sealed class WorkspaceSafetyService
             StatusSummary = gitState.StatusSummary,
             PatchExportSupported = gitState.IsRepository,
             IsProtectedBranch = gitState.IsProtectedBranch,
+            IsWorkspaceBranch = gitState.IsWorkspaceBranch,
             ConflictingFiles = gitState.ConflictingFiles,
         };
 
@@ -82,7 +85,7 @@ public sealed class WorkspaceSafetyService
             {
                 OverallStatus = WorkspaceSafetyLevel.NeedsReview,
                 Headline = "Needs Review",
-                Message = "Your local work is safe. Create a Working Copy before publishing from a protected branch.",
+                Message = "Working directly on protected branch.",
                 WorkingCopyName = gitState.WorkingCopyName,
                 LocalRecovery = localRecovery,
                 Backup = backup,
@@ -137,7 +140,9 @@ public sealed class WorkspaceSafetyService
             {
                 OverallStatus = WorkspaceSafetyLevel.PartiallyProtected,
                 Headline = "Partially Protected",
-                Message = "Your work is protected locally. Configure remote backup to protect against machine loss.",
+                Message = gitState.IsWorkspaceBranch
+                    ? $"Working on isolated workspace branch {gitState.CurrentBranch}."
+                    : "Your work is protected locally. Configure remote backup to protect against machine loss.",
                 WorkingCopyName = gitState.WorkingCopyName,
                 LocalRecovery = localRecovery,
                 Backup = backup,
@@ -165,7 +170,9 @@ public sealed class WorkspaceSafetyService
         {
             OverallStatus = WorkspaceSafetyLevel.Protected,
             Headline = "Protected",
-            Message = "Local recovery and remote backup are both up to date.",
+            Message = gitState.IsWorkspaceBranch
+                ? $"Working on isolated workspace branch {gitState.CurrentBranch}."
+                : "Local recovery and remote backup are both up to date.",
             WorkingCopyName = gitState.WorkingCopyName,
             LocalRecovery = localRecovery,
             Backup = backup,

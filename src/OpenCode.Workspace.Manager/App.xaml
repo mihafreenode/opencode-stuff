@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:OpenCode.Workspace.Manager">
     <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <SolidColorBrush x:Key="BrandBackgroundBrush" Color="#FFF7F8FA" />
         <SolidColorBrush x:Key="BrandSurfaceBrush" Color="#FFFFFFFF" />
         <SolidColorBrush x:Key="BrandSurfaceSubtleBrush" Color="#FFF8FAFC" />

@@ -86,6 +86,12 @@ Workspace persistence provider settings.
 - `type`: `git` by default
 - `url`: optional remote backup location
 
+**WSL vs Docker**
+
+Use a WSL workspace if your workflow depends on Windows tools such as PowerShell, Visual Studio, MSBuild, WPF, or MSIX packaging.
+
+Use a Docker workspace when portability, reproducibility, and Linux-based development or automation are the primary goals.
+
 ### `runtime`
 
 Runtime selection settings.

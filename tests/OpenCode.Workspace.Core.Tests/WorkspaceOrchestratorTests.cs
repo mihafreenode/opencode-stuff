@@ -109,6 +109,7 @@ public sealed class WorkspaceOrchestratorTests
                 Paths = reloaded.Paths,
                 RuntimeState = WorkspaceRuntimeState.Running,
                 Safety = reloaded.Safety,
+                Session = reloaded.Session,
                 AppliedState = reloaded.AppliedState,
                 UpdateRequired = reloaded.UpdateRequired,
             };

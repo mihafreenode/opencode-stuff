@@ -401,6 +401,219 @@ powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet build OpenCod
 
 Do not attempt to build WPF inside Linux containers.
 
+## Windows GUI Debugging from WSL
+
+OpenCode Workspace Manager is a Windows WPF application, while many automation and development workflows run from WSL.
+
+### Preferred approach
+
+Use repository scripts under:
+
+- `scripts/windows-debug/`
+
+instead of ad-hoc PowerShell commands or temporary scripts.
+
+Examples:
+
+- `launch-manager.ps1`
+- `activate-manager.ps1`
+- `inspect-manager.ps1`
+- `screenshot-manager.ps1`
+- `kill-manager.ps1`
+
+### Why
+
+WSL to PowerShell automation has several common failure modes:
+
+- PowerShell variable expansion inside quoted shell commands
+- here-string parsing issues
+- `MainWindowHandle` not immediately available
+- WPF windows appearing before initialization completes
+- single-instance activation redirecting launches
+- UI Automation timing issues
+- foreground window restrictions
+- startup dialogs blocking interaction
+
+Repository scripts provide a stable, reusable interface and avoid repeated debugging.
+
+### Rules for agents
+
+When interacting with the Windows GUI:
+
+1. prefer `scripts/windows-debug` helpers
+2. avoid large inline `powershell.exe -Command` invocations
+3. prefer `.ps1` files over temporary one-off commands
+4. expect `MainWindowHandle` to be unavailable during startup
+5. use retry loops when locating windows
+6. verify the application is responsive before attempting UI automation
+7. treat UI automation failures as potential product issues, not only automation issues
+8. if a button cannot be clicked, investigate:
+
+   - modal dialogs
+   - startup initialization
+   - `CanExecute` logic
+   - disabled controls
+   - invisible overlays
+   - UI thread blocking
+
+9. capture diagnostics before adding more automation
+10. prefer fixing product issues over building increasingly complex automation workarounds
+
+### Startup responsiveness
+
+The main window must become interactive before background refresh completes.
+
+Background operations must not block:
+
+- `Create Workspace`
+- `Help`
+- `Quick Tutorial`
+- basic navigation
+
+Avoid:
+
+- `.Result`
+- `.Wait()`
+- `GetAwaiter().GetResult()`
+
+on UI startup paths.
+
+Treat sync-over-async in startup code as a high-priority defect.
+
+### Screenshot recording
+
+For walkthrough documentation:
+
+1. prefer real screenshots
+2. use `screenshot-manager.ps1` when possible
+3. manual screenshots are acceptable
+4. never generate fake screenshots
+5. clearly mark placeholders as `TODO`
+
+Documentation accuracy is more important than automation completeness.
+
+### Validation workflow
+
+Before recording screenshots:
+
+1. launch clean application instance
+2. verify `Create Workspace` is clickable
+3. verify `Help > Quick Tutorial` works
+4. verify startup diagnostics complete
+5. verify no startup deadlocks or UI blocking
+6. only then proceed with walkthrough capture
+
+The goal is reliable product validation, not maximum automation.
+
+## Exception-First GUI Debugging
+
+When investigating Windows GUI issues, prefer exception capture over UI automation.
+
+### Principle
+
+If a user action appears to do nothing:
+
+- do not immediately assume UI automation failed
+- do not immediately add more click simulation
+- first determine whether the application threw an exception
+
+Many WPF issues manifest as:
+
+- button appears clickable
+- command executes
+- exception is thrown
+- dialog never appears
+- automation reports failure to click
+
+The real problem is often an exception path rather than a UI interaction problem.
+
+### Required diagnostics
+
+Capture:
+
+- startup diagnostics
+- command execution diagnostics
+- unhandled exceptions
+- task exceptions
+- dialog creation exceptions
+
+Prefer logging:
+
+- timestamp
+- command name
+- exception type
+- exception message
+- stack trace
+
+Example:
+
+```text
+[2026-06-13 14:32:11.123]
+CreateWorkspaceCommand START
+
+[2026-06-13 14:32:11.145]
+CreateWorkspaceCommand FAILED
+System.InvalidOperationException <message>
+
+<stack trace>
+```
+
+### Investigation workflow
+
+When a button appears broken:
+
+1. verify command `CanExecute`
+2. verify command `Execute` is reached
+3. capture exceptions
+4. review diagnostics log
+5. fix root cause
+6. only then investigate automation
+
+### UI automation guidance
+
+Avoid loops such as:
+
+- add more click retries
+- add more coordinate clicking
+- add more window activation logic
+
+until exception logging has been reviewed.
+
+Exception evidence is usually higher-value than automation evidence.
+
+### Preferred debugging order
+
+1. startup diagnostics
+2. exception logging
+3. command execution logging
+4. window or dialog creation logging
+5. manual validation
+6. UI automation
+
+### Create Workspace investigations
+
+If `Create Workspace` does not open, check:
+
+- `CanExecute` state
+- command execution log
+- dialog creation log
+- `startup-diagnostics.log`
+- captured exception log
+
+before modifying automation scripts.
+
+### WSL To Windows validation
+
+When validating from WSL:
+
+- launch application
+- reproduce issue
+- inspect `startup-diagnostics.log`
+- inspect exception logs
+- only then use `activate-manager.ps1` or UI automation helpers
+
+The goal is to find the product defect, not to prove a click occurred.
+
 ## Release Readiness
 
 Before MSIX packaging or release work, prioritize validation of:

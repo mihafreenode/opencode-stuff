@@ -1,0 +1,113 @@
+<Window x:Class="OpenCode.Workspace.Manager.QuickTutorialWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding WindowTitle}"
+        Width="1160"
+        Height="760"
+        MinWidth="1040"
+        MinHeight="680"
+        WindowStartupLocation="CenterOwner"
+        Icon="Assets/Icons/opencode-stuff-app.ico">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="20" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="{Binding WindowTitle}" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Margin="0,6,0,0" Text="Short first-run guide for safe workspace use." Foreground="{StaticResource BrandTextSecondaryBrush}" />
+            </StackPanel>
+            <Button DockPanel.Dock="Right" Width="110" Height="36" Content="{Binding CloseLabel}" Click="Close_OnClick" />
+        </DockPanel>
+
+        <Border Grid.Row="1" Grid.Column="0" Padding="16" Margin="0,20,0,0" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="{Binding StepListLabel}" FontSize="18" FontWeight="SemiBold" />
+                <ListBox Margin="0,12,0,0"
+                         ItemsSource="{Binding Steps}"
+                         SelectedItem="{Binding SelectedStep}"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,10" Padding="10" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,6,0,0" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="2" Margin="0,20,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Padding="20" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedStep.Title}" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,10,0,0" Text="{Binding SelectedStep.Summary}" FontSize="15" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+
+                        <Border Margin="0,20,0,0" Padding="10" MinHeight="460" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="10" BorderThickness="1">
+                            <Grid>
+                                <Button Background="Transparent" BorderThickness="0" Padding="0" Click="OpenImage_OnClick" Visibility="{Binding SelectedStepHasImage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Grid>
+                                        <Image Source="{Binding SelectedStepImagePath}" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8,4" Background="#B2000000" CornerRadius="8">
+                                            <TextBlock Text="Click to zoom" Foreground="White" FontSize="12" FontWeight="SemiBold" />
+                                        </Border>
+                                    </Grid>
+                                </Button>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding SelectedStepHasImage, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                    <TextBlock Text="Placeholder" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource BrandTextMutedBrush}" HorizontalAlignment="Center" />
+                                    <TextBlock Margin="0,12,0,0" Text="{Binding SelectedStep.Image.Title}" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,10,0,0" Text="{Binding SelectedStep.Image.Caption}" MaxWidth="560" TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Margin="0,10,0,0" Text="{Binding SelectedStepImageCaption}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" Visibility="{Binding SelectedStepHasImage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                        <TextBlock Margin="0,20,0,8" Text="What to notice" FontSize="16" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding SelectedStep.Image.Callouts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock DockPanel.Dock="Left" Margin="0,0,8,0" Text="•" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Margin="0,20,0,8" Text="How to use it" FontSize="16" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding SelectedStep.Bullets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock DockPanel.Dock="Left" Margin="0,0,8,0" Text="•" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <DockPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,20,0,0" LastChildFill="False">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Text="{Binding StepCounter}" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+            <Button DockPanel.Dock="Right" Width="120" Height="36" Margin="8,0,0,0" Content="{Binding NextOrFinishLabel}" Click="NextOrFinish_OnClick" />
+            <Button DockPanel.Dock="Right" Width="120" Height="36" Content="{Binding PreviousLabel}" Command="{Binding PreviousCommand}" />
+        </DockPanel>
+    </Grid>
+</Window>

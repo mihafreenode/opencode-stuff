@@ -55,7 +55,7 @@ public sealed class WindowsCapabilityIntegrationTests
     }
 
     [Fact]
-    public void AttachCommandGeneration_UsesExpectedScreenRestoreContract()
+    public void AttachCommandGeneration_UsesExpectedNativeSessionAttachContract()
     {
         var builder = new AttachCommandBuilder();
         var command = builder.Build(new OpenCode.Workspace.Core.Models.WorkspaceSnapshot
@@ -76,6 +76,11 @@ public sealed class WindowsCapabilityIntegrationTests
                 Backup = new OpenCode.Workspace.Core.Models.WorkspaceBackupSnapshot(),
                 IgnorePolicy = new OpenCode.Workspace.Core.Models.WorkspaceIgnorePolicyReview(),
                 AdvancedGit = new OpenCode.Workspace.Core.Models.WorkspaceAdvancedGitSnapshot(),
+            },
+            Session = new OpenCode.Workspace.Core.Models.WorkspaceSessionSnapshot
+            {
+                SessionName = "smoke-data-workspace",
+                State = OpenCode.Workspace.Core.Models.WorkspaceSessionState.Resumable,
             },
         });
 

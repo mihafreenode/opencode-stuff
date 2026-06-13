@@ -1,5 +1,6 @@
 using System.Text;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Generation;
 
@@ -102,10 +103,7 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or code generation instead.");
         builder.AppendLine("set -euo pipefail");
         builder.AppendLine();
-        builder.AppendLine("# This helper starts OpenCode directly for the v0.1 attach workflow.");
-        builder.AppendLine("# Screen-based durable restore remains generated separately, but the default");
-        builder.AppendLine("# release path prefers the simpler direct OpenCode shell because it currently");
-        builder.AppendLine("# renders more reliably in Windows Terminal.");
+        builder.AppendLine("# This helper resumes the latest matching OpenCode session for the workspace.");
         builder.AppendLine("export HOME=/home/opencode");
         builder.AppendLine("export TERM=${TERM:-xterm-256color}");
         builder.AppendLine("export COLORTERM=truecolor");
@@ -119,8 +117,44 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("test -w /home/opencode/.local/share/opencode/log");
         builder.AppendLine("cd /workspace");
         builder.AppendLine();
-        builder.AppendLine("opencode -s || true");
-        builder.AppendLine("exec bash --rcfile /home/opencode/.bashrc -i");
+        builder.AppendLine("resume_session='' ");
+        builder.AppendLine("session_count=0");
+        builder.AppendLine("if command -v opencode >/dev/null 2>&1; then");
+        builder.AppendLine("  session_output=$(opencode session list 2>/dev/null)");
+        builder.AppendLine("  session_status=$?");
+        builder.AppendLine("  if [ \"$session_status\" -eq 0 ]; then");
+        builder.AppendLine("    mapfile -t session_ids < <(printf '%s\n' \"$session_output\" | tail -n +3 | awk 'NF {print $1}')");
+        builder.AppendLine("    session_count=${#session_ids[@]}");
+        builder.AppendLine("    if [ \"$session_count\" -gt 0 ]; then");
+        builder.AppendLine("      for session_id in \"${session_ids[@]}\"; do");
+        builder.AppendLine("        if opencode export \"$session_id\" 2>/dev/null | node -e \"let data='';process.stdin.on('data',d=>data+=d);process.stdin.on('end',()=>{try{const j=JSON.parse(data);process.exit(j && j.info && j.info.directory === '/workspace' ? 0 : 1)}catch{process.exit(2)}})\"; then");
+        builder.AppendLine("          resume_session=\"$session_id\"");
+        builder.AppendLine("          break");
+        builder.AppendLine("        fi");
+        builder.AppendLine("      done");
+        builder.AppendLine("    fi");
+        builder.AppendLine("  fi");
+        builder.AppendLine("else");
+        builder.AppendLine("  session_status=1");
+        builder.AppendLine("fi");
+        builder.AppendLine("if [ \"${session_status:-1}\" -ne 0 ]; then");
+        builder.AppendLine("  printf '[attach] Failed to query OpenCode sessions. Starting new session.\\n'");
+        builder.AppendLine("  exec opencode");
+        builder.AppendLine("fi");
+        builder.AppendLine("if [ \"$session_count\" -eq 0 ]; then");
+        builder.AppendLine("  printf '[attach] Found 0 OpenCode sessions. Starting new session.\\n'");
+        builder.AppendLine("  exec opencode");
+        builder.AppendLine("fi");
+        builder.AppendLine("if [ -n \"$resume_session\" ]; then");
+        builder.AppendLine("  printf '[attach] Found %s OpenCode sessions. Resuming %s.\\n' \"$session_count\" \"$resume_session\"");
+        builder.AppendLine("  if opencode --session \"$resume_session\"; then");
+        builder.AppendLine("    exit 0");
+        builder.AppendLine("  fi");
+        builder.AppendLine("  printf '[attach] Failed to resume OpenCode session %s. Starting new session.\\n' \"$resume_session\"");
+        builder.AppendLine("else");
+        builder.AppendLine("  printf '[attach] Found %s OpenCode sessions. Starting new session.\\n' \"$session_count\"");
+        builder.AppendLine("fi");
+        builder.AppendLine("exec opencode");
         return builder.ToString();
     }
 

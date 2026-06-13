@@ -24,10 +24,17 @@
         </Grid.ColumnDefinitions>
 
         <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Padding="20" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
-            <StackPanel>
-                <TextBlock Text="{Binding DashboardTitle}" FontSize="28" FontWeight="SemiBold" />
-                <TextBlock Margin="0,8,0,0" Text="{Binding DashboardSubtitle}" Foreground="{StaticResource BrandTextSecondaryBrush}" TextWrapping="Wrap" />
-            </StackPanel>
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="{Binding DashboardTitle}" FontSize="28" FontWeight="SemiBold" />
+                    <TextBlock Margin="0,8,0,0" Text="{Binding DashboardSubtitle}" Foreground="{StaticResource BrandTextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Menu DockPanel.Dock="Right" Background="Transparent" BorderThickness="0">
+                    <MenuItem Header="Help">
+                        <MenuItem Header="Quick Tutorial" Click="OpenQuickTutorial_OnClick" />
+                    </MenuItem>
+                </Menu>
+            </DockPanel>
         </Border>
 
         <ScrollViewer Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto">
@@ -94,7 +101,7 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Padding="12" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
-                        Visibility="{Binding HasAnyWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        Visibility="{Binding ShowWorkspaceListState, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ListBox x:Name="WorkspaceListBox"
                              ItemsSource="{Binding Workspaces}"
                              SelectedItem="{Binding SelectedWorkspace}"
@@ -130,6 +137,29 @@
                 </Border>
 
                 <Border Grid.Column="0" Grid.ColumnSpan="3" Padding="48" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
+                        Visibility="{Binding ShowWorkspaceLoadingState, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
+                        <TextBlock Text="{Binding WorkspaceLoadingTitle}" FontSize="30" FontWeight="SemiBold" TextAlignment="Center" />
+                        <TextBlock Margin="0,12,0,0" Text="{Binding WorkspaceLoadingDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                        <ProgressBar Margin="0,24,0,0" Height="8" IsIndeterminate="True" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="0" Grid.ColumnSpan="3" Padding="48" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
+                        Visibility="{Binding ShowWorkspaceErrorState, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
+                        <TextBlock Text="{Binding WorkspaceLoadFailedTitle}" FontSize="30" FontWeight="SemiBold" TextAlignment="Center" />
+                        <TextBlock Margin="0,12,0,0" Text="{Binding WorkspaceLoadFailedDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                        <Button Margin="0,24,0,0"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="18,10"
+                                Content="{Binding RefreshLabel}"
+                                Command="{Binding RefreshCommand}"
+                                HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="0" Grid.ColumnSpan="3" Padding="48" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
                         Visibility="{Binding ShowOnboardingState, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
                         <TextBlock Text="{Binding OnboardingTitle}" FontSize="30" FontWeight="SemiBold" TextAlignment="Center" />
@@ -147,16 +177,16 @@
                 </Border>
 
                 <Border Grid.Column="2" Padding="16" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1"
-                        Visibility="{Binding HasAnyWorkspaces, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        Visibility="{Binding ShowWorkspaceDetailsPane, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid>
                         <StackPanel Visibility="{Binding ShowWorkspaceDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="{Binding SelectedWorkspaceTitle}" FontSize="20" FontWeight="SemiBold" />
                             <WrapPanel Margin="0,16,0,0">
                                 <Button Style="{StaticResource PrimaryButtonStyle}" Padding="14,8" Content="{Binding SelectedPrimaryActionLabel}" Command="{Binding PrimaryWorkspaceActionCommand}" />
                                 <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding ShutDownLabel}" Command="{Binding ShutDownWorkspaceCommand}" IsEnabled="{Binding CanShutDownSelectedWorkspace}" />
-                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateSavePointLabel}" Command="{Binding CreateSavePointCommand}" />
-                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateCheckpointLabel}" Command="{Binding CreateCheckpointCommand}" />
-                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding PublishLabel}" Command="{Binding PublishWorkspaceCommand}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateSavePointLabel}" Command="{Binding CreateSavePointCommand}" ToolTip="{Binding CreateSavePointHelpText}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding CreateCheckpointLabel}" Command="{Binding CreateCheckpointCommand}" ToolTip="{Binding CreateCheckpointHelpText}" />
+                                <Button Margin="8,0,0,0" Padding="14,8" Content="{Binding PublishLabel}" Command="{Binding PublishWorkspaceCommand}" ToolTip="{Binding PublishHelpText}" />
                             </WrapPanel>
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Padding="14,8" Content="{Binding OpenFolderLabel}" Command="{Binding OpenFolderCommand}" />
@@ -175,6 +205,20 @@
                             <TextBlock Text="{Binding SelectedWorkspaceName}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedPathLabel}" FontWeight="SemiBold" />
                             <TextBox Text="{Binding SelectedWorkspacePath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" />
+                            <TextBlock Margin="0,12,0,4" Text="Repository Path" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedRepositoryPath}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Current Branch" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceCurrentBranch}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Default Branch" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceDefaultBranch}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Remote Origin" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceRemoteOrigin}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Dirty Working Tree" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceDirtyStatus}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Branch Status" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceBranchModeStatus}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Session" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceSessionStatus}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedImageLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceImage}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedFeaturesLabel}" FontWeight="SemiBold" />
@@ -187,8 +231,9 @@
                             <Border Margin="0,16,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8">
                                 <StackPanel>
                                     <TextBlock Text="{Binding SafetyTitle}" FontSize="18" FontWeight="SemiBold" />
-                                    <TextBlock Margin="0,8,0,0" Text="{Binding SelectedWorkspaceSafetyStatus}" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding SelectedWorkspaceSafetyStatus}" FontWeight="SemiBold" ToolTip="{Binding SelectedWorkspaceSafetyStatusHelpText}" />
                                     <TextBlock Margin="0,4,0,0" Text="{Binding SelectedWorkspaceSafetyMessage}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,4,0,0" Text="{Binding SelectedWorkspaceSafetyStatusHelpText}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
 
                                     <TextBlock Margin="0,12,0,4" Text="{Binding LocalRecoveryLabel}" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding WorkingCopyLabel}" FontWeight="SemiBold" />

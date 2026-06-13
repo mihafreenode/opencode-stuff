@@ -28,6 +28,7 @@ public sealed class WorkspaceOrchestrator
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly DockerService _dockerService;
     private readonly ITerminalLauncher _terminalLauncher;
+    private readonly OpenCodeSessionService _openCodeSessionService = new();
 
     public WorkspaceOrchestrator(
         WorkspaceYamlService workspaceYamlService,
@@ -68,6 +69,9 @@ public sealed class WorkspaceOrchestrator
     public IReadOnlyList<WorkspaceRecord> LoadWorkspaceRecords() => _workspaceRepository.LoadAll();
 
     public WorkspaceSnapshot LoadSnapshot(string rootPath)
+        => Task.Run(() => LoadSnapshotAsync(rootPath)).GetAwaiter().GetResult();
+
+    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default)
     {
         var paths = WorkspacePathBuilder.Build(rootPath);
         var definition = _workspaceYamlService.Read(paths.WorkspaceYamlPath);
@@ -76,6 +80,7 @@ public sealed class WorkspaceOrchestrator
             {
                 Name = definition.Workspace.Name,
                 RootPath = rootPath,
+                RepositoryPath = rootPath,
                 CreatedUtc = DateTimeOffset.UtcNow,
                 LastOpenedUtc = DateTimeOffset.UtcNow,
             };
@@ -85,30 +90,32 @@ public sealed class WorkspaceOrchestrator
         var updateRequired = IsUpdateRequired(paths, generatedArtifacts, appliedState);
         var latestCheckpoint = _workspaceCheckpointService.GetLatest(paths.CheckpointIndexPath);
         var lastSuccessfulPublishUtc = _workspaceTimelineService.GetLastPublishUtc(paths.TimelinePath);
-        var gitState = _workspaceProvider.GetGitStateAsync(paths, definition).GetAwaiter().GetResult();
+        var gitState = await _workspaceProvider.GetGitStateAsync(paths, definition, cancellationToken);
         var ignorePolicyReview = _workspaceIgnorePolicyService.ReviewWorkspace(paths.RootPath);
         var safety = _workspaceSafetyService.Build(gitState, latestCheckpoint, lastSuccessfulPublishUtc, ignorePolicyReview);
 
-        var state = File.Exists(paths.ComposePath) && Directory.Exists(paths.RootPath)
-            ? WorkspaceRuntimeState.Unknown
-            : WorkspaceRuntimeState.Stopped;
-
-        return new WorkspaceSnapshot
+        var snapshot = new WorkspaceSnapshot
         {
             Record = record,
             Definition = definition,
             Paths = paths,
-            RuntimeState = state,
+            RuntimeState = File.Exists(paths.ComposePath) && Directory.Exists(paths.RootPath)
+                ? WorkspaceRuntimeState.Unknown
+                : WorkspaceRuntimeState.Stopped,
             Safety = safety,
+            Session = new WorkspaceSessionSnapshot
+            {
+                SessionName = definition.Workspace.Id,
+                State = WorkspaceSessionState.Unknown,
+            },
             AppliedState = appliedState,
             UpdateRequired = updateRequired,
         };
-    }
 
-    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default)
-    {
-        var snapshot = LoadSnapshot(rootPath);
         var runtimeState = await GetRuntimeStateAsync(snapshot, cancellationToken);
+        var sessionState = runtimeState == WorkspaceRuntimeState.Running
+            ? await GetSessionStateAsync(definition, cancellationToken)
+            : WorkspaceSessionState.NotRunning;
         return new WorkspaceSnapshot
         {
             Record = snapshot.Record,
@@ -116,6 +123,11 @@ public sealed class WorkspaceOrchestrator
             Paths = snapshot.Paths,
             RuntimeState = runtimeState,
             Safety = snapshot.Safety,
+            Session = new WorkspaceSessionSnapshot
+            {
+                SessionName = definition.Workspace.Id,
+                State = sessionState,
+            },
             AppliedState = snapshot.AppliedState,
             UpdateRequired = snapshot.UpdateRequired,
         };
@@ -135,6 +147,8 @@ public sealed class WorkspaceOrchestrator
         {
             Name = definition.Workspace.Name,
             RootPath = rootPath,
+            RepositoryPath = rootPath,
+            SourceType = WorkspaceSourceType.NewWorkspace,
             CreatedUtc = now,
             LastOpenedUtc = now,
             LastOperationName = "Create Workspace",
@@ -180,6 +194,124 @@ public sealed class WorkspaceOrchestrator
         };
 
         return CreateWorkspace(rootPath, definition, log);
+    }
+
+    public async Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryRoot, string? workspaceName = null, CancellationToken cancellationToken = default)
+    {
+        var gitProvider = GetGitWorkspaceProvider();
+        var inspection = await gitProvider.RepositoryService.InspectAsync(repositoryRoot, cancellationToken);
+        if (!inspection.IsRepository)
+        {
+            throw new InvalidOperationException("The selected folder is not a Git checkout.");
+        }
+
+        var folderName = string.IsNullOrWhiteSpace(workspaceName)
+            ? Path.GetFileName(repositoryRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            : workspaceName.Trim();
+
+        return new ExistingGitCheckoutPlan
+        {
+            RepositoryPath = repositoryRoot,
+            WorkspaceName = folderName,
+            Repository = inspection,
+        };
+    }
+
+    public async Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var gitProvider = GetGitWorkspaceProvider();
+        var repositoryService = gitProvider.RepositoryService;
+        var inspection = await repositoryService.InspectAsync(request.RepositoryPath, cancellationToken);
+        if (!inspection.IsRepository)
+        {
+            throw new InvalidOperationException("The selected folder is not a Git checkout.");
+        }
+
+        var selectedBranch = inspection.CurrentBranch;
+        switch (request.BranchMode)
+        {
+            case ExistingGitCheckoutBranchMode.CreateTemporaryWorkspaceBranch:
+                selectedBranch = await repositoryService.CreateUniqueWorkspaceBranchNameAsync(request.RepositoryPath, request.WorkspaceName, DateTimeOffset.UtcNow, cancellationToken);
+                await repositoryService.CreateBranchAsync(request.RepositoryPath, selectedBranch, log, cancellationToken);
+                break;
+            case ExistingGitCheckoutBranchMode.CreateNamedFeatureBranch:
+                var branchName = request.NamedBranch.Trim();
+                var validation = await repositoryService.ValidateBranchNameAsync(request.RepositoryPath, branchName, cancellationToken);
+                if (!validation.IsValid)
+                {
+                    throw new InvalidOperationException(validation.Message);
+                }
+
+                selectedBranch = branchName;
+                if (validation.BranchExists)
+                {
+                    if (!request.ReuseExistingNamedBranch)
+                    {
+                        throw new InvalidOperationException("That branch already exists. Choose a different name or confirm that you want to use the existing branch.");
+                    }
+
+                    await repositoryService.CheckoutBranchAsync(request.RepositoryPath, selectedBranch, log, cancellationToken);
+                }
+                else
+                {
+                    await repositoryService.CreateBranchAsync(request.RepositoryPath, selectedBranch, log, cancellationToken);
+                }
+
+                break;
+            case ExistingGitCheckoutBranchMode.UseCurrentBranch:
+            default:
+                break;
+        }
+
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Id = WorkspacePathBuilder.Slugify(request.WorkspaceName),
+                Name = request.WorkspaceName.Trim(),
+                Image = "ubuntu:24.04",
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = gitProvider.Type,
+                Url = inspection.RemoteUrl,
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+            },
+            Features = new List<string> { "core" },
+            Services = new List<string>(),
+            Skills = new List<string>(),
+            Mcp = new List<string>(),
+        };
+
+        var paths = WorkspacePathBuilder.Build(request.RepositoryPath);
+        CreateFolderStructure(paths);
+        EnsureWorkspaceScaffolding(paths, definition);
+        WriteGeneratedFiles(paths, definition);
+
+        var now = DateTimeOffset.UtcNow;
+        _workspaceRepository.Save(new WorkspaceRecord
+        {
+            Name = definition.Workspace.Name,
+            RootPath = request.RepositoryPath,
+            RepositoryPath = request.RepositoryPath,
+            SourceType = WorkspaceSourceType.ExistingGitCheckout,
+            ImportedFromExistingCheckout = true,
+            OriginalDefaultBranch = inspection.DefaultBranch,
+            SelectedWorkspaceBranch = selectedBranch,
+            RemoteOriginUrl = inspection.RemoteUrl,
+            CreatedUtc = now,
+            LastOpenedUtc = now,
+            LastOperationName = "Import Existing Git Checkout",
+            LastOperationResult = "Imported existing Git checkout.",
+            LastOperationSucceeded = true,
+            LastOperationUtc = now,
+        });
+
+        _workspaceTimelineService.Append(paths.TimelinePath, "imported-git-checkout", "Imported existing Git checkout", $"Imported checkout at '{request.RepositoryPath}' on branch '{selectedBranch}'.");
+        return await LoadSnapshotAsync(request.RepositoryPath, cancellationToken);
     }
 
     public async Task RegenerateAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
@@ -579,6 +711,42 @@ public sealed class WorkspaceOrchestrator
         }
     }
 
+    private async Task<WorkspaceSessionState> GetSessionStateAsync(WorkspaceDefinition definition, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _dockerService.ListOpenCodeSessionsAsync(definition, cancellationToken: cancellationToken);
+            if (!result.IsSuccess)
+            {
+                return WorkspaceSessionState.Unknown;
+            }
+
+            var sessionId = await _openCodeSessionService.SelectLatestSessionForWorkspaceAsync(
+                result.StandardOutput,
+                async session =>
+                {
+                    try
+                    {
+                        var export = await _dockerService.ExportOpenCodeSessionAsync(definition, session, cancellationToken: cancellationToken);
+                        return _openCodeSessionService.TryGetSessionDirectory(export.StandardOutput);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                },
+                "/workspace");
+
+            return string.IsNullOrWhiteSpace(sessionId)
+                ? WorkspaceSessionState.NotRunning
+                : WorkspaceSessionState.Resumable;
+        }
+        catch
+        {
+            return WorkspaceSessionState.Unknown;
+        }
+    }
+
     private static void EnsureSuccess(ProcessResult result, string failureMessage)
     {
         if (result.IsSuccess)
@@ -597,5 +765,15 @@ public sealed class WorkspaceOrchestrator
             Source = source,
             Message = message,
         });
+    }
+
+    private GitWorkspaceProvider GetGitWorkspaceProvider()
+    {
+        if (_workspaceProvider is GitWorkspaceProvider gitProvider)
+        {
+            return gitProvider;
+        }
+
+        throw new InvalidOperationException("The configured workspace provider does not support existing Git checkout import.");
     }
 }

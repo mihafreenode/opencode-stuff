@@ -56,14 +56,13 @@ public partial class RemoveWorkspaceDialog : Window
     {
         if (SelectedChoice == WorkspaceRemovalChoice.DeleteFiles)
         {
-            var confirmation = MessageBox.Show(
+            var confirmation = AppDialogService.ShowYesNo(
                 this,
-                string.Format(_localization.Get("remove.confirmDeleteFiles.message"), WorkspaceName, WorkspacePath),
+                _localization,
                 _localization.Get("remove.confirmDeleteFiles.title"),
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                string.Format(_localization.Get("remove.confirmDeleteFiles.message"), WorkspaceName, WorkspacePath));
 
-            if (confirmation != MessageBoxResult.Yes)
+            if (confirmation != AppDialogResult.Yes)
             {
                 return;
             }

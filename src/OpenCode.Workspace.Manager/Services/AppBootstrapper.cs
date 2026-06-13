@@ -40,6 +40,7 @@ public sealed class AppBootstrapper
         var hostCapabilities = new WindowsHostCapabilities(processRunner);
         var nerdFontInstaller = new NerdFontInstaller(processRunner);
         var savePointMessageService = new WorkspaceSavePointMessageService(processRunner);
+        var tutorialService = new QuickTutorialService(applicationBasePath, applicationDataRoot);
         var orchestrator = new WorkspaceOrchestrator(
             yamlService,
             repository,
@@ -60,6 +61,6 @@ public sealed class AppBootstrapper
 
         var localization = new PoLocalizationService(localizationRoot, languageCode);
         var diagnostics = new EnvironmentDiagnostics(processRunner);
-        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService);
+        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService, tutorialService);
     }
 }

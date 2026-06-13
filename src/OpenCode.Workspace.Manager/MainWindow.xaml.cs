@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using System.Windows.Input;
 using System.Windows.Media;
+using OpenCode.Workspace.Manager.Services;
 using OpenCode.Workspace.Manager.ViewModels;
 
 namespace OpenCode.Workspace.Manager;
@@ -10,6 +12,8 @@ public partial class MainWindow : Window
 {
     private ScrollViewer? _logScrollViewer;
     private bool _isLogAutoFollowEnabled = true;
+    private bool _hasPromptedForQuickTutorial;
+    private StartupDiagnosticsService? _diagnostics;
 
     public MainWindow()
     {
@@ -64,8 +68,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        _diagnostics?.Log($"Create Workspace clicked. CanStartCreateWorkspaceFlow={viewModel.CanStartCreateWorkspaceFlow} IsBusy={viewModel.IsBusyForDiagnostics} HasRunningWorkspace={viewModel.HasRunningWorkspace}.");
+
         if (!viewModel.CanStartCreateWorkspaceFlow)
         {
+            _diagnostics?.Log("Create Workspace click ignored because flow cannot start.");
             return;
         }
 
@@ -76,6 +83,46 @@ public partial class MainWindow : Window
         };
 
         dialog.ShowDialog();
+        _diagnostics?.Log("Create Workspace dialog closed.");
+    }
+
+    public void BeginPromptForQuickTutorialIfNeeded(StartupDiagnosticsService diagnostics)
+    {
+        _diagnostics = diagnostics;
+        Dispatcher.BeginInvoke(() => PromptForQuickTutorialIfNeeded(), DispatcherPriority.ApplicationIdle);
+    }
+
+    private void PromptForQuickTutorialIfNeeded()
+    {
+        if (_hasPromptedForQuickTutorial || DataContext is not MainWindowViewModel viewModel || !viewModel.ShouldPromptForQuickTutorial())
+        {
+            _diagnostics?.Log("Quick tutorial prompt skipped.");
+            return;
+        }
+
+        _hasPromptedForQuickTutorial = true;
+        _diagnostics?.Log("Showing quick tutorial prompt.");
+        var prompt = new QuickTutorialPromptDialog
+        {
+            Owner = this,
+            ShowInTaskbar = false,
+        };
+
+        var startTutorial = prompt.ShowDialog() == true;
+        _diagnostics?.Log($"Quick tutorial prompt result: startTutorial={startTutorial}.");
+        viewModel.MarkQuickTutorialPromptHandled();
+        if (startTutorial)
+        {
+            ShowQuickTutorial(viewModel);
+        }
+    }
+
+    private void OpenQuickTutorial_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            ShowQuickTutorial(viewModel);
+        }
     }
 
     private async void WorkspaceListBox_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -152,5 +199,19 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private void ShowQuickTutorial(MainWindowViewModel viewModel)
+    {
+        _diagnostics?.Log("Opening quick tutorial window.");
+        var tutorialWindow = new QuickTutorialWindow
+        {
+            Owner = this,
+            DataContext = viewModel.CreateQuickTutorialViewModel(),
+            ShowInTaskbar = false,
+        };
+
+        tutorialWindow.ShowDialog();
+        _diagnostics?.Log("Quick tutorial window closed.");
     }
 }

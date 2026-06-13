@@ -70,7 +70,7 @@ public sealed class WindowsDockerIntegrationTests
     }
 
     [SkippableFact]
-    public async Task AttachReadinessValidation_UsesNonInteractiveScreenChecks_WhenDockerAvailable()
+    public async Task AttachReadinessValidation_CanQueryOpenCodeSessions_WhenDockerAvailable()
     {
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var dockerCheck = await capabilities.CheckDockerDesktopAsync();
@@ -81,10 +81,7 @@ public sealed class WindowsDockerIntegrationTests
             inspect.StandardOutputLines.Any(line => line.Trim() == "smoke-data-workspace-workspace"),
             "Smoke workspace container is not running, so attach-readiness checks were skipped.");
 
-        var screenList = await new ProcessRunner().RunAsync("cmd.exe", ["/c", "docker", "exec", "smoke-data-workspace-workspace", "bash", "-lc", "screen -ls || true"]);
-        Assert.True(screenList.IsSuccess);
-
-        var screenReset = await new ProcessRunner().RunAsync("cmd.exe", ["/c", "docker", "exec", "smoke-data-workspace-workspace", "bash", "-lc", "screen -S opencode -X quit || true; screen -ls || true"]);
-        Assert.True(screenReset.IsSuccess);
+        var sessionList = await new ProcessRunner().RunAsync("cmd.exe", ["/c", "docker", "exec", "smoke-data-workspace-workspace", "bash", "-lc", "cd /workspace && opencode session list || true"]);
+        Assert.True(sessionList.IsSuccess);
     }
 }

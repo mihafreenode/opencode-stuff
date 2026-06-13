@@ -77,8 +77,14 @@ public sealed class PoLocalizationService
     private static string Unquote(string value)
     {
         var trimmed = value.Trim();
-        return trimmed.Length >= 2 && trimmed.StartsWith('"') && trimmed.EndsWith('"')
+        var unquoted = trimmed.Length >= 2 && trimmed.StartsWith('"') && trimmed.EndsWith('"')
             ? trimmed[1..^1]
             : trimmed;
+
+        return unquoted
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\\r", "\r", StringComparison.Ordinal)
+            .Replace("\\\"", "\"", StringComparison.Ordinal)
+            .Replace("\\\\", "\\", StringComparison.Ordinal);
     }
 }

@@ -52,6 +52,19 @@ public sealed class DockerService
     public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunDockerCommandAsync(arguments, null, log, cancellationToken);
 
+    public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", "cd /workspace && opencode session list || true" }, null, log, cancellationToken);
+    }
+
+    public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        var command = $"cd /workspace && opencode export {sessionId} || true";
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", command }, null, log, cancellationToken);
+    }
+
     public static string GetWorkspaceContainerName(WorkspaceDefinition definition) => $"{WorkspacePathBuilder.Slugify(definition.Workspace.Name)}-workspace";
 
     public static IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath)

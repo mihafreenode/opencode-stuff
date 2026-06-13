@@ -42,40 +42,60 @@
                         <TextBox Margin="0,6,0,0" Text="{Binding NewWorkspaceName, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Margin="0,4,0,0" Foreground="#FFB91C1C" Text="{Binding WorkspaceNameValidationMessage}" TextWrapping="Wrap" />
 
-                        <TextBlock Margin="0,14,0,0" Text="{Binding PathLabel}" FontWeight="SemiBold" />
-                        <TextBox Margin="0,6,0,0" Text="{Binding NewWorkspacePath, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
-                        <TextBlock Margin="0,4,0,0" Foreground="#FFB91C1C" Text="{Binding WorkspacePathValidationMessage}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,14,0,0" Text="Workspace source" FontWeight="SemiBold" />
+                        <StackPanel Margin="0,6,0,0">
+                            <RadioButton Content="Create new workspace" IsChecked="{Binding IsNewWorkspaceSource, Mode=OneWay}" Checked="NewWorkspaceSource_OnChecked" />
+                            <RadioButton Margin="0,8,0,0" Content="Use existing Git checkout" IsChecked="{Binding IsExistingGitCheckoutSource, Mode=OneWay}" Checked="ExistingGitCheckoutSource_OnChecked" />
+                        </StackPanel>
 
-                        <TextBlock Margin="0,14,0,0" Text="{Binding TemplateLabel}" FontWeight="SemiBold" />
-                        <ComboBox Margin="0,6,0,0" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="DisplayName" />
+                        <StackPanel Visibility="{Binding IsNewWorkspaceSource, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Margin="0,14,0,0" Text="{Binding PathLabel}" FontWeight="SemiBold" />
+                            <TextBox Margin="0,6,0,0" Text="{Binding NewWorkspacePath, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,4,0,0" Foreground="#FFB91C1C" Text="{Binding WorkspacePathValidationMessage}" TextWrapping="Wrap" />
+                        </StackPanel>
 
-                        <TextBlock Margin="0,14,0,0" Text="{Binding FeaturesLabel}" FontWeight="SemiBold" />
-                        <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableFeatures}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanChangeSelection}">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Description}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </CheckBox>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <StackPanel Visibility="{Binding IsExistingGitCheckoutSource, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Margin="0,14,0,0" Text="Existing repository" FontWeight="SemiBold" />
+                            <DockPanel Margin="0,6,0,0" LastChildFill="True">
+                                <Button DockPanel.Dock="Right" Width="110" Margin="10,0,0,0" Content="Browse..." Click="BrowseExistingRepository_OnClick" />
+                                <TextBox Text="{Binding ExistingRepositoryPath, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                            </DockPanel>
+                            <TextBlock Margin="0,4,0,0" Foreground="#FFB91C1C" Text="{Binding ExistingRepositoryPathValidationMessage}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="Workspace files stay inside the selected repository folder." TextWrapping="Wrap" />
+                        </StackPanel>
 
-                        <TextBlock Margin="0,14,0,0" Text="{Binding ServicesLabel}" FontWeight="SemiBold" />
-                        <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableServices}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Description}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </CheckBox>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <StackPanel Visibility="{Binding IsNewWorkspaceSource, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Margin="0,14,0,0" Text="{Binding TemplateLabel}" FontWeight="SemiBold" />
+                            <ComboBox Margin="0,6,0,0" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="DisplayName" />
+
+                            <TextBlock Margin="0,14,0,0" Text="{Binding FeaturesLabel}" FontWeight="SemiBold" />
+                            <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableFeatures}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanChangeSelection}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Description}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Margin="0,14,0,0" Text="{Binding ServicesLabel}" FontWeight="SemiBold" />
+                            <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableServices}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Description}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
                         <TextBlock Margin="0,18,0,0" Text="{Binding TerminalSettingsTitle}" FontSize="18" FontWeight="SemiBold" />
 

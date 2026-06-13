@@ -121,15 +121,17 @@ If that still fails, use the details below.
 The attach flow runs:
 
 ```bash
-screen -D -r opencode || exec screen -S opencode opencode -s
+opencode session list
+opencode --session <session-id>
 ```
 
 That means:
 
-1. try to restore an existing `screen` session named `opencode`
-2. if none exists, create a new one and start `opencode -s`
+1. look for an existing OpenCode session for the workspace
+2. resume the most recent matching session when one exists
+3. start a new OpenCode session when none exist
 
-If attach still fails, confirm the workspace was provisioned successfully and that `screen` and `opencode` exist inside the container.
+If attach still fails, confirm the workspace was provisioned successfully and that `opencode` exists inside the container.
 
 ## Attach Validation Note
 

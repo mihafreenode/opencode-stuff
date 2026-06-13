@@ -9,6 +9,12 @@ public sealed class WorkspaceRecord
 {
     public string Name { get; init; } = string.Empty;
     public string RootPath { get; init; } = string.Empty;
+    public string RepositoryPath { get; init; } = string.Empty;
+    public WorkspaceSourceType SourceType { get; init; } = WorkspaceSourceType.NewWorkspace;
+    public bool ImportedFromExistingCheckout { get; init; }
+    public string OriginalDefaultBranch { get; init; } = string.Empty;
+    public string SelectedWorkspaceBranch { get; init; } = string.Empty;
+    public string RemoteOriginUrl { get; init; } = string.Empty;
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset LastOpenedUtc { get; init; }
     public DateTimeOffset? LastPreparedUtc { get; init; }
@@ -16,6 +22,12 @@ public sealed class WorkspaceRecord
     public string? LastOperationResult { get; init; }
     public bool? LastOperationSucceeded { get; init; }
     public DateTimeOffset? LastOperationUtc { get; init; }
+}
+
+public enum WorkspaceSourceType
+{
+    NewWorkspace,
+    ExistingGitCheckout,
 }
 
 public sealed class WorkspacePaths
@@ -72,6 +84,20 @@ public sealed class WorkspaceSnapshot
     public required WorkspacePaths Paths { get; init; }
     public required WorkspaceRuntimeState RuntimeState { get; init; }
     public required WorkspaceSafetySnapshot Safety { get; init; }
+    public required WorkspaceSessionSnapshot Session { get; init; }
     public WorkspaceAppliedState? AppliedState { get; init; }
     public bool UpdateRequired { get; init; }
+}
+
+public sealed class WorkspaceSessionSnapshot
+{
+    public string SessionName { get; init; } = string.Empty;
+    public WorkspaceSessionState State { get; init; } = WorkspaceSessionState.Unknown;
+}
+
+public enum WorkspaceSessionState
+{
+    Unknown,
+    NotRunning,
+    Resumable,
 }
