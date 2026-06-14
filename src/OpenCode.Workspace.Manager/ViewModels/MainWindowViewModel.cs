@@ -335,6 +335,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspaceHasOracleDemo));
                 RaisePropertyChanged(nameof(SelectedOracleDemoStatus));
                 RaisePropertyChanged(nameof(OracleStartupStage));
+                RaisePropertyChanged(nameof(OracleOpenCodeGuidance));
                 RaisePropertyChanged(nameof(IsSqlDeveloperDetected));
                 RaisePropertyChanged(nameof(SqlDeveloperStatus));
                 RaisePropertyChanged(nameof(SelectedWorkspaceStatus));
@@ -617,10 +618,11 @@ public sealed class MainWindowViewModel : ObservableObject
     public string OracleDemoServiceName => "FREEPDB1";
     public string OracleDemoUsername => "demo_user";
     public string OracleDemoPassword => "demo_password";
-    public string OracleDemoProvisioningNote => "First provisioning downloads Oracle SQLcl from Oracle and requires internet access. After that, the demo database and tutorial run locally.";
+    public string OracleDemoProvisioningNote => "First provisioning downloads Oracle SQLcl from Oracle and requires internet access. After that, the demo database and tutorial run locally. OpenCode inside the workspace uses demo_user/demo_password@//oracle-demo:1521/FREEPDB1.";
     public string OracleStartupStage => SelectedWorkspaceHasOracleDemo && !string.IsNullOrWhiteSpace(_oracleStartupStageOverride)
         ? _oracleStartupStageOverride!
         : GetOracleStartupStageFromSnapshot();
+    public string OracleOpenCodeGuidance => GetOracleOpenCodeGuidance();
     public bool IsSqlDeveloperDetected => !string.IsNullOrWhiteSpace(_sqlDeveloperExecutablePath);
     public string SqlDeveloperStatus => IsSqlDeveloperDetected ? "SQL Developer detected" : "SQL Developer not detected";
     public string SqlDeveloperGuidance => IsSqlDeveloperDetected
@@ -924,12 +926,12 @@ public sealed class MainWindowViewModel : ObservableObject
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Managed Windows Terminal profile ensured for font '{snapshot.Definition.Terminal.Font.Family}'.");
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile: {_profileManager.GetProfileName(snapshot.Definition)}");
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Configured font: {resolvedFace}");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Terminal profile file: {_profileManager.GetFragmentFilePath()}");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile id: {_profileManager.GetProfileGuid(snapshot.Definition)}");
-                if (IsOracleDemoWorkspace(snapshot.Definition))
-                {
-                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Oracle PL/SQL Demo workspace created. Start Oracle from the Oracle Demo Database panel when you are ready to present.");
-                }
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Terminal profile file: {_profileManager.GetFragmentFilePath()}");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile id: {_profileManager.GetProfileGuid(snapshot.Definition)}");
+                    if (IsOracleDemoWorkspace(snapshot.Definition))
+                    {
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Oracle PL/SQL Demo workspace created. Start Oracle first from the Oracle Demo Database panel. OpenCode verification should wait until the panel shows Running and Ready.");
+                    }
 
                 currentStep = "workspace list refresh";
                 diagnosticsLog?.Invoke($"Create Workspace workspace list refresh started via {buttonSource}.");
@@ -944,7 +946,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 var isTimeout = exception is OperationCanceledException;
                 diagnosticsLog?.Invoke($"Create Workspace failed via {buttonSource} during '{currentStep}': {exception.Message}");
                 AppDialogService.ShowOk(
-                    Application.Current?.MainWindow,
+                    TryGetDialogOwner(),
                     _localization,
                     "Create Workspace Failed",
                     $"What happened: the workspace could not be fully created during '{currentStep}'.{Environment.NewLine}{Environment.NewLine}Why: {(isTimeout ? "The operation timed out while waiting for a repository or snapshot step to finish." : exception.Message)}{Environment.NewLine}{Environment.NewLine}How to fix it: review the dialog log, then retry. Generated files may already exist at:{Environment.NewLine}{requestedWorkspacePath}");
@@ -1205,7 +1207,7 @@ public sealed class MainWindowViewModel : ObservableObject
         await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
         if (IsOracleDemoWorkspace(snapshot.Definition))
         {
-            SetOracleStartupStage(openAfterUpdate ? "Ready" : "Not Provisioned");
+            SetOracleStartupStage(openAfterUpdate ? "Ready" : "Start Oracle first");
         }
         PersistWorkspaceRecord(snapshot, _localization.Get("operation.update"), _localization.Get("workspace.result.updated"), succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
 
@@ -1265,7 +1267,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         var confirmation = AppDialogService.ShowYesNo(
-            Application.Current?.MainWindow,
+            TryGetDialogOwner(),
             _localization,
             "Reset Oracle Demo Database",
             $"Reset deletes the local Oracle demo data volume for '{SelectedWorkspace.Name}'.\n\nThis removes the local demo schema, sample data, and any local Oracle changes in this workspace. Continue?");
@@ -1516,18 +1518,19 @@ public sealed class MainWindowViewModel : ObservableObject
         var snapshot = SelectedWorkspace.Snapshot;
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
         {
+            StatusMessage = "Start Oracle first. Oracle demo verification is only available after the local runtime is Running and Ready.";
             AppDialogService.ShowOk(
-                Application.Current?.MainWindow,
+                TryGetDialogOwner(),
                 _localization,
                 "Oracle Demo Database Not Running",
-                "Oracle container is not running.\n\nWhat happened: the local Oracle demo runtime is stopped.\nWhy: SQLcl and tutorial queries need the running local demo database.\nHow to fix it: start Oracle Demo Database from the Oracle panel and try again.");
+                "Start Oracle first.\n\nWhat happened: the local Oracle demo runtime is stopped.\nWhy: OpenCode verification and Oracle helper scripts need the running local demo database.\nHow to fix it: start Oracle Demo Database from the Oracle panel, wait for Running and Ready, then try again.");
             return;
         }
 
         if (snapshot.UpdateRequired || snapshot.AppliedState is null)
         {
             AppDialogService.ShowOk(
-                Application.Current?.MainWindow,
+                TryGetDialogOwner(),
                 _localization,
                 "SQLcl Not Ready Yet",
                 "SQLcl not downloaded yet.\n\nWhat happened: SQLcl is not installed in this workspace yet.\nWhy: the first Oracle provisioning run downloads SQLcl from Oracle.\nHow to fix it: start Oracle provisioning first with internet access, then try again.");
@@ -1567,7 +1570,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         AppDialogService.ShowOk(
-            Application.Current?.MainWindow,
+            TryGetDialogOwner(),
             _localization,
             string.Format(_localization.Get("dialog.workspaceError.title"), SelectedWorkspace.Name),
             SelectedWorkspace.LastOperationResult);
@@ -1937,7 +1940,7 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SelectedWorkspaceHasOracleDemo)
             {
                 AppDialogService.ShowOk(
-                    Application.Current?.MainWindow,
+                    TryGetDialogOwner(),
                     _localization,
                     "Oracle Demo Action Failed",
                     $"What happened: {exception.Message}{Environment.NewLine}{Environment.NewLine}Why: the Oracle demo action could not complete with the current local workspace state.{Environment.NewLine}{Environment.NewLine}How to fix it: review the Oracle panel status and the log output below, then retry the action. If provisioning was incomplete, start Oracle again with internet access.");
@@ -1963,13 +1966,34 @@ public sealed class MainWindowViewModel : ObservableObject
 
         return SelectedWorkspace.Snapshot.UpdateRequired || SelectedWorkspace.Snapshot.AppliedState is null
             ? "Not Provisioned"
-            : "Ready";
+            : "Start Oracle first";
+    }
+
+    private string GetOracleOpenCodeGuidance()
+    {
+        if (!SelectedWorkspaceHasOracleDemo || SelectedWorkspace is null)
+        {
+            return string.Empty;
+        }
+
+        if (SelectedWorkspace.Snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            return "Start Oracle first. OpenCode should not run Oracle verification until the Oracle Demo Database panel shows Running and Ready.";
+        }
+
+        if (SelectedWorkspace.Snapshot.UpdateRequired || SelectedWorkspace.Snapshot.AppliedState is null)
+        {
+            return "Finish Oracle provisioning first. OpenCode should use the known local demo connection and wait for the panel to show Running and Ready before verification.";
+        }
+
+        return "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and run scripts/verify-oracle-demo.sh.";
     }
 
     private void SetOracleStartupStage(string stage)
     {
         _oracleStartupStageOverride = stage;
         RaisePropertyChanged(nameof(OracleStartupStage));
+        RaisePropertyChanged(nameof(OracleOpenCodeGuidance));
     }
 
     private void ShowOracleActionError(string title, string whatHappened, string why, string howToFix)
@@ -1981,8 +2005,25 @@ public sealed class MainWindowViewModel : ObservableObject
             $"How to fix it: {howToFix}",
         });
 
-        AppDialogService.ShowOk(Application.Current?.MainWindow, _localization, title, message);
+        AppDialogService.ShowOk(TryGetDialogOwner(), _localization, title, message);
         StatusMessage = whatHappened;
+    }
+
+    private static Window? TryGetDialogOwner()
+    {
+        var application = Application.Current;
+        if (application is null)
+        {
+            return null;
+        }
+
+        var dispatcher = application.Dispatcher;
+        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished || !dispatcher.CheckAccess())
+        {
+            return null;
+        }
+
+        return application.MainWindow;
     }
 
     private void AppendCurrentLog(string source, string message)
@@ -2035,7 +2076,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private void AppendToVisibleLogCollection(WorkspaceLogLineViewModel line)
     {
         var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
+        if (dispatcher is null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished || dispatcher.CheckAccess())
         {
             CurrentLogLines.Add(line);
             CurrentLogText = string.Join(Environment.NewLine, CurrentLogLines.Select(item => item.Text));

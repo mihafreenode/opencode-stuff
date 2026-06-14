@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using OpenCode.Workspace.Manager;
 using OpenCode.Workspace.Manager.Services;
 
@@ -40,9 +41,11 @@ public sealed class WindowsBootstrapIntegrationTests
         Exception? captured = null;
         var thread = new Thread(() =>
         {
+            App? application = null;
+            MainWindow? window = null;
             try
             {
-                var application = Application.Current as App;
+                application = Application.Current as App;
                 if (application is null)
                 {
                     application = new App
@@ -52,17 +55,38 @@ public sealed class WindowsBootstrapIntegrationTests
                     application.InitializeComponent();
                 }
 
-                var window = new MainWindow();
+                window = new MainWindow();
                 Assert.NotNull(window);
-                application.Shutdown();
             }
             catch (Exception exception)
             {
                 captured = exception;
             }
+            finally
+            {
+                try
+                {
+                    if (window is not null)
+                    {
+                        window.Close();
+                    }
+
+                    if (application is not null)
+                    {
+                        application.Shutdown();
+                    }
+
+                    Dispatcher.CurrentDispatcher.InvokeShutdown();
+                }
+                catch (Exception exception)
+                {
+                    captured ??= exception;
+                }
+            }
         });
 
         thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
         thread.Start();
         thread.Join();
 

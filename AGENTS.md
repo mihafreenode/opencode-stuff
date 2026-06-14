@@ -353,6 +353,85 @@ Real interactive attach and focus behavior is a manual validation step.
 
 ## Testing Strategy
 
+## Windows Test Reliability Guidelines
+
+### Process-Global State
+
+Windows and WPF tests may interact with process-global resources including:
+
+- `Application.Current`
+- WPF `Dispatcher`
+- Windows Terminal configuration
+- Docker Desktop
+- Fonts and Windows capabilities
+- static caches and singleton services
+
+Tests must not assume a clean process-global state and must restore any state they modify.
+
+### WPF Testing
+
+When creating a real WPF `Application` in tests:
+
+- explicitly close created windows
+- call `Application.Shutdown()` when appropriate
+- shut down helper dispatchers
+- avoid leaving a live or partially shut-down `Application.Current`
+- verify dispatcher state before invoking UI operations
+
+Tests must remain safe when a dispatcher has already been shut down.
+
+### Process Execution
+
+All external process execution must:
+
+- use explicit timeouts
+- support cancellation
+- kill the entire process tree on timeout
+- dispose `Process` instances
+- clean up stdout and stderr readers
+- avoid indefinite waits
+
+A test that completes but leaves background process infrastructure running is considered a defect.
+
+### Docker-Based Tests
+
+Docker-dependent tests should:
+
+- detect prerequisites early
+- skip quickly when prerequisites are unavailable
+- avoid creating long-lived resources before skip decisions
+- apply explicit timeouts to all Docker commands
+- clean up all temporary workspaces and containers
+
+### Test Host Shutdown
+
+A successful test run is not sufficient.
+
+Validation must confirm:
+
+- all tests pass
+- `dotnet test` returns to the shell
+- no orphaned `dotnet`, `testhost`, `docker`, `powershell`, or helper processes remain
+- repeated runs behave consistently
+
+For shutdown-related issues, investigate:
+
+- `IAsyncLifetime`
+- fixtures
+- static state
+- timers
+- background threads
+- `FileSystemWatcher` instances
+- channels
+- dispatcher threads
+- process output readers
+
+### Parallel Execution
+
+Test projects that use process-global resources should disable parallel execution unless isolation has been explicitly validated.
+
+Reliability and determinism take precedence over parallel execution speed.
+
 Two integration test categories are required:
 
 ### Portable / Cross-Platform
