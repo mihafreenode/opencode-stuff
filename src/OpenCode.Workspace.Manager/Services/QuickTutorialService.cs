@@ -21,9 +21,9 @@ public sealed class QuickTutorialService
         _statePath = Path.Combine(applicationDataRoot, "tutorial-state.json");
     }
 
-    public QuickTutorialDocument LoadTutorial()
+    public QuickTutorialDocument LoadTutorial(string? workspaceRootPath = null)
     {
-        using var stream = File.OpenRead(_tutorialPath);
+        using var stream = File.OpenRead(ResolveTutorialPath(workspaceRootPath));
         return JsonSerializer.Deserialize<QuickTutorialDocument>(stream, JsonOptions)
             ?? new QuickTutorialDocument();
     }
@@ -67,5 +67,19 @@ public sealed class QuickTutorialService
         {
             return new QuickTutorialState();
         }
+    }
+
+    private string ResolveTutorialPath(string? workspaceRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(workspaceRootPath))
+        {
+            var workspaceTutorialPath = Path.Combine(workspaceRootPath, "tutorial", "workspace-tutorial.json");
+            if (File.Exists(workspaceTutorialPath))
+            {
+                return workspaceTutorialPath;
+            }
+        }
+
+        return _tutorialPath;
     }
 }

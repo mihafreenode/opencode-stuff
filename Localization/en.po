@@ -201,6 +201,12 @@ msgstr "Ready"
 msgid "workspace.status.stopped"
 msgstr "Stopped"
 
+msgid "workspace.status.notStarted"
+msgstr "Not Started"
+
+msgid "workspace.status.readyToStart"
+msgstr "Ready to Start"
+
 msgid "workspace.status.needsPrepare"
 msgstr "Update Available"
 

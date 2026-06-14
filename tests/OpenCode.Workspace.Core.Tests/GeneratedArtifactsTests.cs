@@ -60,6 +60,20 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void EnvironmentFileGenerator_IncludesOracleDefaultsForOracleDemoWorkspaces()
+    {
+        var generator = new EnvironmentFileGenerator();
+        var content = generator.Generate(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-demo" },
+            Services = new List<string> { "oracle-demo" },
+        });
+
+        Assert.Contains("ORACLE_PASSWORD=change-on-first-demo", content);
+        Assert.Contains("ORACLE_DEMO_SERVICE=FREEPDB1", content);
+    }
+
+    [Fact]
     public void ProvisioningGenerator_IncludesGeneratedHeaderAndOpenCodeInstall()
     {
         var generator = new ProvisioningScriptGenerator();
@@ -92,6 +106,71 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void ProvisioningGenerator_ForOracleWorkspace_UsesDynamicLibaioHelper()
+    {
+        var generator = new ProvisioningScriptGenerator();
+        var script = generator.Generate(new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-demo" },
+                Features = new List<string> { "core", "oracle-demo" },
+                Services = new List<string> { "oracle-demo" },
+                Terminal = new TerminalPreferences
+                {
+                    Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                    Utilities = new TerminalUtilityPreferences(),
+                },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = new[] { "curl", "rlwrap", "unzip", "libaio1" },
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        });
+
+        Assert.Contains("Detected Ubuntu version", script);
+        Assert.Contains("Selected libaio package", script);
+        Assert.Contains("if apt-cache policy libaio1 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
+        Assert.Contains("elif apt-cache policy libaio1t64 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
+        Assert.Contains("dpkg -L \"${oracle_libaio_pkg}\"", script);
+        Assert.Contains("ln -sf /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1", script);
+        Assert.Contains("ldconfig", script);
+        Assert.Contains("Selected Java package", script);
+        Assert.Contains("if apt-cache policy openjdk-21-jre-headless | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
+        Assert.Contains("elif apt-cache policy openjdk-17-jre-headless | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
+        Assert.Contains("No compatible Java runtime package found for SQLcl", script);
+        Assert.Contains("oracle_sqlplus_root=/opt/oracle/instantclient", script);
+        Assert.Contains("if command -v sqlplus >/dev/null 2>&1 && sqlplus -v; then", script);
+        Assert.Contains("SQL*Plus already installed and valid; skipping reinstall.", script);
+        Assert.Contains("instantclient-basiclite-linux.x64", script);
+        Assert.Contains("instantclient-sqlplus-linux.x64", script);
+        Assert.Contains("ldd \"${sqlplus_launcher}\"", script);
+        Assert.Contains("/etc/ld.so.conf.d/oracle-instantclient.conf", script);
+        Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", script);
+        Assert.Contains("sqlplus -S \"${oracle_connection}\" @\"${oracle_sqlplus_probe_script}\"", script);
+        Assert.Contains("SQL*Plus validation query failed", script);
+        Assert.Contains("validate_sqlcl_install()", script);
+        Assert.Contains("if validate_sqlcl_install /opt/sqlcl; then", script);
+        Assert.Contains("SQLcl already installed and valid; skipping reinstall.", script);
+        Assert.Contains("Existing SQLcl install missing or invalid. Reinstalling.", script);
+        Assert.Contains("oracle_sqlcl_extract=/tmp/sqlcl-extract", script);
+        Assert.Contains("Failed to download the official SQLcl zip archive", script);
+        Assert.Contains("Unexpected SQLcl layout: staged sqlcl/bin/sql was not created", script);
+        Assert.Contains("Diagnostic only: SqlCli.class was not found in staged dbtools-sqlcl.jar", script);
+        Assert.Contains("rm -rf /opt/sqlcl", script);
+        Assert.Contains("cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/", script);
+        Assert.Contains("sql -v", script);
+        Assert.Contains("SELECT 'Connection OK' AS status FROM dual;", script);
+        Assert.Contains("SQLcl connectivity probe failed on attempt ${attempt}/5", script);
+        Assert.Contains("Staged SQLcl install failed runtime validation", script);
+        Assert.Contains("Reinstalled SQLcl failed runtime validation after activation", script);
+        Assert.Contains("java -version", script);
+        Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
+    }
+
+    [Fact]
     public void TerminalArtifactsGenerator_CreatesManagedConfigs()
     {
         var generator = new TerminalArtifactsGenerator();
@@ -107,7 +186,7 @@ public sealed class GeneratedArtifactsTests
 
         var starship = generator.GenerateStarshipConfig(definition);
         var shellInit = generator.GenerateShellInitScript(definition);
-        var workspaceShell = generator.GenerateOpencodeWorkspaceShellScript();
+        var workspaceShell = generator.GenerateOpencodeWorkspaceShellScript(definition);
         var screenConfig = generator.GenerateScreenConfiguration();
 
         Assert.Contains("GENERATED FILE", starship);
@@ -117,11 +196,40 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("completion.bash", shellInit);
         Assert.Contains("COLORTERM=truecolor", shellInit);
         Assert.Contains("LC_ALL", shellInit);
+        Assert.Contains("export JAVA_HOME=", shellInit);
+        Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", shellInit);
+        Assert.Contains("export LD_LIBRARY_PATH=${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}", shellInit);
+        Assert.Contains("export PATH=${oracle_client_home}:${PATH}", shellInit);
         Assert.Contains("opencode session list", workspaceShell);
         Assert.Contains("opencode --session", workspaceShell);
         Assert.Contains("Found 0 OpenCode sessions. Starting new session.", workspaceShell);
+        Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", workspaceShell);
+        Assert.Contains("cleanup_terminal_state()", workspaceShell);
+        Assert.Contains("printf '\\e[?1000l\\e[?1002l\\e[?1003l\\e[?1006l'", workspaceShell);
+        Assert.Contains("stty sane || true", workspaceShell);
+        Assert.Contains("trap cleanup_terminal_state EXIT", workspaceShell);
         Assert.Contains("screen-256color", screenConfig);
         Assert.Contains("defutf8 on", screenConfig);
+    }
+
+    [Fact]
+    public void TerminalArtifactsGenerator_ForOracleWorkspace_UsesNormalOpenCodeLaunch()
+    {
+        var generator = new TerminalArtifactsGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-demo" },
+            Services = new List<string> { "oracle-demo" },
+        };
+
+        var workspaceShell = generator.GenerateOpencodeWorkspaceShellScript(definition);
+
+        Assert.Contains("run_opencode opencode", workspaceShell);
+        Assert.Contains("if run_opencode opencode --session \"$resume_session\"; then", workspaceShell);
+        Assert.Contains("cleanup_terminal_state()", workspaceShell);
+        Assert.DoesNotContain("oracle_prompt_file=", workspaceShell);
+        Assert.DoesNotContain("opencode -p", workspaceShell);
+        Assert.DoesNotContain("| opencode", workspaceShell);
     }
 
     [Fact]
@@ -135,6 +243,8 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("$dockerExe exec -it --user opencode -w /workspace", wrapper);
         Assert.Contains("/opt/opencode-workspace/config/opencode-workspace-shell.sh", wrapper);
+        Assert.Contains("$disableMouseReporting", wrapper);
+        Assert.Contains("[Console]::Write($disableMouseReporting)", wrapper);
 
         var diagnostics = generator.GenerateTerminalDiagnosticsWrapper(new WorkspaceDefinition
         {

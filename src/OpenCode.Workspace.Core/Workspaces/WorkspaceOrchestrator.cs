@@ -20,6 +20,7 @@ public sealed class WorkspaceOrchestrator
     private readonly ProvisioningScriptGenerator _provisioningScriptGenerator;
     private readonly TerminalArtifactsGenerator _terminalArtifactsGenerator;
     private readonly AttachArtifactsGenerator _attachArtifactsGenerator;
+    private readonly WorkspaceContentGenerator _workspaceContentGenerator;
     private readonly WorkspaceAppliedStateService _workspaceAppliedStateService;
     private readonly WorkspaceCheckpointService _workspaceCheckpointService;
     private readonly WorkspaceTimelineService _workspaceTimelineService;
@@ -39,6 +40,7 @@ public sealed class WorkspaceOrchestrator
         ProvisioningScriptGenerator provisioningScriptGenerator,
         TerminalArtifactsGenerator terminalArtifactsGenerator,
         AttachArtifactsGenerator attachArtifactsGenerator,
+        WorkspaceContentGenerator workspaceContentGenerator,
         WorkspaceAppliedStateService workspaceAppliedStateService,
         WorkspaceCheckpointService workspaceCheckpointService,
         WorkspaceTimelineService workspaceTimelineService,
@@ -56,6 +58,7 @@ public sealed class WorkspaceOrchestrator
         _provisioningScriptGenerator = provisioningScriptGenerator;
         _terminalArtifactsGenerator = terminalArtifactsGenerator;
         _attachArtifactsGenerator = attachArtifactsGenerator;
+        _workspaceContentGenerator = workspaceContentGenerator;
         _workspaceAppliedStateService = workspaceAppliedStateService;
         _workspaceCheckpointService = workspaceCheckpointService;
         _workspaceTimelineService = workspaceTimelineService;
@@ -71,7 +74,7 @@ public sealed class WorkspaceOrchestrator
     public WorkspaceSnapshot LoadSnapshot(string rootPath)
         => Task.Run(() => LoadSnapshotAsync(rootPath)).GetAwaiter().GetResult();
 
-    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default, bool includeRuntimeInspection = true)
     {
         var paths = WorkspacePathBuilder.Build(rootPath);
         var definition = _workspaceYamlService.Read(paths.WorkspaceYamlPath);
@@ -112,6 +115,25 @@ public sealed class WorkspaceOrchestrator
             UpdateRequired = updateRequired,
         };
 
+        if (!includeRuntimeInspection)
+        {
+            return new WorkspaceSnapshot
+            {
+                Record = snapshot.Record,
+                Definition = snapshot.Definition,
+                Paths = snapshot.Paths,
+                RuntimeState = WorkspaceRuntimeState.Unknown,
+                Safety = snapshot.Safety,
+                Session = new WorkspaceSessionSnapshot
+                {
+                    SessionName = definition.Workspace.Id,
+                    State = WorkspaceSessionState.Unknown,
+                },
+                AppliedState = snapshot.AppliedState,
+                UpdateRequired = snapshot.UpdateRequired,
+            };
+        }
+
         var runtimeState = await GetRuntimeStateAsync(snapshot, cancellationToken);
         var sessionState = runtimeState == WorkspaceRuntimeState.Running
             ? await GetSessionStateAsync(definition, cancellationToken)
@@ -134,13 +156,24 @@ public sealed class WorkspaceOrchestrator
     }
 
     public WorkspaceSnapshot CreateWorkspace(string rootPath, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null)
+        => CreateWorkspaceAsync(rootPath, definition, log).GetAwaiter().GetResult();
+
+    public async Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, bool includeRuntimeInspection = true)
     {
         var paths = WorkspacePathBuilder.Build(rootPath);
+        Log(log, "app", $"[create] Preparing folder structure at '{rootPath}'.");
         CreateFolderStructure(paths);
+        Log(log, "app", "[create] Folder structure prepared.");
+        Log(log, "app", "[create] Ensuring workspace scaffolding files.");
         EnsureWorkspaceScaffolding(paths, definition);
+        Log(log, "app", "[create] Workspace scaffolding ensured.");
+        Log(log, "app", "[create] Writing generated workspace files.");
         WriteGeneratedFiles(paths, definition);
-        _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: true, log).GetAwaiter().GetResult();
-        _workspaceTimelineService.Append(paths.TimelinePath, "save-point", "Created initial Save Point", "Initialized the workspace repository and captured the first local Save Point.");
+        Log(log, "app", "[create] Generated workspace files written.");
+        Log(log, "app", "[create] Initializing workspace repository.");
+        await _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false, log, cancellationToken);
+        Log(log, "app", "[create] Workspace repository initialized without an automatic initial Save Point.");
+        _workspaceTimelineService.Append(paths.TimelinePath, "workspace-created", "Created workspace", "Initialized the workspace repository without blocking the UI on an automatic Save Point.");
 
         var now = DateTimeOffset.UtcNow;
         var record = new WorkspaceRecord
@@ -157,9 +190,12 @@ public sealed class WorkspaceOrchestrator
             LastOperationUtc = now,
         };
 
-        _workspaceRepository.Save(record);
+        Log(log, "app", $"[create] Saving workspace record for '{definition.Workspace.Name}'.");
+        await _workspaceRepository.SaveAsync(record, cancellationToken);
+        Log(log, "app", "[create] Workspace record saved.");
 
-        return LoadSnapshot(rootPath);
+        Log(log, "app", "[create] Loading workspace snapshot after registration.");
+        return await LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection);
     }
 
     public WorkspaceSnapshot OpenFolderAsWorkspace(string rootPath, string? workspaceName = null, Action<CommandLogEntry>? log = null)
@@ -373,6 +409,14 @@ public sealed class WorkspaceOrchestrator
         EnsureSuccess(result, "Workspace removal failed while cleaning up Docker resources.");
     }
 
+    public async Task ResetRuntimeAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        WriteGeneratedFiles(snapshot.Paths, snapshot.Definition);
+        Log(log, "app", $"Resetting runtime resources for workspace '{snapshot.Definition.Workspace.Name}'.");
+        var result = await _dockerService.ResetAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        EnsureSuccess(result, "Workspace reset failed while removing runtime resources.");
+    }
+
     public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var generatedArtifacts = WriteGeneratedFiles(snapshot.Paths, snapshot.Definition);
@@ -525,6 +569,9 @@ public sealed class WorkspaceOrchestrator
 
     public void SaveRecord(WorkspaceRecord record) => _workspaceRepository.Save(record);
 
+    public Task SaveRecordAsync(WorkspaceRecord record, CancellationToken cancellationToken = default)
+        => _workspaceRepository.SaveAsync(record, cancellationToken);
+
     public void DeleteWorkspaceRegistration(string rootPath) => _workspaceRepository.Delete(rootPath);
 
     public async Task RepairWorkspaceFilePermissionsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -554,6 +601,18 @@ public sealed class WorkspaceOrchestrator
         File.WriteAllText(paths.AttachWrapperScriptPath, generatedArtifacts.AttachWrapperScript.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.TerminalDiagnosticsScriptPath, generatedArtifacts.TerminalDiagnosticsScript.Replace("\r\n", "\n", StringComparison.Ordinal));
 
+        foreach (var additionalFile in generatedArtifacts.AdditionalFiles)
+        {
+            var fullPath = Path.Combine(paths.RootPath, additionalFile.Key);
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(fullPath, additionalFile.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
+        }
+
         // The provisioning script runs inside Linux containers, so it must use LF
         // line endings even when the desktop app generated it on Windows.
         File.WriteAllText(paths.ProvisionScriptPath, generatedArtifacts.ProvisionScript.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -569,10 +628,11 @@ public sealed class WorkspaceOrchestrator
         var provisionScript = _provisioningScriptGenerator.Generate(resolved);
         var starshipConfig = _terminalArtifactsGenerator.GenerateStarshipConfig(definition);
         var shellInitScript = _terminalArtifactsGenerator.GenerateShellInitScript(definition);
-        var opencodeWorkspaceShellScript = _terminalArtifactsGenerator.GenerateOpencodeWorkspaceShellScript();
+        var opencodeWorkspaceShellScript = _terminalArtifactsGenerator.GenerateOpencodeWorkspaceShellScript(definition);
         var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration();
         var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition);
         var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition);
+        var additionalFiles = _workspaceContentGenerator.Generate(definition);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);
         var desiredStateHash = WorkspaceAppliedStateService.ComputeHash(
             workspaceYaml,
@@ -584,7 +644,8 @@ public sealed class WorkspaceOrchestrator
             opencodeWorkspaceShellScript,
             screenConfig,
             attachWrapper,
-            diagnosticsWrapper);
+            diagnosticsWrapper,
+            string.Join("\n", additionalFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + item.Value)));
 
         return new GeneratedWorkspaceArtifacts
         {
@@ -600,6 +661,7 @@ public sealed class WorkspaceOrchestrator
             TerminalDiagnosticsScript = diagnosticsWrapper,
             WorkspaceDefinitionHash = workspaceDefinitionHash,
             DesiredStateHash = desiredStateHash,
+            AdditionalFiles = additionalFiles,
         };
     }
 

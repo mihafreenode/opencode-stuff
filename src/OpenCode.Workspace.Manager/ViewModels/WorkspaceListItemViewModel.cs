@@ -50,14 +50,32 @@ public sealed class WorkspaceListItemViewModel : ObservableObject
     public WorkspaceRuntimeState RuntimeState => Snapshot.RuntimeState;
     public bool IsRunning => Snapshot.RuntimeState == WorkspaceRuntimeState.Running;
     public bool HasUpdateAvailable => Snapshot.UpdateRequired;
-    public bool HasError => Snapshot.Record.LastOperationSucceeded == false || Snapshot.RuntimeState == WorkspaceRuntimeState.Unknown;
+    public bool HasError => HasOperationFailure || HasMissingRequiredFiles;
+    public bool HasOperationFailure => Snapshot.Record.LastOperationSucceeded == false;
+    public bool HasMissingRequiredFiles => !File.Exists(Snapshot.Paths.WorkspaceYamlPath)
+        || !File.Exists(Snapshot.Paths.ComposePath)
+        || !File.Exists(Snapshot.Paths.ProvisionScriptPath);
+    public string ErrorDetails => HasOperationFailure
+        ? $"Last operation failed: {LastOperationResult}"
+        : HasMissingRequiredFiles
+            ? "Required generated workspace files are missing."
+            : string.Empty;
+    public string StatusDetails => HasError
+        ? ErrorDetails
+        : Snapshot.RuntimeState == WorkspaceRuntimeState.Running
+            ? "Workspace runtime is running."
+            : Snapshot.RuntimeState == WorkspaceRuntimeState.Stopped
+                ? "Workspace runtime is stopped."
+                : "Runtime inspection was skipped or is not available yet.";
     public string StatusLabel => HasError
         ? _localization.Get("workspace.status.error")
         : HasUpdateAvailable
             ? _localization.Get("workspace.status.updateAvailable")
             : Snapshot.RuntimeState == WorkspaceRuntimeState.Running
                 ? _localization.Get("workspace.status.running")
-                : _localization.Get("workspace.status.stopped");
+                : Snapshot.RuntimeState == WorkspaceRuntimeState.Stopped
+                    ? _localization.Get("workspace.status.notStarted")
+                    : _localization.Get("workspace.status.readyToStart");
     public string LastOperationResult => string.IsNullOrWhiteSpace(Snapshot.Record.LastOperationResult)
         ? _localization.Get("workspace.lastOperation.none")
         : Snapshot.Record.LastOperationResult!;
@@ -102,6 +120,10 @@ public sealed class WorkspaceListItemViewModel : ObservableObject
         RaisePropertyChanged(nameof(IsRunning));
         RaisePropertyChanged(nameof(HasUpdateAvailable));
         RaisePropertyChanged(nameof(HasError));
+        RaisePropertyChanged(nameof(HasOperationFailure));
+        RaisePropertyChanged(nameof(HasMissingRequiredFiles));
+        RaisePropertyChanged(nameof(ErrorDetails));
+        RaisePropertyChanged(nameof(StatusDetails));
         RaisePropertyChanged(nameof(StatusLabel));
         RaisePropertyChanged(nameof(LastOperationResult));
         RaisePropertyChanged(nameof(LastOperationSummary));

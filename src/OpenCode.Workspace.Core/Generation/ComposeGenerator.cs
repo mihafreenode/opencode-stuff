@@ -36,11 +36,25 @@ public sealed class ComposeGenerator
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.UserPath)}:/user");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.HomePath)}:/home/opencode");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.ConfigPath)}:/opt/opencode-workspace/config");
+        builder.AppendLine("    depends_on:");
+        foreach (var service in workspace.Services.OrderBy(service => service.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.AppendLine($"      - {service.Id}");
+        }
 
         foreach (var service in workspace.Services)
         {
             builder.AppendLine($"  {service.Id}:");
             builder.AppendLine($"    image: {service.Image}");
+
+            if (service.Profiles.Count > 0)
+            {
+                builder.AppendLine("    profiles:");
+                foreach (var profile in service.Profiles.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+                {
+                    builder.AppendLine($"      - {profile}");
+                }
+            }
 
             if (service.HostPorts.Count > 0)
             {
@@ -60,6 +74,41 @@ public sealed class ComposeGenerator
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(service.Restart))
+            {
+                builder.AppendLine($"    restart: {service.Restart}");
+            }
+
+            if (service.Healthcheck is not null && service.Healthcheck.Test.Count > 0)
+            {
+                builder.AppendLine("    healthcheck:");
+                builder.AppendLine("      test:");
+                foreach (var testPart in service.Healthcheck.Test)
+                {
+                    builder.AppendLine($"        - \"{EscapeYamlDoubleQuoted(testPart)}\"");
+                }
+
+                if (!string.IsNullOrWhiteSpace(service.Healthcheck.Interval))
+                {
+                    builder.AppendLine($"      interval: {service.Healthcheck.Interval}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(service.Healthcheck.Timeout))
+                {
+                    builder.AppendLine($"      timeout: {service.Healthcheck.Timeout}");
+                }
+
+                if (service.Healthcheck.Retries is not null)
+                {
+                    builder.AppendLine($"      retries: {service.Healthcheck.Retries.Value}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(service.Healthcheck.StartPeriod))
+                {
+                    builder.AppendLine($"      start_period: {service.Healthcheck.StartPeriod}");
+                }
+            }
+
             if (service.DependsOn.Count > 0)
             {
                 builder.AppendLine("    depends_on:");
@@ -74,12 +123,13 @@ public sealed class ComposeGenerator
                 builder.AppendLine("    volumes:");
                 foreach (var volume in service.Volumes)
                 {
-                    builder.AppendLine($"      - {volume}");
+                    builder.AppendLine($"      - {ResolveVolumeBinding(volume, paths)}");
                 }
             }
         }
 
         var namedVolumes = workspace.Services.SelectMany(service => service.Volumes)
+            .Select(volume => ResolveVolumeBinding(volume, paths))
             .Select(volume => volume.Split(':', 2)[0])
             .Where(volume => !volume.Contains('/') && !volume.Contains('\\'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -97,4 +147,15 @@ public sealed class ComposeGenerator
 
         return builder.ToString();
     }
+
+    private static string ResolveVolumeBinding(string volume, WorkspacePaths paths)
+    {
+        return volume
+            .Replace("${WORKSPACE_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(paths.RootPath), StringComparison.Ordinal)
+            .Replace("${WORKSPACE_TUTORIAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, "tutorial")), StringComparison.Ordinal)
+            .Replace("${WORKSPACE_LOCAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, ".local")), StringComparison.Ordinal);
+    }
+
+    private static string EscapeYamlDoubleQuoted(string value)
+        => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 }

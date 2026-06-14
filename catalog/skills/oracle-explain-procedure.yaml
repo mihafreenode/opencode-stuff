@@ -1,0 +1,6 @@
+id: oracle-explain-procedure
+displayName: Explain Procedure
+description: Explain an existing Oracle PL/SQL procedure step by step.
+dependencies:
+  features:
+    - oracle-demo

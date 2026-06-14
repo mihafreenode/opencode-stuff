@@ -30,4 +30,5 @@ public sealed class GeneratedWorkspaceArtifacts
     public required string TerminalDiagnosticsScript { get; init; }
     public required string WorkspaceDefinitionHash { get; init; }
     public required string DesiredStateHash { get; init; }
+    public required IReadOnlyDictionary<string, string> AdditionalFiles { get; init; }
 }

@@ -1,0 +1,3 @@
+id: oracle-sqlcl
+displayName: Oracle SQLcl MCP
+description: Use Oracle SQLcl MCP support for safe Oracle query workflows inside the workspace.

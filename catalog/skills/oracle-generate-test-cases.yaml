@@ -1,0 +1,6 @@
+id: oracle-generate-test-cases
+displayName: Generate Test Cases
+description: Generate valid, invalid, and edge-case Oracle SQL test scenarios.
+dependencies:
+  features:
+    - oracle-demo

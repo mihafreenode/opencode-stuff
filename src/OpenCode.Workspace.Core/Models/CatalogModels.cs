@@ -63,11 +63,38 @@ public sealed class ServiceManifest
     [YamlMember(Alias = "environment")]
     public Dictionary<string, string> Environment { get; init; } = new();
 
+    [YamlMember(Alias = "profiles")]
+    public List<string> Profiles { get; init; } = new();
+
+    [YamlMember(Alias = "restart")]
+    public string? Restart { get; init; }
+
+    [YamlMember(Alias = "healthcheck")]
+    public ServiceHealthcheckManifest? Healthcheck { get; init; }
+
     [YamlMember(Alias = "volumes")]
     public List<string> Volumes { get; init; } = new();
 
     [YamlMember(Alias = "dependsOn")]
     public List<string> DependsOn { get; init; } = new();
+}
+
+public sealed class ServiceHealthcheckManifest
+{
+    [YamlMember(Alias = "test")]
+    public List<string> Test { get; init; } = new();
+
+    [YamlMember(Alias = "interval")]
+    public string? Interval { get; init; }
+
+    [YamlMember(Alias = "timeout")]
+    public string? Timeout { get; init; }
+
+    [YamlMember(Alias = "retries")]
+    public int? Retries { get; init; }
+
+    [YamlMember(Alias = "startPeriod")]
+    public string? StartPeriod { get; init; }
 }
 
 public sealed class TemplateManifest
@@ -81,11 +108,20 @@ public sealed class TemplateManifest
     [YamlMember(Alias = "description")]
     public string Description { get; init; } = string.Empty;
 
+    [YamlMember(Alias = "workspaceImage")]
+    public string? WorkspaceImage { get; init; }
+
     [YamlMember(Alias = "features")]
     public List<string> Features { get; init; } = new();
 
     [YamlMember(Alias = "services")]
     public List<string> Services { get; init; } = new();
+
+    [YamlMember(Alias = "skills")]
+    public List<string> Skills { get; init; } = new();
+
+    [YamlMember(Alias = "mcp")]
+    public List<string> Mcp { get; init; } = new();
 }
 
 public sealed class McpManifest

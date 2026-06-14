@@ -27,6 +27,8 @@ public sealed class QuickTutorialViewModel : ObservableObject
 
     public string WindowTitle => _document.Title;
 
+    public string WindowSubtitle => _document.Subtitle;
+
     public string CloseLabel => "Close";
 
     public string PreviousLabel => "Back";
@@ -47,6 +49,14 @@ public sealed class QuickTutorialViewModel : ObservableObject
 
     public string SelectedStepImageCaption => SelectedStep?.Image.Caption ?? string.Empty;
 
+    public bool SelectedStepHasHighlights => SelectedStep?.Highlights.Count > 0;
+
+    public bool SelectedStepHasPresenterFlow => SelectedStep?.PresenterFlow.Count > 0;
+
+    public bool SelectedStepHasEstimatedTime => !string.IsNullOrWhiteSpace(SelectedStep?.EstimatedTime);
+
+    public bool SelectedStepHasNote => !string.IsNullOrWhiteSpace(SelectedStep?.Note);
+
     public QuickTutorialStep? SelectedStep
     {
         get => _selectedStep;
@@ -61,6 +71,10 @@ public sealed class QuickTutorialViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedStepImagePath));
                 RaisePropertyChanged(nameof(SelectedStepHasImage));
                 RaisePropertyChanged(nameof(SelectedStepImageCaption));
+                RaisePropertyChanged(nameof(SelectedStepHasHighlights));
+                RaisePropertyChanged(nameof(SelectedStepHasPresenterFlow));
+                RaisePropertyChanged(nameof(SelectedStepHasEstimatedTime));
+                RaisePropertyChanged(nameof(SelectedStepHasNote));
                 PreviousCommand.RaiseCanExecuteChanged();
                 NextCommand.RaiseCanExecuteChanged();
             }

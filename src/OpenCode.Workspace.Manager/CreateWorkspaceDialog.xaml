@@ -21,6 +21,7 @@
                     <TextBlock Margin="0,8,0,0" Text="{Binding CreateWorkspaceDialogDescription}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
                 </StackPanel>
                 <Button DockPanel.Dock="Right"
+                        x:Name="HeaderCreateButton"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Width="180"
                         Height="38"
@@ -68,6 +69,19 @@
                             <TextBlock Margin="0,14,0,0" Text="{Binding TemplateLabel}" FontWeight="SemiBold" />
                             <ComboBox Margin="0,6,0,0" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="DisplayName" />
                             <TextBlock Margin="0,6,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="When an existing Git checkout does not have workspace.yaml yet, these selections become the initial workspace tools." TextWrapping="Wrap" />
+
+                            <Border Margin="0,14,0,0" Padding="14" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="10" BorderThickness="1"
+                                    Visibility="{Binding IsOracleDemoTemplateSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Oracle PL/SQL Demo" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,10,0,0" Text="Includes:" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding OracleTemplateIncludesSummary}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,14,0,0"
+                                               Foreground="{StaticResource BrandTextSecondaryBrush}"
+                                               Text="Use the primary Create Workspace button above to create this workspace."
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
 
                             <TextBlock Margin="0,14,0,0" Text="{Binding FeaturesLabel}" FontWeight="SemiBold" />
                             <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableFeatures}">

@@ -242,6 +242,7 @@ public sealed class ExistingGitCheckoutImportTests
             new ProvisioningScriptGenerator(),
             new TerminalArtifactsGenerator(),
             new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
             new WorkspaceAppliedStateService(),
             new WorkspaceCheckpointService(),
             new WorkspaceTimelineService(),

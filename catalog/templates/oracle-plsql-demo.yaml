@@ -1,0 +1,19 @@
+# Built-in template manifest: oracle-plsql-demo
+
+id: oracle-plsql-demo
+displayName: Oracle PL/SQL Demo
+description: Local Oracle Free workspace with SQLcl, tutorial content, sample schema, and Oracle-focused AI skills.
+workspaceImage: ubuntu:24.04
+features:
+  - core
+  - oracle-demo
+services:
+  - oracle-demo
+skills:
+  - oracle-explain-procedure
+  - oracle-explain-trigger
+  - oracle-debug-procedure
+  - oracle-refactor-procedure
+  - oracle-generate-test-cases
+mcp:
+  - oracle-sqlcl

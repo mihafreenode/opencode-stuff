@@ -162,3 +162,18 @@ terminal-diagnostics.ps1
 ```
 
 That script is generated in the workspace root and is intended for troubleshooting profile, font, locale, and UTF-8 rendering issues without changing the normal user attach flow.
+
+## OpenCode Mouse Escape Sequences
+
+In some Windows Terminal sessions, OpenCode can leave mouse reporting enabled or the terminal can keep stale mouse-tracking state after an interrupted session. When that happens, moving the mouse over the terminal can insert control characters into the prompt area.
+
+The generated attach launchers now try to clean terminal state before OpenCode starts and again after it exits by:
+
+1. disabling common mouse reporting modes
+2. running `stty sane || true` inside the workspace shell helper
+
+If escape characters still appear during a demo:
+
+1. avoid moving the mouse over the terminal while capturing screenshots
+2. prefer keyboard navigation inside OpenCode
+3. run `reset` inside the terminal, or close and reopen the terminal session

@@ -1,0 +1,13 @@
+# Built-in feature manifest: oracle-demo
+
+id: oracle-demo
+displayName: Oracle PL/SQL Demo Assets
+description: SQLcl tooling, Oracle tutorial content, sample PL/SQL, and onboarding guidance for a local Oracle demo workspace.
+alwaysEnabled: false
+dependencies:
+  apt:
+    - curl
+    - rlwrap
+    - unzip
+postInstall:
+  - 'mkdir -p /workspace/.local/oracle/network/admin'

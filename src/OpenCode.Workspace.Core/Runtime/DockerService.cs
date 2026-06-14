@@ -26,8 +26,14 @@ public sealed class DockerService
     public Task<ProcessResult> RemoveAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "down", "--remove-orphans" }, log, cancellationToken);
 
+    public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => RunComposeAsync(paths, definition, new[] { "down", "-v", "--remove-orphans" }, log, cancellationToken);
+
     public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "ps", "--status", "running", "--services" }, log, cancellationToken);
+
+    public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => RunComposeAsync(paths, definition, new[] { "logs", serviceName }, log, cancellationToken);
 
     public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
@@ -95,6 +101,12 @@ public sealed class DockerService
             paths.ComposePath,
         };
 
+        foreach (var profile in GetComposeProfiles(definition))
+        {
+            arguments.Add("--profile");
+            arguments.Add(profile);
+        }
+
         arguments.AddRange(composeArguments);
 
         return RunDockerCommandAsync(arguments, paths.RootPath, log, cancellationToken);
@@ -143,5 +155,15 @@ public sealed class DockerService
 
         await RunComposeAsync(paths, definition, new[] { "down", "--remove-orphans" }, log, cancellationToken);
         return result;
+    }
+
+    private static IReadOnlyList<string> GetComposeProfiles(WorkspaceDefinition definition)
+    {
+        if (definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase))
+        {
+            return ["oracle-demo"];
+        }
+
+        return Array.Empty<string>();
     }
 }

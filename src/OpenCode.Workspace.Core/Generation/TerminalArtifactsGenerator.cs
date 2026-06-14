@@ -66,6 +66,18 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("export LANG=${LANG:-C.UTF-8}");
         builder.AppendLine("export LC_ALL=${LC_ALL:-C.UTF-8}");
         builder.AppendLine("export SCREENRC=/opt/opencode-workspace/config/screenrc");
+        builder.AppendLine("oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("if [ -d /workspace/.local/oracle/network/admin ]; then");
+        builder.AppendLine("  export TNS_ADMIN=/workspace/.local/oracle/network/admin");
+        builder.AppendLine("fi");
+        builder.AppendLine("if [ -n \"${oracle_client_home}\" ] && [ -d \"${oracle_client_home}\" ]; then");
+        builder.AppendLine("  export ORACLE_CLIENT_HOME=${oracle_client_home}");
+        builder.AppendLine("  export LD_LIBRARY_PATH=${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}");
+        builder.AppendLine("  export PATH=${oracle_client_home}:${PATH}");
+        builder.AppendLine("fi");
+        builder.AppendLine("if command -v java >/dev/null 2>&1; then");
+        builder.AppendLine("  export JAVA_HOME=$(dirname \"$(dirname \"$(readlink -f \"$(command -v java)\")\")\")");
+        builder.AppendLine("fi");
 
         if (string.Equals(definition.Terminal.Prompt.Provider, "starship", StringComparison.OrdinalIgnoreCase))
         {
@@ -94,7 +106,7 @@ public sealed class TerminalArtifactsGenerator
         return builder.ToString();
     }
 
-    public string GenerateOpencodeWorkspaceShellScript()
+    public string GenerateOpencodeWorkspaceShellScript(WorkspaceDefinition definition)
     {
         var builder = new StringBuilder();
         builder.AppendLine("#!/usr/bin/env bash");
@@ -109,6 +121,24 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("export COLORTERM=truecolor");
         builder.AppendLine("export LANG=${LANG:-C.UTF-8}");
         builder.AppendLine("export LC_ALL=${LC_ALL:-C.UTF-8}");
+        builder.AppendLine("oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("if [ -n \"${oracle_client_home}\" ] && [ -d \"${oracle_client_home}\" ]; then");
+        builder.AppendLine("  export ORACLE_CLIENT_HOME=${oracle_client_home}");
+        builder.AppendLine("  export LD_LIBRARY_PATH=${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}");
+        builder.AppendLine("  export PATH=${oracle_client_home}:${PATH}");
+        builder.AppendLine("fi");
+        builder.AppendLine("cleanup_terminal_state() {");
+        builder.AppendLine("  printf '\\e[?1000l\\e[?1002l\\e[?1003l\\e[?1006l'");
+        builder.AppendLine("  stty sane || true");
+        builder.AppendLine("}");
+        builder.AppendLine("run_opencode() {");
+        builder.AppendLine("  cleanup_terminal_state");
+        builder.AppendLine("  \"$@\"");
+        builder.AppendLine("  local exit_code=$?");
+        builder.AppendLine("  cleanup_terminal_state");
+        builder.AppendLine("  return $exit_code");
+        builder.AppendLine("}");
+        builder.AppendLine("trap cleanup_terminal_state EXIT");
         builder.AppendLine("if [ ! -d /home/opencode/.local/share/opencode/log ] || [ ! -w /home/opencode/.local/share/opencode/log ]; then");
         builder.AppendLine("  printf '[attach] Initializing OpenCode user directories.\\n'");
         builder.AppendLine("fi");
@@ -139,22 +169,25 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("fi");
         builder.AppendLine("if [ \"${session_status:-1}\" -ne 0 ]; then");
         builder.AppendLine("  printf '[attach] Failed to query OpenCode sessions. Starting new session.\\n'");
-        builder.AppendLine("  exec opencode");
+        builder.AppendLine("  run_opencode opencode");
+        builder.AppendLine("  exit $?");
         builder.AppendLine("fi");
         builder.AppendLine("if [ \"$session_count\" -eq 0 ]; then");
         builder.AppendLine("  printf '[attach] Found 0 OpenCode sessions. Starting new session.\\n'");
-        builder.AppendLine("  exec opencode");
+        builder.AppendLine("  run_opencode opencode");
+        builder.AppendLine("  exit $?");
         builder.AppendLine("fi");
         builder.AppendLine("if [ -n \"$resume_session\" ]; then");
         builder.AppendLine("  printf '[attach] Found %s OpenCode sessions. Resuming %s.\\n' \"$session_count\" \"$resume_session\"");
-        builder.AppendLine("  if opencode --session \"$resume_session\"; then");
+        builder.AppendLine("  if run_opencode opencode --session \"$resume_session\"; then");
         builder.AppendLine("    exit 0");
         builder.AppendLine("  fi");
         builder.AppendLine("  printf '[attach] Failed to resume OpenCode session %s. Starting new session.\\n' \"$resume_session\"");
         builder.AppendLine("else");
         builder.AppendLine("  printf '[attach] Found %s OpenCode sessions. Starting new session.\\n' \"$session_count\"");
         builder.AppendLine("fi");
-        builder.AppendLine("exec opencode");
+        builder.AppendLine("run_opencode opencode");
+        builder.AppendLine("exit $?");
         return builder.ToString();
     }
 

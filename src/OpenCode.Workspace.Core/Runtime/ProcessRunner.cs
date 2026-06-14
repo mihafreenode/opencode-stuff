@@ -38,6 +38,12 @@ public sealed class ProcessRunner
             process.StartInfo.ArgumentList.Add(argument);
         }
 
+        if (string.Equals(fileName, "git", StringComparison.OrdinalIgnoreCase))
+        {
+            process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+            process.StartInfo.Environment["GCM_INTERACTIVE"] = "Never";
+        }
+
         process.OutputDataReceived += (_, eventArgs) =>
         {
             if (eventArgs.Data is null)

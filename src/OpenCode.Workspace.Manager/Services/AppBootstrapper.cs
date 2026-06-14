@@ -28,6 +28,7 @@ public sealed class AppBootstrapper
         var provisioningScriptGenerator = new ProvisioningScriptGenerator();
         var terminalArtifactsGenerator = new TerminalArtifactsGenerator();
         var attachArtifactsGenerator = new AttachArtifactsGenerator();
+        var workspaceContentGenerator = new WorkspaceContentGenerator();
         var appliedStateService = new WorkspaceAppliedStateService();
         var checkpointService = new WorkspaceCheckpointService();
         var timelineService = new WorkspaceTimelineService();
@@ -50,6 +51,7 @@ public sealed class AppBootstrapper
             provisioningScriptGenerator,
             terminalArtifactsGenerator,
             attachArtifactsGenerator,
+            workspaceContentGenerator,
             appliedStateService,
             checkpointService,
             timelineService,

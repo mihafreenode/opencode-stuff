@@ -15,12 +15,12 @@ public sealed class TemplateExpander
             Workspace = new WorkspaceMetadata
             {
                 Name = workspaceName,
-                Image = "ubuntu:24.04",
+                Image = string.IsNullOrWhiteSpace(template.WorkspaceImage) ? "ubuntu:24.04" : template.WorkspaceImage,
             },
             Features = template.Features.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Services = template.Services.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-            Skills = new List<string>(),
-            Mcp = new List<string>(),
+            Skills = template.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Mcp = template.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
         };
     }
 }

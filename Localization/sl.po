@@ -201,6 +201,12 @@ msgstr "Deluje"
 msgid "workspace.status.stopped"
 msgstr "Ustavljen"
 
+msgid "workspace.status.notStarted"
+msgstr "Ni zagnan"
+
+msgid "workspace.status.readyToStart"
+msgstr "Pripravljen za zagon"
+
 msgid "workspace.status.needsPrepare"
 msgstr "Posodobitev na voljo"
 

@@ -11,7 +11,7 @@
         <SolidColorBrush x:Key="BrandBorderBrush" Color="#FFCBD2D9" />
         <SolidColorBrush x:Key="BrandTextPrimaryBrush" Color="#FF1F2933" />
         <SolidColorBrush x:Key="BrandTextSecondaryBrush" Color="#FF52606D" />
-        <SolidColorBrush x:Key="BrandTextMutedBrush" Color="#FF7B8794" />
+        <SolidColorBrush x:Key="BrandTextMutedBrush" Color="Gray" />
         <SolidColorBrush x:Key="BrandAccentBrush" Color="#FFF28C28" />
         <SolidColorBrush x:Key="BrandAccentHoverBrush" Color="#FFE67E17" />
         <SolidColorBrush x:Key="BrandAccentPressedBrush" Color="#FFD96F09" />
@@ -64,5 +64,6 @@
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource BrandTextPrimaryBrush}" />
         </Style>
+
     </Application.Resources>
 </Application>

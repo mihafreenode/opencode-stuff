@@ -1,0 +1,6 @@
+id: oracle-refactor-procedure
+displayName: Refactor Procedure
+description: Improve Oracle PL/SQL readability and maintainability without changing behavior.
+dependencies:
+  features:
+    - oracle-demo

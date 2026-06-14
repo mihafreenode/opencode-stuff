@@ -91,6 +91,16 @@ public sealed class CatalogValidator
                     errors.Add($"Template '{template.Id}' references unknown service '{serviceId}'.");
                 }
             }
+
+            if (template.Skills.Any(skillId => string.IsNullOrWhiteSpace(skillId)))
+            {
+                errors.Add($"Template '{template.Id}' contains an empty skill id.");
+            }
+
+            if (template.Mcp.Any(mcpId => string.IsNullOrWhiteSpace(mcpId)))
+            {
+                errors.Add($"Template '{template.Id}' contains an empty MCP id.");
+            }
         }
 
         return errors;

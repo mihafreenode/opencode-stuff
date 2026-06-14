@@ -33,12 +33,40 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
             Assert.True(File.Exists(snapshot.Paths.TimelinePath));
             Assert.True(File.Exists(snapshot.Paths.CheckpointIndexPath));
-            Assert.Contains("save-point", File.ReadAllText(snapshot.Paths.TimelinePath));
+            Assert.Contains("workspace-created", File.ReadAllText(snapshot.Paths.TimelinePath));
             Assert.Contains("GENERATED FILE", File.ReadAllText(snapshot.Paths.ComposePath));
             Assert.Contains("npm install -g opencode-ai", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("/home/opencode/.local/share/opencode/log", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("Initializing OpenCode user directories", File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath));
             Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void CreateWorkspace_ForOracleDemo_WritesTutorialAndSkillFiles()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-demo-workspace", Image = "ubuntu:24.04" },
+                Features = ["core", "oracle-demo"],
+                Services = ["oracle-demo"],
+            });
+
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-demo.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "workspace-tutorial.json")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "01-create-demo-user.sql")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "knowledge", "skills", "oracle-explain-procedure.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, ".local", "oracle", "network", "admin", "README.md")));
         }
         finally
         {
@@ -209,7 +237,7 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
-    public void OpenFolderAsWorkspace_InitializesGitAndCreatesInitialSavePoint()
+    public void OpenFolderAsWorkspace_InitializesGitAndCreatesWorkspaceWithoutBlockingSavePoint()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = CreateTempRoot();
@@ -224,7 +252,7 @@ public sealed class WorkspaceOrchestratorTests
 
             Assert.True(File.Exists(snapshot.Paths.WorkspaceYamlPath));
             Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
-            Assert.NotNull(snapshot.Safety.LocalRecovery.LatestSavePointUtc);
+            Assert.Null(snapshot.Safety.LocalRecovery.LatestSavePointUtc);
             Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
         }
         finally
@@ -365,6 +393,11 @@ public sealed class WorkspaceOrchestratorTests
                     Id = "document-processing",
                     Dependencies = new DependencySet { Apt = documentPackages },
                 },
+                new FeatureManifest
+                {
+                    Id = "oracle-demo",
+                    Dependencies = new DependencySet { Apt = new List<string> { "curl", "unzip" } },
+                },
             },
             new[]
             {
@@ -381,6 +414,14 @@ public sealed class WorkspaceOrchestratorTests
                     Image = "dpage/pgadmin4:9",
                     HostPorts = new List<string> { "18080:80" },
                     DependsOn = new List<string> { "postgres" },
+                },
+                new ServiceManifest
+                {
+                    Id = "oracle-demo",
+                    Image = "gvenzl/oracle-free:23-slim-faststart",
+                    HostPorts = new List<string> { "1521:1521" },
+                    Profiles = new List<string> { "oracle-demo" },
+                    Volumes = new List<string> { "oracle-demo-data:/opt/oracle/oradata", "${WORKSPACE_TUTORIAL_DOCKER_PATH}/oracle/init:/container-entrypoint-initdb.d" },
                 },
             });
     }
@@ -402,6 +443,7 @@ public sealed class WorkspaceOrchestratorTests
             new ProvisioningScriptGenerator(),
             new TerminalArtifactsGenerator(),
             new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
             new WorkspaceAppliedStateService(),
             new WorkspaceCheckpointService(),
             timelineService,

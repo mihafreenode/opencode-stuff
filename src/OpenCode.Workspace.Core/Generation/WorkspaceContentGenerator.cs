@@ -1,0 +1,741 @@
+using System.Text.Json;
+using OpenCode.Workspace.Core.Models;
+
+namespace OpenCode.Workspace.Core.Generation;
+
+/// <summary>
+/// Generates workspace-local onboarding content that is derived from the selected
+/// template/features. Durable edits belong in source files, not these generated copies.
+/// </summary>
+public sealed class WorkspaceContentGenerator
+{
+    public IReadOnlyDictionary<string, string> Generate(WorkspaceDefinition definition)
+    {
+        var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!IsOracleDemoWorkspace(definition))
+        {
+            return files;
+        }
+
+        files[Path.Combine("docs", "oracle-demo.md")] = WithGeneratedHeader(OracleDemoWorkspaceDoc());
+        files[Path.Combine("tutorial", "workspace-tutorial.json")] = BuildOracleTutorialJson();
+        files[Path.Combine("tutorial", "oracle", "README.md")] = WithGeneratedHeader(OracleTutorialReadme());
+        files[Path.Combine("tutorial", "oracle", "START-HERE-ORACLE.md")] = WithGeneratedHeader(OracleStartHere());
+        files[Path.Combine("tutorial", "oracle", "opencode-start.md")] = WithGeneratedHeader(OracleOpenCodeStartPrompt());
+        files[Path.Combine("tutorial", "oracle", "init", "01-create-demo-user.sql")] = WithGeneratedSqlHeader(CreateDemoUserSql());
+        files[Path.Combine("tutorial", "oracle", "init", "02-demo-schema.sql")] = WithGeneratedSqlHeader(DemoSchemaSql());
+        files[Path.Combine("tutorial", "oracle", "scripts", "03-sample-queries.sql")] = WithGeneratedSqlHeader(SampleQueriesSql());
+        files[Path.Combine("tutorial", "oracle", "scripts", "tutorial-query.sql")] = WithGeneratedSqlHeader(TutorialQuerySql());
+        files[Path.Combine("knowledge", "skills", "oracle-explain-procedure.md")] = ExplainProcedureSkill();
+        files[Path.Combine("knowledge", "skills", "oracle-explain-trigger.md")] = ExplainTriggerSkill();
+        files[Path.Combine("knowledge", "skills", "oracle-debug-procedure.md")] = DebugProcedureSkill();
+        files[Path.Combine("knowledge", "skills", "oracle-refactor-procedure.md")] = RefactorProcedureSkill();
+        files[Path.Combine("knowledge", "skills", "oracle-generate-test-cases.md")] = GenerateTestCasesSkill();
+        files[Path.Combine(".local", "oracle", "network", "admin", "README.md")] = WithGeneratedHeader(NetworkAdminReadme());
+        files[Path.Combine("open-sqlcl.ps1")] = OpenSqlclScript();
+        files[Path.Combine("test-oracle-connection.ps1")] = TestConnectionScript();
+        files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
+        files[Path.Combine("scripts", "start-opencode-oracle-demo.ps1")] = StartOpenCodeOracleDemoScript();
+        return files;
+    }
+
+    private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
+        => definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
+            || definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
+
+    private static string WithGeneratedHeader(string body)
+        => string.Join("\n",
+        [
+            "# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+            "# Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "# User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.",
+            body.TrimStart('\r', '\n'),
+            string.Empty,
+        ]);
+
+    private static string WithGeneratedSqlHeader(string body)
+        => string.Join("\n",
+        [
+            "-- GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+            "-- Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "-- User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.",
+            body.TrimStart('\r', '\n'),
+            string.Empty,
+        ]);
+
+    private static string BuildOracleTutorialJson()
+    {
+        var document = new
+        {
+            title = "Oracle PL/SQL Workspace",
+            subtitle = "Short first-run guide for the Oracle PL/SQL demo.",
+            steps = new object[]
+            {
+                new
+                {
+                    id = "intro",
+                    title = "Welcome to Oracle PL/SQL Demo",
+                    summary = "This workspace gives you a local Oracle demo environment for onboarding and live explanation.",
+                    highlights = new[]
+                    {
+                        "Local Oracle database",
+                        "SQLcl",
+                        "Sample schema",
+                        "Guided tutorial",
+                        "Oracle AI skills",
+                    },
+                    presenterFlow = new[]
+                    {
+                        "Create Oracle Workspace",
+                        "Start Oracle",
+                        "Open Tutorial",
+                        "Connect using SQL Developer (optional)",
+                        "Run sample query",
+                        "Explain procedure",
+                        "Explain trigger",
+                        "Complete",
+                    },
+                    estimatedTime = "15-20 minutes",
+                    note = "No customer infrastructure required. Staging access is optional.",
+                    bullets = new[]
+                    {
+                        "Use the Oracle Demo Database panel on the right side of the workspace details.",
+                        "Everything in this tutorial uses the known local demo connection demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
+                        "SQL Developer is optional. If it is not installed, continue with SQLcl or SQL*Plus.",
+                        "Do not inspect .env, TNS_ADMIN, ORACLE_HOME, tnsnames.ora, or other configuration files during normal demo verification.",
+                    },
+                },
+                new
+                {
+                    id = "verify",
+                    title = "1. Verify The Environment",
+                    summary = "Start Oracle and wait for the local demo database to become ready.",
+                    bullets = new[]
+                    {
+                        "In the Oracle Demo Database panel, choose Start.",
+                        "The first provisioning run downloads SQLcl and needs internet access. Later tutorial work stays local.",
+                        "When the panel shows Running, immediately verify with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
+                        "Do not ask for connection details and do not perform connection discovery for the local demo workspace.",
+                    },
+                },
+                new
+                {
+                    id = "hello-world",
+                    title = "2. Hello World PL/SQL",
+                    summary = "Use the known local demo connection and run one small PL/SQL block to confirm the database is ready.",
+                    bullets = new[]
+                    {
+                        "Connect with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1 or use the helper actions that already know the demo connection.",
+                        "Run SET SERVEROUTPUT ON and then BEGIN DBMS_OUTPUT.PUT_LINE('Hello from Oracle PL/SQL Workspace'); END; /",
+                        "Do not inspect .env, environment variables, or tnsnames.ora during normal verification.",
+                    },
+                },
+                new
+                {
+                    id = "schema",
+                    title = "3. Demo Schema",
+                    summary = "Inspect the local demo schema that was created automatically for you.",
+                    bullets = new[]
+                    {
+                        "The schema is installed automatically on first database start.",
+                        "Focus first on demo_customers, demo_products, demo_orders, demo_show_customer, and demo_orders_biu_trigger.",
+                        "If you want to inspect the generated setup later, the initialization SQL lives under tutorial/oracle/init/.",
+                    },
+                },
+                new
+                {
+                    id = "data",
+                    title = "4. Sample Data",
+                    summary = "Query the seeded data and verify the sample relationships.",
+                    bullets = new[]
+                    {
+                        "Run the read-only verification queries against demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
+                        "Use the Run Tutorial Query quick action if you want a single-click check.",
+                        "Notice that the data is local and requires no customer environment.",
+                    },
+                },
+                new
+                {
+                    id = "procedure",
+                    title = "5. Procedure Walkthrough",
+                    summary = "Explain the demo procedure with AI before changing anything.",
+                    bullets = new[]
+                    {
+                        "Open knowledge/skills/oracle-explain-procedure.md.",
+                        "Ask AI to explain demo_show_customer step-by-step, including inputs, outputs, tables, and side effects.",
+                        "Keep the focus on understanding existing code rather than generating replacement code.",
+                    },
+                },
+                new
+                {
+                    id = "trigger",
+                    title = "6. Trigger Walkthrough",
+                    summary = "Use AI to understand when the trigger runs and what it enforces.",
+                    bullets = new[]
+                    {
+                        "Open knowledge/skills/oracle-explain-trigger.md.",
+                        "Ask AI to explain demo_orders_biu_trigger, including validations and field mutations.",
+                        "Verify the explanation by inserting or updating one row in the local demo schema.",
+                    },
+                },
+                new
+                {
+                    id = "troubleshoot",
+                    title = "7. Trigger Troubleshooting",
+                    summary = "Practice debugging against the local demo database.",
+                    bullets = new[]
+                    {
+                        "Try an invalid order quantity and observe the raised application error.",
+                        "Use the oracle-debug-procedure skill pattern for the smallest safe correction mindset.",
+                        "Confirm the behavior again with SQLcl after the explanation.",
+                    },
+                },
+                new
+                {
+                    id = "refactor",
+                    title = "8. Refactoring Example",
+                    summary = "Review readability improvements without changing behavior.",
+                    bullets = new[]
+                    {
+                        "Use oracle-refactor-procedure.md as the prompt for AI assistance.",
+                        "Prefer naming, formatting, and structure improvements over logic changes.",
+                        "Run the generated test cases against the local demo objects.",
+                    },
+                },
+                new
+                {
+                    id = "scenario",
+                    title = "9. Mini Real-World Scenario",
+                    summary = "Rehearse the Monday demo sequence end to end.",
+                    bullets = new[]
+                    {
+                        "Create workspace, start Oracle, open tutorial, verify with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1, run the sample query, explain a procedure, and explain a trigger.",
+                        "Treat staging as optional follow-up configuration only.",
+                        "The main story is reproducible onboarding, not privileged access to customer infrastructure.",
+                    },
+                },
+            },
+        };
+
+        return JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string OracleDemoWorkspaceDoc() => """
+## Oracle PL/SQL Workspace
+
+This workspace packages Oracle Free, SQLcl, SQL*Plus, tutorial content, sample PL/SQL, AI prompts, and safety guidance into one portable demo environment.
+
+The Oracle demo database is local to your machine. Staging setup is optional and is not part of the first tutorial.
+
+### Connection Details
+
+- Host: `localhost`
+- Port: `1521`
+- Service: `FREEPDB1`
+- Demo username: `demo_user`
+- Demo password: `demo_password`
+
+### First Steps
+
+1. Start the Oracle demo database from the dashboard.
+2. Open the tutorial from the dashboard or `Help > Quick Tutorial`.
+3. Open SQLcl with `./open-sqlcl.ps1`.
+4. Run `@tutorial/oracle/scripts/03-sample-queries.sql`.
+5. Ask AI to explain `demo_show_customer` and `demo_orders_biu_trigger` using the prompts under `knowledge/skills/`.
+
+### Demo Verification
+
+Use the known local demo connection for normal verification:
+
+```text
+sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+```
+
+Do not read `.env`.
+
+Do not inspect secrets.
+
+Do not inspect `tnsnames.ora`.
+
+Do not inspect `TNS_ADMIN` or `ORACLE_HOME`.
+
+Do not ask for connection details.
+
+Do not perform connection discovery.
+
+Do not modify files.
+
+Do not install anything.
+
+Run:
+
+```sql
+SELECT 'Connection OK' AS status FROM dual;
+
+SELECT customer_id, customer_name
+FROM demo_customers
+ORDER BY customer_id;
+
+SET SERVEROUTPUT ON
+EXEC demo_show_customer(1);
+```
+
+Report results only.
+
+### Staging Later
+
+When a customer staging environment is added later, place `tnsnames.ora`, `sqlnet.ora`, and wallet files under `.local/oracle/network/admin` and keep sessions read-only whenever possible.
+""";
+
+    private static string OracleTutorialReadme() => """
+## Oracle Tutorial Files
+
+Use these files with SQLcl, SQL*Plus, or SQL Developer:
+
+- `01-create-demo-user.sql`: creates the demo user and grants local demo privileges
+- `02-demo-schema.sql`: creates tables, sample procedures, and trigger logic
+- `03-sample-queries.sql`: tutorial queries and procedure examples
+- `tutorial-query.sql`: quick one-command smoke test
+- `START-HERE-ORACLE.md`: demo-safe verification guidance for OpenCode and terminal checks
+
+The demo schema is installed automatically on first Oracle container initialization.
+
+For routine demo verification, use the known local connection `demo_user/demo_password@oracle-demo:1521/FREEPDB1`.
+
+Do not read `.env`, inspect secrets, inspect `tnsnames.ora`, or perform connection discovery unless you are explicitly troubleshooting workspace configuration.
+""";
+
+    private static string OracleStartHere() => """
+Run these read-only checks using the known local demo connection:
+
+```text
+sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+```
+
+Do not read `.env`.
+
+Do not inspect secrets.
+
+Do not inspect `tnsnames.ora`.
+
+Do not inspect `TNS_ADMIN` or `ORACLE_HOME`.
+
+Do not ask for connection details.
+
+Do not perform connection discovery.
+
+Do not modify files.
+
+Do not install anything.
+
+Run:
+
+```sql
+SELECT 'Connection OK' AS status FROM dual;
+
+SELECT customer_id, customer_name
+FROM demo_customers
+ORDER BY customer_id;
+
+SET SERVEROUTPUT ON
+EXEC demo_show_customer(1);
+```
+
+Report results only.
+""";
+
+    private static string OracleOpenCodeStartPrompt() => """
+Review this Oracle PL/SQL demo workspace.
+
+Do not inspect .env.
+
+Do not inspect secrets.
+
+Do not inspect tnsnames.ora.
+
+Do not inspect TNS_ADMIN or ORACLE_HOME.
+
+Do not ask for connection details.
+
+Do not perform connection discovery.
+
+Run these read-only checks using the known local demo connection:
+
+sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+
+Do not modify files.
+
+Do not install anything.
+
+Run:
+
+SELECT 'Connection OK' AS status FROM dual;
+
+SELECT customer_id, customer_name
+FROM demo_customers
+ORDER BY customer_id;
+
+SET SERVEROUTPUT ON
+EXEC demo_show_customer(1);
+
+Report results only.
+
+Start by explaining what `demo_show_customer` does.
+
+Then explain `demo_orders_biu_trigger`.
+
+Suggest read-only verification commands I should run against the local demo database.
+
+Identify useful edge cases and test scenarios for the demo PL/SQL.
+""";
+
+    private static string CreateDemoUserSql() => """
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
+DECLARE
+    l_exists NUMBER := 0;
+BEGIN
+    SELECT COUNT(*) INTO l_exists FROM dba_users WHERE username = 'DEMO_USER';
+    IF l_exists = 0 THEN
+        EXECUTE IMMEDIATE 'CREATE USER demo_user IDENTIFIED BY "demo_password" QUOTA UNLIMITED ON USERS';
+    END IF;
+END;
+/
+
+GRANT CREATE SESSION TO demo_user;
+GRANT CREATE TABLE TO demo_user;
+GRANT CREATE VIEW TO demo_user;
+GRANT CREATE PROCEDURE TO demo_user;
+GRANT CREATE TRIGGER TO demo_user;
+GRANT CREATE SEQUENCE TO demo_user;
+GRANT UNLIMITED TABLESPACE TO demo_user;
+""";
+
+    private static string DemoSchemaSql() => """
+ALTER SESSION SET CONTAINER = FREEPDB1;
+ALTER SESSION SET CURRENT_SCHEMA = demo_user;
+
+CREATE TABLE demo_customers (
+    customer_id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    customer_name VARCHAR2(120) NOT NULL,
+    email_address VARCHAR2(200) NOT NULL,
+    created_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+);
+
+CREATE TABLE demo_products (
+    product_id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    product_name VARCHAR2(120) NOT NULL,
+    unit_price NUMBER(10,2) NOT NULL,
+    active_flag CHAR(1) DEFAULT 'Y' NOT NULL CHECK (active_flag IN ('Y', 'N'))
+);
+
+CREATE TABLE demo_orders (
+    order_id NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    customer_id NUMBER NOT NULL REFERENCES demo_customers(customer_id),
+    product_id NUMBER NOT NULL REFERENCES demo_products(product_id),
+    quantity NUMBER(10) NOT NULL,
+    order_total NUMBER(12,2) NOT NULL,
+    status_code VARCHAR2(30) DEFAULT 'NEW' NOT NULL,
+    created_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+);
+
+MERGE INTO demo_customers target
+USING (
+    SELECT 'Ada Lovelace' customer_name, 'ada@example.local' email_address FROM dual UNION ALL
+    SELECT 'Grace Hopper', 'grace@example.local' FROM dual UNION ALL
+    SELECT 'Alan Turing', 'alan@example.local' FROM dual
+) source
+ON (target.email_address = source.email_address)
+WHEN NOT MATCHED THEN
+    INSERT (customer_name, email_address)
+    VALUES (source.customer_name, source.email_address);
+
+MERGE INTO demo_products target
+USING (
+    SELECT 'Starter Subscription' product_name, 49.00 unit_price, 'Y' active_flag FROM dual UNION ALL
+    SELECT 'Refactoring Workshop', 299.00, 'Y' FROM dual UNION ALL
+    SELECT 'Legacy Support Pack', 149.00, 'Y' FROM dual
+) source
+ON (target.product_name = source.product_name)
+WHEN NOT MATCHED THEN
+    INSERT (product_name, unit_price, active_flag)
+    VALUES (source.product_name, source.unit_price, source.active_flag);
+
+MERGE INTO demo_orders target
+USING (
+    SELECT 1 customer_id, 1 product_id, 2 quantity, 98.00 order_total, 'NEW' status_code FROM dual UNION ALL
+    SELECT 2, 2, 1, 299.00, 'PAID' FROM dual
+) source
+ON (target.customer_id = source.customer_id AND target.product_id = source.product_id AND target.order_total = source.order_total)
+WHEN NOT MATCHED THEN
+    INSERT (customer_id, product_id, quantity, order_total, status_code)
+    VALUES (source.customer_id, source.product_id, source.quantity, source.order_total, source.status_code);
+
+CREATE OR REPLACE PROCEDURE demo_show_customer (
+    p_customer_id IN demo_customers.customer_id%TYPE
+) AS
+    l_customer_name demo_customers.customer_name%TYPE;
+    l_email_address demo_customers.email_address%TYPE;
+    l_order_count NUMBER;
+BEGIN
+    SELECT customer_name,
+           email_address
+      INTO l_customer_name,
+           l_email_address
+      FROM demo_customers
+     WHERE customer_id = p_customer_id;
+
+    SELECT COUNT(*)
+      INTO l_order_count
+      FROM demo_orders
+     WHERE customer_id = p_customer_id;
+
+    DBMS_OUTPUT.PUT_LINE('Customer: ' || l_customer_name);
+    DBMS_OUTPUT.PUT_LINE('Email: ' || l_email_address);
+    DBMS_OUTPUT.PUT_LINE('Orders: ' || l_order_count);
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Customer ' || p_customer_id || ' was not found.');
+END demo_show_customer;
+/
+
+CREATE OR REPLACE TRIGGER demo_orders_biu_trigger
+BEFORE INSERT OR UPDATE ON demo_orders
+FOR EACH ROW
+DECLARE
+    l_unit_price demo_products.unit_price%TYPE;
+    l_active_flag demo_products.active_flag%TYPE;
+BEGIN
+    IF :NEW.quantity IS NULL OR :NEW.quantity <= 0 THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Quantity must be greater than zero.');
+    END IF;
+
+    SELECT unit_price,
+           active_flag
+      INTO l_unit_price,
+           l_active_flag
+      FROM demo_products
+     WHERE product_id = :NEW.product_id;
+
+    IF l_active_flag <> 'Y' THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Orders may only reference active products.');
+    END IF;
+
+    :NEW.order_total := ROUND(l_unit_price * :NEW.quantity, 2);
+    :NEW.updated_at := SYSTIMESTAMP;
+
+    IF INSERTING AND :NEW.created_at IS NULL THEN
+        :NEW.created_at := SYSTIMESTAMP;
+    END IF;
+END demo_orders_biu_trigger;
+/
+""";
+
+    private static string SampleQueriesSql() => """
+SET SERVEROUTPUT ON
+
+PROMPT === Customers ===
+SELECT customer_id, customer_name, email_address
+  FROM demo_customers
+ ORDER BY customer_id;
+
+PROMPT === Products ===
+SELECT product_id, product_name, unit_price, active_flag
+  FROM demo_products
+ ORDER BY product_id;
+
+PROMPT === Orders ===
+SELECT order_id, customer_id, product_id, quantity, order_total, status_code
+  FROM demo_orders
+ ORDER BY order_id;
+
+PROMPT === Procedure Demo ===
+EXEC demo_show_customer(1)
+
+PROMPT === Trigger Demo ===
+INSERT INTO demo_orders (customer_id, product_id, quantity, status_code)
+VALUES (1, 1, 3, 'NEW');
+
+SELECT order_id, quantity, order_total, updated_at
+  FROM demo_orders
+ ORDER BY order_id DESC FETCH FIRST 1 ROWS ONLY;
+
+ROLLBACK;
+""";
+
+    private static string TutorialQuerySql() => """
+SET SERVEROUTPUT ON
+SELECT COUNT(*) AS customer_count FROM demo_customers;
+EXEC demo_show_customer(1)
+""";
+
+    private static string ExplainProcedureSkill() => """
+# Oracle Skill: Explain Procedure
+
+Explain this procedure step-by-step.
+Describe inputs, outputs, tables used, business logic, exceptions, and possible side effects.
+""";
+
+    private static string ExplainTriggerSkill() => """
+# Oracle Skill: Explain Trigger
+
+Explain when this trigger executes, what validations it performs, what fields it modifies, and what business rules it enforces.
+""";
+
+    private static string DebugProcedureSkill() => """
+# Oracle Skill: Debug Procedure
+
+Identify syntax issues, logic issues, possible runtime exceptions, and provide the smallest safe correction.
+""";
+
+    private static string RefactorProcedureSkill() => """
+# Oracle Skill: Refactor Procedure
+
+Improve readability and maintainability without changing behavior.
+""";
+
+    private static string GenerateTestCasesSkill() => """
+# Oracle Skill: Generate Test Cases
+
+Generate valid, invalid, and edge-case SQL test scenarios.
+""";
+
+    private static string NetworkAdminReadme() => """
+## Oracle Network Configuration
+
+Place customer-provided Oracle network files here when staging access is needed later:
+
+- `tnsnames.ora`
+- `sqlnet.ora`
+- wallet files
+
+The workspace shell exports `TNS_ADMIN=/workspace/.local/oracle/network/admin` when this directory exists.
+
+Treat staging as read-only. Prefer a dedicated read-only database account and avoid any DDL, DML, or PL/SQL execution against staging.
+""";
+
+    private static string OpenSqlclScript() => """
+$ErrorActionPreference = 'Stop'
+
+function Pause-OnFailure {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Yellow
+    Read-Host 'Press Enter to close'
+    exit 1
+}
+
+$workspaceRoot = $PSScriptRoot
+$workspaceName = Split-Path -Leaf $workspaceRoot
+$containerName = ($workspaceName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') + '-workspace'
+$connectionTarget = '//oracle-demo:1521/FREEPDB1'
+$connectionString = "demo_user/demo_password@$connectionTarget"
+$shellInitPath = '/opt/opencode-workspace/config/opencode-shell-init.sh'
+
+Write-Host "SQLcl target: $connectionTarget"
+
+docker ps --format '{{.Names}}' | Select-String -SimpleMatch $containerName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "The Oracle demo workspace is not running. Start Oracle from the Oracle Demo Database panel first."
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; command -v sql >/dev/null 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "SQLcl is not ready yet. Start Oracle with internet access so provisioning can finish downloading SQLcl."
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -v"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "SQLcl version check failed inside the workspace container."
+}
+
+docker exec -it --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; exec sql '$connectionString'"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "SQLcl could not open the Oracle demo connection."
+}
+""";
+
+    private static string TestConnectionScript() => """
+$ErrorActionPreference = 'Stop'
+
+function Pause-OnFailure {
+    param([string]$Message)
+    Write-Host $Message -ForegroundColor Yellow
+    Read-Host 'Press Enter to close'
+    exit 1
+}
+
+$workspaceRoot = $PSScriptRoot
+$workspaceName = Split-Path -Leaf $workspaceRoot
+$containerName = ($workspaceName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') + '-workspace'
+$connectionTarget = '//oracle-demo:1521/FREEPDB1'
+$connectionString = "demo_user/demo_password@$connectionTarget"
+$sqlclScriptPath = '/workspace/tutorial/oracle/scripts/tutorial-query.sql'
+$sqlplusScriptPath = '/tmp/sqlplus-demo-check.sql'
+$shellInitPath = '/opt/opencode-workspace/config/opencode-shell-init.sh'
+
+Write-Host "Oracle target: $connectionTarget"
+
+docker ps --format '{{.Names}}' | Select-String -SimpleMatch $containerName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "The Oracle demo workspace is not running. Start Oracle from the Oracle Demo Database panel first."
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; command -v sqlplus >/dev/null 2>&1"
+if ($LASTEXITCODE -eq 0) {
+    docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sqlplus -v"
+    if ($LASTEXITCODE -ne 0) {
+        Pause-OnFailure "SQL*Plus is present but the version check failed inside the workspace container."
+    }
+
+    docker exec --user opencode -w /workspace $containerName sh -lc "cat > $sqlplusScriptPath <<'SQL'
+SELECT 'Connection OK' AS status FROM dual;
+SELECT customer_id, customer_name FROM demo_customers ORDER BY customer_id;
+SET SERVEROUTPUT ON
+EXEC demo_show_customer(1);
+EXIT;
+SQL"
+
+    docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sqlplus -S '$connectionString' @$sqlplusScriptPath"
+    if ($LASTEXITCODE -ne 0) {
+        Pause-OnFailure "SQL*Plus failed while running the demo verification query."
+    }
+
+    Write-Host 'SQL*Plus demo verification completed successfully.'
+    exit 0
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; command -v sql >/dev/null 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "Neither SQL*Plus nor SQLcl is ready yet. Start Oracle with internet access so provisioning can finish."
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -v"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "SQLcl version check failed inside the workspace container."
+}
+
+docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -S '$connectionString' @$sqlclScriptPath"
+if ($LASTEXITCODE -ne 0) {
+    Pause-OnFailure "SQLcl failed while running the tutorial query script."
+}
+
+Write-Host 'SQLcl tutorial query completed successfully.'
+""";
+
+    private static string RunTutorialQueryScript() => TestConnectionScript();
+
+    private static string StartOpenCodeOracleDemoScript() => """
+$ErrorActionPreference = 'Stop'
+
+$workspaceRoot = Split-Path -Parent $PSScriptRoot
+$attachScript = Join-Path $workspaceRoot 'attach-workspace.ps1'
+
+if (-not (Test-Path $attachScript)) {
+    throw "Expected attach script was not found at $attachScript"
+}
+
+& $attachScript
+exit $LASTEXITCODE
+""";
+}

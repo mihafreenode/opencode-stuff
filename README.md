@@ -36,6 +36,41 @@ Import the checkout, create an isolated workspace branch, open a disposable runt
 
 -> [Existing Git Checkout Workflow](docs/walkthrough/existing-git-checkout.md)
 
+## Featured Workspace: Oracle PL/SQL Demo
+
+Not every workspace starts with an existing Git repository.
+
+The Oracle PL/SQL Demo workspace is a concrete example of what Workspace Manager enables: a safe local environment for learning Oracle, understanding existing PL/SQL, experimenting freely, onboarding new developers, and validating ideas before touching shared environments.
+
+Many Oracle teams rely heavily on shared development or staging databases.
+
+The Oracle PL/SQL Demo workspace provides a local environment where developers can learn, experiment, troubleshoot, and understand PL/SQL without affecting shared systems.
+
+It can be created in minutes, reset when needed, and reused as a repeatable onboarding and practice environment.
+
+Supporting tools and content include:
+
+- Oracle Database Free
+- SQLcl
+- SQL*Plus
+- SQL Developer integration
+- sample schema and data
+- PL/SQL procedures and triggers
+- guided tutorials
+- AI-assisted PL/SQL explanation
+
+Developers can:
+
+- learn Oracle tooling
+- understand existing PL/SQL
+- experiment with queries and schema changes
+- prototype ideas safely
+- validate concepts before touching shared environments
+
+The environment can be reset and recreated at any time.
+
+**Learn more:** [Oracle PL/SQL Demo Workspace](docs/oracle-demo.md)
+
 ## Who Is This For?
 
 - developers using AI coding agents
@@ -156,6 +191,7 @@ Read more:
 - [Workspace YAML](docs/workspace-yaml.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Fact Sheet](docs/fact-sheet.md)
+- [Oracle PL/SQL Demo Workspace](docs/oracle-demo.md)
 
 ## Learn More
 

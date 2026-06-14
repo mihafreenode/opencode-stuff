@@ -228,6 +228,44 @@
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedServicesStatusLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceServicesStatus}" TextWrapping="Wrap" />
 
+                            <Border Margin="0,16,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8"
+                                    Visibility="{Binding SelectedWorkspaceHasOracleDemo, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Oracle Demo Database" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Text="Status" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SelectedOracleDemoStatus}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="Startup Progress" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OracleStartupStage}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="Host" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OracleDemoHost}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="Port" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OracleDemoPort}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="Service" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OracleDemoServiceName}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,10,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="{Binding OracleDemoProvisioningNote}" TextWrapping="Wrap" />
+                                    <WrapPanel Margin="0,12,0,0">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Padding="14,8" Content="Start" Command="{Binding StartOracleDemoCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Stop" Command="{Binding ShutDownWorkspaceCommand}" IsEnabled="{Binding CanShutDownSelectedWorkspace}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Reset" Command="{Binding ResetOracleDemoCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="View Logs" Command="{Binding ViewOracleLogsCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Copy Connection Details" Command="{Binding CopyOracleConnectionDetailsCommand}" />
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Padding="14,8" Content="Open Tutorial" Click="OpenQuickTutorial_OnClick" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Open SQLcl" Command="{Binding OpenOracleSqlclCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Run Tutorial Query" Command="{Binding RunOracleTutorialQueryCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Test Connection" Command="{Binding TestOracleConnectionCommand}" />
+                                    </WrapPanel>
+                                    <TextBlock Margin="0,12,0,0" Text="{Binding SqlDeveloperStatus}" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="{Binding SqlDeveloperGuidance}" TextWrapping="Wrap" />
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Padding="14,8" Content="Copy Connection" Command="{Binding CopyOracleConnectionDetailsCommand}" />
+                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Open SQL Developer" Command="{Binding OpenSqlDeveloperCommand}" IsEnabled="{Binding IsSqlDeveloperDetected}" />
+                                    </WrapPanel>
+                                    <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="Staging is optional for onboarding. Keep future staging access read-only and limit it to query workflows." TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
                             <Border Margin="0,16,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8">
                                 <StackPanel>
                                     <TextBlock Text="{Binding SafetyTitle}" FontSize="18" FontWeight="SemiBold" />
@@ -316,7 +354,18 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Foreground="White" Text="{Binding StatusMessage}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Foreground="White" Text="{Binding StatusMessage}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                    <Border x:Name="LogAutoScrollPausedIndicator"
+                            DockPanel.Dock="Right"
+                            Visibility="Collapsed"
+                            Background="#33F5C542"
+                            CornerRadius="10"
+                            Padding="8,3"
+                            Margin="12,0,0,0">
+                        <TextBlock Foreground="#FFF5C542" Text="Auto-scroll paused" FontSize="11" FontWeight="SemiBold" />
+                    </Border>
+                </DockPanel>
 
                 <TextBox x:Name="LogTextBox"
                          Grid.Row="1"

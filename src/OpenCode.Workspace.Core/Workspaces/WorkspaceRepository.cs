@@ -47,6 +47,9 @@ public sealed class WorkspaceRepository
         Persist(records.OrderByDescending(item => item.LastOpenedUtc).ToList());
     }
 
+    public Task SaveAsync(WorkspaceRecord record, CancellationToken cancellationToken = default)
+        => Task.Run(() => Save(record), cancellationToken);
+
     public void Delete(string rootPath)
     {
         var remaining = LoadAll()

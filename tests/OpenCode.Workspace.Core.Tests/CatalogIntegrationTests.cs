@@ -39,6 +39,20 @@ public sealed class CatalogIntegrationTests
     }
 
     [Fact]
+    public void TemplateExpander_CarriesTemplateSkillsAndMcpSelections()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var template = provider.LoadTemplates().Single(item => item.Id == "oracle-plsql-demo");
+        var expander = new TemplateExpander();
+
+        var definition = expander.Expand("oracle-demo", template);
+
+        Assert.Contains("oracle-explain-procedure", definition.Skills);
+        Assert.Contains("oracle-sqlcl", definition.Mcp);
+        Assert.Contains("oracle-demo", definition.Services);
+    }
+
+    [Fact]
     public void WorkspaceResolver_DeduplicatesDependenciesAndAlwaysEnablesCore()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
@@ -54,5 +68,16 @@ public sealed class CatalogIntegrationTests
         Assert.Contains(resolved.Features, feature => feature.Id == "core");
         Assert.Contains(resolved.AptPackages, packageName => packageName == "pandoc");
         Assert.Equal(resolved.AptPackages.Count, resolved.AptPackages.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
+    public void OracleFeature_DoesNotHardcodeLibaioInCatalogPackageList()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var oracleFeature = provider.LoadFeatures().Single(feature => feature.Id == "oracle-demo");
+
+        Assert.DoesNotContain("libaio1", oracleFeature.Dependencies.Apt, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("libaio1t64", oracleFeature.Dependencies.Apt, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(oracleFeature.PostInstall, command => command.Contains("apt-get install -y libaio1", StringComparison.OrdinalIgnoreCase));
     }
 }

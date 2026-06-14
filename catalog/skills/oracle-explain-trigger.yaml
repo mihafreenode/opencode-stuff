@@ -1,0 +1,6 @@
+id: oracle-explain-trigger
+displayName: Explain Trigger
+description: Explain when an Oracle trigger runs, what it validates, and what it changes.
+dependencies:
+  features:
+    - oracle-demo

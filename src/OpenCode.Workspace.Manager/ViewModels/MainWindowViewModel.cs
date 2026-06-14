@@ -44,6 +44,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool _installTerminalIfMissing = true;
     private bool _installZoxide;
     private bool _installFzf;
+    private readonly string? _sqlDeveloperExecutablePath;
+    private string? _oracleStartupStageOverride;
+    private static readonly TimeSpan CreateWorkspaceTimeout = TimeSpan.FromSeconds(20);
 
     public MainWindowViewModel(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -67,6 +70,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _nerdFontInstaller = nerdFontInstaller;
         _savePointMessageService = savePointMessageService;
         _tutorialService = tutorialService;
+        _sqlDeveloperExecutablePath = _windowsHostCapabilities.FindSqlDeveloperExecutablePath();
 
         var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspaces");
         _newWorkspacePath = Path.Combine(defaultRoot, _newWorkspaceName);
@@ -159,7 +163,7 @@ public sealed class MainWindowViewModel : ObservableObject
         CreateWorkspaceDialogTitle = localization.Get("create.dialog.title");
         CreateWorkspaceDialogDescription = localization.Get("create.dialog.description");
 
-        CreateWorkspaceCommand = new AsyncRelayCommand(CreateWorkspaceAsync, CanCreateWorkspace);
+        CreateWorkspaceCommand = new AsyncRelayCommand(() => CreateWorkspaceAsync(), CanCreateWorkspace);
         PrimaryWorkspaceActionCommand = new AsyncRelayCommand(ExecutePrimaryWorkspaceActionAsync, HasSelectedWorkspace);
         OpenWorkspaceCommand = new AsyncRelayCommand(OpenWorkspaceAsync, HasSelectedWorkspace);
         PrepareWorkspaceCommand = new AsyncRelayCommand(PrepareWorkspaceAsync, HasSelectedWorkspace);
@@ -180,6 +184,14 @@ public sealed class MainWindowViewModel : ObservableObject
         CopyWorkspacePathCommand = new RelayCommand(CopySelectedWorkspacePath, () => HasSelectedWorkspace() && !IsBusy);
         RemoveWorkspaceCommand = new AsyncRelayCommand(RemoveWorkspaceAsync, HasSelectedWorkspace);
         InstallSelectedFontCommand = new AsyncRelayCommand(InstallSelectedFontAsync, () => !IsBusy && !string.IsNullOrWhiteSpace(SelectedFontFamily));
+        StartOracleDemoCommand = new AsyncRelayCommand(StartOracleDemoAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        ResetOracleDemoCommand = new AsyncRelayCommand(ResetOracleDemoAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        ViewOracleLogsCommand = new AsyncRelayCommand(ViewOracleLogsAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        CopyOracleConnectionDetailsCommand = new RelayCommand(CopyOracleConnectionDetails, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        OpenOracleSqlclCommand = new RelayCommand(OpenOracleSqlcl, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        RunOracleTutorialQueryCommand = new RelayCommand(RunOracleTutorialQuery, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        TestOracleConnectionCommand = new RelayCommand(TestOracleConnection, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        OpenSqlDeveloperCommand = new RelayCommand(OpenSqlDeveloper, () => SelectedWorkspaceHasOracleDemo && IsSqlDeveloperDetected && !IsBusy);
 
         LoadCatalogSelections();
         SelectedTemplate = Templates.FirstOrDefault(template => string.Equals(template.Id, "general-development", StringComparison.OrdinalIgnoreCase))
@@ -296,6 +308,14 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand CopyWorkspacePathCommand { get; }
     public AsyncRelayCommand RemoveWorkspaceCommand { get; }
     public AsyncRelayCommand InstallSelectedFontCommand { get; }
+    public AsyncRelayCommand StartOracleDemoCommand { get; }
+    public AsyncRelayCommand ResetOracleDemoCommand { get; }
+    public AsyncRelayCommand ViewOracleLogsCommand { get; }
+    public RelayCommand CopyOracleConnectionDetailsCommand { get; }
+    public RelayCommand OpenOracleSqlclCommand { get; }
+    public RelayCommand RunOracleTutorialQueryCommand { get; }
+    public RelayCommand TestOracleConnectionCommand { get; }
+    public RelayCommand OpenSqlDeveloperCommand { get; }
 
     public WorkspaceListItemViewModel? SelectedWorkspace
     {
@@ -304,6 +324,7 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedWorkspace, value))
             {
+                _oracleStartupStageOverride = null;
                 RaisePropertyChanged(nameof(SelectedWorkspaceName));
                 RaisePropertyChanged(nameof(SelectedWorkspacePath));
                 RaisePropertyChanged(nameof(SelectedRepositoryPath));
@@ -311,6 +332,11 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspaceFeatures));
                 RaisePropertyChanged(nameof(SelectedWorkspaceServices));
                 RaisePropertyChanged(nameof(SelectedWorkspaceAgent));
+                RaisePropertyChanged(nameof(SelectedWorkspaceHasOracleDemo));
+                RaisePropertyChanged(nameof(SelectedOracleDemoStatus));
+                RaisePropertyChanged(nameof(OracleStartupStage));
+                RaisePropertyChanged(nameof(IsSqlDeveloperDetected));
+                RaisePropertyChanged(nameof(SqlDeveloperStatus));
                 RaisePropertyChanged(nameof(SelectedWorkspaceStatus));
                 RaisePropertyChanged(nameof(SelectedWorkspaceLastOperation));
                 RaisePropertyChanged(nameof(SelectedWorkspaceServicesStatus));
@@ -360,6 +386,7 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _selectedTemplate, value) && value is not null)
             {
                 ApplyTemplate(value);
+                RaisePropertyChanged(nameof(IsOracleDemoTemplateSelected));
             }
         }
     }
@@ -578,6 +605,36 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedWorkspaceAgent => SelectedWorkspace is null
         ? "-"
         : _agentProfileResolver.Resolve(SelectedWorkspace.Snapshot.Definition).ProfileId;
+    public bool SelectedWorkspaceHasOracleDemo => SelectedWorkspace?.Snapshot.Definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase) == true;
+    public string SelectedOracleDemoStatus => SelectedWorkspace?.Snapshot.RuntimeState switch
+    {
+        WorkspaceRuntimeState.Running => "Running",
+        WorkspaceRuntimeState.Stopped => "Stopped",
+        _ => "Unknown",
+    };
+    public string OracleDemoHost => "localhost";
+    public string OracleDemoPort => "1521";
+    public string OracleDemoServiceName => "FREEPDB1";
+    public string OracleDemoUsername => "demo_user";
+    public string OracleDemoPassword => "demo_password";
+    public string OracleDemoProvisioningNote => "First provisioning downloads Oracle SQLcl from Oracle and requires internet access. After that, the demo database and tutorial run locally.";
+    public string OracleStartupStage => SelectedWorkspaceHasOracleDemo && !string.IsNullOrWhiteSpace(_oracleStartupStageOverride)
+        ? _oracleStartupStageOverride!
+        : GetOracleStartupStageFromSnapshot();
+    public bool IsSqlDeveloperDetected => !string.IsNullOrWhiteSpace(_sqlDeveloperExecutablePath);
+    public string SqlDeveloperStatus => IsSqlDeveloperDetected ? "SQL Developer detected" : "SQL Developer not detected";
+    public string SqlDeveloperGuidance => IsSqlDeveloperDetected
+        ? "Use the copied localhost connection details to connect quickly during the demo."
+        : "SQL Developer is optional. If it is not installed, continue with Open SQLcl and the local tutorial.";
+    public bool IsOracleDemoTemplateSelected => string.Equals(SelectedTemplate?.Id, "oracle-plsql-demo", StringComparison.OrdinalIgnoreCase);
+    public string OracleTemplateIncludesSummary => string.Join(Environment.NewLine, new[]
+    {
+        "✓ Oracle Free Database",
+        "✓ SQLcl",
+        "✓ Tutorial",
+        "✓ Sample Schema",
+        "✓ AI Skills",
+    });
     public bool IsWorkspaceListLoading
     {
         get => _isWorkspaceListLoading;
@@ -717,20 +774,54 @@ public sealed class MainWindowViewModel : ObservableObject
         => _tutorialService.MarkQuickTutorialPromptHandled();
 
     public QuickTutorialViewModel CreateQuickTutorialViewModel()
-        => new(_tutorialService.LoadTutorial());
+        => new(_tutorialService.LoadTutorial(SelectedWorkspace?.RootPath));
 
     public string GetText(string key)
         => _localization.Get(key);
 
-    public async Task<bool> CreateWorkspaceFromDialogAsync()
+    public void PrepareCreateWorkspaceDialog()
     {
+        SelectedWorkspaceSourceType = WorkspaceSourceType.NewWorkspace;
+        ExistingRepositoryPath = string.Empty;
+        LoadCatalogSelections();
+
+        var templateToApply = SelectedTemplate
+            ?? Templates.FirstOrDefault(template => string.Equals(template.Id, "general-development", StringComparison.OrdinalIgnoreCase))
+            ?? Templates.FirstOrDefault();
+
+        if (templateToApply is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedTemplate, templateToApply))
+        {
+            SelectedTemplate = templateToApply;
+            return;
+        }
+
+        ApplyTemplate(templateToApply);
+        RaisePropertyChanged(nameof(IsOracleDemoTemplateSelected));
+    }
+
+    public async Task<bool> CreateWorkspaceFromDialogAsync(string buttonSource, Action<string>? diagnosticsLog = null)
+    {
+        diagnosticsLog?.Invoke($"Create Workspace input validation started via {buttonSource}.");
         if (!CanCreateWorkspace())
         {
+            diagnosticsLog?.Invoke($"Create Workspace input validation failed via {buttonSource}.");
             return false;
         }
 
+        diagnosticsLog?.Invoke($"Create Workspace input validated via {buttonSource}.");
+        diagnosticsLog?.Invoke($"Create Workspace path resolution started via {buttonSource}. path='{NewWorkspacePath.Trim()}' name='{NewWorkspaceName.Trim()}' template='{SelectedTemplate?.Id ?? "none"}'.");
+        diagnosticsLog?.Invoke($"Create Workspace selected features: {string.Join(", ", AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id))}.");
+        diagnosticsLog?.Invoke($"Create Workspace selected services: {string.Join(", ", AvailableServices.Where(item => item.IsSelected).Select(item => item.Id))}.");
+        diagnosticsLog?.Invoke($"Create Workspace path resolution completed via {buttonSource}.");
+
         var existingCount = Workspaces.Count;
-        await CreateWorkspaceAsync();
+        await CreateWorkspaceAsync(buttonSource, diagnosticsLog);
+        diagnosticsLog?.Invoke($"Create Workspace workspace list check started via {buttonSource}.");
         return Workspaces.Count > existingCount || Workspaces.Any(item => string.Equals(item.Name, NewWorkspaceName.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
@@ -764,12 +855,12 @@ public sealed class MainWindowViewModel : ObservableObject
             Workspace = new WorkspaceMetadata
             {
                 Name = workspaceName,
-                Image = "ubuntu:24.04",
+                Image = string.IsNullOrWhiteSpace(SelectedTemplate?.WorkspaceImage) ? "ubuntu:24.04" : SelectedTemplate.WorkspaceImage,
             },
             Features = AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
             Services = AvailableServices.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
-            Skills = new List<string>(),
-            Mcp = new List<string>(),
+            Skills = SelectedTemplate?.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>(),
+            Mcp = SelectedTemplate?.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>(),
             Agent = new AgentPreferences
             {
                 Profile = AgentProfileResolver.BuiltInDefault.ProfileId,
@@ -794,18 +885,39 @@ public sealed class MainWindowViewModel : ObservableObject
             },
         };
 
-    private async Task CreateWorkspaceAsync()
+    private async Task CreateWorkspaceAsync(string buttonSource = "HeaderCreateButton", Action<string>? diagnosticsLog = null)
     {
+        var requestedWorkspacePath = NewWorkspacePath.Trim();
+        var currentStep = "command setup";
         await RunBusyAsync(
             async () =>
             {
+                using var createTimeout = new CancellationTokenSource(CreateWorkspaceTimeout);
+
+                currentStep = "template application verification";
+                diagnosticsLog?.Invoke($"Create Workspace template application verified via {buttonSource}. template='{SelectedTemplate?.Id ?? "none"}'.");
+
+                currentStep = "workspace definition build";
+                diagnosticsLog?.Invoke($"Create Workspace definition build started via {buttonSource}.");
                 AppendCurrentLog("app", $"Creating workspace '{NewWorkspaceName.Trim()}'.");
                 var definition = BuildWorkspaceDefinitionFromSelections(NewWorkspaceName.Trim());
+                diagnosticsLog?.Invoke($"Create Workspace definition built via {buttonSource}.");
 
-                var snapshot = _workspaceOrchestrator.CreateWorkspace(NewWorkspacePath.Trim(), definition, CreateWorkspaceLogAppender(NewWorkspacePath.Trim()));
+                currentStep = "workspace file generation and repository initialization";
+                diagnosticsLog?.Invoke($"Create Workspace file generation started via {buttonSource}.");
+                var snapshot = await _workspaceOrchestrator.CreateWorkspaceAsync(requestedWorkspacePath, definition, CreateWorkspaceLogAppender(requestedWorkspacePath), createTimeout.Token, includeRuntimeInspection: false);
+                diagnosticsLog?.Invoke($"Create Workspace files generated via {buttonSource}.");
+
+                currentStep = "terminal profile setup";
                 var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
                 _profileManager.EnsureManagedProfile(snapshot.Definition, snapshot.Definition.Terminal.Font, resolvedFace);
-                PersistWorkspaceRecord(snapshot, CreateLabel, _localization.Get("workspace.result.created"), succeeded: true);
+
+                currentStep = "workspace registration metadata update";
+                diagnosticsLog?.Invoke($"Create Workspace workspace registered via {buttonSource}.");
+                await PersistWorkspaceRecordAsync(snapshot, CreateLabel, _localization.Get("workspace.result.created"), succeeded: true);
+                diagnosticsLog?.Invoke($"Create Workspace workspaces.json saved via {buttonSource}.");
+
+                currentStep = "workspace log initialization";
                 EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Created workspace files and generated runtime artifacts.");
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Resolved default agent profile '{AgentProfileResolver.BuiltInDefault.ProfileId}'.");
@@ -814,9 +926,28 @@ public sealed class MainWindowViewModel : ObservableObject
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Configured font: {resolvedFace}");
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Terminal profile file: {_profileManager.GetFragmentFilePath()}");
                 AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile id: {_profileManager.GetProfileGuid(snapshot.Definition)}");
-                await RefreshWorkspaceListAsync(snapshot.Paths.RootPath);
+                if (IsOracleDemoWorkspace(snapshot.Definition))
+                {
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Oracle PL/SQL Demo workspace created. Start Oracle from the Oracle Demo Database panel when you are ready to present.");
+                }
+
+                currentStep = "workspace list refresh";
+                diagnosticsLog?.Invoke($"Create Workspace workspace list refresh started via {buttonSource}.");
+                await RefreshWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: createTimeout.Token);
+                diagnosticsLog?.Invoke($"Create Workspace workspace list refreshed via {buttonSource}.");
+
+                currentStep = "status update";
                 StatusMessage = string.Format(_localization.Get("status.workspaceCreated"), snapshot.Definition.Workspace.Name);
-                await Task.CompletedTask;
+            },
+            exception =>
+            {
+                var isTimeout = exception is OperationCanceledException;
+                diagnosticsLog?.Invoke($"Create Workspace failed via {buttonSource} during '{currentStep}': {exception.Message}");
+                AppDialogService.ShowOk(
+                    Application.Current?.MainWindow,
+                    _localization,
+                    "Create Workspace Failed",
+                    $"What happened: the workspace could not be fully created during '{currentStep}'.{Environment.NewLine}{Environment.NewLine}Why: {(isTimeout ? "The operation timed out while waiting for a repository or snapshot step to finish." : exception.Message)}{Environment.NewLine}{Environment.NewLine}How to fix it: review the dialog log, then retry. Generated files may already exist at:{Environment.NewLine}{requestedWorkspacePath}");
             });
     }
 
@@ -1064,7 +1195,18 @@ public sealed class MainWindowViewModel : ObservableObject
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(snapshot.Paths.RootPath);
         }
 
+        if (IsOracleDemoWorkspace(snapshot.Definition))
+        {
+            SetOracleStartupStage("Provisioning SQLcl");
+            StatusMessage = "Provisioning Oracle demo workspace. SQLcl is downloaded from Oracle on first run and requires internet access.";
+            AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Provisioning Oracle demo workspace. SQLcl download requires internet access on first run.");
+        }
+
         await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+        if (IsOracleDemoWorkspace(snapshot.Definition))
+        {
+            SetOracleStartupStage(openAfterUpdate ? "Ready" : "Not Provisioned");
+        }
         PersistWorkspaceRecord(snapshot, _localization.Get("operation.update"), _localization.Get("workspace.result.updated"), succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
 
         if (!openAfterUpdate && !wasRunning)
@@ -1083,6 +1225,86 @@ public sealed class MainWindowViewModel : ObservableObject
                 await _workspaceOrchestrator.StopAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
                 PersistWorkspaceRecord(snapshot, _localization.Get("operation.shutdown"), _localization.Get("workspace.result.stopped"), succeeded: true);
                 StatusMessage = string.Format(_localization.Get("status.workspaceStopped"), snapshot.Definition.Workspace.Name);
+            });
+    }
+
+    private async Task StartOracleDemoAsync()
+    {
+        await RunWorkspaceActionAsync(
+            "Start Oracle Demo",
+            async snapshot =>
+            {
+                if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+                {
+                    SetOracleStartupStage("Provisioning SQLcl");
+                    StatusMessage = "Provisioning Oracle demo workspace. SQLcl is downloaded from Oracle on first run and requires internet access.";
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Starting Oracle demo workspace. SQLcl download requires internet access on first run.");
+                    await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                    PersistWorkspaceRecord(snapshot, "Start Oracle Demo", "Provisioned and started Oracle demo workspace.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
+                }
+                else if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+                {
+                    SetOracleStartupStage("Starting Oracle");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Starting local Oracle container.");
+                    await _workspaceOrchestrator.StartAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                    PersistWorkspaceRecord(snapshot, "Start Oracle Demo", "Started Oracle demo workspace.", succeeded: true);
+                }
+
+                SetOracleStartupStage("Waiting For Health Check");
+                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Waiting for Oracle health check to report ready.");
+                StatusMessage = $"Oracle demo database is ready for '{snapshot.Definition.Workspace.Name}'.";
+                SetOracleStartupStage("Ready");
+            });
+    }
+
+    private async Task ResetOracleDemoAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        var confirmation = AppDialogService.ShowYesNo(
+            Application.Current?.MainWindow,
+            _localization,
+            "Reset Oracle Demo Database",
+            $"Reset deletes the local Oracle demo data volume for '{SelectedWorkspace.Name}'.\n\nThis removes the local demo schema, sample data, and any local Oracle changes in this workspace. Continue?");
+
+        if (confirmation != AppDialogResult.Yes)
+        {
+            StatusMessage = "Oracle demo reset was cancelled. Local Oracle demo data was kept.";
+            return;
+        }
+
+        await RunWorkspaceActionAsync(
+            "Reset Oracle Demo",
+            async snapshot =>
+            {
+                SetOracleStartupStage("Not Provisioned");
+                StatusMessage = "Resetting Oracle demo database. This deletes local Oracle demo data and recreates it from the generated initialization scripts.";
+                await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(snapshot.Paths.RootPath);
+                SetOracleStartupStage("Provisioning SQLcl");
+                await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, "Reset Oracle Demo", "Reset Oracle demo database volume and reprovisioned the workspace.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
+                StatusMessage = $"Oracle demo database was reset for '{snapshot.Definition.Workspace.Name}'.";
+                SetOracleStartupStage("Ready");
+            });
+    }
+
+    private async Task ViewOracleLogsAsync()
+    {
+        await RunWorkspaceActionAsync(
+            "View Oracle Logs",
+            async snapshot =>
+            {
+                var result = await _dockerService.GetServiceLogsAsync(snapshot.Paths, snapshot.Definition, "oracle-demo", CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                if (!result.IsSuccess)
+                {
+                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError);
+                }
+
+                StatusMessage = $"Loaded Oracle logs for '{snapshot.Definition.Workspace.Name}'.";
             });
     }
 
@@ -1237,6 +1459,106 @@ public sealed class MainWindowViewModel : ObservableObject
         StatusMessage = string.Format(_localization.Get("status.pathCopied"), SelectedWorkspace.Name);
     }
 
+    private void CopyOracleConnectionDetails()
+    {
+        if (!SelectedWorkspaceHasOracleDemo)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText($"Host: {OracleDemoHost}{Environment.NewLine}Port: {OracleDemoPort}{Environment.NewLine}Service: {OracleDemoServiceName}{Environment.NewLine}Username: {OracleDemoUsername}{Environment.NewLine}Password: {OracleDemoPassword}");
+            StatusMessage = $"Copied Oracle connection details for '{SelectedWorkspace?.Name}'.";
+        }
+        catch (Exception exception)
+        {
+            ShowOracleActionError("Copy Connection Details Failed", "The app could not copy the Oracle connection details to the clipboard.", exception.Message, "Try copying again. If clipboard access is blocked by the desktop session, copy the displayed localhost details manually.");
+        }
+    }
+
+    private void OpenOracleSqlcl() => RunWorkspaceScript("open-sqlcl.ps1", "Opened SQLcl launcher.");
+
+    private void RunOracleTutorialQuery() => RunWorkspaceScript("run-tutorial-query.ps1", "Ran Oracle tutorial query.");
+
+    private void TestOracleConnection() => RunWorkspaceScript("test-oracle-connection.ps1", "Tested Oracle SQLcl connection.");
+
+    private void OpenSqlDeveloper()
+    {
+        if (string.IsNullOrWhiteSpace(_sqlDeveloperExecutablePath))
+        {
+            ShowOracleActionError("SQL Developer Not Detected", "SQL Developer was not detected on this Windows machine.", "The demo can still continue without it.", "Install SQL Developer or use Open SQLcl from the Oracle Demo Database panel.");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _sqlDeveloperExecutablePath,
+                UseShellExecute = true,
+            });
+            StatusMessage = "Opened SQL Developer.";
+        }
+        catch (Exception exception)
+        {
+            ShowOracleActionError("Open SQL Developer Failed", "The app could not open SQL Developer.", exception.Message, "Use Open SQLcl instead, or verify the SQL Developer installation path on Windows.");
+        }
+    }
+
+    private void RunWorkspaceScript(string scriptFileName, string successMessage)
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        var snapshot = SelectedWorkspace.Snapshot;
+        if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            AppDialogService.ShowOk(
+                Application.Current?.MainWindow,
+                _localization,
+                "Oracle Demo Database Not Running",
+                "Oracle container is not running.\n\nWhat happened: the local Oracle demo runtime is stopped.\nWhy: SQLcl and tutorial queries need the running local demo database.\nHow to fix it: start Oracle Demo Database from the Oracle panel and try again.");
+            return;
+        }
+
+        if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+        {
+            AppDialogService.ShowOk(
+                Application.Current?.MainWindow,
+                _localization,
+                "SQLcl Not Ready Yet",
+                "SQLcl not downloaded yet.\n\nWhat happened: SQLcl is not installed in this workspace yet.\nWhy: the first Oracle provisioning run downloads SQLcl from Oracle.\nHow to fix it: start Oracle provisioning first with internet access, then try again.");
+            StatusMessage = "SQLcl is not ready yet. Start Oracle with internet access first so provisioning can download SQLcl.";
+            return;
+        }
+
+        var scriptPath = Path.Combine(SelectedWorkspace.RootPath, scriptFileName);
+        if (!File.Exists(scriptPath))
+        {
+            ShowOracleActionError("Oracle Helper Script Missing", $"The Oracle action '{scriptFileName}' is not available in this workspace.", "The generated helper script is missing from the workspace folder.", "Recreate the workspace or regenerate it, then try the Oracle action again.");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                UseShellExecute = true,
+                WorkingDirectory = SelectedWorkspace.RootPath,
+            });
+            StatusMessage = successMessage;
+        }
+        catch (Exception exception)
+        {
+            ShowOracleActionError("Oracle Action Failed", $"The app could not start '{scriptFileName}'.", exception.Message, "Verify PowerShell is available on Windows and try the Oracle action again.");
+        }
+    }
+
     private void ShowWorkspaceError()
     {
         if (SelectedWorkspace is null)
@@ -1312,7 +1634,10 @@ public sealed class MainWindowViewModel : ObservableObject
         await AddTerminalDiagnosticsAsync();
     }
 
-    private async Task RefreshWorkspaceListAsync(string? selectRootPath = null)
+    public void AppendCreateDialogDiagnostic(string message)
+        => AppendCurrentLog("create", message);
+
+    private async Task RefreshWorkspaceListAsync(string? selectRootPath = null, bool includeRuntimeInspection = true, CancellationToken cancellationToken = default)
     {
         Workspaces.Clear();
         foreach (var record in _workspaceOrchestrator.LoadWorkspaceRecords())
@@ -1324,8 +1649,17 @@ public sealed class MainWindowViewModel : ObservableObject
 
             try
             {
-                var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(record.RootPath);
-                Workspaces.Add(new WorkspaceListItemViewModel(snapshot, _localization));
+                var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(record.RootPath, cancellationToken, includeRuntimeInspection);
+                var workspaceItem = new WorkspaceListItemViewModel(snapshot, _localization);
+                Workspaces.Add(workspaceItem);
+                if (workspaceItem.HasError)
+                {
+                    AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' is in Error state. {workspaceItem.ErrorDetails}");
+                }
+                else
+                {
+                    AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' status: {workspaceItem.StatusLabel}. {workspaceItem.StatusDetails}");
+                }
             }
             catch
             {
@@ -1513,7 +1847,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private bool CanCreateWorkspace()
     {
-        if (!CanStartCreateWorkspaceFlow || string.IsNullOrWhiteSpace(NewWorkspaceName))
+        if (IsBusy || !CanStartCreateWorkspaceFlow || string.IsNullOrWhiteSpace(NewWorkspaceName))
         {
             return false;
         }
@@ -1583,7 +1917,7 @@ public sealed class MainWindowViewModel : ObservableObject
         };
     }
 
-    private async Task RunBusyAsync(Func<Task> action)
+    private async Task RunBusyAsync(Func<Task> action, Action<Exception>? onError = null)
     {
         if (IsBusy)
         {
@@ -1599,11 +1933,56 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             AppendCurrentLog("app", exception.Message);
             StatusMessage = exception.Message;
+            onError?.Invoke(exception);
+            if (SelectedWorkspaceHasOracleDemo)
+            {
+                AppDialogService.ShowOk(
+                    Application.Current?.MainWindow,
+                    _localization,
+                    "Oracle Demo Action Failed",
+                    $"What happened: {exception.Message}{Environment.NewLine}{Environment.NewLine}Why: the Oracle demo action could not complete with the current local workspace state.{Environment.NewLine}{Environment.NewLine}How to fix it: review the Oracle panel status and the log output below, then retry the action. If provisioning was incomplete, start Oracle again with internet access.");
+            }
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private string GetOracleStartupStageFromSnapshot()
+    {
+        if (!SelectedWorkspaceHasOracleDemo || SelectedWorkspace is null)
+        {
+            return string.Empty;
+        }
+
+        if (SelectedWorkspace.Snapshot.RuntimeState == WorkspaceRuntimeState.Running)
+        {
+            return "Ready";
+        }
+
+        return SelectedWorkspace.Snapshot.UpdateRequired || SelectedWorkspace.Snapshot.AppliedState is null
+            ? "Not Provisioned"
+            : "Ready";
+    }
+
+    private void SetOracleStartupStage(string stage)
+    {
+        _oracleStartupStageOverride = stage;
+        RaisePropertyChanged(nameof(OracleStartupStage));
+    }
+
+    private void ShowOracleActionError(string title, string whatHappened, string why, string howToFix)
+    {
+        var message = string.Join(Environment.NewLine + Environment.NewLine, new[]
+        {
+            $"What happened: {whatHappened}",
+            $"Why: {why}",
+            $"How to fix it: {howToFix}",
+        });
+
+        AppDialogService.ShowOk(Application.Current?.MainWindow, _localization, title, message);
+        StatusMessage = whatHappened;
     }
 
     private void AppendCurrentLog(string source, string message)
@@ -1655,14 +2034,15 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void AppendToVisibleLogCollection(WorkspaceLogLineViewModel line)
     {
-        if (Application.Current.Dispatcher.CheckAccess())
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
         {
             CurrentLogLines.Add(line);
             CurrentLogText = string.Join(Environment.NewLine, CurrentLogLines.Select(item => item.Text));
             return;
         }
 
-        Application.Current.Dispatcher.Invoke(() =>
+        dispatcher.Invoke(() =>
         {
             CurrentLogLines.Add(line);
             CurrentLogText = string.Join(Environment.NewLine, CurrentLogLines.Select(item => item.Text));
@@ -1704,6 +2084,43 @@ public sealed class MainWindowViewModel : ObservableObject
         _workspaceOrchestrator.SaveRecord(updatedRecord);
     }
 
+    private Task PersistWorkspaceRecordAsync(
+        WorkspaceSnapshot snapshot,
+        string operationName,
+        string operationResult,
+        bool succeeded,
+        DateTimeOffset? lastPreparedUtc = null,
+        DateTimeOffset? lastOpenedUtc = null)
+    {
+        var updatedRecord = new WorkspaceRecord
+        {
+            Name = snapshot.Record.Name,
+            RootPath = snapshot.Record.RootPath,
+            RepositoryPath = snapshot.Record.RepositoryPath,
+            SourceType = snapshot.Record.SourceType,
+            ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+            OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+            SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+            RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+            CreatedUtc = snapshot.Record.CreatedUtc,
+            LastOpenedUtc = lastOpenedUtc ?? snapshot.Record.LastOpenedUtc,
+            LastPreparedUtc = lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
+            LastOperationName = operationName,
+            LastOperationResult = operationResult,
+            LastOperationSucceeded = succeeded,
+            LastOperationUtc = DateTimeOffset.UtcNow,
+        };
+
+        return _workspaceOrchestrator.SaveRecordAsync(updatedRecord);
+    }
+
+    // UI thread safety rule:
+    // - UI command flows must use async/await end to end.
+    // - Do not use .Result, .Wait(), or GetAwaiter().GetResult() from dialog or command paths.
+    // - Do not run Git, process, repository, or snapshot work directly on the UI thread.
+    // - Report progress through status and log updates.
+    // - Catch exceptions, show actionable error details, and leave the dialog usable after failure.
+
     private void RaiseCommandStates()
     {
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
@@ -1727,6 +2144,14 @@ public sealed class MainWindowViewModel : ObservableObject
         CopyWorkspacePathCommand.RaiseCanExecuteChanged();
         RemoveWorkspaceCommand.RaiseCanExecuteChanged();
         InstallSelectedFontCommand.RaiseCanExecuteChanged();
+        StartOracleDemoCommand.RaiseCanExecuteChanged();
+        ResetOracleDemoCommand.RaiseCanExecuteChanged();
+        ViewOracleLogsCommand.RaiseCanExecuteChanged();
+        CopyOracleConnectionDetailsCommand.RaiseCanExecuteChanged();
+        OpenOracleSqlclCommand.RaiseCanExecuteChanged();
+        RunOracleTutorialQueryCommand.RaiseCanExecuteChanged();
+        TestOracleConnectionCommand.RaiseCanExecuteChanged();
+        OpenSqlDeveloperCommand.RaiseCanExecuteChanged();
         RaisePropertyChanged(nameof(CanShutDownSelectedWorkspace));
         RaisePropertyChanged(nameof(SelectedPrimaryActionLabel));
         RaisePropertyChanged(nameof(HasRunningWorkspace));
@@ -1734,4 +2159,8 @@ public sealed class MainWindowViewModel : ObservableObject
         RaisePropertyChanged(nameof(CreateWorkspaceDisabledReason));
         RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
     }
+
+    private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
+        => definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
+            || definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
 }

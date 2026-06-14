@@ -1,0 +1,6 @@
+id: oracle-debug-procedure
+displayName: Debug Procedure
+description: Find the smallest safe correction for an Oracle PL/SQL procedure.
+dependencies:
+  features:
+    - oracle-demo

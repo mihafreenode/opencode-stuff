@@ -19,6 +19,8 @@ public sealed class WorkspaceIgnorePolicyService
         "artifacts/",
         "docs/",
         "runtimes/",
+        ".local/",
+        ".local/oracle/",
         ".opencode/",
         ".github/",
         ".devcontainer/",

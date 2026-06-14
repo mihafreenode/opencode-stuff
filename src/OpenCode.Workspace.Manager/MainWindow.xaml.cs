@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -12,6 +13,8 @@ public partial class MainWindow : Window
 {
     private ScrollViewer? _logScrollViewer;
     private bool _isLogAutoFollowEnabled = true;
+    private bool _isAdjustingLogScroll;
+    private double _pausedLogVerticalOffset;
     private bool _hasPromptedForQuickTutorial;
     private StartupDiagnosticsService? _diagnostics;
 
@@ -32,8 +35,10 @@ public partial class MainWindow : Window
         {
             _logScrollViewer.ScrollChanged -= LogScrollViewer_OnScrollChanged;
             _logScrollViewer.ScrollChanged += LogScrollViewer_OnScrollChanged;
+            _pausedLogVerticalOffset = _logScrollViewer.VerticalOffset;
         }
 
+        UpdateLogAutoScrollIndicator();
         ScrollLogToBottom();
     }
 
@@ -42,23 +47,75 @@ public partial class MainWindow : Window
         if (_isLogAutoFollowEnabled)
         {
             Dispatcher.BeginInvoke(ScrollLogToBottom);
+            return;
         }
+
+        Dispatcher.BeginInvoke(RestorePausedLogPosition);
     }
 
     private void LogScrollViewer_OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_logScrollViewer is null || _isAdjustingLogScroll)
+        {
+            return;
+        }
+
+        _pausedLogVerticalOffset = _logScrollViewer.VerticalOffset;
+        var distanceFromBottom = _logScrollViewer.ExtentHeight - (_logScrollViewer.VerticalOffset + _logScrollViewer.ViewportHeight);
+        _isLogAutoFollowEnabled = distanceFromBottom <= 24;
+        UpdateLogAutoScrollIndicator();
+    }
+
+    private void ScrollLogToBottom()
     {
         if (_logScrollViewer is null)
         {
             return;
         }
 
-        var distanceFromBottom = _logScrollViewer.ExtentHeight - (_logScrollViewer.VerticalOffset + _logScrollViewer.ViewportHeight);
-        _isLogAutoFollowEnabled = distanceFromBottom <= 24;
+        try
+        {
+            _isAdjustingLogScroll = true;
+            _logScrollViewer.ScrollToEnd();
+            _pausedLogVerticalOffset = _logScrollViewer.VerticalOffset;
+            _isLogAutoFollowEnabled = true;
+        }
+        finally
+        {
+            _isAdjustingLogScroll = false;
+            UpdateLogAutoScrollIndicator();
+        }
     }
 
-    private void ScrollLogToBottom()
+    private void RestorePausedLogPosition()
     {
-        _logScrollViewer?.ScrollToEnd();
+        if (_logScrollViewer is null || _isLogAutoFollowEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            _isAdjustingLogScroll = true;
+            _logScrollViewer.ScrollToVerticalOffset(_pausedLogVerticalOffset);
+        }
+        finally
+        {
+            _isAdjustingLogScroll = false;
+            UpdateLogAutoScrollIndicator();
+        }
+    }
+
+    private void UpdateLogAutoScrollIndicator()
+    {
+        if (LogAutoScrollPausedIndicator is null)
+        {
+            return;
+        }
+
+        LogAutoScrollPausedIndicator.Visibility = _isLogAutoFollowEnabled
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void OpenCreateWorkspaceDialog_OnClick(object sender, RoutedEventArgs e)
@@ -76,10 +133,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        viewModel.PrepareCreateWorkspaceDialog();
+
         var dialog = new CreateWorkspaceDialog
         {
             Owner = this,
             DataContext = viewModel,
+            DiagnosticsLogger = message =>
+            {
+                var formatted = $"[create][{DateTimeOffset.Now:O}][thread {Environment.CurrentManagedThreadId}] {message}";
+                _diagnostics?.Log(formatted);
+                viewModel.AppendCreateDialogDiagnostic(formatted);
+            },
         };
 
         dialog.ShowDialog();

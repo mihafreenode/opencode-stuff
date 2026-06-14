@@ -91,6 +91,38 @@ public sealed class WindowsHostCapabilities
 
         return definition.CandidateFaceNames[0];
     }
+
+    public string? FindSqlDeveloperExecutablePath()
+    {
+        foreach (var candidate in EnumerateSqlDeveloperCandidates())
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateSqlDeveloperCandidates()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+        return
+        [
+            Path.Combine(localAppData, "sqldeveloper", "sqldeveloper.exe"),
+            Path.Combine(localAppData, "Programs", "sqldeveloper", "sqldeveloper.exe"),
+            Path.Combine(programFiles, "Oracle", "SQL Developer", "sqldeveloper.exe"),
+            Path.Combine(programFiles, "Oracle", "sqldeveloper", "sqldeveloper.exe"),
+            Path.Combine(programFilesX86, "Oracle", "SQL Developer", "sqldeveloper.exe"),
+            Path.Combine(programFilesX86, "Oracle", "sqldeveloper", "sqldeveloper.exe"),
+            Path.Combine("C:\\", "sqldeveloper", "sqldeveloper.exe"),
+            Path.Combine("C:\\", "sqldeveloper", "sqldeveloper64W.exe"),
+        ];
+    }
 }
 
 public sealed class PrerequisiteCheckResult

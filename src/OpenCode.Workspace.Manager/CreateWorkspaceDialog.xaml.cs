@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using Microsoft.Win32;
 using OpenCode.Workspace.Core.Models;
@@ -10,6 +11,7 @@ namespace OpenCode.Workspace.Manager;
 public partial class CreateWorkspaceDialog : Window
 {
     private readonly PoLocalizationService _localization = new(System.IO.Path.Combine(AppContext.BaseDirectory, "Localization"), PoLocalizationService.DetectLanguageCode());
+    public Action<string>? DiagnosticsLogger { get; init; }
 
     public CreateWorkspaceDialog()
     {
@@ -29,20 +31,29 @@ public partial class CreateWorkspaceDialog : Window
             return;
         }
 
+        var buttonSource = sender is FrameworkElement { Name: "TemplateCardCreateButton" }
+            ? "TemplateCardCreateButton"
+            : "HeaderCreateButton";
+
+        DiagnosticsLogger?.Invoke($"Create Workspace command entered via {buttonSource}.");
+
         if (viewModel.SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout)
         {
             await ImportExistingGitCheckoutAsync(viewModel);
             return;
         }
 
-        var created = await viewModel.CreateWorkspaceFromDialogAsync();
+        var created = await viewModel.CreateWorkspaceFromDialogAsync(buttonSource, DiagnosticsLogger);
         if (!created)
         {
+            DiagnosticsLogger?.Invoke($"Create Workspace command returned without completion via {buttonSource}.");
             return;
         }
 
+        DiagnosticsLogger?.Invoke($"Create Workspace dialog close requested via {buttonSource}.");
         DialogResult = true;
         Close();
+        DiagnosticsLogger?.Invoke($"Create Workspace command completed via {buttonSource}.");
     }
 
     private void NewWorkspaceSource_OnChecked(object sender, RoutedEventArgs e)
