@@ -84,9 +84,9 @@ A typical demonstration takes less than five minutes:
 
 The screenshots below demonstrate:
 
-1. SQL Developer connection
-2. Querying the demo schema
-3. AI-assisted PL/SQL explanation
+1. AI-assisted PL/SQL explanation
+2. SQL Developer connection
+3. Querying the demo schema
 
 ## Oracle Demo Database
 
@@ -154,6 +154,23 @@ For onboarding and tutorial exercises, use the provided demo connection details.
 
 The helper actions `Test Connection` and `Run Tutorial Query` prefer SQL*Plus when it is available, then fall back to SQLcl.
 
+## Explain Existing PL/SQL Code
+
+![OpenCode PL/SQL Analysis](../artifacts/screenshots/opencode-plsql-analysis.png)
+
+In this example OpenCode explains the `demo_show_customer` procedure, identifies the tables involved, describes the generated output, and explains the relationship between customers and orders.
+
+OpenCode can inspect existing Oracle PL/SQL and explain:
+
+- procedure purpose
+- table relationships
+- SQL statements being executed
+- expected output
+- edge cases
+- opportunities for improvement
+
+This helps developers understand unfamiliar database code without manually tracing every dependency.
+
 ## SQL Developer Usage
 
 If SQL Developer is detected on Windows, the dashboard shows an `Open SQL Developer` action.
@@ -185,23 +202,6 @@ This query joins:
 - DEMO_PRODUCTS
 
 and returns business-oriented results using standard Oracle tooling.
-
-## Explain Existing PL/SQL Code
-
-![OpenCode PL/SQL Analysis](../artifacts/screenshots/opencode-plsql-analysis.png)
-
-In this example OpenCode explains the `demo_show_customer` procedure, identifies the tables involved, describes the generated output, and explains the relationship between customers and orders.
-
-OpenCode can inspect existing Oracle PL/SQL and explain:
-
-- procedure purpose
-- table relationships
-- SQL statements being executed
-- expected output
-- edge cases
-- opportunities for improvement
-
-This helps developers understand unfamiliar database code without manually tracing every dependency.
 
 ## Oracle Skills
 
