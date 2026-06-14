@@ -32,6 +32,7 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("knowledge", "skills", "oracle-refactor-procedure.md")] = RefactorProcedureSkill();
         files[Path.Combine("knowledge", "skills", "oracle-generate-test-cases.md")] = GenerateTestCasesSkill();
         files[Path.Combine(".local", "oracle", "network", "admin", "README.md")] = WithGeneratedHeader(NetworkAdminReadme());
+        files[Path.Combine("scripts", "verify-oracle-demo.sh")] = VerifyOracleDemoScript();
         files[Path.Combine("open-sqlcl.ps1")] = OpenSqlclScript();
         files[Path.Combine("test-oracle-connection.ps1")] = TestConnectionScript();
         files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
@@ -100,7 +101,7 @@ public sealed class WorkspaceContentGenerator
                     bullets = new[]
                     {
                         "Use the Oracle Demo Database panel on the right side of the workspace details.",
-                        "Everything in this tutorial uses the known local demo connection demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
+                        "Everything in this tutorial uses the known local demo connection. Inside the workspace runtime and OpenCode, use demo_user/demo_password@//oracle-demo:1521/FREEPDB1.",
                         "SQL Developer is optional. If it is not installed, continue with SQLcl or SQL*Plus.",
                         "Do not inspect .env, TNS_ADMIN, ORACLE_HOME, tnsnames.ora, or other configuration files during normal demo verification.",
                     },
@@ -114,8 +115,9 @@ public sealed class WorkspaceContentGenerator
                     {
                         "In the Oracle Demo Database panel, choose Start.",
                         "The first provisioning run downloads SQLcl and needs internet access. Later tutorial work stays local.",
-                        "When the panel shows Running, immediately verify with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
-                        "Do not ask for connection details and do not perform connection discovery for the local demo workspace.",
+                        "If the Oracle Demo Database panel is not Running and Ready yet, stop and start Oracle first.",
+                        "When the panel shows Running and Ready, run scripts/verify-oracle-demo.sh.",
+                        "Use the known local demo connection. Do not ask for credentials or perform connection discovery for the local demo workspace.",
                     },
                 },
                 new
@@ -125,7 +127,7 @@ public sealed class WorkspaceContentGenerator
                     summary = "Use the known local demo connection and run one small PL/SQL block to confirm the database is ready.",
                     bullets = new[]
                     {
-                        "Connect with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1 or use the helper actions that already know the demo connection.",
+                        "Connect with sqlplus demo_user/demo_password@//oracle-demo:1521/FREEPDB1 or use the helper actions that already know the demo connection.",
                         "Run SET SERVEROUTPUT ON and then BEGIN DBMS_OUTPUT.PUT_LINE('Hello from Oracle PL/SQL Workspace'); END; /",
                         "Do not inspect .env, environment variables, or tnsnames.ora during normal verification.",
                     },
@@ -149,7 +151,8 @@ public sealed class WorkspaceContentGenerator
                     summary = "Query the seeded data and verify the sample relationships.",
                     bullets = new[]
                     {
-                        "Run the read-only verification queries against demo_user/demo_password@oracle-demo:1521/FREEPDB1.",
+                        "Run the read-only verification queries against demo_user/demo_password@//oracle-demo:1521/FREEPDB1.",
+                        "The generated helper script scripts/verify-oracle-demo.sh runs the standard smoke test for you.",
                         "Use the Run Tutorial Query quick action if you want a single-click check.",
                         "Notice that the data is local and requires no customer environment.",
                     },
@@ -209,7 +212,7 @@ public sealed class WorkspaceContentGenerator
                     summary = "Rehearse the Monday demo sequence end to end.",
                     bullets = new[]
                     {
-                        "Create workspace, start Oracle, open tutorial, verify with sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1, run the sample query, explain a procedure, and explain a trigger.",
+                        "Create workspace, start Oracle, wait for Running and Ready, run scripts/verify-oracle-demo.sh, explain a procedure, and explain a trigger.",
                         "Treat staging as optional follow-up configuration only.",
                         "The main story is reproducible onboarding, not privileged access to customer infrastructure.",
                     },
@@ -229,6 +232,9 @@ The Oracle demo database is local to your machine. Staging setup is optional and
 
 ### Connection Details
 
+- Inside workspace runtime and OpenCode: `demo_user/demo_password@//oracle-demo:1521/FREEPDB1`
+- Windows host tools: `demo_user/demo_password@//localhost:1521/FREEPDB1`
+
 - Host: `localhost`
 - Port: `1521`
 - Service: `FREEPDB1`
@@ -240,15 +246,17 @@ The Oracle demo database is local to your machine. Staging setup is optional and
 1. Start the Oracle demo database from the dashboard.
 2. Open the tutorial from the dashboard or `Help > Quick Tutorial`.
 3. Open SQLcl with `./open-sqlcl.ps1`.
-4. Run `@tutorial/oracle/scripts/03-sample-queries.sql`.
+4. Run `scripts/verify-oracle-demo.sh` inside the workspace runtime after Oracle shows Running and Ready.
 5. Ask AI to explain `demo_show_customer` and `demo_orders_biu_trigger` using the prompts under `knowledge/skills/`.
 
 ### Demo Verification
 
-Use the known local demo connection for normal verification:
+Before opening OpenCode or running demo verification, start Oracle first and wait until the Oracle Demo Database panel shows `Running` and `Ready`.
+
+Use the known local demo connection for normal verification inside the workspace runtime:
 
 ```text
-sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+demo_user/demo_password@//oracle-demo:1521/FREEPDB1
 ```
 
 Do not read `.env`.
@@ -259,7 +267,7 @@ Do not inspect `tnsnames.ora`.
 
 Do not inspect `TNS_ADMIN` or `ORACLE_HOME`.
 
-Do not ask for connection details.
+Use the known local demo connection. Do not ask for credentials.
 
 Do not perform connection discovery.
 
@@ -268,6 +276,12 @@ Do not modify files.
 Do not install anything.
 
 Run:
+
+```bash
+scripts/verify-oracle-demo.sh
+```
+
+The helper script runs:
 
 ```sql
 SELECT 'Connection OK' AS status FROM dual;
@@ -297,19 +311,24 @@ Use these files with SQLcl, SQL*Plus, or SQL Developer:
 - `03-sample-queries.sql`: tutorial queries and procedure examples
 - `tutorial-query.sql`: quick one-command smoke test
 - `START-HERE-ORACLE.md`: demo-safe verification guidance for OpenCode and terminal checks
+- `scripts/verify-oracle-demo.sh`: standard Oracle demo readiness and data smoke test
 
 The demo schema is installed automatically on first Oracle container initialization.
 
-For routine demo verification, use the known local connection `demo_user/demo_password@oracle-demo:1521/FREEPDB1`.
+For routine demo verification inside the workspace runtime, use the known local connection `demo_user/demo_password@//oracle-demo:1521/FREEPDB1`.
+
+If Oracle is not running yet, start Oracle first and wait for the app to show `Running` and `Ready` before opening OpenCode or running the verification script.
 
 Do not read `.env`, inspect secrets, inspect `tnsnames.ora`, or perform connection discovery unless you are explicitly troubleshooting workspace configuration.
 """;
 
     private static string OracleStartHere() => """
-Run these read-only checks using the known local demo connection:
+If Oracle is not running yet, start Oracle first from the app and wait until the Oracle Demo Database panel shows `Running` and `Ready`.
+
+Connection string inside workspace runtime:
 
 ```text
-sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+demo_user/demo_password@//oracle-demo:1521/FREEPDB1
 ```
 
 Do not read `.env`.
@@ -320,7 +339,7 @@ Do not inspect `tnsnames.ora`.
 
 Do not inspect `TNS_ADMIN` or `ORACLE_HOME`.
 
-Do not ask for connection details.
+Use the known local demo connection. Do not ask for credentials.
 
 Do not perform connection discovery.
 
@@ -329,6 +348,12 @@ Do not modify files.
 Do not install anything.
 
 Run:
+
+```bash
+scripts/verify-oracle-demo.sh
+```
+
+The helper script runs:
 
 ```sql
 SELECT 'Connection OK' AS status FROM dual;
@@ -347,6 +372,8 @@ Report results only.
     private static string OracleOpenCodeStartPrompt() => """
 Review this Oracle PL/SQL demo workspace.
 
+If Oracle is not running yet, say `Start Oracle first` and stop. Do not imply verification will work until the Oracle Demo Database panel shows `Running` and `Ready`.
+
 Do not inspect .env.
 
 Do not inspect secrets.
@@ -355,19 +382,21 @@ Do not inspect tnsnames.ora.
 
 Do not inspect TNS_ADMIN or ORACLE_HOME.
 
-Do not ask for connection details.
+Use the known local demo connection. Do not ask for credentials.
 
 Do not perform connection discovery.
 
-Run these read-only checks using the known local demo connection:
+Connection string inside workspace runtime:
 
-sqlplus demo_user/demo_password@oracle-demo:1521/FREEPDB1
+demo_user/demo_password@//oracle-demo:1521/FREEPDB1
 
 Do not modify files.
 
 Do not install anything.
 
-Run:
+Run scripts/verify-oracle-demo.sh
+
+That helper script uses:
 
 SELECT 'Connection OK' AS status FROM dual;
 
@@ -613,6 +642,34 @@ Place customer-provided Oracle network files here when staging access is needed 
 The workspace shell exports `TNS_ADMIN=/workspace/.local/oracle/network/admin` when this directory exists.
 
 Treat staging as read-only. Prefer a dedicated read-only database account and avoid any DDL, DML, or PL/SQL execution against staging.
+""";
+
+    private static string VerifyOracleDemoScript() => """
+#!/usr/bin/env bash
+# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES
+# Source inputs: workspace.yaml and catalog manifests under catalog/.
+# User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.
+
+set -euo pipefail
+
+shell_init_path=/opt/opencode-workspace/config/opencode-shell-init.sh
+if [ -f "${shell_init_path}" ]; then
+  # Load Oracle client and PATH setup when the script is run outside the attach shell.
+  . "${shell_init_path}" >/dev/null 2>&1 || true
+fi
+
+if ! command -v sqlplus >/dev/null 2>&1; then
+  printf 'sqlplus is not available yet. Start Oracle first and wait for provisioning to finish.\n' >&2
+  exit 1
+fi
+
+sqlplus -S demo_user/demo_password@//oracle-demo:1521/FREEPDB1 <<'EOF'
+SELECT 'Connection OK' AS status FROM dual;
+SELECT customer_id, customer_name FROM demo_customers ORDER BY customer_id;
+SET SERVEROUTPUT ON
+EXEC demo_show_customer(1);
+EXIT;
+EOF
 """;
 
     private static string OpenSqlclScript() => """

@@ -65,8 +65,24 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-demo.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "workspace-tutorial.json")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "01-create-demo-user.sql")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "START-HERE-ORACLE.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "opencode-start.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "verify-oracle-demo.sh")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "knowledge", "skills", "oracle-explain-procedure.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, ".local", "oracle", "network", "admin", "README.md")));
+
+            var startHere = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "START-HERE-ORACLE.md"));
+            var openCodeStart = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "opencode-start.md"));
+            var verifyScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "verify-oracle-demo.sh"));
+
+            Assert.Contains("demo_user/demo_password@//oracle-demo:1521/FREEPDB1", startHere);
+            Assert.Contains("Use the known local demo connection. Do not ask for credentials.", startHere);
+            Assert.Contains("scripts/verify-oracle-demo.sh", startHere);
+            Assert.Contains("Start Oracle first", openCodeStart);
+            Assert.Contains("demo_user/demo_password@//oracle-demo:1521/FREEPDB1", openCodeStart);
+            Assert.Contains("Do not ask for credentials", openCodeStart);
+            Assert.Contains("Run scripts/verify-oracle-demo.sh", openCodeStart);
+            Assert.Contains("sqlplus -S demo_user/demo_password@//oracle-demo:1521/FREEPDB1 <<'EOF'", verifyScript);
         }
         finally
         {
