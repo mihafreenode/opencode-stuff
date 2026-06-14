@@ -227,6 +227,7 @@ Provisioning rules:
 - use LF line endings for scripts that run inside Linux containers
 - stream Docker stdout/stderr to the UI during start and prepare operations
 - create and repair required OpenCode user directories before first launch
+- when Ubuntu package names change across releases, prefer runtime detection in generated scripts over pinning a single distro-specific package name; for Oracle SQLcl dependencies, select `libaio1` when available and fall back to `libaio1t64` on Ubuntu 24.04+
 
 OpenCode first-run directories:
 
@@ -266,6 +267,46 @@ Notes:
 - the Windows Terminal command should stay boring and inspectable; prefer a generated wrapper script over deeply nested `wt.exe` quoting
 - log the exact `wt.exe` command, profile name, configured font, profile file path, and effective attach user during troubleshooting
 - before attach, repair missing or non-writable OpenCode user directories and log `[attach] Initializing OpenCode user directories.` when repair was needed
+
+### OpenCode Session Hygiene
+
+For demo preparation or attach debugging, list and clear OpenCode sessions from inside the workspace container as the `opencode` user.
+
+List sessions:
+
+```powershell
+docker exec --user opencode -w /workspace <workspace-container> env HOME=/home/opencode opencode session list
+```
+
+Delete one session:
+
+```powershell
+docker exec --user opencode -w /workspace <workspace-container> env HOME=/home/opencode opencode session delete <session-id>
+```
+
+Example Oracle demo container name:
+
+```text
+oracle-demo-workspace-workspace
+```
+
+Use this exact `HOME=/home/opencode` pattern so the session list matches what the attach shell sees.
+
+For a simple demo reset, prefer the explicit two-step flow instead of trying to batch multiple session operations in one PowerShell command.
+
+1. List sessions:
+
+```powershell
+docker exec --user opencode -w /workspace oracle-demo-workspace-workspace env HOME=/home/opencode opencode session list
+```
+
+2. Delete the session id you see:
+
+```powershell
+docker exec --user opencode -w /workspace oracle-demo-workspace-workspace env HOME=/home/opencode opencode session delete <session-id>
+```
+
+Do not rely on complex nested quoting for session cleanup during demos.
 
 ## Removal Behavior
 
@@ -435,6 +476,20 @@ WSL to PowerShell automation has several common failure modes:
 - startup dialogs blocking interaction
 
 Repository scripts provide a stable, reusable interface and avoid repeated debugging.
+
+### Rebuild then launch rule
+
+When the task requires validating a fresh Windows WPF build:
+
+1. stop all running `OpenCode.Workspace.Manager` instances first
+2. wait for the requested build to finish successfully
+3. only then launch the app
+
+Do not launch the app in parallel with the build.
+
+Do not relaunch from stale Debug outputs while a rebuild is still pending or in progress.
+
+If the build is blocked by locked binaries, resolve the running process lock first and rebuild again before launching.
 
 ### Rules for agents
 

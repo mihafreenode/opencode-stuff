@@ -275,7 +275,7 @@ When present, the workspace shell exports `TNS_ADMIN` to that directory automati
 
 ## MCP Integration Notes
 
-Prefer Oracle SQLcl MCP support using `sql -mcp` when available. Keep MCP internal to the implementation story; the user-facing value is that the workspace can safely query Oracle.
+Prefer Oracle SQLcl MCP support using `sql -mcp` when available. The user-facing value is that the workspace can safely query Oracle.
 
 ## Presenter Demo Script
 

@@ -38,7 +38,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.Contains("npm install -g opencode-ai", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("/home/opencode/.local/share/opencode/log", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("Initializing OpenCode user directories", File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath));
-            Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
+            Assert.Equal(WorkspaceSafetyLevel.AtRisk, snapshot.Safety.OverallStatus);
         }
         finally
         {
@@ -253,7 +253,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(File.Exists(snapshot.Paths.WorkspaceYamlPath));
             Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
             Assert.Null(snapshot.Safety.LocalRecovery.LatestSavePointUtc);
-            Assert.Equal(WorkspaceSafetyLevel.PartiallyProtected, snapshot.Safety.OverallStatus);
+            Assert.Equal(WorkspaceSafetyLevel.AtRisk, snapshot.Safety.OverallStatus);
         }
         finally
         {
