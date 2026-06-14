@@ -597,9 +597,12 @@ public sealed class WorkspaceOrchestrator
         File.WriteAllText(paths.StarshipConfigPath, generatedArtifacts.StarshipConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.ShellInitScriptPath, generatedArtifacts.ShellInitScript.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.OpencodeWorkspaceShellPath, generatedArtifacts.OpencodeWorkspaceShellScript.Replace("\r\n", "\n", StringComparison.Ordinal));
+        EnsureGeneratedScriptPermissions(paths.OpencodeWorkspaceShellPath);
         File.WriteAllText(paths.ScreenConfigPath, generatedArtifacts.ScreenConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.AttachWrapperScriptPath, generatedArtifacts.AttachWrapperScript.Replace("\r\n", "\n", StringComparison.Ordinal));
+        EnsureGeneratedScriptPermissions(paths.AttachWrapperScriptPath);
         File.WriteAllText(paths.TerminalDiagnosticsScriptPath, generatedArtifacts.TerminalDiagnosticsScript.Replace("\r\n", "\n", StringComparison.Ordinal));
+        EnsureGeneratedScriptPermissions(paths.TerminalDiagnosticsScriptPath);
 
         foreach (var additionalFile in generatedArtifacts.AdditionalFiles)
         {
@@ -611,12 +614,39 @@ public sealed class WorkspaceOrchestrator
             }
 
             File.WriteAllText(fullPath, additionalFile.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
+            EnsureGeneratedScriptPermissions(fullPath);
         }
 
         // The provisioning script runs inside Linux containers, so it must use LF
         // line endings even when the desktop app generated it on Windows.
         File.WriteAllText(paths.ProvisionScriptPath, generatedArtifacts.ProvisionScript.Replace("\r\n", "\n", StringComparison.Ordinal));
+        EnsureGeneratedScriptPermissions(paths.ProvisionScriptPath);
         return generatedArtifacts;
+    }
+
+    private static void EnsureGeneratedScriptPermissions(string fullPath)
+    {
+        if (!fullPath.EndsWith(".sh", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(
+                fullPath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        catch (PlatformNotSupportedException)
+        {
+        }
     }
 
     private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths)

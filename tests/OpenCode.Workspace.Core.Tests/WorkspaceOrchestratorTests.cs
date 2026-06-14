@@ -63,6 +63,8 @@ public sealed class WorkspaceOrchestratorTests
             });
 
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-demo.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "ORACLE-DEMO.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, ".opencode", "context", "oracle-demo.json")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "workspace-tutorial.json")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "01-create-demo-user.sql")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "START-HERE-ORACLE.md")));
@@ -71,18 +73,36 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "knowledge", "skills", "oracle-explain-procedure.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, ".local", "oracle", "network", "admin", "README.md")));
 
+            var topLevelGuide = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "ORACLE-DEMO.md"));
+            var agentContext = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, ".opencode", "context", "oracle-demo.json"));
             var startHere = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "START-HERE-ORACLE.md"));
             var openCodeStart = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "opencode-start.md"));
             var verifyScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "verify-oracle-demo.sh"));
 
+            Assert.Contains("# Oracle Demo Connection", topLevelGuide);
+            Assert.Contains("sqlplus -S demo_user/demo_password@//oracle-demo:1521/FREEPDB1", topLevelGuide);
+            Assert.Contains("Run:", topLevelGuide);
+            Assert.Contains("scripts/verify-oracle-demo.sh", topLevelGuide);
+            Assert.Contains("Do not inspect `.env` for normal demo verification.", topLevelGuide);
+            Assert.Contains("\"kind\": \"oracle-demo-connection\"", agentContext);
+            Assert.Contains("\"connectString\": \"demo_user/demo_password@//oracle-demo:1521/FREEPDB1\"", agentContext);
+            Assert.Contains("\"verifyScript\": \"scripts/verify-oracle-demo.sh\"", agentContext);
             Assert.Contains("demo_user/demo_password@//oracle-demo:1521/FREEPDB1", startHere);
+            Assert.Contains("Before asking for connection details, read `ORACLE-DEMO.md` or `.opencode/context/oracle-demo.json`.", startHere);
             Assert.Contains("Use the known local demo connection. Do not ask for credentials.", startHere);
             Assert.Contains("scripts/verify-oracle-demo.sh", startHere);
             Assert.Contains("Start Oracle first", openCodeStart);
+            Assert.Contains("Before asking for connection details, read `ORACLE-DEMO.md` or `.opencode/context/oracle-demo.json`.", openCodeStart);
             Assert.Contains("demo_user/demo_password@//oracle-demo:1521/FREEPDB1", openCodeStart);
             Assert.Contains("Do not ask for credentials", openCodeStart);
             Assert.Contains("Run scripts/verify-oracle-demo.sh", openCodeStart);
             Assert.Contains("sqlplus -S demo_user/demo_password@//oracle-demo:1521/FREEPDB1 <<'EOF'", verifyScript);
+
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                var mode = File.GetUnixFileMode(Path.Combine(snapshot.Paths.RootPath, "scripts", "verify-oracle-demo.sh"));
+                Assert.True(mode.HasFlag(UnixFileMode.UserExecute));
+            }
         }
         finally
         {

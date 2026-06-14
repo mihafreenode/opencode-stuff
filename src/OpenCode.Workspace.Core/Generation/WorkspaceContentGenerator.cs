@@ -18,6 +18,8 @@ public sealed class WorkspaceContentGenerator
         }
 
         files[Path.Combine("docs", "oracle-demo.md")] = WithGeneratedHeader(OracleDemoWorkspaceDoc());
+        files["ORACLE-DEMO.md"] = WithGeneratedHeader(OracleDemoConnectionGuide());
+        files[Path.Combine(".opencode", "context", "oracle-demo.json")] = OracleDemoContextJson();
         files[Path.Combine("tutorial", "workspace-tutorial.json")] = BuildOracleTutorialJson();
         files[Path.Combine("tutorial", "oracle", "README.md")] = WithGeneratedHeader(OracleTutorialReadme());
         files[Path.Combine("tutorial", "oracle", "START-HERE-ORACLE.md")] = WithGeneratedHeader(OracleStartHere());
@@ -301,6 +303,35 @@ Report results only.
 When a customer staging environment is added later, place `tnsnames.ora`, `sqlnet.ora`, and wallet files under `.local/oracle/network/admin` and keep sessions read-only whenever possible.
 """;
 
+    private static string OracleDemoConnectionGuide() => """
+# Oracle Demo Connection
+
+This workspace includes a local Oracle demo database.
+
+Inside the workspace runtime, use:
+
+```text
+sqlplus -S demo_user/demo_password@//oracle-demo:1521/FREEPDB1
+```
+
+From Windows / SQL Developer, use:
+
+- Host: localhost
+- Port: 1521
+- Service: FREEPDB1
+- Username: demo_user
+- Password: demo_password
+
+Run:
+
+```bash
+scripts/verify-oracle-demo.sh
+```
+
+Do not inspect `.env` for normal demo verification.
+`.env` contains local runtime settings and generated secrets.
+""";
+
     private static string OracleTutorialReadme() => """
 ## Oracle Tutorial Files
 
@@ -324,6 +355,8 @@ Do not read `.env`, inspect secrets, inspect `tnsnames.ora`, or perform connecti
 
     private static string OracleStartHere() => """
 If Oracle is not running yet, start Oracle first from the app and wait until the Oracle Demo Database panel shows `Running` and `Ready`.
+
+Before asking for connection details, read `ORACLE-DEMO.md` or `.opencode/context/oracle-demo.json`.
 
 Connection string inside workspace runtime:
 
@@ -373,6 +406,8 @@ Report results only.
 Review this Oracle PL/SQL demo workspace.
 
 If Oracle is not running yet, say `Start Oracle first` and stop. Do not imply verification will work until the Oracle Demo Database panel shows `Running` and `Ready`.
+
+Before asking for connection details, read `ORACLE-DEMO.md` or `.opencode/context/oracle-demo.json`.
 
 Do not inspect .env.
 
@@ -643,6 +678,34 @@ The workspace shell exports `TNS_ADMIN=/workspace/.local/oracle/network/admin` w
 
 Treat staging as read-only. Prefer a dedicated read-only database account and avoid any DDL, DML, or PL/SQL execution against staging.
 """;
+
+    private static string OracleDemoContextJson()
+    {
+        var document = new
+        {
+            kind = "oracle-demo-connection",
+            insideWorkspace = new
+            {
+                host = "oracle-demo",
+                port = 1521,
+                service = "FREEPDB1",
+                username = "demo_user",
+                password = "demo_password",
+                connectString = "demo_user/demo_password@//oracle-demo:1521/FREEPDB1",
+            },
+            windowsSqlDeveloper = new
+            {
+                host = "localhost",
+                port = 1521,
+                service = "FREEPDB1",
+                username = "demo_user",
+                password = "demo_password",
+            },
+            verifyScript = "scripts/verify-oracle-demo.sh",
+        };
+
+        return JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true });
+    }
 
     private static string VerifyOracleDemoScript() => """
 #!/usr/bin/env bash
