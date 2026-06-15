@@ -77,6 +77,9 @@ public sealed class ServiceManifest
 
     [YamlMember(Alias = "dependsOn")]
     public List<string> DependsOn { get; init; } = new();
+
+    [YamlMember(Alias = "workspaceDependsOnCondition")]
+    public string? WorkspaceDependsOnCondition { get; init; }
 }
 
 public sealed class ServiceHealthcheckManifest

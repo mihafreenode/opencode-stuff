@@ -108,6 +108,9 @@ msgstr "No"
 msgid "actions.viewError"
 msgstr "View Error"
 
+msgid "actions.recoverWorkspace"
+msgstr "Recover Workspace"
+
 msgid "create.name"
 msgstr "Workspace Name"
 

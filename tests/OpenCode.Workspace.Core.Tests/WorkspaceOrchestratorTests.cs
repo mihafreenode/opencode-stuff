@@ -391,6 +391,201 @@ public sealed class WorkspaceOrchestratorTests
         }
     }
 
+    [Fact]
+    public async Task ManagedWorkspaceOperations_RegenerateStaleComposeBeforeDockerComposeDownAndUp()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var dockerRunner = new ComposeGuardProcessRunner();
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), new DockerService(dockerRunner), new WorkspaceTimelineService());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            var logEntries = new List<CommandLogEntry>();
+
+            WriteInvalidWorkspaceDependsOnCompose(snapshot.Paths.ComposePath);
+            Assert.Contains("condition: service_healthy", File.ReadAllText(snapshot.Paths.ComposePath));
+
+            await orchestrator.RemoveDockerResourcesAsync(snapshot, entry => logEntries.Add(entry));
+
+            var repairedAfterRemove = File.ReadAllText(snapshot.Paths.ComposePath);
+            Assert.DoesNotContain("condition: service_healthy", repairedAfterRemove);
+            Assert.DoesNotContain("oracle:", repairedAfterRemove);
+            Assert.DoesNotContain("depends_on:", repairedAfterRemove);
+
+            WriteInvalidWorkspaceDependsOnCompose(snapshot.Paths.ComposePath);
+            Assert.Contains("condition: service_healthy", File.ReadAllText(snapshot.Paths.ComposePath));
+
+            await orchestrator.StartAsync(snapshot, entry => logEntries.Add(entry));
+
+            var repairedAfterStart = File.ReadAllText(snapshot.Paths.ComposePath);
+            Assert.DoesNotContain("condition: service_healthy", repairedAfterStart);
+            Assert.DoesNotContain("oracle:", repairedAfterStart);
+            Assert.DoesNotContain("depends_on:", repairedAfterStart);
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Stale compose detected for this managed workspace.", StringComparison.Ordinal));
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Compose regenerated/repaired.", StringComparison.Ordinal));
+            Assert.True(logEntries.Count(entry => entry.Message.Contains("Regenerated stale compose.yaml before Docker operation", StringComparison.Ordinal)) >= 2);
+            Assert.DoesNotContain(logEntries, entry => entry.Message.Contains("Docker Compose validation failed.", StringComparison.Ordinal));
+            Assert.Contains(dockerRunner.Commands, command => command.Contains(" compose ", StringComparison.Ordinal) && command.Contains(" config", StringComparison.Ordinal));
+            Assert.Contains(dockerRunner.Commands, command => command.Contains(" down ", StringComparison.Ordinal));
+            Assert.Contains(dockerRunner.Commands, command => command.Contains(" up -d", StringComparison.Ordinal));
+            Assert.Equal(0, dockerRunner.StaleComposeObservedCount);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task RecoverWorkspace_RegeneratesStaleComposeBeforeDockerComposeConfig()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var dockerRunner = new ComposeGuardProcessRunner();
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), new DockerService(dockerRunner), new WorkspaceTimelineService());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            var logEntries = new List<CommandLogEntry>();
+
+            WriteInvalidWorkspaceDependsOnCompose(snapshot.Paths.ComposePath);
+            Assert.Contains("condition: service_healthy", File.ReadAllText(snapshot.Paths.ComposePath));
+
+            await orchestrator.RecoverAsync(snapshot, entry => logEntries.Add(entry));
+
+            var repairedCompose = File.ReadAllText(snapshot.Paths.ComposePath);
+            Assert.DoesNotContain("condition: service_healthy", repairedCompose);
+            Assert.DoesNotContain("oracle:", repairedCompose);
+            Assert.DoesNotContain("depends_on:", repairedCompose);
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Compose regenerated/repaired.", StringComparison.Ordinal));
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Regenerated stale compose.yaml before Docker operation.", StringComparison.Ordinal));
+            Assert.Contains(dockerRunner.Commands, command => command.Contains(" config", StringComparison.Ordinal));
+            Assert.Equal(0, dockerRunner.StaleComposeObservedCount);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task RecoverWorkspace_RegeneratesAttachScriptFromFixedTemplate()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var dockerRunner = new ComposeGuardProcessRunner();
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), new DockerService(dockerRunner), new WorkspaceTimelineService());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            var createdScript = File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath);
+            Assert.Contains("set -euo pipefail", createdScript);
+            Assert.DoesNotContain("Failed at line $LINENO", createdScript, StringComparison.Ordinal);
+            var createdGuardIndex = createdScript.IndexOf("if [ -d /opt/oracle/instantclient ]; then", StringComparison.Ordinal);
+            var createdProbeIndex = createdScript.IndexOf("oracle_client_home=$(find /opt/oracle/instantclient", StringComparison.Ordinal);
+            Assert.True(createdGuardIndex >= 0 && createdProbeIndex > createdGuardIndex);
+
+            var userOwnedFilePath = Path.Combine(snapshot.Paths.RootPath, "notes.txt");
+            const string userOwnedContents = "keep me";
+            File.WriteAllText(userOwnedFilePath, userOwnedContents);
+
+            File.WriteAllText(snapshot.Paths.OpencodeWorkspaceShellPath, string.Join("\n", new[]
+            {
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)",
+                string.Empty,
+            }));
+
+            await orchestrator.RecoverAsync(snapshot);
+
+            var regeneratedScript = File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath);
+            Assert.Contains("set -euo pipefail", regeneratedScript);
+            Assert.DoesNotContain("Failed at line $LINENO", regeneratedScript, StringComparison.Ordinal);
+            var guardIndex = regeneratedScript.IndexOf("if [ -d /opt/oracle/instantclient ]; then", StringComparison.Ordinal);
+            var probeIndex = regeneratedScript.IndexOf("oracle_client_home=$(find /opt/oracle/instantclient", StringComparison.Ordinal);
+            Assert.True(guardIndex >= 0 && probeIndex > guardIndex);
+            Assert.NotEqual(string.Join("\n", new[]
+            {
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)",
+                string.Empty,
+            }), regeneratedScript);
+            Assert.Equal(userOwnedContents, File.ReadAllText(userOwnedFilePath));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task AttachAsync_WhenWorkspaceContainerIsNotRunning_DoesNotLaunchTerminal()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var terminalLauncher = new RecordingTerminalLauncher();
+            var dockerRunner = new MissingContainerProcessRunner();
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(
+                tempRoot,
+                CreateResolver(),
+                new FakeWorkspaceProvider(),
+                new DockerService(dockerRunner),
+                new WorkspaceTimelineService(),
+                terminalLauncher: terminalLauncher);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            var logEntries = new List<CommandLogEntry>();
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.AttachAsync(snapshot, entry => logEntries.Add(entry)));
+
+            Assert.Contains("Container 'odip-analiza-workspace' is not running", exception.Message, StringComparison.Ordinal);
+            Assert.Equal(0, terminalLauncher.LaunchCount);
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Checking for the expected workspace container", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchAttachForRunningWorkspaceAsync_WhenOpencodeUserIsMissing_ProvisionsBeforeAttachInitialization()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var terminalLauncher = new RecordingTerminalLauncher();
+            var dockerRunner = new ProvisionBeforeAttachProcessRunner();
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(
+                tempRoot,
+                CreateResolver(),
+                new FakeWorkspaceProvider(),
+                new DockerService(dockerRunner),
+                new WorkspaceTimelineService(),
+                terminalLauncher: terminalLauncher);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            var logEntries = new List<CommandLogEntry>();
+
+            await orchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, entry => logEntries.Add(entry));
+
+            Assert.True(dockerRunner.ProvisioningRan);
+            Assert.True(dockerRunner.DirectoryInitializationRanAfterProvisioning);
+            Assert.Equal(1, terminalLauncher.LaunchCount);
+            Assert.Contains(logEntries, entry => entry.Message.Contains("Workspace container is running but not provisioned. Running provisioning before attach.", StringComparison.Ordinal));
+            Assert.DoesNotContain(logEntries, entry => entry.Message.Contains("Run provisioning/recover workspace", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
     private static WorkspaceDefinition CreateDefinition(params string[] features)
     {
         return new WorkspaceDefinition
@@ -405,6 +600,46 @@ public sealed class WorkspaceOrchestratorTests
             Skills = new List<string>(),
             Mcp = new List<string>(),
         };
+    }
+
+    private static WorkspaceDefinition CreateAnalizaDefinition()
+    {
+        return new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Id = "odip-analiza",
+                Name = "Odip Analiza",
+                Image = "ubuntu:24.04",
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = "git",
+                Url = "git@ssh.dev.azure.com:v3/KOPA-Projects/ODIP/Analiza",
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+            },
+            Features = new List<string> { "core", "document-processing", "ocr-processing", "spellcheck" },
+            Services = new List<string>(),
+            Skills = new List<string>(),
+            Mcp = new List<string>(),
+        };
+    }
+
+    private static void WriteInvalidWorkspaceDependsOnCompose(string composePath)
+    {
+        File.WriteAllText(composePath, string.Join("\n", new[]
+        {
+            "services:",
+            "  workspace:",
+            "    image: ubuntu:24.04",
+            "    depends_on:",
+            "      oracle:",
+            "        condition: service_healthy",
+            string.Empty,
+        }));
     }
 
     private static WorkspaceResolver CreateResolver(string? additionalDocumentProcessingAptPackage = null)
@@ -428,6 +663,16 @@ public sealed class WorkspaceOrchestratorTests
                 {
                     Id = "document-processing",
                     Dependencies = new DependencySet { Apt = documentPackages },
+                },
+                new FeatureManifest
+                {
+                    Id = "ocr-processing",
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
+                    Id = "spellcheck",
+                    Dependencies = new DependencySet(),
                 },
                 new FeatureManifest
                 {
@@ -457,6 +702,7 @@ public sealed class WorkspaceOrchestratorTests
                     Image = "gvenzl/oracle-free:23-slim-faststart",
                     HostPorts = new List<string> { "1521:1521" },
                     Profiles = new List<string> { "oracle-demo" },
+                    WorkspaceDependsOnCondition = "service_healthy",
                     Volumes = new List<string> { "oracle-demo-data:/opt/oracle/oradata", "${WORKSPACE_TUTORIAL_DOCKER_PATH}/oracle/init:/container-entrypoint-initdb.d" },
                 },
             });
@@ -466,6 +712,28 @@ public sealed class WorkspaceOrchestratorTests
     {
         var ignorePolicyService = new WorkspaceIgnorePolicyService();
         return CreateOrchestratorWithProvider(tempRoot, resolver, new GitWorkspaceProvider(new ProcessRunner(), ignorePolicyService), new WorkspaceTimelineService(), ignorePolicyService);
+    }
+
+    private static WorkspaceOrchestrator CreateOrchestratorWithProviderAndDocker(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, DockerService dockerService, WorkspaceTimelineService timelineService, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null)
+    {
+        return new WorkspaceOrchestrator(
+            new WorkspaceYamlService(),
+            new WorkspaceRepository(GetAppDataRoot(tempRoot)),
+            resolver,
+            new ComposeGenerator(),
+            new EnvironmentFileGenerator(),
+            new ProvisioningScriptGenerator(),
+            new TerminalArtifactsGenerator(),
+            new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
+            new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            timelineService,
+            new WorkspaceSafetyService(),
+            ignorePolicyService ?? new WorkspaceIgnorePolicyService(),
+            provider,
+            dockerService,
+            terminalLauncher ?? new NoOpTerminalLauncher());
     }
 
     private static WorkspaceOrchestrator CreateOrchestratorWithProvider(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, WorkspaceTimelineService timelineService, WorkspaceIgnorePolicyService? ignorePolicyService = null)
@@ -538,6 +806,17 @@ public sealed class WorkspaceOrchestratorTests
             => Task.CompletedTask;
     }
 
+    private sealed class RecordingTerminalLauncher : ITerminalLauncher
+    {
+        public int LaunchCount { get; private set; }
+
+        public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            LaunchCount++;
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeWorkspaceProvider : IWorkspaceProvider
     {
         public string Type => "git";
@@ -586,5 +865,177 @@ public sealed class WorkspaceOrchestratorTests
 
         public Task<string> ExportPatchAsync(WorkspacePaths paths, WorkspaceDefinition definition, string outputPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(outputPath);
+    }
+
+    private sealed class ComposeGuardProcessRunner : IProcessRunner
+    {
+        public List<string> Commands { get; } = new();
+
+        public int StaleComposeObservedCount { get; private set; }
+
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            var argumentList = arguments.ToList();
+            var command = string.Join(' ', new[] { fileName }.Concat(argumentList));
+            Commands.Add(command);
+
+            if (string.Equals(fileName, "docker", StringComparison.OrdinalIgnoreCase))
+            {
+                var composePath = TryGetComposePath(argumentList);
+                if (composePath is not null && File.Exists(composePath))
+                {
+                    var compose = File.ReadAllText(composePath);
+                    if (compose.Contains("condition: service_healthy", StringComparison.Ordinal)
+                        || compose.Contains("      oracle:", StringComparison.Ordinal))
+                    {
+                        StaleComposeObservedCount++;
+                        return Task.FromResult(CreateResult(command, 1, standardError: "stale invalid compose.yaml reached DockerService"));
+                    }
+                }
+
+                if (argumentList.Contains("ps") && argumentList.Contains("--status"))
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "workspace"));
+                }
+
+                if (argumentList.Count > 0 && argumentList[0] == "ps")
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "odip-analiza-workspace"));
+                }
+
+                return Task.FromResult(CreateResult(command, 0));
+            }
+
+            return Task.FromResult(CreateResult(command, 0));
+        }
+
+        private static string? TryGetComposePath(IReadOnlyList<string> argumentList)
+        {
+            for (var index = 0; index < argumentList.Count - 1; index++)
+            {
+                if (string.Equals(argumentList[index], "--file", StringComparison.Ordinal))
+                {
+                    return argumentList[index + 1];
+                }
+            }
+
+            return null;
+        }
+
+        private static ProcessResult CreateResult(string command, int exitCode, string standardOutput = "", string standardError = "")
+        {
+            return new ProcessResult
+            {
+                Command = command,
+                ExitCode = exitCode,
+                StandardOutput = standardOutput,
+                StandardError = standardError,
+                StandardOutputLines = string.IsNullOrWhiteSpace(standardOutput) ? Array.Empty<string>() : standardOutput.Split(Environment.NewLine),
+                StandardErrorLines = string.IsNullOrWhiteSpace(standardError) ? Array.Empty<string>() : standardError.Split(Environment.NewLine),
+                Duration = TimeSpan.FromMilliseconds(10),
+            };
+        }
+    }
+
+    private sealed class MissingContainerProcessRunner : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            var argumentList = arguments.ToList();
+            var command = string.Join(' ', new[] { fileName }.Concat(argumentList));
+
+            if (string.Equals(fileName, "docker", StringComparison.OrdinalIgnoreCase))
+            {
+                if (argumentList.Contains("config", StringComparer.Ordinal))
+                {
+                    return Task.FromResult(CreateResult(command, 0));
+                }
+
+                if (argumentList.Contains("up", StringComparer.Ordinal))
+                {
+                    return Task.FromResult(CreateResult(command, 0));
+                }
+
+                if (argumentList.Contains("ps", StringComparer.Ordinal) && argumentList.Contains("--services", StringComparer.Ordinal))
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "workspace"));
+                }
+
+                if (argumentList.Count > 0 && argumentList[0] == "ps")
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: string.Empty));
+                }
+            }
+
+            return Task.FromResult(CreateResult(command, 0));
+        }
+    }
+
+    private sealed class ProvisionBeforeAttachProcessRunner : IProcessRunner
+    {
+        public bool ProvisioningRan { get; private set; }
+
+        public bool DirectoryInitializationRanAfterProvisioning { get; private set; }
+
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            var argumentList = arguments.ToList();
+            var command = string.Join(' ', new[] { fileName }.Concat(argumentList));
+
+            if (string.Equals(fileName, "docker", StringComparison.OrdinalIgnoreCase))
+            {
+                if (argumentList.Contains("ps", StringComparer.Ordinal) && argumentList.Contains("--services", StringComparer.Ordinal))
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "workspace"));
+                }
+
+                if (argumentList.Count > 0 && argumentList[0] == "ps")
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "odip-analiza-workspace"));
+                }
+
+                if (argumentList.Count >= 4 && argumentList[0] == "exec" && argumentList[^2] == "id" && argumentList[^1] == "opencode")
+                {
+                    return Task.FromResult(ProvisioningRan
+                        ? CreateResult(command, 0, standardOutput: "uid=1001(opencode) gid=1001(opencode) groups=1001(opencode)")
+                        : CreateResult(command, 1, standardError: "id: 'opencode': no such user"));
+                }
+
+                if (argumentList.Count >= 4 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "/opt/opencode-workspace/config/provision.sh")
+                {
+                    ProvisioningRan = true;
+                    return Task.FromResult(CreateResult(command, 0));
+                }
+
+                if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "-lc")
+                {
+                    DirectoryInitializationRanAfterProvisioning = ProvisioningRan;
+                    return Task.FromResult(ProvisioningRan
+                        ? CreateResult(command, 0)
+                        : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run provisioning/recover workspace."));
+                }
+
+                if (argumentList.Contains("config", StringComparer.Ordinal) || argumentList.Contains("up", StringComparer.Ordinal))
+                {
+                    return Task.FromResult(CreateResult(command, 0));
+                }
+            }
+
+            return Task.FromResult(CreateResult(command, 0));
+        }
+    }
+
+    private static ProcessResult CreateResult(string command, int exitCode, string standardOutput = "", string standardError = "")
+    {
+        return new ProcessResult
+        {
+            Command = command,
+            ExitCode = exitCode,
+            StandardOutput = standardOutput,
+            StandardError = standardError,
+            StandardOutputLines = string.IsNullOrWhiteSpace(standardOutput) ? Array.Empty<string>() : standardOutput.Split(Environment.NewLine),
+            StandardErrorLines = string.IsNullOrWhiteSpace(standardError) ? Array.Empty<string>() : standardError.Split(Environment.NewLine),
+            Duration = TimeSpan.FromMilliseconds(10),
+        };
     }
 }

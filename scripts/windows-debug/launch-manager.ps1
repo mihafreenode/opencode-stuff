@@ -28,6 +28,19 @@ function Get-VisibleManagerProcess {
         Select-Object -Last 1
 }
 
+function Get-BuildConfiguration {
+    param([string]$ResolvedAppPath)
+
+    $segments = $ResolvedAppPath -split '[\\/]'
+    foreach ($segment in $segments) {
+        if ($segment -ieq 'Debug' -or $segment -ieq 'Release') {
+            return $segment
+        }
+    }
+
+    return 'Unknown'
+}
+
 $resolvedAppPath = Resolve-AbsolutePath $AppPath
 if (-not (Test-Path $resolvedAppPath)) {
     Write-Warning "App executable not found: $resolvedAppPath"
@@ -39,6 +52,10 @@ $resolvedWorkingDirectory = if ([string]::IsNullOrWhiteSpace($WorkingDirectory))
 } else {
     Resolve-AbsolutePath $WorkingDirectory
 }
+
+$configuration = Get-BuildConfiguration $resolvedAppPath
+Write-Output "Launched: $resolvedAppPath"
+Write-Output "Configuration: $configuration"
 
 $beforeIds = @(Get-ManagerProcesses | ForEach-Object { $_.Id })
 $env:OPENCODE_WORKSPACE_MANAGER_LANGUAGE = $Language

@@ -32,6 +32,7 @@ public static class WorkspacePathBuilder
             OpencodeWorkspaceShellPath = Path.Combine(configPath, "opencode-workspace-shell.sh"),
             ScreenConfigPath = Path.Combine(configPath, "screenrc"),
             AttachWrapperScriptPath = Path.Combine(workspaceRootPath, "attach-workspace.ps1"),
+            AttachDiagnosticsLogPath = Path.Combine(workspaceRootPath, "attach-diagnostics.log"),
             TerminalDiagnosticsScriptPath = Path.Combine(workspaceRootPath, "terminal-diagnostics.ps1"),
             AppliedStatePath = Path.Combine(configPath, "applied-state.yaml"),
             HistoryPath = historyPath,

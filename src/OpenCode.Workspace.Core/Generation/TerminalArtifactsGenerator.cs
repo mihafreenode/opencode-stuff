@@ -66,7 +66,10 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("export LANG=${LANG:-C.UTF-8}");
         builder.AppendLine("export LC_ALL=${LC_ALL:-C.UTF-8}");
         builder.AppendLine("export SCREENRC=/opt/opencode-workspace/config/screenrc");
-        builder.AppendLine("oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("oracle_client_home='' ");
+        builder.AppendLine("if [ -d /opt/oracle/instantclient ]; then");
+        builder.AppendLine("  oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("fi");
         builder.AppendLine("if [ -d /workspace/.local/oracle/network/admin ]; then");
         builder.AppendLine("  export TNS_ADMIN=/workspace/.local/oracle/network/admin");
         builder.AppendLine("fi");
@@ -121,7 +124,10 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("export COLORTERM=truecolor");
         builder.AppendLine("export LANG=${LANG:-C.UTF-8}");
         builder.AppendLine("export LC_ALL=${LC_ALL:-C.UTF-8}");
-        builder.AppendLine("oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("oracle_client_home='' ");
+        builder.AppendLine("if [ -d /opt/oracle/instantclient ]; then");
+        builder.AppendLine("  oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
+        builder.AppendLine("fi");
         builder.AppendLine("if [ -n \"${oracle_client_home}\" ] && [ -d \"${oracle_client_home}\" ]; then");
         builder.AppendLine("  export ORACLE_CLIENT_HOME=${oracle_client_home}");
         builder.AppendLine("  export LD_LIBRARY_PATH=${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}");

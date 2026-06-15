@@ -25,19 +25,19 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
     public async Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var command = _attachCommandBuilder.Build(snapshot);
+        var attachPrefix = GetAttachPrefix(snapshot);
 
         if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath))
         {
             throw new InvalidOperationException($"The attach wrapper file is missing. Regenerate the workspace artifacts and try again.{Environment.NewLine}Expected file: {snapshot.Paths.AttachWrapperScriptPath}");
         }
 
+        TryDeleteAttachDiagnosticsLog(snapshot.Paths.AttachDiagnosticsLogPath);
+
         var startInfo = new ProcessStartInfo
         {
             FileName = command.FileName,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
+            UseShellExecute = true,
         };
 
         foreach (var argument in command.Arguments)
@@ -50,12 +50,17 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = $"Windows Terminal executable: {startInfo.FileName}",
+                Message = $"{attachPrefix} Selected workspace '{snapshot.Definition.Workspace.Name}'.",
             });
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = $"Launching Windows Terminal command: {command.CommandText}",
+                Message = $"{attachPrefix} Windows Terminal executable: {startInfo.FileName}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Launching Windows Terminal command: {command.CommandText}",
             });
 
             var process = new Process
@@ -64,61 +69,42 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
                 EnableRaisingEvents = true,
             };
 
-            var standardOutput = new StringBuilder();
-            var standardError = new StringBuilder();
-            process.OutputDataReceived += (_, eventArgs) =>
-            {
-                if (!string.IsNullOrWhiteSpace(eventArgs.Data))
-                {
-                    standardOutput.AppendLine(eventArgs.Data);
-                }
-            };
-            process.ErrorDataReceived += (_, eventArgs) =>
-            {
-                if (!string.IsNullOrWhiteSpace(eventArgs.Data))
-                {
-                    standardError.AppendLine(eventArgs.Data);
-                }
-            };
-
             process.Start();
             if (process is null)
             {
                 throw new InvalidOperationException("Windows Terminal did not return a process handle.");
             }
 
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = $"Windows Terminal process id: {process.Id}",
+                Message = $"{attachPrefix} Windows Terminal process id: {process.Id}",
             });
 
             await Task.Delay(1500, cancellationToken);
+            await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
 
             if (process.HasExited)
             {
                 log?.Invoke(new CommandLogEntry
                 {
                     Source = "app",
-                    Message = $"Windows Terminal exited early with code {process.ExitCode}.",
+                    Message = $"{attachPrefix} Windows Terminal exited early with code {process.ExitCode}.",
                 });
 
-                LogProcessOutput(log, standardOutput.ToString(), standardError.ToString());
+                await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
 
                 if (process.ExitCode == 0)
                 {
                     log?.Invoke(new CommandLogEntry
                     {
                         Source = "app",
-                        Message = "Windows Terminal launch command accepted.",
+                        Message = $"{attachPrefix} Windows Terminal launch command accepted.",
                     });
                     log?.Invoke(new CommandLogEntry
                     {
                         Source = "app",
-                        Message = "Terminal window handoff completed.",
+                        Message = $"{attachPrefix} Terminal window handoff completed.",
                     });
                     return;
                 }
@@ -129,12 +115,12 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = "Windows Terminal launch command accepted.",
+                Message = $"{attachPrefix} Windows Terminal launch command accepted.",
             });
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = "Terminal window handoff completed.",
+                Message = $"{attachPrefix} Terminal window handoff completed.",
             });
 
             _ = process;
@@ -150,37 +136,72 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
         }
     }
 
-    private static void LogProcessOutput(Action<CommandLogEntry>? log, string standardOutput, string standardError)
-    {
-        if (standardOutput.Length > 0)
-        {
-            foreach (var line in SplitLines(standardOutput))
-            {
-                log?.Invoke(new CommandLogEntry
-                {
-                    Source = "terminal",
-                    Message = line,
-                });
-            }
-        }
-
-        if (standardError.Length > 0)
-        {
-            foreach (var line in SplitLines(standardError))
-            {
-                log?.Invoke(new CommandLogEntry
-                {
-                    Source = "terminal:err",
-                    Message = line,
-                });
-            }
-        }
-    }
-
     private static IEnumerable<string> SplitLines(string content)
     {
         return content
             .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
             .Select(line => line.TrimEnd());
     }
+
+    internal static async Task MirrorAttachDiagnosticsAsync(string attachDiagnosticsLogPath, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        if (log is null || string.IsNullOrWhiteSpace(attachDiagnosticsLogPath))
+        {
+            return;
+        }
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (File.Exists(attachDiagnosticsLogPath))
+            {
+                foreach (var line in ReadAttachDiagnosticLines(attachDiagnosticsLogPath))
+                {
+                    log(new CommandLogEntry
+                    {
+                        Source = "attach",
+                        Message = line,
+                    });
+                }
+
+                return;
+            }
+
+            await Task.Delay(250, cancellationToken);
+        }
+    }
+
+    internal static IReadOnlyList<string> ReadAttachDiagnosticLines(string attachDiagnosticsLogPath)
+    {
+        if (!File.Exists(attachDiagnosticsLogPath))
+        {
+            return Array.Empty<string>();
+        }
+
+        return SplitLines(File.ReadAllText(attachDiagnosticsLogPath))
+            .Where(line => line.Contains("[attach:", StringComparison.Ordinal)
+                || line.Contains("[attach] Failed at line", StringComparison.Ordinal)
+                || line.StartsWith("+ ", StringComparison.Ordinal)
+                || line.StartsWith("++ ", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static void TryDeleteAttachDiagnosticsLog(string attachDiagnosticsLogPath)
+    {
+        try
+        {
+            if (File.Exists(attachDiagnosticsLogPath))
+            {
+                File.Delete(attachDiagnosticsLogPath);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static string GetAttachPrefix(WorkspaceSnapshot snapshot)
+        => $"[attach:{snapshot.Definition.Workspace.Name}]";
 }

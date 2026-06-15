@@ -85,6 +85,7 @@ public sealed class WorkspaceListItemViewModelTests
             OpencodeWorkspaceShellPath = Path.Combine(rootPath, "mounts", "config", "opencode-workspace-shell.sh"),
             ScreenConfigPath = Path.Combine(rootPath, "mounts", "config", "screenrc"),
             AttachWrapperScriptPath = Path.Combine(rootPath, "mounts", "config", "attach.ps1"),
+            AttachDiagnosticsLogPath = Path.Combine(rootPath, "mounts", "config", "attach-diagnostics.log"),
             TerminalDiagnosticsScriptPath = Path.Combine(rootPath, "mounts", "config", "terminal-diagnostics.ps1"),
             AppliedStatePath = Path.Combine(rootPath, "mounts", "config", "applied-state.yaml"),
             HistoryPath = Path.Combine(rootPath, "history"),

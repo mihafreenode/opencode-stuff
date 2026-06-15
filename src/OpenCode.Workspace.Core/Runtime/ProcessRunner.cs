@@ -4,7 +4,7 @@ using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Runtime;
 
-public sealed class ProcessRunner
+public sealed class ProcessRunner : IProcessRunner
 {
     public async Task<ProcessResult> RunAsync(
         string fileName,

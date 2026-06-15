@@ -93,6 +93,8 @@ public sealed class MainWindowViewModel : ObservableObject
         HealthTitle = localization.Get("health.title");
         CreateLabel = localization.Get("actions.create");
         OpenWorkspaceLabel = localization.Get("actions.openWorkspace");
+        StartWorkspaceLabel = localization.Get("actions.start");
+        RecoverWorkspaceLabel = localization.Get("actions.recoverWorkspace");
         PrepareWorkspaceLabel = localization.Get("actions.prepareWorkspace");
         PrepareUpdateLabel = localization.Get("actions.prepareUpdate");
         UpdateNowLabel = localization.Get("actions.updateNow");
@@ -165,7 +167,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
         CreateWorkspaceCommand = new AsyncRelayCommand(() => CreateWorkspaceAsync(), CanCreateWorkspace);
         PrimaryWorkspaceActionCommand = new AsyncRelayCommand(ExecutePrimaryWorkspaceActionAsync, HasSelectedWorkspace);
+        StartWorkspaceCommand = new AsyncRelayCommand(StartWorkspaceAsync, HasSelectedWorkspace);
         OpenWorkspaceCommand = new AsyncRelayCommand(OpenWorkspaceAsync, HasSelectedWorkspace);
+        RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverWorkspaceAsync, HasSelectedWorkspace);
         PrepareWorkspaceCommand = new AsyncRelayCommand(PrepareWorkspaceAsync, HasSelectedWorkspace);
         ShutDownWorkspaceCommand = new AsyncRelayCommand(ShutDownWorkspaceAsync, HasSelectedWorkspace);
         CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, HasSelectedWorkspace);
@@ -179,10 +183,11 @@ public sealed class MainWindowViewModel : ObservableObject
         UpdateWorkspaceFromRemoteCommand = new AsyncRelayCommand(UpdateWorkspaceFromRemoteAsync, HasSelectedWorkspace);
         PublishReviewWorkingCopyCommand = new AsyncRelayCommand(PublishReviewWorkingCopyAsync, HasSelectedWorkspace);
         DismissSafetyNoticeCommand = new RelayCommand(DismissSafetyNotice, HasSelectedWorkspace);
-        RefreshCommand = new AsyncRelayCommand(InitializeAsync, () => !IsBusy);
+        RefreshCommand = new AsyncRelayCommand(InitializeAsync, () => !IsBusy && !IsWorkspaceListLoading);
         OpenFolderCommand = new RelayCommand(OpenSelectedWorkspaceFolder, () => HasSelectedWorkspace() && !IsBusy);
         CopyWorkspacePathCommand = new RelayCommand(CopySelectedWorkspacePath, () => HasSelectedWorkspace() && !IsBusy);
         RemoveWorkspaceCommand = new AsyncRelayCommand(RemoveWorkspaceAsync, HasSelectedWorkspace);
+        ViewWorkspaceErrorCommand = new RelayCommand(ShowWorkspaceError, HasSelectedWorkspace);
         InstallSelectedFontCommand = new AsyncRelayCommand(InstallSelectedFontAsync, () => !IsBusy && !string.IsNullOrWhiteSpace(SelectedFontFamily));
         StartOracleDemoCommand = new AsyncRelayCommand(StartOracleDemoAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         ResetOracleDemoCommand = new AsyncRelayCommand(ResetOracleDemoAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
@@ -214,6 +219,8 @@ public sealed class MainWindowViewModel : ObservableObject
     public string HealthTitle { get; }
     public string CreateLabel { get; }
     public string OpenWorkspaceLabel { get; }
+    public string StartWorkspaceLabel { get; }
+    public string RecoverWorkspaceLabel { get; }
     public string PrepareWorkspaceLabel { get; }
     public string PrepareUpdateLabel { get; }
     public string UpdateNowLabel { get; }
@@ -289,7 +296,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public AsyncRelayCommand CreateWorkspaceCommand { get; }
     public AsyncRelayCommand PrimaryWorkspaceActionCommand { get; }
+    public AsyncRelayCommand StartWorkspaceCommand { get; }
     public AsyncRelayCommand OpenWorkspaceCommand { get; }
+    public AsyncRelayCommand RecoverWorkspaceCommand { get; }
     public AsyncRelayCommand PrepareWorkspaceCommand { get; }
     public AsyncRelayCommand ShutDownWorkspaceCommand { get; }
     public AsyncRelayCommand CreateSavePointCommand { get; }
@@ -307,6 +316,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand CopyWorkspacePathCommand { get; }
     public AsyncRelayCommand RemoveWorkspaceCommand { get; }
+    public RelayCommand ViewWorkspaceErrorCommand { get; }
     public AsyncRelayCommand InstallSelectedFontCommand { get; }
     public AsyncRelayCommand StartOracleDemoCommand { get; }
     public AsyncRelayCommand ResetOracleDemoCommand { get; }
@@ -365,6 +375,9 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspaceLastPublish));
                 RaisePropertyChanged(nameof(SelectedWorkspaceShortPath));
                 RaisePropertyChanged(nameof(SelectedPrimaryActionLabel));
+                RaisePropertyChanged(nameof(ShowRecoverWorkspaceAction));
+                RaisePropertyChanged(nameof(ShowViewWorkspaceErrorAction));
+                RaisePropertyChanged(nameof(ShowStartWorkspaceAction));
                 RaisePropertyChanged(nameof(HasSelectedWorkspaceItem));
                 RaisePropertyChanged(nameof(HasAnyWorkspaces));
                 RaisePropertyChanged(nameof(ShowOnboardingState));
@@ -600,9 +613,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedWorkspaceLastPublish => FormatRelativeTime(SelectedWorkspace?.Snapshot.Safety.Backup.LastSuccessfulPublishUtc);
     public string SelectedPrimaryActionLabel => SelectedWorkspace is null
         ? OpenWorkspaceLabel
-        : SelectedWorkspace.HasError
-            ? _localization.Get("actions.viewError")
-            : OpenWorkspaceLabel;
+        : OpenWorkspaceLabel;
     public string SelectedWorkspaceAgent => SelectedWorkspace is null
         ? "-"
         : _agentProfileResolver.Resolve(SelectedWorkspace.Snapshot.Definition).ProfileId;
@@ -646,10 +657,17 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 RaisePropertyChanged(nameof(ShowWorkspaceLoadingState));
                 RaisePropertyChanged(nameof(ShowWorkspaceErrorState));
+                RaisePropertyChanged(nameof(ShowWorkspaceReloadErrorBanner));
                 RaisePropertyChanged(nameof(ShowWorkspaceListState));
                 RaisePropertyChanged(nameof(ShowWorkspaceDetailsPane));
                 RaisePropertyChanged(nameof(ShowOnboardingState));
                 RaisePropertyChanged(nameof(ShowSelectionGuidanceState));
+                RaisePropertyChanged(nameof(ShowWorkspaceDetails));
+                RaisePropertyChanged(nameof(ShowWorkspaceSidePanels));
+                RaisePropertyChanged(nameof(CanStartCreateWorkspaceFlow));
+                RaisePropertyChanged(nameof(CreateWorkspaceDisabledReason));
+                RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
+                RaiseCommandStates();
             }
         }
     }
@@ -661,6 +679,7 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _workspaceListLoadFailed, value))
             {
                 RaisePropertyChanged(nameof(ShowWorkspaceErrorState));
+                RaisePropertyChanged(nameof(ShowWorkspaceReloadErrorBanner));
                 RaisePropertyChanged(nameof(ShowWorkspaceListState));
                 RaisePropertyChanged(nameof(ShowWorkspaceDetailsPane));
                 RaisePropertyChanged(nameof(ShowOnboardingState));
@@ -671,24 +690,36 @@ public sealed class MainWindowViewModel : ObservableObject
     public string WorkspaceListErrorMessage
     {
         get => _workspaceListErrorMessage;
-        private set => SetProperty(ref _workspaceListErrorMessage, value);
+        private set
+        {
+            if (SetProperty(ref _workspaceListErrorMessage, value))
+            {
+                RaisePropertyChanged(nameof(WorkspaceLoadFailedDescription));
+                RaisePropertyChanged(nameof(WorkspaceReloadErrorBannerText));
+            }
+        }
     }
     public bool HasAnyWorkspaces => Workspaces.Count > 0;
     public bool HasRunningWorkspace => Workspaces.Any(workspace => workspace.IsRunning);
     public bool HasSelectedWorkspaceItem => SelectedWorkspace is not null;
     public bool ShowWorkspaceLoadingState => IsWorkspaceListLoading;
     public bool ShowWorkspaceErrorState => !IsWorkspaceListLoading && WorkspaceListLoadFailed && !HasAnyWorkspaces;
-    public bool ShowWorkspaceListState => !IsWorkspaceListLoading && !WorkspaceListLoadFailed && HasAnyWorkspaces;
+    public bool ShowWorkspaceReloadErrorBanner => !IsWorkspaceListLoading && WorkspaceListLoadFailed && HasAnyWorkspaces;
+    public bool ShowWorkspaceListState => HasAnyWorkspaces;
     public bool ShowOnboardingState => !IsWorkspaceListLoading && !WorkspaceListLoadFailed && !HasAnyWorkspaces;
     public bool ShowSelectionGuidanceState => ShowWorkspaceListState && !HasSelectedWorkspaceItem;
-    public bool ShowWorkspaceDetails => HasSelectedWorkspaceItem;
-    public bool ShowWorkspaceDetailsPane => ShowWorkspaceListState;
+    public bool ShowWorkspaceDetails => HasSelectedWorkspaceItem && !IsWorkspaceListLoading;
+    public bool ShowWorkspaceDetailsPane => HasAnyWorkspaces;
+    public bool ShowWorkspaceSidePanels => !IsWorkspaceListLoading;
     public bool ShowNoRemoteActions => SelectedWorkspace?.Snapshot.Safety.Backup.HasRemoteConfigured == false;
     public bool ShowUnpublishedSavePointActions => SelectedWorkspace?.Snapshot.Safety.Backup.HasUnpublishedSavePoints == true;
     public bool ShowNeedsReviewActions => SelectedWorkspace?.Snapshot.Safety.Backup.NeedsReviewBeforePublish == true
         || SelectedWorkspace?.Snapshot.Safety.Backup.IsOnProtectedBranch == true;
+    public bool ShowRecoverWorkspaceAction => SelectedWorkspace?.HasError == true;
+    public bool ShowViewWorkspaceErrorAction => SelectedWorkspace?.HasError == true;
+    public bool ShowStartWorkspaceAction => SelectedWorkspace is not null && SelectedWorkspace.Snapshot.RuntimeState != WorkspaceRuntimeState.Running;
     public bool CanShutDownSelectedWorkspace => SelectedWorkspace is not null && !IsBusy && SelectedWorkspace.Snapshot.RuntimeState == WorkspaceRuntimeState.Running;
-    public bool CanStartCreateWorkspaceFlow => !IsBusy;
+    public bool CanStartCreateWorkspaceFlow => !IsBusy && !IsWorkspaceListLoading;
     public bool IsBusyForDiagnostics => IsBusy;
     public bool CanCreateWorkspaceForDialog => CanCreateWorkspace();
     public bool IsNewWorkspaceSource => SelectedWorkspaceSourceType == WorkspaceSourceType.NewWorkspace;
@@ -708,43 +739,30 @@ public sealed class MainWindowViewModel : ObservableObject
     public string WorkspaceLoadingDescription => "Please wait while workspace status is refreshed.";
     public string WorkspaceLoadFailedTitle => "Workspace list could not be loaded";
     public string WorkspaceLoadFailedDescription => string.IsNullOrWhiteSpace(WorkspaceListErrorMessage)
-        ? "Try refreshing the workspace list. Create Workspace is still available."
+        ? "Try refreshing the workspace list. The previous workspace list could not be loaded."
+        : WorkspaceListErrorMessage;
+    public string WorkspaceReloadErrorBannerText => string.IsNullOrWhiteSpace(WorkspaceListErrorMessage)
+        ? "Workspace refresh failed. Showing the previous list. Retry when ready."
         : WorkspaceListErrorMessage;
 
     public async Task InitializeAsync()
     {
         await RefreshHealthChecksAsync();
-        await RefreshWorkspaceListAsync();
-        StatusMessage = Workspaces.Count == 0
-            ? _localization.Get("status.none")
-            : string.Format(_localization.Get("status.loadedWorkspaces"), Workspaces.Count);
+        await ReloadWorkspaceListAsync();
+        if (!WorkspaceListLoadFailed)
+        {
+            StatusMessage = Workspaces.Count == 0
+                ? _localization.Get("status.none")
+                : string.Format(_localization.Get("status.loadedWorkspaces"), Workspaces.Count);
+        }
     }
 
     public async Task InitializeBackgroundAsync(StartupDiagnosticsService diagnostics)
     {
         diagnostics.Log("Background initialization begin.");
         diagnostics.Log("Workspace list loading start.");
-        IsWorkspaceListLoading = true;
-        WorkspaceListLoadFailed = false;
-        WorkspaceListErrorMessage = string.Empty;
-
-        try
-        {
-            await RefreshWorkspaceListAsync();
-            diagnostics.Log($"Workspace list refresh complete. Count={Workspaces.Count}.");
-        }
-        catch (Exception exception)
-        {
-            diagnostics.Log($"Workspace list refresh failed: {exception.Message}");
-            WorkspaceListLoadFailed = true;
-            WorkspaceListErrorMessage = "Workspace list could not be fully refreshed.";
-            StatusMessage = "Workspace list could not be fully refreshed.";
-        }
-        finally
-        {
-            IsWorkspaceListLoading = false;
-            diagnostics.Log($"Workspace list loading complete. Count={Workspaces.Count}. Failed={WorkspaceListLoadFailed}.");
-        }
+        await ReloadWorkspaceListAsync(diagnosticsLog: diagnostics.Log);
+        diagnostics.Log($"Workspace list loading complete. Count={Workspaces.Count}. Failed={WorkspaceListLoadFailed}.");
 
         try
         {
@@ -844,7 +862,7 @@ public sealed class MainWindowViewModel : ObservableObject
             var snapshot = await _workspaceOrchestrator.ImportExistingGitCheckoutAsync(request, CreateWorkspaceLogAppender(request.RepositoryPath));
             EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
             AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Imported existing Git checkout on branch '{snapshot.Safety.AdvancedGit.CurrentBranch}'.");
-            await RefreshWorkspaceListAsync(snapshot.Paths.RootPath);
+            await ReloadWorkspaceListAsync(snapshot.Paths.RootPath);
             StatusMessage = $"Imported existing Git checkout '{snapshot.Definition.Workspace.Name}'.";
         });
 
@@ -935,7 +953,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
                 currentStep = "workspace list refresh";
                 diagnosticsLog?.Invoke($"Create Workspace workspace list refresh started via {buttonSource}.");
-                await RefreshWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: createTimeout.Token);
+                await ReloadWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: createTimeout.Token);
                 diagnosticsLog?.Invoke($"Create Workspace workspace list refreshed via {buttonSource}.");
 
                 currentStep = "status update";
@@ -1051,13 +1069,43 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private Task ExecutePrimaryWorkspaceActionAsync()
     {
-        if (SelectedWorkspace?.HasError == true)
-        {
-            ShowWorkspaceError();
-            return Task.CompletedTask;
-        }
-
         return OpenWorkspaceAsync();
+    }
+
+    private async Task StartWorkspaceAsync()
+    {
+        await RunWorkspaceActionAsync(
+            StartWorkspaceLabel,
+            async snapshot =>
+            {
+                if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+                {
+                    await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                    PersistWorkspaceRecord(snapshot, StartWorkspaceLabel, "Provisioned and started workspace.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
+                    StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' was prepared and started.";
+                    return;
+                }
+
+                if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+                {
+                    await _workspaceOrchestrator.StartAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                }
+
+                PersistWorkspaceRecord(snapshot, StartWorkspaceLabel, "Started workspace.", succeeded: true);
+                StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' is running.";
+            });
+    }
+
+    private async Task RecoverWorkspaceAsync()
+    {
+        await RunWorkspaceActionAsync(
+            RecoverWorkspaceLabel,
+            async snapshot =>
+            {
+                await _workspaceOrchestrator.RecoverAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                PersistWorkspaceRecord(snapshot, RecoverWorkspaceLabel, "Recovered workspace and validated generated files.", succeeded: true);
+                StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' was recovered. Start is available again.";
+            });
     }
 
     private void ConfigureRemoteBackup()
@@ -1430,7 +1478,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 }
                 finally
                 {
-                    await RefreshWorkspaceListAsync(refreshSelectionPath ?? snapshot.Paths.RootPath);
+                    await ReloadWorkspaceListAsync(refreshSelectionPath ?? snapshot.Paths.RootPath);
                 }
             });
     }
@@ -1640,9 +1688,35 @@ public sealed class MainWindowViewModel : ObservableObject
     public void AppendCreateDialogDiagnostic(string message)
         => AppendCurrentLog("create", message);
 
-    private async Task RefreshWorkspaceListAsync(string? selectRootPath = null, bool includeRuntimeInspection = true, CancellationToken cancellationToken = default)
+    private async Task ReloadWorkspaceListAsync(string? selectRootPath = null, bool includeRuntimeInspection = true, CancellationToken cancellationToken = default, Action<string>? diagnosticsLog = null)
     {
-        Workspaces.Clear();
+        var preservedSelectionPath = selectRootPath ?? SelectedWorkspace?.RootPath;
+        IsWorkspaceListLoading = true;
+        WorkspaceListLoadFailed = false;
+        WorkspaceListErrorMessage = string.Empty;
+
+        try
+        {
+            var loadedWorkspaces = await LoadWorkspaceItemsAsync(includeRuntimeInspection, cancellationToken);
+            ReplaceWorkspaceList(loadedWorkspaces, preservedSelectionPath);
+            diagnosticsLog?.Invoke($"Workspace list refresh complete. Count={Workspaces.Count}.");
+        }
+        catch (Exception exception)
+        {
+            WorkspaceListLoadFailed = true;
+            WorkspaceListErrorMessage = $"Workspace refresh failed. Showing the previous list. {exception.Message}";
+            StatusMessage = "Workspace refresh failed. Showing the previous list.";
+            diagnosticsLog?.Invoke($"Workspace list refresh failed: {exception.Message}");
+        }
+        finally
+        {
+            IsWorkspaceListLoading = false;
+        }
+    }
+
+    private async Task<List<WorkspaceListItemViewModel>> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken)
+    {
+        var loadedWorkspaces = new List<WorkspaceListItemViewModel>();
         foreach (var record in _workspaceOrchestrator.LoadWorkspaceRecords())
         {
             if (!File.Exists(Path.Combine(record.RootPath, "workspace.yaml")))
@@ -1654,19 +1728,30 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(record.RootPath, cancellationToken, includeRuntimeInspection);
                 var workspaceItem = new WorkspaceListItemViewModel(snapshot, _localization);
-                Workspaces.Add(workspaceItem);
-                if (workspaceItem.HasError)
-                {
-                    AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' is in Error state. {workspaceItem.ErrorDetails}");
-                }
-                else
-                {
-                    AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' status: {workspaceItem.StatusLabel}. {workspaceItem.StatusDetails}");
-                }
+                loadedWorkspaces.Add(workspaceItem);
             }
             catch
             {
                 continue;
+            }
+        }
+
+        return loadedWorkspaces;
+    }
+
+    private void ReplaceWorkspaceList(IReadOnlyList<WorkspaceListItemViewModel> loadedWorkspaces, string? selectRootPath)
+    {
+        Workspaces.Clear();
+        foreach (var workspaceItem in loadedWorkspaces)
+        {
+            Workspaces.Add(workspaceItem);
+            if (workspaceItem.HasError)
+            {
+                AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' is in Error state. {workspaceItem.ErrorDetails}");
+            }
+            else
+            {
+                AppendCurrentLog("status", $"Workspace '{workspaceItem.Name}' status: {workspaceItem.StatusLabel}. {workspaceItem.StatusDetails}");
             }
         }
 
@@ -1676,11 +1761,13 @@ public sealed class MainWindowViewModel : ObservableObject
         RaisePropertyChanged(nameof(HasAnyWorkspaces));
         RaisePropertyChanged(nameof(ShowWorkspaceLoadingState));
         RaisePropertyChanged(nameof(ShowWorkspaceErrorState));
+        RaisePropertyChanged(nameof(ShowWorkspaceReloadErrorBanner));
         RaisePropertyChanged(nameof(ShowWorkspaceListState));
         RaisePropertyChanged(nameof(ShowOnboardingState));
         RaisePropertyChanged(nameof(ShowSelectionGuidanceState));
         RaisePropertyChanged(nameof(ShowWorkspaceDetails));
         RaisePropertyChanged(nameof(ShowWorkspaceDetailsPane));
+        RaisePropertyChanged(nameof(ShowWorkspaceSidePanels));
         RaisePropertyChanged(nameof(CanStartCreateWorkspaceFlow));
         RaisePropertyChanged(nameof(CreateWorkspaceDisabledReason));
         RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
@@ -1870,7 +1957,7 @@ public sealed class MainWindowViewModel : ObservableObject
         return Path.GetFileName(path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
     }
 
-    private bool HasSelectedWorkspace() => SelectedWorkspace is not null && !IsBusy;
+    private bool HasSelectedWorkspace() => SelectedWorkspace is not null && !IsBusy && !IsWorkspaceListLoading;
 
     private string FormatRelativeTime(DateTimeOffset? value)
     {
@@ -2166,7 +2253,9 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
         PrimaryWorkspaceActionCommand.RaiseCanExecuteChanged();
+        StartWorkspaceCommand.RaiseCanExecuteChanged();
         OpenWorkspaceCommand.RaiseCanExecuteChanged();
+        RecoverWorkspaceCommand.RaiseCanExecuteChanged();
         PrepareWorkspaceCommand.RaiseCanExecuteChanged();
         ShutDownWorkspaceCommand.RaiseCanExecuteChanged();
         CreateSavePointCommand.RaiseCanExecuteChanged();
@@ -2184,6 +2273,7 @@ public sealed class MainWindowViewModel : ObservableObject
         OpenFolderCommand.RaiseCanExecuteChanged();
         CopyWorkspacePathCommand.RaiseCanExecuteChanged();
         RemoveWorkspaceCommand.RaiseCanExecuteChanged();
+        ViewWorkspaceErrorCommand.RaiseCanExecuteChanged();
         InstallSelectedFontCommand.RaiseCanExecuteChanged();
         StartOracleDemoCommand.RaiseCanExecuteChanged();
         ResetOracleDemoCommand.RaiseCanExecuteChanged();
@@ -2195,6 +2285,9 @@ public sealed class MainWindowViewModel : ObservableObject
         OpenSqlDeveloperCommand.RaiseCanExecuteChanged();
         RaisePropertyChanged(nameof(CanShutDownSelectedWorkspace));
         RaisePropertyChanged(nameof(SelectedPrimaryActionLabel));
+        RaisePropertyChanged(nameof(ShowRecoverWorkspaceAction));
+        RaisePropertyChanged(nameof(ShowViewWorkspaceErrorAction));
+        RaisePropertyChanged(nameof(ShowStartWorkspaceAction));
         RaisePropertyChanged(nameof(HasRunningWorkspace));
         RaisePropertyChanged(nameof(CanStartCreateWorkspaceFlow));
         RaisePropertyChanged(nameof(CreateWorkspaceDisabledReason));

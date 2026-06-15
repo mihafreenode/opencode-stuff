@@ -60,6 +60,133 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void ComposeGenerator_ForWorkspaceWithoutServices_OmitsWorkspaceDependsOn()
+    {
+        var generator = new ComposeGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Id = "odip-analiza",
+                Name = "Odip Analiza",
+                Image = "ubuntu:24.04",
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = "git",
+                Url = "git@ssh.dev.azure.com:v3/KOPA-Projects/ODIP/Analiza",
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+            },
+            Features = new List<string> { "core", "document-processing", "ocr-processing", "spellcheck" },
+            Services = new List<string>(),
+            Skills = new List<string>(),
+            Mcp = new List<string>(),
+        };
+
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = definition,
+            Features = Array.Empty<FeatureManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "odip-analiza"));
+        var compose = generator.Generate(resolved, paths);
+
+        Assert.DoesNotContain("depends_on:", compose);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForSimpleWorkspaceDependencies_UsesArrayForm()
+    {
+        var generator = new ComposeGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Name = "analiza-with-db",
+                Image = "ubuntu:24.04",
+            },
+            Features = new List<string> { "core" },
+            Services = new List<string> { "oracle" },
+        };
+
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = definition,
+            Features = Array.Empty<FeatureManifest>(),
+            Services = new[]
+            {
+                new ServiceManifest
+                {
+                    Id = "oracle",
+                    Image = "gvenzl/oracle-free:23-slim-faststart",
+                },
+            },
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "analiza-with-db"));
+        var compose = generator.Generate(resolved, paths);
+
+        Assert.Contains("    depends_on:", compose);
+        Assert.Contains("      - oracle", compose);
+        Assert.DoesNotContain("condition:", compose);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForConditionalWorkspaceDependencies_UsesObjectForm()
+    {
+        var generator = new ComposeGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Name = "oracle-demo",
+                Image = "ubuntu:24.04",
+            },
+            Features = new List<string> { "core", "oracle-demo" },
+            Services = new List<string> { "oracle-demo" },
+        };
+
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = definition,
+            Features = Array.Empty<FeatureManifest>(),
+            Services = new[]
+            {
+                new ServiceManifest
+                {
+                    Id = "oracle-demo",
+                    Image = "gvenzl/oracle-free:23-slim-faststart",
+                    WorkspaceDependsOnCondition = "service_healthy",
+                },
+            },
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "oracle-demo"));
+        var compose = generator.Generate(resolved, paths);
+
+        Assert.Contains("    depends_on:", compose);
+        Assert.Contains("      oracle-demo:", compose);
+        Assert.Contains("        condition: service_healthy", compose);
+    }
+
+    [Fact]
     public void EnvironmentFileGenerator_IncludesOracleDefaultsForOracleDemoWorkspaces()
     {
         var generator = new EnvironmentFileGenerator();
@@ -236,12 +363,30 @@ public sealed class GeneratedArtifactsTests
     public void AttachArtifactsGenerator_UsesOpencodeUserAndCreatesSessionWhenMissing()
     {
         var generator = new AttachArtifactsGenerator();
-        var wrapper = generator.GenerateWindowsTerminalWrapper(new WorkspaceDefinition
+        var definition = new WorkspaceDefinition
         {
             Workspace = new WorkspaceMetadata { Name = "attach-demo" },
-        });
+        };
+        var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "attach-demo"));
+        var wrapper = generator.GenerateWindowsTerminalWrapper(definition, paths);
 
-        Assert.Contains("$dockerExe exec -it --user opencode -w /workspace", wrapper);
+        Assert.Contains("$dockerExecArgs = @('exec', '-it', '--user', $attachUser, '-w', $workspaceDirectory", wrapper);
+        Assert.Contains("Invoke-DockerCheck", wrapper);
+        Assert.Contains("Test-AttachPreconditions", wrapper);
+        Assert.Contains("@('exec', $containerName, 'test', '-x', $workspaceShellScript)", wrapper);
+        Assert.Contains("Script not found", wrapper);
+        Assert.Contains("User $attachUser does not exist.", wrapper);
+        Assert.Contains("Working directory missing: $workspaceDirectory", wrapper);
+        Assert.Contains("Script is not marked executable", wrapper);
+        Assert.DoesNotContain("$scriptCheck.Output -notmatch", wrapper);
+        Assert.Contains("$attemptedCommand = \"$dockerExe exec -it --user $attachUser -w $workspaceDirectory $containerName bash $workspaceShellScript\"", wrapper);
+        Assert.Contains("$attachPrefix = '[attach:attach-demo]'", wrapper);
+        Assert.Contains("Write-AttachMessage \"Expected container name: $containerName\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"Attempted command: $attemptedCommand\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"docker ps:\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"docker compose ps:\"", wrapper);
+        Assert.Contains(paths.AttachDiagnosticsLogPath, wrapper);
+        Assert.Contains(paths.ComposePath, wrapper);
         Assert.Contains("/opt/opencode-workspace/config/opencode-workspace-shell.sh", wrapper);
         Assert.Contains("$disableMouseReporting", wrapper);
         Assert.Contains("[Console]::Write($disableMouseReporting)", wrapper);
@@ -255,5 +400,27 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("[attach] User: opencode", diagnostics);
         Assert.Contains("[attach] Container: $containerName", diagnostics);
         Assert.Contains("UTF8: ✓ λ € — • │ ─  ", diagnostics);
+    }
+
+    [Fact]
+    public void AttachPreflight_DoesNotReportFalsePrerequisiteFailures()
+    {
+        var generator = new AttachArtifactsGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "odip-analiza" },
+        };
+        var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "odip-analiza"));
+        var wrapper = generator.GenerateWindowsTerminalWrapper(definition, paths);
+
+        Assert.Contains("Write-AttachMessage \"Verified script exists: $workspaceShellScript\"", wrapper);
+        Assert.Contains("@('exec', $containerName, 'test', '-x', $workspaceShellScript)", wrapper);
+        Assert.Contains("Write-AttachMessage \"Verified script is executable: $workspaceShellScript\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"Verified user exists: $attachUser\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"Verified working directory exists: $workspaceDirectory\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"docker exec failed with exit code $ExitCode\"", wrapper);
+        Assert.Contains("Write-AttachMessage \"Preflight checks passed.\"", wrapper);
+        Assert.DoesNotContain("$scriptCheck.Output -notmatch", wrapper);
+        Assert.DoesNotContain("Windows file attributes", wrapper, StringComparison.OrdinalIgnoreCase);
     }
 }

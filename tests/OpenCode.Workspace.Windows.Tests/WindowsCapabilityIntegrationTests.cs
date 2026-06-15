@@ -94,6 +94,7 @@ public sealed class WindowsCapabilityIntegrationTests
         Assert.Contains("Workspaces With Spaces", command.Arguments[5]);
         Assert.Contains("attach-workspace.ps1", command.CommandText);
         Assert.Contains("wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File", command.CommandText);
+        Assert.False(command.CommandText.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -9,25 +9,28 @@ namespace OpenCode.Workspace.Core.Runtime;
 /// </summary>
 public sealed class DockerService
 {
-    private readonly ProcessRunner _processRunner;
+    private readonly IProcessRunner _processRunner;
     private const string DockerUnavailableMessage = "Docker is not reachable from this environment. Check Docker Desktop / WSL integration.";
 
-    public DockerService(ProcessRunner processRunner)
+    public DockerService(IProcessRunner processRunner)
     {
         _processRunner = processRunner;
     }
 
-    public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-        => StartWithCleanupOnFailureAsync(paths, definition, log, cancellationToken);
+    public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+        => StartWithCleanupOnFailureAsync(paths, definition, log, cancellationToken, repairComposeAsync);
+
+    public Task<ProcessResult> ValidateAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+        => ValidateComposeAsync(paths, definition, log, cancellationToken, repairComposeAsync);
 
     public Task<ProcessResult> StopAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "stop" }, log, cancellationToken);
 
-    public Task<ProcessResult> RemoveAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-        => RunComposeAsync(paths, definition, new[] { "down", "--remove-orphans" }, log, cancellationToken);
+    public Task<ProcessResult> RemoveAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+        => RunComposeWithValidationRepairAsync(paths, definition, new[] { "down", "--remove-orphans" }, log, cancellationToken, repairComposeAsync);
 
-    public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-        => RunComposeAsync(paths, definition, new[] { "down", "-v", "--remove-orphans" }, log, cancellationToken);
+    public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+        => RunComposeWithValidationRepairAsync(paths, definition, new[] { "down", "-v", "--remove-orphans" }, log, cancellationToken, repairComposeAsync);
 
     public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "ps", "--status", "running", "--services" }, log, cancellationToken);
@@ -45,10 +48,16 @@ public sealed class DockerService
             cancellationToken);
     }
 
+    public Task<ProcessResult> CheckOpencodeUserAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "exec", containerName, "id", "opencode" }, null, log, cancellationToken);
+    }
+
     public Task<ProcessResult> EnsureOpencodeUserDirectoriesAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var containerName = GetWorkspaceContainerName(definition);
-        const string command = "repair_needed=0; if [ ! -d /home/opencode/.local/share/opencode/log ] || ! su -s /bin/bash -c 'test -w /home/opencode/.local/share/opencode/log' opencode >/dev/null 2>&1; then repair_needed=1; fi; if [ \"$repair_needed\" -eq 1 ]; then printf '[attach] Initializing OpenCode user directories.\\n'; fi; mkdir -p /home/opencode/.local/share/opencode/log /home/opencode/.config/opencode /home/opencode/.cache/opencode; chown -R opencode:opencode /home/opencode/.local /home/opencode/.config /home/opencode/.cache; test -d /home/opencode/.local/share/opencode/log; su -s /bin/bash -c 'test -w /home/opencode/.local/share/opencode/log' opencode";
+        const string command = "id opencode >/dev/null 2>&1 || { echo 'Workspace container is running but not provisioned. Run provisioning/recover workspace.' >&2; exit 1; }; repair_needed=0; if [ ! -d /home/opencode/.local/share/opencode/log ] || ! su -s /bin/bash -c 'test -w /home/opencode/.local/share/opencode/log' opencode >/dev/null 2>&1; then repair_needed=1; fi; if [ \"$repair_needed\" -eq 1 ]; then printf '[attach] Initializing OpenCode user directories.\\n'; fi; mkdir -p /home/opencode/.local/share/opencode/log /home/opencode/.config/opencode /home/opencode/.cache/opencode; chown -R opencode:opencode /home/opencode/.local /home/opencode/.config /home/opencode/.cache; test -d /home/opencode/.local/share/opencode/log; su -s /bin/bash -c 'test -w /home/opencode/.local/share/opencode/log' opencode";
         return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", command }, null, log, cancellationToken);
     }
 
@@ -139,8 +148,14 @@ public sealed class DockerService
         }
     }
 
-    private async Task<ProcessResult> StartWithCleanupOnFailureAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    private async Task<ProcessResult> StartWithCleanupOnFailureAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken, Func<CancellationToken, Task<bool>>? repairComposeAsync)
     {
+        var validationResult = await ValidateComposeAsync(paths, definition, log, cancellationToken, repairComposeAsync);
+        if (!validationResult.IsSuccess)
+        {
+            return validationResult;
+        }
+
         var result = await RunComposeAsync(paths, definition, new[] { "up", "-d" }, log, cancellationToken);
         if (result.IsSuccess)
         {
@@ -155,6 +170,85 @@ public sealed class DockerService
 
         await RunComposeAsync(paths, definition, new[] { "down", "--remove-orphans" }, log, cancellationToken);
         return result;
+    }
+
+    private async Task<ProcessResult> RunComposeWithValidationRepairAsync(WorkspacePaths paths, WorkspaceDefinition definition, IEnumerable<string> composeArguments, Action<CommandLogEntry>? log, CancellationToken cancellationToken, Func<CancellationToken, Task<bool>>? repairComposeAsync)
+    {
+        var validationResult = await ValidateComposeAsync(paths, definition, log, cancellationToken, repairComposeAsync);
+        if (!validationResult.IsSuccess)
+        {
+            return validationResult;
+        }
+
+        return await RunComposeAsync(paths, definition, composeArguments, log, cancellationToken);
+    }
+
+    private async Task<ProcessResult> ValidateComposeAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken, Func<CancellationToken, Task<bool>>? repairComposeAsync)
+    {
+        var validationResult = await RunComposeAsync(paths, definition, new[] { "config" }, log, cancellationToken);
+        if (validationResult.IsSuccess)
+        {
+            return validationResult;
+        }
+
+        LogComposeValidationFailure(log, validationResult);
+
+        if (repairComposeAsync is null)
+        {
+            return validationResult;
+        }
+
+        log?.Invoke(new CommandLogEntry
+        {
+            Source = "app",
+            Message = "Stale compose detected. Attempting compose regeneration/repair.",
+        });
+
+        var repaired = await repairComposeAsync(cancellationToken);
+        if (!repaired)
+        {
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = "Compose regeneration/repair did not change compose.yaml.",
+            });
+            return validationResult;
+        }
+
+        log?.Invoke(new CommandLogEntry
+        {
+            Source = "app",
+            Message = "Compose regenerated/repaired. Re-running docker compose config.",
+        });
+
+        var repairedValidationResult = await RunComposeAsync(paths, definition, new[] { "config" }, log, cancellationToken);
+        log?.Invoke(new CommandLogEntry
+        {
+            Source = "app",
+            Message = repairedValidationResult.IsSuccess
+                ? "Validation after repair succeeded."
+                : "Validation after repair failed.",
+        });
+
+        if (!repairedValidationResult.IsSuccess)
+        {
+            LogComposeValidationFailure(log, repairedValidationResult);
+        }
+
+        return repairedValidationResult;
+    }
+
+    private static void LogComposeValidationFailure(Action<CommandLogEntry>? log, ProcessResult validationResult)
+    {
+        var validationError = string.IsNullOrWhiteSpace(validationResult.StandardError)
+            ? validationResult.StandardOutput
+            : validationResult.StandardError;
+
+        log?.Invoke(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"Docker Compose validation failed. {validationError}".Trim(),
+        });
     }
 
     private static IReadOnlyList<string> GetComposeProfiles(WorkspaceDefinition definition)

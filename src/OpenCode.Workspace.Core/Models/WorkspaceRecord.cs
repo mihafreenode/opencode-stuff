@@ -49,6 +49,7 @@ public sealed class WorkspacePaths
     public required string OpencodeWorkspaceShellPath { get; init; }
     public required string ScreenConfigPath { get; init; }
     public required string AttachWrapperScriptPath { get; init; }
+    public required string AttachDiagnosticsLogPath { get; init; }
     public required string TerminalDiagnosticsScriptPath { get; init; }
     public required string AppliedStatePath { get; init; }
     public required string HistoryPath { get; init; }

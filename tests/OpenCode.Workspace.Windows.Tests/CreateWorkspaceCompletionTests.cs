@@ -15,6 +15,7 @@ public sealed class CreateWorkspaceCompletionTests
         var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-create-complete-{Guid.NewGuid():N}");
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-create-workspace-{Guid.NewGuid():N}");
         var viewModel = CreateViewModel(appDataRoot);
+        await viewModel.InitializeAsync();
 
         viewModel.PrepareCreateWorkspaceDialog();
         viewModel.SelectedTemplate = viewModel.Templates.Single(template => template.Id == "oracle-plsql-demo");
@@ -40,12 +41,14 @@ public sealed class CreateWorkspaceCompletionTests
         var templateWorkspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-create-template-workspace-{Guid.NewGuid():N}");
 
         var headerViewModel = CreateViewModel(headerAppDataRoot);
+        await headerViewModel.InitializeAsync();
         headerViewModel.PrepareCreateWorkspaceDialog();
         headerViewModel.SelectedTemplate = headerViewModel.Templates.Single(template => template.Id == "oracle-plsql-demo");
         headerViewModel.NewWorkspaceName = "demo-oracle-header";
         headerViewModel.NewWorkspacePath = headerWorkspaceRoot;
 
         var templateViewModel = CreateViewModel(templateAppDataRoot);
+        await templateViewModel.InitializeAsync();
         templateViewModel.PrepareCreateWorkspaceDialog();
         templateViewModel.SelectedTemplate = templateViewModel.Templates.Single(template => template.Id == "oracle-plsql-demo");
         templateViewModel.NewWorkspaceName = "demo-oracle-template";

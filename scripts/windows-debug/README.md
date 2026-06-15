@@ -6,6 +6,7 @@ They are debugging-only utilities. They do not change app runtime behavior.
 
 ## Scripts
 
+- `rebuild-and-launch-manager.ps1`
 - `launch-manager.ps1`
 - `activate-manager.ps1`
 - `inspect-manager.ps1`
@@ -16,19 +17,27 @@ They are debugging-only utilities. They do not change app runtime behavior.
 
 Use `wslpath -w` so PowerShell receives a Windows path to the script.
 
-Launch the app:
+Rebuild and launch the exact binary you just built:
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/windows-debug/launch-manager.ps1)"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/windows-debug/rebuild-and-launch-manager.ps1)" \
+  -Configuration Debug
 ```
 
-Launch a specific app path and language:
+Rebuild and launch Release explicitly:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/windows-debug/rebuild-and-launch-manager.ps1)" \
+  -Configuration Release \
+  -Language en \
+  -TimeoutSeconds 20
+```
+
+Launch an already-built specific app path:
 
 ```bash
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/windows-debug/launch-manager.ps1)" \
-  -AppPath "src/OpenCode.Workspace.Manager/bin/Release/net10.0-windows/OpenCode.Workspace.Manager.exe" \
-  -Language en \
-  -TimeoutSeconds 20
+  -AppPath "src/OpenCode.Workspace.Manager/bin/Debug/net10.0-windows/OpenCode.Workspace.Manager.exe"
 ```
 
 Inspect the running instance:
@@ -65,6 +74,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/wi
 ## Notes
 
 - `launch-manager.ps1` waits for a visible main window, but it does not crash if the window handle is still null.
+- `launch-manager.ps1` prints the exact executable path and inferred configuration before launch.
+- `rebuild-and-launch-manager.ps1` is the preferred script for "rebuild and run app" because it builds and launches one consistent configuration.
 - `activate-manager.ps1` retries briefly and prints a warning if no visible window exists.
 - `screenshot-manager.ps1` saves a PNG only when a valid visible window is available.
 - `kill-manager.ps1` defaults to stopping repo-scoped manager instances only. Use `-AllInstances` if you really want to stop everything.

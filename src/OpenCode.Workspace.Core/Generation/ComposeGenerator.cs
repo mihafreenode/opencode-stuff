@@ -14,6 +14,9 @@ public sealed class ComposeGenerator
     public string Generate(ResolvedWorkspace workspace, WorkspacePaths paths)
     {
         var slug = WorkspacePathBuilder.Slugify(workspace.Definition.Workspace.Name);
+        var workspaceDependencies = workspace.Services
+            .OrderBy(service => service.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var builder = new StringBuilder();
 
         builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
@@ -36,11 +39,7 @@ public sealed class ComposeGenerator
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.UserPath)}:/user");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.HomePath)}:/home/opencode");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.ConfigPath)}:/opt/opencode-workspace/config");
-        builder.AppendLine("    depends_on:");
-        foreach (var service in workspace.Services.OrderBy(service => service.Id, StringComparer.OrdinalIgnoreCase))
-        {
-            builder.AppendLine($"      - {service.Id}");
-        }
+        AppendDependsOn(builder, workspaceDependencies, service => service.WorkspaceDependsOnCondition);
 
         foreach (var service in workspace.Services)
         {
@@ -155,6 +154,32 @@ public sealed class ComposeGenerator
             .Replace("${WORKSPACE_TUTORIAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, "tutorial")), StringComparison.Ordinal)
             .Replace("${WORKSPACE_LOCAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, ".local")), StringComparison.Ordinal);
     }
+
+    private static void AppendDependsOn(StringBuilder builder, IReadOnlyList<ServiceManifest> services, Func<ServiceManifest, string?> getCondition)
+    {
+        if (services.Count == 0)
+        {
+            return;
+        }
+
+        var usesConditionalForm = services.Any(service => !string.IsNullOrWhiteSpace(getCondition(service)));
+        builder.AppendLine("    depends_on:");
+
+        foreach (var service in services)
+        {
+            if (!usesConditionalForm)
+            {
+                builder.AppendLine($"      - {service.Id}");
+                continue;
+            }
+
+            builder.AppendLine($"      {service.Id}:");
+            builder.AppendLine($"        condition: {ResolveDependsOnCondition(getCondition(service))}");
+        }
+    }
+
+    private static string ResolveDependsOnCondition(string? condition)
+        => string.IsNullOrWhiteSpace(condition) ? "service_started" : condition.Trim();
 
     private static string EscapeYamlDoubleQuoted(string value)
         => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);

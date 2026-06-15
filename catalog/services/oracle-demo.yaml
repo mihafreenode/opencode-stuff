@@ -11,6 +11,7 @@ hostPorts:
 environment:
   ORACLE_PASSWORD: ${ORACLE_PASSWORD}
 restart: unless-stopped
+workspaceDependsOnCondition: service_healthy
 healthcheck:
   test:
     - CMD-SHELL
