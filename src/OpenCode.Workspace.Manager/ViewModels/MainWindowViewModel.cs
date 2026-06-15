@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly QuickTutorialService _tutorialService;
     private readonly TmpReprovisionWorkflowService _tmpReprovisionWorkflowService;
+    private readonly AppBuildInfo _appBuildInfo;
     private readonly AgentProfileResolver _agentProfileResolver = new();
     private readonly Dictionary<string, List<WorkspaceLogLineViewModel>> _workspaceLogsByPath = new(StringComparer.OrdinalIgnoreCase);
     private WorkspaceListItemViewModel? _selectedWorkspace;
@@ -60,7 +61,8 @@ public sealed class MainWindowViewModel : ObservableObject
         NerdFontInstaller nerdFontInstaller,
         WorkspaceSavePointMessageService savePointMessageService,
         QuickTutorialService tutorialService,
-        TmpReprovisionWorkflowService tmpReprovisionWorkflowService)
+        TmpReprovisionWorkflowService tmpReprovisionWorkflowService,
+        AppBuildInfoService appBuildInfoService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _catalogProvider = catalogProvider;
@@ -73,6 +75,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _savePointMessageService = savePointMessageService;
         _tutorialService = tutorialService;
         _tmpReprovisionWorkflowService = tmpReprovisionWorkflowService;
+        _appBuildInfo = appBuildInfoService.GetCurrent();
         _sqlDeveloperExecutablePath = _windowsHostCapabilities.FindSqlDeveloperExecutablePath();
 
         var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspaces");
@@ -537,6 +540,14 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public string SelectedWorkspaceName => SelectedWorkspace?.Name ?? "-";
     public string SelectedWorkspacePath => SelectedWorkspace?.RootPath ?? "-";
+    public string AppExecutablePath => _appBuildInfo.ExecutablePath;
+    public string AppBuildConfiguration => _appBuildInfo.BuildConfiguration;
+    public string AppAssemblyVersion => _appBuildInfo.AssemblyVersion;
+    public string AppInformationalVersion => _appBuildInfo.InformationalVersion;
+    public string AppGitCommitSha => _appBuildInfo.GitCommitSha;
+    public string AppBuildTimestamp => _appBuildInfo.BuildTimestamp;
+    public string WorkspaceGeneratorVersion => _appBuildInfo.WorkspaceGeneratorVersion;
+    public string GeneratedSchemaVersion => _appBuildInfo.GeneratedSchemaVersion;
     public string SelectedRepositoryPath => string.IsNullOrWhiteSpace(SelectedWorkspace?.Snapshot.Record.RepositoryPath) ? SelectedWorkspacePath : SelectedWorkspace!.Snapshot.Record.RepositoryPath;
     public string SelectedWorkspaceShortPath => SelectedWorkspace?.ShortRootPath ?? "-";
     public string SelectedWorkspaceImage => SelectedWorkspace?.Image ?? "-";

@@ -831,12 +831,24 @@ public sealed class WorkspaceOrchestrator
     {
         Log(log, "app", "Validating provisioned workspace tools.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
+        await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
         var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
         var toolCheck = await _dockerService.RunSimpleDockerCommandAsync(
             new[] { "exec", containerName, "bash", "-lc", "command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode" },
             log,
             cancellationToken);
         EnsureSuccess(toolCheck, "Workspace tool validation failed after provisioning.");
+
+        var nodeCheck = await _dockerService.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
+        EnsureSuccess(nodeCheck, "Workspace Node.js validation failed after provisioning.");
+
+        var actualNodeVersion = nodeCheck.StandardOutputLines.FirstOrDefault(line => line.TrimStart().StartsWith("v", StringComparison.Ordinal));
+        var actualNodeMajorVersion = ParseNodeMajorVersion(actualNodeVersion);
+        var expectedNodeMajorVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion();
+        if (actualNodeMajorVersion != expectedNodeMajorVersion)
+        {
+            throw new InvalidOperationException($"Workspace runtime validation failed. Expected Node.js {expectedNodeMajorVersion} but container reports {actualNodeVersion ?? "unknown"}.".Trim());
+        }
     }
 
     private async Task EnsureOpencodeUserDirectoriesAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
@@ -868,12 +880,75 @@ public sealed class WorkspaceOrchestrator
 
     private async Task ProvisionRunningWorkspaceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
+        await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
         Log(log, "app", "Running provisioning script inside the workspace container.");
         var provisionResult = await _dockerService.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
         EnsureSuccess(provisionResult, "Workspace provisioning failed.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
+    }
+
+    private async Task LogWorkspaceRuntimeDiagnosticsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        var imageResult = await _dockerService.InspectContainerImageAsync(snapshot.Definition, log, cancellationToken);
+        if (imageResult.IsSuccess)
+        {
+            var imageId = imageResult.StandardOutputLines.FirstOrDefault()?.Trim();
+            if (!string.IsNullOrWhiteSpace(imageId))
+            {
+                Log(log, "runtime", $"Container image id: {imageId}");
+                var repoTagsResult = await _dockerService.InspectImageRepoTagsAsync(imageId, log, cancellationToken);
+                if (repoTagsResult.IsSuccess)
+                {
+                    Log(log, "runtime", $"Container image tags: {repoTagsResult.StandardOutput.Trim()}");
+                }
+            }
+        }
+
+        var nodeToolResult = await _dockerService.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
+        if (nodeToolResult.IsSuccess)
+        {
+            foreach (var line in nodeToolResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
+            {
+                Log(log, "runtime", line.Trim());
+            }
+        }
+
+        var aptPolicyResult = await _dockerService.GetNodeAptPolicyAsync(snapshot.Definition, log, cancellationToken);
+        if (aptPolicyResult.IsSuccess)
+        {
+            foreach (var line in aptPolicyResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
+            {
+                Log(log, "runtime", line.Trim());
+            }
+        }
+
+        var osReleaseResult = await _dockerService.GetOsReleaseAsync(snapshot.Definition, log, cancellationToken);
+        if (osReleaseResult.IsSuccess)
+        {
+            foreach (var line in osReleaseResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
+            {
+                Log(log, "runtime", line.Trim());
+            }
+        }
+    }
+
+    private static int ParseNodeMajorVersion(string? versionText)
+    {
+        if (string.IsNullOrWhiteSpace(versionText))
+        {
+            return 0;
+        }
+
+        var trimmed = versionText.Trim();
+        if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[1..];
+        }
+
+        var firstSegment = trimmed.Split('.', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return int.TryParse(firstSegment, out var major) ? major : 0;
     }
 
     private async Task ValidateOpencodeUserExistsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)

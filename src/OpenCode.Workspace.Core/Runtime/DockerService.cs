@@ -48,6 +48,33 @@ public sealed class DockerService
             cancellationToken);
     }
 
+    public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "inspect", containerName, "--format", "{{.Image}}" }, null, log, cancellationToken);
+    }
+
+    public Task<ProcessResult> InspectImageRepoTagsAsync(string imageId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => RunDockerCommandAsync(new[] { "inspect", imageId, "--format", "{{json .RepoTags}}" }, null, log, cancellationToken);
+
+    public Task<ProcessResult> GetNodeToolDiagnosticsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", "which node && node --version && which npm && npm --version" }, null, log, cancellationToken);
+    }
+
+    public Task<ProcessResult> GetNodeAptPolicyAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", "apt-cache policy nodejs | sed -n '1,20p'" }, null, log, cancellationToken);
+    }
+
+    public Task<ProcessResult> GetOsReleaseAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", "cat /etc/os-release" }, null, log, cancellationToken);
+    }
+
     public Task<ProcessResult> CheckOpencodeUserAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var containerName = GetWorkspaceContainerName(definition);

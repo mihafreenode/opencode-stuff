@@ -18,6 +18,9 @@ $launchScript = Join-Path $PSScriptRoot "launch-manager.ps1"
 pushd $repoRoot
 try {
     dotnet build $solutionPath -c $Configuration
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet build failed for configuration '$Configuration'."
+    }
 }
 finally {
     popd

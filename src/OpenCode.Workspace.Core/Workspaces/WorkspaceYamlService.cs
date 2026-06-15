@@ -11,6 +11,8 @@ namespace OpenCode.Workspace.Core.Workspaces;
 /// </summary>
 public sealed class WorkspaceYamlService
 {
+    public const string SchemaVersion = "workspace-yaml-v1";
+
     private readonly ISerializer _serializer;
     private readonly IDeserializer _deserializer;
 

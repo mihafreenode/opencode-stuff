@@ -65,6 +65,14 @@ public partial class App : Application
             mainWindow.Show();
             diagnostics.Log("Main window shown.");
             diagnostics.Log($"Main window initialized. CanStartCreateWorkspaceFlow={viewModel.CanStartCreateWorkspaceFlow}.");
+            diagnostics.Log($"App executable path: {viewModel.AppExecutablePath}");
+            diagnostics.Log($"App build configuration: {viewModel.AppBuildConfiguration}");
+            diagnostics.Log($"App assembly version: {viewModel.AppAssemblyVersion}");
+            diagnostics.Log($"App informational version: {viewModel.AppInformationalVersion}");
+            diagnostics.Log($"App git commit SHA: {viewModel.AppGitCommitSha}");
+            diagnostics.Log($"App build timestamp: {viewModel.AppBuildTimestamp}");
+            diagnostics.Log($"Workspace generator version: {viewModel.WorkspaceGeneratorVersion}");
+            diagnostics.Log($"Generated schema version: {viewModel.GeneratedSchemaVersion}");
             mainWindow.BeginPromptForQuickTutorialIfNeeded(diagnostics);
             _ = viewModel.InitializeBackgroundAsync(diagnostics);
         }

@@ -226,7 +226,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", script);
         Assert.Contains("apt-get install -y git curl", script);
         Assert.Contains("https://deb.nodesource.com/setup_22.x", script);
+        Assert.Contains("apt-get remove -y nodejs npm || true", script);
         Assert.Contains("apt-get install -y nodejs", script);
+        Assert.Contains("apt-cache policy nodejs | sed -n '1,20p'", script);
         Assert.Contains("useradd -m -d /home/opencode -s /bin/bash opencode", script);
         Assert.Contains("npm --version", script);
         Assert.Contains("node -e \"console.log(process.version)\"", script);
@@ -333,6 +335,7 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("apt-get install -y pandoc fonts-crosextra-carlito fonts-jetbrains-mono", script);
         Assert.Contains("https://deb.nodesource.com/setup_24.x", script);
+        Assert.Contains("apt-get remove -y nodejs npm || true", script);
         Assert.Contains("npm install -g playwright @mermaid-js/mermaid-cli", script);
         Assert.Contains("pip3 install --break-system-packages weasyprint pypdf pymupdf reportlab", script);
         Assert.Contains("command -v typst", script);

@@ -1,5 +1,5 @@
 param(
-    [string]$AppPath = "src/OpenCode.Workspace.Manager/bin/Release/net10.0-windows/OpenCode.Workspace.Manager.exe",
+    [string]$AppPath = "",
     [string]$WorkingDirectory = "",
     [string]$Language = "en",
     [int]$TimeoutSeconds = 15
@@ -41,7 +41,64 @@ function Get-BuildConfiguration {
     return 'Unknown'
 }
 
-$resolvedAppPath = Resolve-AbsolutePath $AppPath
+function Resolve-DefaultAppPath {
+    $debugPath = Resolve-AbsolutePath "src/OpenCode.Workspace.Manager/bin/Debug/net10.0-windows/OpenCode.Workspace.Manager.exe"
+    $releasePath = Resolve-AbsolutePath "src/OpenCode.Workspace.Manager/bin/Release/net10.0-windows/OpenCode.Workspace.Manager.exe"
+
+    $candidates = @()
+    if (Test-Path $debugPath) {
+        $candidates += Get-Item $debugPath
+    }
+
+    if (Test-Path $releasePath) {
+        $candidates += Get-Item $releasePath
+    }
+
+    if ($candidates.Count -eq 0) {
+        return $debugPath
+    }
+
+    return ($candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+}
+
+function Resolve-RepositoryRoot {
+    $current = Get-Location
+    while ($null -ne $current) {
+        if (Test-Path (Join-Path $current.Path "OpenCode.Workspace.Manager.slnx")) {
+            return $current.Path
+        }
+
+        $current = $current.Parent
+    }
+
+    return $null
+}
+
+function Get-GitCommitSha {
+    param([string]$RepositoryRoot)
+
+    if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+        return "unavailable"
+    }
+
+    try {
+        $sha = git -C $RepositoryRoot rev-parse --short HEAD 2>$null
+        if ([string]::IsNullOrWhiteSpace($sha)) {
+            return "unavailable"
+        }
+
+        return $sha.Trim()
+    }
+    catch {
+        return "unavailable"
+    }
+}
+
+$resolvedAppPath = if ([string]::IsNullOrWhiteSpace($AppPath)) {
+    Resolve-DefaultAppPath
+} else {
+    Resolve-AbsolutePath $AppPath
+}
 if (-not (Test-Path $resolvedAppPath)) {
     Write-Warning "App executable not found: $resolvedAppPath"
     exit 1
@@ -53,9 +110,17 @@ $resolvedWorkingDirectory = if ([string]::IsNullOrWhiteSpace($WorkingDirectory))
     Resolve-AbsolutePath $WorkingDirectory
 }
 
+$appFile = Get-Item $resolvedAppPath
+$fileVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedAppPath)
+$repositoryRoot = Resolve-RepositoryRoot
+$gitCommitSha = Get-GitCommitSha $repositoryRoot
 $configuration = Get-BuildConfiguration $resolvedAppPath
 Write-Output "Launched: $resolvedAppPath"
 Write-Output "Configuration: $configuration"
+Write-Output "AssemblyVersion: $($fileVersionInfo.FileVersion)"
+Write-Output "InformationalVersion: $($fileVersionInfo.ProductVersion)"
+Write-Output "GitCommitSha: $gitCommitSha"
+Write-Output "BuildTimestamp: $($appFile.LastWriteTime.ToString('O'))"
 
 $beforeIds = @(Get-ManagerProcesses | ForEach-Object { $_.Id })
 $env:OPENCODE_WORKSPACE_MANAGER_LANGUAGE = $Language

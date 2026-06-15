@@ -29,7 +29,13 @@ public sealed class CreateWorkspaceCompletionTests
         Assert.True(File.Exists(indexPath));
         var indexJson = File.ReadAllText(indexPath);
         Assert.Contains("demo-oracle-complete", indexJson);
-        Assert.Contains("oracle-demo", File.ReadAllText(Path.Combine(workspaceRoot, "workspace.yaml")));
+        var workspaceYaml = File.ReadAllText(Path.Combine(workspaceRoot, "workspace.yaml"));
+        var provisionScript = File.ReadAllText(Path.Combine(workspaceRoot, "mounts", "config", "provision.sh"));
+        Assert.Contains("oracle-demo", workspaceYaml);
+        Assert.Contains("node: 22", workspaceYaml);
+        Assert.Contains("https://deb.nodesource.com/setup_22.x", provisionScript);
+        Assert.Contains("apt-get remove -y nodejs npm || true", provisionScript);
+        Assert.DoesNotContain("apt-get install -y bash build-essential ca-certificates curl ghostscript git hunspell hunspell-en-us hunspell-sl imagemagick jq less nano nodejs npm", provisionScript);
     }
 
     [Fact]

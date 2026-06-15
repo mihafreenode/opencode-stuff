@@ -152,6 +152,12 @@ Detailed setup:
 
 Development is centered on durable workspaces, disposable runtimes, and repeatable setup.
 
+Canonical developer rebuild/run command:
+
+```powershell
+scripts/rebuild-and-run.ps1 -Configuration Debug
+```
+
 Node.js 22 LTS is the default runtime baseline for new workspaces.
 
 Why: recent documentation, analytics, visualization, browser automation, diagram generation, MCP tooling, and AI-adjacent npm packages increasingly target Node 20+ and Node 22 LTS. Using Node 22 reduces engine warnings and compatibility drift across workspace templates.

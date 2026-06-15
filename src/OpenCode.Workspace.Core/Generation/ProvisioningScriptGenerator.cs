@@ -59,8 +59,11 @@ public sealed class ProvisioningScriptGenerator
 
         builder.AppendLine();
         builder.AppendLine("# Install the requested Node.js runtime from NodeSource so modern npm packages use a consistent LTS baseline.");
+        builder.AppendLine($"echo \"[runtime] Requested Node.js major version: {workspace.Definition.Runtime.GetEffectiveNodeMajorVersion()}\"");
+        builder.AppendLine("apt-get remove -y nodejs npm || true");
         builder.AppendLine($"curl -fsSL https://deb.nodesource.com/setup_{workspace.Definition.Runtime.GetEffectiveNodeMajorVersion()}.x | bash -");
         builder.AppendLine("apt-get install -y nodejs");
+        builder.AppendLine("apt-cache policy nodejs | sed -n '1,20p'");
 
         if (isOracleDemoWorkspace)
         {

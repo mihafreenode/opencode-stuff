@@ -43,6 +43,7 @@ public sealed class AppBootstrapper
         var savePointMessageService = new WorkspaceSavePointMessageService(processRunner);
         var tutorialService = new QuickTutorialService(applicationBasePath, applicationDataRoot);
         var tmpReprovisionWorkflowService = new TmpReprovisionWorkflowService(applicationBasePath, processRunner);
+        var appBuildInfoService = new AppBuildInfoService(applicationBasePath);
         var orchestrator = new WorkspaceOrchestrator(
             yamlService,
             repository,
@@ -64,6 +65,6 @@ public sealed class AppBootstrapper
 
         var localization = new PoLocalizationService(localizationRoot, languageCode);
         var diagnostics = new EnvironmentDiagnostics(processRunner);
-        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService, tutorialService, tmpReprovisionWorkflowService);
+        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService, tutorialService, tmpReprovisionWorkflowService, appBuildInfoService);
     }
 }

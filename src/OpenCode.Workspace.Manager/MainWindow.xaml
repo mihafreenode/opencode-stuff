@@ -78,6 +78,28 @@
                         </ItemsControl>
                     </StackPanel>
                 </Border>
+
+                <Border Padding="16" Margin="0,20,0,0" Background="{StaticResource BrandSurfaceBrush}" CornerRadius="12" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="App Diagnostics" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,12,0,0" Text="Executable Path" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppExecutablePath}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Configuration" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppBuildConfiguration}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Version" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppAssemblyVersion}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Informational Version" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppInformationalVersion}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Git Commit SHA" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppGitCommitSha}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Build Timestamp" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AppBuildTimestamp}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Workspace Generator Version" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding WorkspaceGeneratorVersion}" TextWrapping="Wrap" />
+                        <TextBlock Margin="0,12,0,0" Text="Generated Template/Schema Version" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding GeneratedSchemaVersion}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

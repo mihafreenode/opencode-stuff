@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;
@@ -343,5 +344,129 @@ public sealed class WindowsDockerIntegrationTests
             cancellationToken: timeout.Token,
             timeout: ProcessTimeout,
             onDiagnostic: message => _output.WriteLine($"[attach-readiness] {message}"));
+    }
+
+    [SkippableFact]
+    public async Task FreshWorkspaceProvisioning_UsesNode22_WhenDockerAvailable()
+    {
+        var capabilities = new WindowsHostCapabilities(new ProcessRunner());
+        var dockerCheck = await capabilities.CheckDockerDesktopAsync();
+        Skip.IfNot(dockerCheck.IsAvailable, dockerCheck.Reason);
+
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-node22-appdata-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-node22-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(appDataRoot);
+        Directory.CreateDirectory(workspaceRoot);
+
+        var dockerService = new DockerService(new ProcessRunner());
+        WorkspaceSnapshot? snapshot = null;
+
+        try
+        {
+            var orchestrator = CreateWorkspaceOrchestrator(appDataRoot);
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "node22-smoke",
+                    Image = "ubuntu:24.04",
+                },
+                Provider = new WorkspaceProviderDefinition
+                {
+                    Type = "git",
+                },
+                Runtime = new WorkspaceRuntimeDefinition
+                {
+                    Default = "default",
+                    Node = 22,
+                },
+                Features = new List<string> { "core" },
+                Services = new List<string>(),
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+                Terminal = new TerminalPreferences
+                {
+                    InstallIfMissing = false,
+                    Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                    Utilities = new TerminalUtilityPreferences(),
+                },
+            };
+
+            snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition);
+
+            var workspaceYaml = File.ReadAllText(Path.Combine(workspaceRoot, "workspace.yaml"));
+            var provisionScript = File.ReadAllText(Path.Combine(workspaceRoot, "mounts", "config", "provision.sh"));
+            Assert.Contains("node: 22", workspaceYaml);
+            Assert.Contains("https://deb.nodesource.com/setup_22.x", provisionScript);
+            Assert.Contains("apt-get remove -y nodejs npm || true", provisionScript);
+
+            var aptInstallLine = provisionScript.Split('\n').First(line => line.StartsWith("apt-get install -y ", StringComparison.Ordinal));
+            Assert.DoesNotContain(" nodejs", aptInstallLine, StringComparison.Ordinal);
+            Assert.DoesNotContain(" npm", aptInstallLine, StringComparison.Ordinal);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            var nodeVersionResult = await dockerService.RunSimpleDockerCommandAsync(
+                ["exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "node --version"],
+                cancellationToken: CancellationToken.None);
+            Assert.True(nodeVersionResult.IsSuccess, nodeVersionResult.StandardError + Environment.NewLine + nodeVersionResult.StandardOutput);
+            Assert.StartsWith("v22.", nodeVersionResult.StandardOutput.Trim(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                try
+                {
+                    await dockerService.RemoveAsync(snapshot.Paths, snapshot.Definition);
+                }
+                catch
+                {
+                }
+            }
+
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
+            }
+        }
+    }
+
+    private static WorkspaceOrchestrator CreateWorkspaceOrchestrator(string appDataRoot)
+    {
+        var processRunner = new ProcessRunner();
+        var catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices());
+        var ignorePolicy = new WorkspaceIgnorePolicyService();
+
+        return new WorkspaceOrchestrator(
+            new WorkspaceYamlService(),
+            new WorkspaceRepository(appDataRoot),
+            resolver,
+            new ComposeGenerator(),
+            new EnvironmentFileGenerator(),
+            new ProvisioningScriptGenerator(),
+            new TerminalArtifactsGenerator(),
+            new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
+            new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            new WorkspaceTimelineService(),
+            new WorkspaceSafetyService(),
+            ignorePolicy,
+            new GitWorkspaceProvider(processRunner, ignorePolicy),
+            new DockerService(processRunner),
+            new NoOpTerminalLauncher());
+    }
+
+    private sealed class NoOpTerminalLauncher : ITerminalLauncher
+    {
+        public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }

@@ -72,4 +72,9 @@ postInstall:
       echo "[document-processing] Playwright Chromium executable could not be resolved after installation." >&2
       exit 1
     fi
-  - fc-cache -fv
+  - |
+    mkdir -p /var/cache/fontconfig
+    fc-cache -fv || {
+      rm -rf /var/cache/fontconfig/*
+      fc-cache -fv
+    }

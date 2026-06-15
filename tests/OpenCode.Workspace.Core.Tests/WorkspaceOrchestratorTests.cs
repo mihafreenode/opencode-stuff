@@ -1081,6 +1081,16 @@ public sealed class WorkspaceOrchestratorTests
                         : CreateResult(command, 1, standardError: "id: 'opencode': no such user"));
                 }
 
+                if (argumentList.Count >= 4 && argumentList[0] == "inspect" && argumentList[^1] == "{{.Image}}")
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "sha256:test-image"));
+                }
+
+                if (argumentList.Count >= 4 && argumentList[0] == "inspect" && argumentList[^1] == "{{json .RepoTags}}")
+                {
+                    return Task.FromResult(CreateResult(command, 0, standardOutput: "[\"ubuntu:24.04\"]"));
+                }
+
                 if (argumentList.Count >= 4 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "/opt/opencode-workspace/config/provision.sh")
                 {
                     ProvisioningRan = true;
@@ -1089,6 +1099,31 @@ public sealed class WorkspaceOrchestratorTests
 
                 if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "-lc")
                 {
+                    var shellCommand = argumentList[4];
+                    if (shellCommand.Contains("which node && node --version && which npm && npm --version", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(ProvisioningRan
+                            ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/node", "v22.15.0", "/usr/bin/npm", "10.9.2"))
+                            : CreateResult(command, 1, standardError: "node: command not found"));
+                    }
+
+                    if (shellCommand.Contains("apt-cache policy nodejs", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(CreateResult(command, 0, standardOutput: "nodejs:\n  Installed: 22.15.0-1nodesource1"));
+                    }
+
+                    if (shellCommand.Contains("cat /etc/os-release", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(CreateResult(command, 0, standardOutput: "PRETTY_NAME=\"Ubuntu 24.04 LTS\""));
+                    }
+
+                    if (shellCommand.Contains("command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(ProvisioningRan
+                            ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/opencode", "/usr/bin/screen", "/usr/bin/node", "/usr/bin/npm", "opencode:x:1001:1001::/home/opencode:/bin/bash"))
+                            : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run provisioning/recover workspace."));
+                    }
+
                     DirectoryInitializationRanAfterProvisioning = ProvisioningRan;
                     return Task.FromResult(ProvisioningRan
                         ? CreateResult(command, 0)
