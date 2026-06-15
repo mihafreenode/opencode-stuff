@@ -122,17 +122,36 @@ public sealed class AttachDiagnosticsLoggingTests
     }
 
     [Fact]
-    public void TerminalLaunchOutcome_ExitedEarlyWithCodeZero_IsNotClassifiedAsCompletedHandoff()
+    public void WindowsTerminalLauncherExit_DoesNotMarkAttachFailed_WhenTranscriptStarted()
     {
         var assessment = WindowsTerminalLauncher.AssessLaunchOutcome(
             "[attach:Odip Analiza]",
-            "wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\\Users\\miha.pirnat\\Sources\\Analiza\\attach-workspace.ps1",
+            "wt.exe new-tab --title \"OpenCode Stuff - Odip Analiza\" -- powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\\Users\\miha.pirnat\\Sources\\Analiza\\attach-workspace.ps1",
+            "powershell.exe -NoExit -ExecutionPolicy Bypass -File \"C:\\Users\\miha.pirnat\\Sources\\Analiza\\attach-workspace.ps1\"",
+            23032,
             hasExited: true,
-            exitCode: 0);
+            exitCode: 0,
+            transcriptLines:
+            [
+                "[attach:Odip Analiza] Preflight checks passed.",
+                "[attach:Odip Analiza] Attempted command: docker exec --user opencode -w /workspace odip-analiza-workspace bash /opt/opencode-workspace/config/opencode-workspace-shell.sh",
+            ]);
 
-        Assert.True(assessment.ExitedEarly);
-        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal exited before handoff completed with code 0.", StringComparison.Ordinal));
-        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal command:", StringComparison.Ordinal));
+        Assert.False(assessment.Failed);
+        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal launch accepted", StringComparison.Ordinal) || message.Contains("attach transcript will be authoritative", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal launcher process exited after handoff; attach transcript will be authoritative.", StringComparison.Ordinal));
+        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal process id: 23032", StringComparison.Ordinal));
+        Assert.DoesNotContain(assessment.Messages, message => message.Contains("Windows Terminal launch failed", StringComparison.Ordinal));
         Assert.DoesNotContain(assessment.Messages, message => message.Contains("Terminal window handoff completed.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PostStartDiagnosticException_DoesNotBecomeLaunchFailure()
+    {
+        var messages = WindowsTerminalLauncher.CreatePostStartWarningMessages("[attach:Odip Analiza]");
+
+        Assert.Contains(messages, message => message.Contains("Windows Terminal launch accepted; attach transcript is authoritative.", StringComparison.Ordinal));
+        Assert.Contains(messages, message => message.Contains("Post-start launcher verification raised a warning", StringComparison.Ordinal));
+        Assert.DoesNotContain(messages, message => message.Contains("Windows Terminal launch failed", StringComparison.Ordinal));
     }
 }

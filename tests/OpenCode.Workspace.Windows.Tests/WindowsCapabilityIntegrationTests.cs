@@ -58,14 +58,15 @@ public sealed class WindowsCapabilityIntegrationTests
     public void AttachCommandGeneration_UsesExpectedNativeSessionAttachContract()
     {
         var builder = new AttachCommandBuilder();
+        const string rootPath = "C:\\Users\\miha.pirnat\\OneDrive - Kopa, racunalniski inzeniring d.d\\Dokumenti\\Delovni prostori, stranke\\Smisel zaščite";
         var command = builder.Build(new OpenCode.Workspace.Core.Models.WorkspaceSnapshot
         {
-            Record = new OpenCode.Workspace.Core.Models.WorkspaceRecord { Name = "smoke data workspace", RootPath = "C:\\Workspaces With Spaces\\smoke data workspace", CreatedUtc = DateTimeOffset.UtcNow, LastOpenedUtc = DateTimeOffset.UtcNow },
+            Record = new OpenCode.Workspace.Core.Models.WorkspaceRecord { Name = "smoke data workspace", RootPath = rootPath, CreatedUtc = DateTimeOffset.UtcNow, LastOpenedUtc = DateTimeOffset.UtcNow },
             Definition = new OpenCode.Workspace.Core.Models.WorkspaceDefinition
             {
                 Workspace = new OpenCode.Workspace.Core.Models.WorkspaceMetadata { Name = "smoke data workspace" },
             },
-            Paths = OpenCode.Workspace.Core.Workspaces.WorkspacePathBuilder.Build("C:\\Workspaces With Spaces\\smoke data workspace"),
+            Paths = OpenCode.Workspace.Core.Workspaces.WorkspacePathBuilder.Build(rootPath),
             RuntimeState = OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running,
             Safety = new OpenCode.Workspace.Core.Models.WorkspaceSafetySnapshot
             {
@@ -85,16 +86,31 @@ public sealed class WindowsCapabilityIntegrationTests
         });
 
         Assert.Equal("wt.exe", command.FileName);
-        Assert.Equal("powershell.exe", command.Arguments[0]);
-        Assert.Equal("-NoExit", command.Arguments[1]);
-        Assert.Equal("-ExecutionPolicy", command.Arguments[2]);
-        Assert.Equal("Bypass", command.Arguments[3]);
-        Assert.Equal("-File", command.Arguments[4]);
-        Assert.Contains("attach-workspace.ps1", command.Arguments[5]);
-        Assert.Contains("Workspaces With Spaces", command.Arguments[5]);
+        Assert.Equal("OpenCode Stuff - smoke data workspace", command.Title);
+        Assert.Equal("new-tab", command.Arguments[0]);
+        Assert.Equal("--title", command.Arguments[1]);
+        Assert.Equal("OpenCode Stuff - smoke data workspace", command.Arguments[2]);
+        Assert.Equal("--", command.Arguments[3]);
+        Assert.Equal("powershell.exe", command.Arguments[4]);
+        Assert.Equal("-NoExit", command.Arguments[5]);
+        Assert.Equal("-ExecutionPolicy", command.Arguments[6]);
+        Assert.Equal("Bypass", command.Arguments[7]);
+        Assert.Equal("-File", command.Arguments[8]);
+        Assert.Contains("attach-workspace.ps1", command.Arguments[9]);
+        Assert.Contains("OneDrive - Kopa, racunalniski inzeniring d.d", command.Arguments[9]);
+        Assert.Contains("Smisel zaščite", command.Arguments[9]);
         Assert.Contains("attach-workspace.ps1", command.CommandText);
-        Assert.Contains("wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File", command.CommandText);
+        Assert.Contains("wt.exe new-tab --title \"OpenCode Stuff - smoke data workspace\" -- powershell.exe -NoExit -ExecutionPolicy Bypass -File", command.CommandText);
+        Assert.DoesNotContain("wt.exe powershell.exe", command.CommandText, StringComparison.Ordinal);
         Assert.False(command.CommandText.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("powershell.exe -NoExit -ExecutionPolicy Bypass -File \"", command.FallbackCommandText);
+
+        var startInfo = WindowsTerminalLauncher.CreateStartInfo(command);
+        Assert.EndsWith("wt.exe", startInfo.FileName, StringComparison.OrdinalIgnoreCase);
+        Assert.False(startInfo.UseShellExecute);
+        Assert.True(string.IsNullOrWhiteSpace(startInfo.Arguments));
+        Assert.Equal(command.Arguments.Count, startInfo.ArgumentList.Count);
+        Assert.Equal(command.Arguments[9], startInfo.ArgumentList[9]);
     }
 
     [Fact]

@@ -10,12 +10,18 @@ public sealed class AttachCommandBuilder
 {
     public WindowsTerminalCommand Build(WorkspaceSnapshot snapshot)
     {
+        var title = $"OpenCode Stuff - {snapshot.Definition.Workspace.Name}";
+        var fallbackCommandText = $"powershell.exe -NoExit -ExecutionPolicy Bypass -File \"{snapshot.Paths.AttachWrapperScriptPath}\"";
         return new WindowsTerminalCommand
         {
-            Title = snapshot.Definition.Workspace.Name,
+            Title = title,
             FileName = "wt.exe",
             Arguments =
             [
+                "new-tab",
+                "--title",
+                title,
+                "--",
                 "powershell.exe",
                 "-NoExit",
                 "-ExecutionPolicy",
@@ -23,7 +29,8 @@ public sealed class AttachCommandBuilder
                 "-File",
                 snapshot.Paths.AttachWrapperScriptPath,
             ],
-            CommandText = $"wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File \"{snapshot.Paths.AttachWrapperScriptPath}\"",
+            CommandText = $"wt.exe new-tab --title \"{title}\" -- powershell.exe -NoExit -ExecutionPolicy Bypass -File \"{snapshot.Paths.AttachWrapperScriptPath}\"",
+            FallbackCommandText = fallbackCommandText,
         };
     }
 }
@@ -34,4 +41,5 @@ public sealed class WindowsTerminalCommand
     public required string FileName { get; init; }
     public required IReadOnlyList<string> Arguments { get; init; }
     public required string CommandText { get; init; }
+    public required string FallbackCommandText { get; init; }
 }

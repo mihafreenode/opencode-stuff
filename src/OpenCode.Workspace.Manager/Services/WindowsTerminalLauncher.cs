@@ -2,6 +2,7 @@ using System.IO;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Text;
+using System.Linq;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
@@ -26,6 +27,9 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
     {
         var command = _attachCommandBuilder.Build(snapshot);
         var attachPrefix = GetAttachPrefix(snapshot);
+        var processStartSucceeded = false;
+        var transcriptStarted = false;
+        var launcherProcessId = 0;
 
         if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath))
         {
@@ -34,16 +38,7 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
 
         TryDeleteAttachDiagnosticsLog(snapshot.Paths.AttachDiagnosticsLogPath);
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = command.FileName,
-            UseShellExecute = true,
-        };
-
-        foreach (var argument in command.Arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
+        var startInfo = CreateStartInfo(command);
 
         try
         {
@@ -60,7 +55,46 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
+                Message = $"{attachPrefix} Windows Terminal UseShellExecute: {startInfo.UseShellExecute}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Windows Terminal uses ArgumentList: {startInfo.ArgumentList.Count > 0}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Windows Terminal Arguments length: {startInfo.Arguments.Length}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Windows Terminal Arguments value: {startInfo.Arguments}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Windows Terminal working directory: {startInfo.WorkingDirectory}",
+            });
+            for (var index = 0; index < startInfo.ArgumentList.Count; index++)
+            {
+                var argument = startInfo.ArgumentList[index];
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = $"{attachPrefix} Windows Terminal ArgumentList[{index}]: {argument}",
+                });
+            }
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
                 Message = $"{attachPrefix} Launching Windows Terminal command: {command.CommandText}",
+            });
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} PowerShell fallback command: {command.FallbackCommandText}",
             });
 
             var process = new Process
@@ -75,6 +109,9 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
                 throw new InvalidOperationException("Windows Terminal did not return a process handle.");
             }
 
+            processStartSucceeded = true;
+            launcherProcessId = process.Id;
+
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
@@ -88,9 +125,10 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             });
 
             await Task.Delay(1500, cancellationToken);
-            await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
+            var transcriptLines = await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
+            transcriptStarted = transcriptLines.Count > 0;
 
-            var assessment = AssessLaunchOutcome(attachPrefix, command.CommandText, process.HasExited, process.HasExited ? process.ExitCode : 0);
+            var assessment = AssessLaunchOutcome(attachPrefix, command.CommandText, command.FallbackCommandText, process.Id, process.HasExited, process.HasExited ? process.ExitCode : 0, transcriptLines);
             foreach (var message in assessment.Messages)
             {
                 log?.Invoke(new CommandLogEntry
@@ -100,10 +138,10 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
                 });
             }
 
-            if (assessment.ExitedEarly)
+            if (assessment.Failed)
             {
                 await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
-                throw new InvalidOperationException("Windows Terminal exited before the attach session became interactive. See terminal output in the log panel for details.");
+                throw new InvalidOperationException("Attach transcript reported a terminal attach failure. See the log panel for details.");
             }
 
             _ = process;
@@ -113,8 +151,28 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
         {
             throw new InvalidOperationException("Windows Terminal is not available. Install it or enable its App Execution Alias.", exception);
         }
+        catch (InvalidOperationException exception)
+        {
+            LogLaunchException(log, attachPrefix, "LaunchAttachSessionAsync", processStartSucceeded, transcriptStarted, launcherProcessId, exception);
+            throw;
+        }
         catch (Exception exception)
         {
+            LogLaunchException(log, attachPrefix, "LaunchAttachSessionAsync", processStartSucceeded, transcriptStarted, launcherProcessId, exception);
+
+            if (processStartSucceeded)
+            {
+                foreach (var message in CreatePostStartWarningMessages(attachPrefix))
+                {
+                    log?.Invoke(new CommandLogEntry
+                    {
+                        Source = "app",
+                        Message = message,
+                    });
+                }
+                return;
+            }
+
             throw new InvalidOperationException("Windows Terminal launch failed. See the log panel for the exact command and terminal output.", exception);
         }
     }
@@ -126,11 +184,11 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             .Select(line => line.TrimEnd());
     }
 
-    internal static async Task MirrorAttachDiagnosticsAsync(string attachDiagnosticsLogPath, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    internal static async Task<IReadOnlyList<string>> MirrorAttachDiagnosticsAsync(string attachDiagnosticsLogPath, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
         if (log is null || string.IsNullOrWhiteSpace(attachDiagnosticsLogPath))
         {
-            return;
+            return Array.Empty<string>();
         }
 
         for (var attempt = 0; attempt < 8; attempt++)
@@ -139,7 +197,8 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
 
             if (File.Exists(attachDiagnosticsLogPath))
             {
-                foreach (var line in ReadAttachDiagnosticLines(attachDiagnosticsLogPath))
+                var lines = ReadAttachDiagnosticLines(attachDiagnosticsLogPath);
+                foreach (var line in lines)
                 {
                     log(new CommandLogEntry
                     {
@@ -148,11 +207,13 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
                     });
                 }
 
-                return;
+                return lines;
             }
 
             await Task.Delay(250, cancellationToken);
         }
+
+        return Array.Empty<string>();
     }
 
     internal static IReadOnlyList<string> ReadAttachDiagnosticLines(string attachDiagnosticsLogPath)
@@ -188,26 +249,161 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
     private static string GetAttachPrefix(WorkspaceSnapshot snapshot)
         => $"[attach:{snapshot.Definition.Workspace.Name}]";
 
-    internal static TerminalLaunchAssessment AssessLaunchOutcome(string attachPrefix, string commandText, bool hasExited, int exitCode)
+    internal static ProcessStartInfo CreateStartInfo(WindowsTerminalCommand command)
     {
-        if (hasExited)
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = ResolveWindowsTerminalExecutablePath(command.FileName),
+            UseShellExecute = false,
+            WorkingDirectory = Environment.CurrentDirectory,
+        };
+
+        foreach (var argument in command.Arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
+    }
+
+    internal static string ResolveWindowsTerminalExecutablePath(string fileName)
+    {
+        if (!string.Equals(fileName, "wt.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return fileName;
+        }
+
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "where.exe",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                },
+            };
+            process.StartInfo.ArgumentList.Add(fileName);
+            process.Start();
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(2000);
+
+            var resolvedPath = output
+                .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(path => path.EndsWith("wt.exe", StringComparison.OrdinalIgnoreCase));
+
+            return string.IsNullOrWhiteSpace(resolvedPath) ? fileName : resolvedPath.Trim();
+        }
+        catch
+        {
+            return fileName;
+        }
+    }
+
+    internal static TerminalLaunchAssessment AssessLaunchOutcome(string attachPrefix, string commandText, string fallbackCommandText, int processId, bool hasExited, int exitCode, IReadOnlyList<string> transcriptLines)
+    {
+        var transcriptStarted = transcriptLines.Count > 0;
+        var transcriptReportedFailure = transcriptLines.Any(IsAttachFailureLine);
+
+        if (transcriptReportedFailure)
         {
             return new TerminalLaunchAssessment(
-                ExitedEarly: true,
+                Failed: true,
                 Messages:
                 [
-                    $"{attachPrefix} Windows Terminal exited before handoff completed with code {exitCode}.",
+                    $"{attachPrefix} Attach transcript reported failure.",
+                    $"{attachPrefix} Windows Terminal process id: {processId}",
                     $"{attachPrefix} Windows Terminal command: {commandText}",
+                    $"{attachPrefix} PowerShell fallback command: {fallbackCommandText}",
+                ]);
+        }
+
+        if (hasExited)
+        {
+            if (transcriptStarted)
+            {
+                return new TerminalLaunchAssessment(
+                    Failed: false,
+                    Messages:
+                    [
+                        $"{attachPrefix} Windows Terminal launcher process exited after handoff; attach transcript will be authoritative.",
+                        $"{attachPrefix} Windows Terminal process id: {processId}",
+                        $"{attachPrefix} Windows Terminal launcher exit code: {exitCode}",
+                    ]);
+            }
+
+            return new TerminalLaunchAssessment(
+                Failed: false,
+                Messages:
+                [
+                    $"{attachPrefix} Windows Terminal launch accepted; attach transcript is authoritative.",
+                    $"{attachPrefix} Windows Terminal process id: {processId}",
+                    $"{attachPrefix} Windows Terminal launcher exit code: {exitCode}",
+                    $"{attachPrefix} Windows Terminal command: {commandText}",
+                    $"{attachPrefix} PowerShell fallback command: {fallbackCommandText}",
                 ]);
         }
 
         return new TerminalLaunchAssessment(
-            ExitedEarly: false,
+            Failed: false,
             Messages:
             [
-                $"{attachPrefix} Terminal window handoff completed.",
+                $"{attachPrefix} Windows Terminal launch accepted; attach transcript is authoritative.",
+                $"{attachPrefix} Windows Terminal process id: {processId}",
             ]);
     }
 
-    internal sealed record TerminalLaunchAssessment(bool ExitedEarly, IReadOnlyList<string> Messages);
+    private static bool IsAttachFailureLine(string line)
+        => line.Contains("docker exec failed", StringComparison.Ordinal)
+            || line.Contains("Failed at line", StringComparison.Ordinal)
+            || line.Contains("Script not found", StringComparison.Ordinal)
+            || line.Contains("Script is not marked executable", StringComparison.Ordinal)
+            || line.Contains("does not exist", StringComparison.Ordinal)
+            || line.Contains("Working directory missing", StringComparison.Ordinal)
+            || line.Contains("Root cause:", StringComparison.Ordinal);
+
+    internal static IReadOnlyList<string> CreatePostStartWarningMessages(string attachPrefix)
+        =>
+        [
+            $"{attachPrefix} Windows Terminal launch accepted; attach transcript is authoritative.",
+            $"{attachPrefix} Post-start launcher verification raised a warning; attach will not be marked failed unless the transcript reports failure.",
+        ];
+
+    private static void LogLaunchException(Action<CommandLogEntry>? log, string attachPrefix, string methodName, bool processStartSucceeded, bool transcriptStarted, int launcherProcessId, Exception exception)
+    {
+        if (log is null)
+        {
+            return;
+        }
+
+        log(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"{attachPrefix} Launcher method: {methodName}",
+        });
+        log(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"{attachPrefix} Launcher process start succeeded: {processStartSucceeded}",
+        });
+        log(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"{attachPrefix} Launcher transcript started: {transcriptStarted}",
+        });
+        log(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"{attachPrefix} Launcher process id at exception: {launcherProcessId}",
+        });
+        log(new CommandLogEntry
+        {
+            Source = "app",
+            Message = $"{attachPrefix} Launcher exception: {exception.GetType().Name}: {exception.Message}",
+        });
+    }
+
+    internal sealed record TerminalLaunchAssessment(bool Failed, IReadOnlyList<string> Messages);
 }

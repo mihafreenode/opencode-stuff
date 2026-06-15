@@ -265,6 +265,13 @@ Notes:
 - attach must run as the `opencode` Linux user, not root
 - the durable workspace shell loop recreates the `opencode` screen session and restarts `opencode -s` if OpenCode exits
 - the Windows Terminal command should stay boring and inspectable; prefer a generated wrapper script over deeply nested `wt.exe` quoting
+- for `wt.exe` launch from the app, use `ProcessStartInfo.ArgumentList` with explicit entries like `new-tab`, `--title`, `powershell.exe`, `-NoExit`, `-ExecutionPolicy`, `Bypass`, `-File`, and the attach-script path; do not rely on one manually quoted command string for the actual launch
+- the human-readable log may still print a quoted copy/paste command, but the real process launch must preserve the attach script path as one `ArgumentList` entry even when the path contains spaces, commas, OneDrive-style segments, or Slovenian/Croatian characters
+- if Windows Terminal exits before handoff completes, log the exact `wt.exe` command and a PowerShell fallback command; the fallback command is the first troubleshooting step to separate Windows Terminal integration failures from attach-wrapper or Docker/container failures
+- once `Process.Start` succeeds for an external handoff, preserve that proven state; later diagnostic or readback exceptions are warnings unless the external process or transcript reports an explicit failure signal
+- do not let broad catch blocks erase a successful launch state by reclassifying post-start verification noise as `Windows Terminal launch failed`
+- for attach flows, the durable transcript and mirrored app log are authoritative after launch; `wt.exe` is only a launcher, not the terminal session owner
+- regression test `PostStartDiagnosticException_DoesNotBecomeLaunchFailure` protects this rule because this Windows Terminal handoff issue consumed significant debugging time and must remain in project guidance, not only code and tests
 - log the exact `wt.exe` command, profile name, configured font, profile file path, and effective attach user during troubleshooting
 - before attach, repair missing or non-writable OpenCode user directories and log `[attach] Initializing OpenCode user directories.` when repair was needed
 
@@ -490,6 +497,7 @@ Prefer:
 - comments about intent and ownership boundaries
 - manifest-driven extension points
 - updating docs and tests whenever behavior or user-facing terminology changes
+- if an integration bug costs significant debugging time, add the lesson to repo guidance and protect it with a regression test
 
 Avoid:
 
