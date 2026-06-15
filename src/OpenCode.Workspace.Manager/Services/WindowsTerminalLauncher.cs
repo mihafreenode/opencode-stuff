@@ -81,47 +81,30 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
                 Message = $"{attachPrefix} Windows Terminal process id: {process.Id}",
             });
 
-            await Task.Delay(1500, cancellationToken);
-            await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
-
-            if (process.HasExited)
-            {
-                log?.Invoke(new CommandLogEntry
-                {
-                    Source = "app",
-                    Message = $"{attachPrefix} Windows Terminal exited early with code {process.ExitCode}.",
-                });
-
-                await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
-
-                if (process.ExitCode == 0)
-                {
-                    log?.Invoke(new CommandLogEntry
-                    {
-                        Source = "app",
-                        Message = $"{attachPrefix} Windows Terminal launch command accepted.",
-                    });
-                    log?.Invoke(new CommandLogEntry
-                    {
-                        Source = "app",
-                        Message = $"{attachPrefix} Terminal window handoff completed.",
-                    });
-                    return;
-                }
-
-                throw new InvalidOperationException("Windows Terminal exited before the attach session became interactive. See terminal output in the log panel for details.");
-            }
-
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
                 Message = $"{attachPrefix} Windows Terminal launch command accepted.",
             });
-            log?.Invoke(new CommandLogEntry
+
+            await Task.Delay(1500, cancellationToken);
+            await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
+
+            var assessment = AssessLaunchOutcome(attachPrefix, command.CommandText, process.HasExited, process.HasExited ? process.ExitCode : 0);
+            foreach (var message in assessment.Messages)
             {
-                Source = "app",
-                Message = $"{attachPrefix} Terminal window handoff completed.",
-            });
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = message,
+                });
+            }
+
+            if (assessment.ExitedEarly)
+            {
+                await MirrorAttachDiagnosticsAsync(snapshot.Paths.AttachDiagnosticsLogPath, log, cancellationToken);
+                throw new InvalidOperationException("Windows Terminal exited before the attach session became interactive. See terminal output in the log panel for details.");
+            }
 
             _ = process;
             return;
@@ -204,4 +187,27 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
 
     private static string GetAttachPrefix(WorkspaceSnapshot snapshot)
         => $"[attach:{snapshot.Definition.Workspace.Name}]";
+
+    internal static TerminalLaunchAssessment AssessLaunchOutcome(string attachPrefix, string commandText, bool hasExited, int exitCode)
+    {
+        if (hasExited)
+        {
+            return new TerminalLaunchAssessment(
+                ExitedEarly: true,
+                Messages:
+                [
+                    $"{attachPrefix} Windows Terminal exited before handoff completed with code {exitCode}.",
+                    $"{attachPrefix} Windows Terminal command: {commandText}",
+                ]);
+        }
+
+        return new TerminalLaunchAssessment(
+            ExitedEarly: false,
+            Messages:
+            [
+                $"{attachPrefix} Terminal window handoff completed.",
+            ]);
+    }
+
+    internal sealed record TerminalLaunchAssessment(bool ExitedEarly, IReadOnlyList<string> Messages);
 }

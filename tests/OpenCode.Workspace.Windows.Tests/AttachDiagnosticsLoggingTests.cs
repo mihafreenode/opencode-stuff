@@ -120,4 +120,19 @@ public sealed class AttachDiagnosticsLoggingTests
             }
         }
     }
+
+    [Fact]
+    public void TerminalLaunchOutcome_ExitedEarlyWithCodeZero_IsNotClassifiedAsCompletedHandoff()
+    {
+        var assessment = WindowsTerminalLauncher.AssessLaunchOutcome(
+            "[attach:Odip Analiza]",
+            "wt.exe powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\\Users\\miha.pirnat\\Sources\\Analiza\\attach-workspace.ps1",
+            hasExited: true,
+            exitCode: 0);
+
+        Assert.True(assessment.ExitedEarly);
+        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal exited before handoff completed with code 0.", StringComparison.Ordinal));
+        Assert.Contains(assessment.Messages, message => message.Contains("Windows Terminal command:", StringComparison.Ordinal));
+        Assert.DoesNotContain(assessment.Messages, message => message.Contains("Terminal window handoff completed.", StringComparison.Ordinal));
+    }
 }
