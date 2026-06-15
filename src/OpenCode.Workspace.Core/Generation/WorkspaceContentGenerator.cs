@@ -12,6 +12,17 @@ public sealed class WorkspaceContentGenerator
     public IReadOnlyDictionary<string, string> Generate(WorkspaceDefinition definition)
     {
         var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (IsDocumentationWorkspace(definition))
+        {
+            files[Path.Combine("docs", "documentation-features.md")] = WithGeneratedHeader(DocumentationFeaturesWorkspaceDoc());
+            files["DOCUMENTATION-FEATURES.md"] = WithGeneratedHeader(DocumentationFeaturesQuickGuide());
+            files[Path.Combine("samples", "documentation", "report.md")] = WithGeneratedHeader(DocumentSampleMarkdown());
+            files[Path.Combine("samples", "documentation", "report.html")] = WithGeneratedHtmlHeader(DocumentSampleHtml());
+            files[Path.Combine("samples", "documentation", "architecture.mmd")] = WithGeneratedMermaidHeader(DocumentSampleMermaid());
+            files[Path.Combine("scripts", "validate-documentation-tooling.sh")] = DocumentationToolingValidationScript();
+            files[Path.Combine("scripts", "demo-documentation-workflows.sh")] = DocumentationWorkflowDemoScript();
+        }
+
         if (!IsOracleDemoWorkspace(definition))
         {
             return files;
@@ -46,6 +57,9 @@ public sealed class WorkspaceContentGenerator
         => definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
             || definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
 
+    private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
+        => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);
+
     private static string WithGeneratedHeader(string body)
         => string.Join("\n",
         [
@@ -62,6 +76,37 @@ public sealed class WorkspaceContentGenerator
             "-- GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
             "-- Source inputs: workspace.yaml and catalog manifests under catalog/.",
             "-- User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.",
+            body.TrimStart('\r', '\n'),
+            string.Empty,
+        ]);
+
+    private static string WithGeneratedHtmlHeader(string body)
+        => string.Join("\n",
+        [
+            "<!-- GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES -->",
+            "<!-- Source inputs: workspace.yaml and catalog manifests under catalog/. -->",
+            "<!-- User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead. -->",
+            body.TrimStart('\r', '\n'),
+            string.Empty,
+        ]);
+
+    private static string WithGeneratedMermaidHeader(string body)
+        => string.Join("\n",
+        [
+            "%% GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+            "%% Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "%% User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.",
+            body.TrimStart('\r', '\n'),
+            string.Empty,
+        ]);
+
+    private static string WithGeneratedScriptHeader(string body)
+        => string.Join("\n",
+        [
+            "#!/usr/bin/env bash",
+            "# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+            "# Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "# User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.",
             body.TrimStart('\r', '\n'),
             string.Empty,
         ]);
@@ -224,6 +269,337 @@ public sealed class WorkspaceContentGenerator
 
         return JsonSerializer.Serialize(document, new JsonSerializerOptions { WriteIndented = true });
     }
+
+    private static string DocumentationFeaturesWorkspaceDoc() => """
+## Documentation Features Workspace
+
+This workspace is prepared for modern documentation and reporting workflows on Ubuntu while staying close to how documents render on Windows systems.
+
+### Included Capabilities
+
+- Markdown to PDF with `pandoc` and `typst`
+- HTML to PDF with `weasyprint`
+- Diagram rendering with Mermaid, Graphviz, and PlantUML
+- Office document conversion with LibreOffice
+- PDF inspection with `pdfinfo`, `pypdf`, and `pymupdf`
+- Report generation with `reportlab`
+- Broad Windows-compatible font coverage including Carlito, Caladea, Liberation, Noto, Inter, Roboto, JetBrains Mono, and Fira Code
+
+### Runtime Baseline
+
+New workspaces use Node.js 22 LTS by default so Playwright, Mermaid, and modern npm packages run against a current ecosystem baseline.
+
+### First Commands To Run
+
+1. `scripts/validate-documentation-tooling.sh`
+2. `scripts/demo-documentation-workflows.sh`
+
+### Validation Output
+
+The validation script writes reports under `artifacts/documentation-validation/`:
+
+- `fc-list.txt` for the full installed font catalog
+- `font-match.txt` for practical Windows-compatible font mapping checks
+- `tool-versions.txt` for CLI availability and versions
+
+New workspaces use Node.js 22 LTS as the default runtime baseline so Mermaid, Playwright, and modern npm packages run without older engine mismatches.
+
+### Demo Output
+
+The demo script writes generated outputs under `artifacts/documentation-demo/`:
+
+- `markdown-report.pdf`
+- `html-report.pdf`
+- `reportlab-report.pdf`
+- `architecture.svg`
+- `architecture.png`
+- PDF metadata and inspection reports
+
+### Font Compatibility Focus
+
+- Arial-compatible: `Arial` or `Liberation Sans`
+- Calibri-compatible: `Carlito`
+- Cambria-compatible: `Caladea`
+- Unicode and multilingual coverage: `Noto Sans`, `Noto Serif`, and Noto CJK families
+- Emoji coverage: `Noto Color Emoji`
+- Developer snippets: `JetBrains Mono` and `Fira Code`
+
+This makes the workspace suitable for business reports, architecture manuals, tutorials, multilingual content, diagrams, and ODIP analytical reports.
+""";
+
+    private static string DocumentationFeaturesQuickGuide() => """
+# Documentation Features Workspace
+
+Use this workspace when you need reliable PDF generation, report authoring, diagrams, and document validation without hand-assembling extra tools.
+
+## Quick Start
+
+Run the validation pass:
+
+```bash
+scripts/validate-documentation-tooling.sh
+```
+
+Run the end-to-end demo:
+
+```bash
+scripts/demo-documentation-workflows.sh
+```
+
+## What Gets Verified
+
+- `pandoc`
+- `typst`
+- `node` and `npm`
+- `playwright`
+- `chromium`
+- `mmdc`
+- `weasyprint`
+- Python PDF libraries: `pypdf`, `pymupdf`, `reportlab`, `markdown-it-py`
+- `dot`
+- `plantuml`
+- installed font catalog and Windows-compatible font matches
+
+## Sample Inputs
+
+- `samples/documentation/report.md`
+- `samples/documentation/report.html`
+- `samples/documentation/architecture.mmd`
+""";
+
+    private static string DocumentSampleMarkdown() => """
+# ODIP Analytical Report Draft
+
+This sample exercises the Markdown to PDF toolchain with multilingual text, developer formatting, and Unicode coverage.
+
+## Executive Summary
+
+- Report title: Documentation Features Workspace
+- Compatibility goal: Windows-like PDF output on Ubuntu
+- Validation target: business reports, manuals, tutorials, and architecture documentation
+
+## International Content
+
+- Slovenian: Dokumentacija mora ostati berljiva in ponovljiva.
+- Croatian: Izvjestaj treba imati pouzdano generiranje PDF-a.
+- Chinese: 多语言内容和图表需要稳定输出。
+- Emoji: PDF smoke test 😀
+
+## Code Sample
+
+```text
+SELECT report_name, generated_at_utc
+FROM odip_reports
+ORDER BY generated_at_utc DESC;
+```
+""";
+
+    private static string DocumentSampleHtml() => """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Documentation Features HTML Sample</title>
+  <style>
+    body {
+      font-family: "Carlito", "Liberation Sans", Arial, "Noto Sans", sans-serif;
+      margin: 32px;
+      color: #172033;
+      line-height: 1.5;
+    }
+
+    h1, h2 {
+      font-family: "Caladea", Cambria, "Noto Serif", serif;
+      margin-bottom: 0.3rem;
+    }
+
+    code, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Noto Sans Mono", monospace;
+      background: #f3f5f8;
+    }
+
+    pre {
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Documentation Features Workspace</h1>
+  <p>This HTML sample verifies business-document fonts, multilingual rendering, and code-block output.</p>
+
+  <h2>Compatibility Notes</h2>
+  <p>Arial-compatible text should resolve through Liberation Sans or Arial when Microsoft core fonts are available.</p>
+  <p>Calibri-compatible text should resolve through Carlito. Cambria-compatible text should resolve through Caladea.</p>
+  <p>Unicode coverage: Slovenian, Croatian, Chinese, and emoji 😀.</p>
+
+  <pre><code>graph TD
+  Workspace --&gt; PDF
+  Workspace --&gt; Diagrams
+  Workspace --&gt; Reports
+  </code></pre>
+</body>
+</html>
+""";
+
+    private static string DocumentSampleMermaid() => """
+flowchart LR
+    Author[Authoring Sources] --> Markdown[Markdown and Typst]
+    Author --> Html[HTML and CSS]
+    Author --> Diagram[Mermaid, Graphviz, PlantUML]
+    Markdown --> Pdf[Professional PDF Output]
+    Html --> Pdf
+    Diagram --> Pdf
+""";
+
+    private static string DocumentationToolingValidationScript() => WithGeneratedScriptHeader("""
+set -euo pipefail
+
+workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+report_dir="${workspace_root}/artifacts/documentation-validation"
+mkdir -p "${report_dir}"
+
+require_command() {
+  local command_name="$1"
+  command -v "${command_name}" >/dev/null 2>&1 || {
+    printf 'Missing required command: %s\n' "${command_name}" >&2
+    exit 1
+  }
+}
+
+require_command pandoc
+require_command typst
+require_command node
+require_command npm
+require_command playwright
+require_command chromium
+require_command mmdc
+require_command weasyprint
+require_command dot
+require_command plantuml
+require_command fc-list
+require_command fc-match
+require_command pdfinfo
+
+python3 - <<'PY'
+import importlib
+
+required = [
+    ("pypdf", "pypdf"),
+    ("fitz", "pymupdf"),
+    ("reportlab", "reportlab"),
+    ("markdown_it", "markdown-it-py"),
+]
+
+missing = []
+for module_name, package_name in required:
+    try:
+        importlib.import_module(module_name)
+    except Exception:
+        missing.append(package_name)
+
+if missing:
+    raise SystemExit("Missing required Python packages: " + ", ".join(missing))
+PY
+
+{
+  printf 'pandoc: %s\n' "$(pandoc --version | sed -n '1p')"
+  printf 'typst: %s\n' "$(typst --version)"
+  printf 'node: %s\n' "$(node --version)"
+  printf 'node-eval: %s\n' "$(node -e "console.log(process.version)")"
+  printf 'npm: %s\n' "$(npm --version)"
+  printf 'playwright: %s\n' "$(playwright --version)"
+  printf 'chromium: %s\n' "$(chromium --version)"
+  printf 'mmdc: %s\n' "$(mmdc --version)"
+  printf 'weasyprint: %s\n' "$(weasyprint --version)"
+  printf 'dot: %s\n' "$(dot -V 2>&1)"
+  printf 'plantuml: %s\n' "$(plantuml -version | sed -n '1p')"
+  printf 'python-pdf-libs: ok\n'
+} | tee "${report_dir}/tool-versions.txt"
+
+{
+  printf 'Arial -> %s\n' "$(fc-match Arial)"
+  printf 'Calibri -> %s\n' "$(fc-match Calibri)"
+  printf 'Cambria -> %s\n' "$(fc-match Cambria)"
+  printf 'Noto Sans -> %s\n' "$(fc-match 'Noto Sans')"
+  printf 'Noto Sans CJK SC -> %s\n' "$(fc-match 'Noto Sans CJK SC')"
+  printf 'Noto Color Emoji -> %s\n' "$(fc-match 'Noto Color Emoji')"
+  printf 'JetBrains Mono -> %s\n' "$(fc-match 'JetBrains Mono')"
+  printf 'Fira Code -> %s\n' "$(fc-match 'Fira Code')"
+} | tee "${report_dir}/font-match.txt"
+
+fc-list | sort > "${report_dir}/fc-list.txt"
+
+printf 'Validation reports written to %s\n' "${report_dir}"
+""");
+
+    private static string DocumentationWorkflowDemoScript() => WithGeneratedScriptHeader("""
+set -euo pipefail
+
+workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+output_dir="${workspace_root}/artifacts/documentation-demo"
+mkdir -p "${output_dir}"
+
+"${workspace_root}/scripts/validate-documentation-tooling.sh"
+
+cat > "${output_dir}/mermaid-puppeteer.json" <<'EOF'
+{
+  "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+}
+EOF
+
+pandoc "${workspace_root}/samples/documentation/report.md" \
+  --pdf-engine=typst \
+  -V mainfont="Carlito" \
+  -V monofont="JetBrains Mono" \
+  -o "${output_dir}/markdown-report.pdf"
+
+weasyprint "${workspace_root}/samples/documentation/report.html" "${output_dir}/html-report.pdf"
+
+PUPPETEER_EXECUTABLE_PATH="$(command -v chromium)" \
+  mmdc -p "${output_dir}/mermaid-puppeteer.json" -i "${workspace_root}/samples/documentation/architecture.mmd" -o "${output_dir}/architecture.svg"
+
+PUPPETEER_EXECUTABLE_PATH="$(command -v chromium)" \
+  mmdc -p "${output_dir}/mermaid-puppeteer.json" -i "${workspace_root}/samples/documentation/architecture.mmd" -o "${output_dir}/architecture.png"
+
+OUTPUT_DIR="${output_dir}" python3 - <<'PY'
+import os
+from pathlib import Path
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+
+output_path = Path(os.environ["OUTPUT_DIR"]) / "reportlab-report.pdf"
+c = canvas.Canvas(str(output_path), pagesize=A4)
+c.setTitle("Documentation Features ReportLab Sample")
+c.setFont("Helvetica", 14)
+c.drawString(72, 800, "Documentation Features Workspace")
+c.setFont("Helvetica", 11)
+c.drawString(72, 778, "ReportLab generated PDF smoke test for ODIP-style analytical output.")
+c.drawString(72, 756, "This verifies Python-side report generation is ready out of the box.")
+c.save()
+PY
+
+pdfinfo "${output_dir}/markdown-report.pdf" | tee "${output_dir}/markdown-report.pdfinfo.txt"
+
+OUTPUT_DIR="${output_dir}" python3 - <<'PY' | tee "${output_dir}/pdf-metadata.txt"
+import os
+from pathlib import Path
+from pypdf import PdfReader
+import fitz
+
+output_dir = Path(os.environ["OUTPUT_DIR"])
+for file_name in ["markdown-report.pdf", "html-report.pdf", "reportlab-report.pdf"]:
+    pdf_path = output_dir / file_name
+    reader = PdfReader(str(pdf_path))
+    document = fitz.open(pdf_path)
+    print(f"{file_name}: pages={len(reader.pages)} metadata={reader.metadata}")
+    print(f"{file_name}: pymupdf-metadata={document.metadata}")
+    document.close()
+PY
+
+printf 'Generated documentation demo outputs in %s\n' "${output_dir}"
+""");
 
     private static string OracleDemoWorkspaceDoc() => """
 ## Oracle PL/SQL Workspace

@@ -25,6 +25,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly NerdFontInstaller _nerdFontInstaller;
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly QuickTutorialService _tutorialService;
+    private readonly TmpReprovisionWorkflowService _tmpReprovisionWorkflowService;
     private readonly AgentProfileResolver _agentProfileResolver = new();
     private readonly Dictionary<string, List<WorkspaceLogLineViewModel>> _workspaceLogsByPath = new(StringComparer.OrdinalIgnoreCase);
     private WorkspaceListItemViewModel? _selectedWorkspace;
@@ -58,7 +59,8 @@ public sealed class MainWindowViewModel : ObservableObject
         DockerService dockerService,
         NerdFontInstaller nerdFontInstaller,
         WorkspaceSavePointMessageService savePointMessageService,
-        QuickTutorialService tutorialService)
+        QuickTutorialService tutorialService,
+        TmpReprovisionWorkflowService tmpReprovisionWorkflowService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _catalogProvider = catalogProvider;
@@ -70,6 +72,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _nerdFontInstaller = nerdFontInstaller;
         _savePointMessageService = savePointMessageService;
         _tutorialService = tutorialService;
+        _tmpReprovisionWorkflowService = tmpReprovisionWorkflowService;
         _sqlDeveloperExecutablePath = _windowsHostCapabilities.FindSqlDeveloperExecutablePath();
 
         var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspaces");
@@ -197,6 +200,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RunOracleTutorialQueryCommand = new RelayCommand(RunOracleTutorialQuery, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         TestOracleConnectionCommand = new RelayCommand(TestOracleConnection, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         OpenSqlDeveloperCommand = new RelayCommand(OpenSqlDeveloper, () => SelectedWorkspaceHasOracleDemo && IsSqlDeveloperDetected && !IsBusy);
+        RunTmpReprovisionWorkflowCommand = new AsyncRelayCommand(RunTmpReprovisionWorkflowAsync, HasSelectedWorkspace);
 
         LoadCatalogSelections();
         SelectedTemplate = Templates.FirstOrDefault(template => string.Equals(template.Id, "general-development", StringComparison.OrdinalIgnoreCase))
@@ -326,6 +330,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public RelayCommand RunOracleTutorialQueryCommand { get; }
     public RelayCommand TestOracleConnectionCommand { get; }
     public RelayCommand OpenSqlDeveloperCommand { get; }
+    public AsyncRelayCommand RunTmpReprovisionWorkflowCommand { get; }
 
     public WorkspaceListItemViewModel? SelectedWorkspace
     {
@@ -339,6 +344,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspacePath));
                 RaisePropertyChanged(nameof(SelectedRepositoryPath));
                 RaisePropertyChanged(nameof(SelectedWorkspaceImage));
+                RaisePropertyChanged(nameof(SelectedWorkspaceNodeVersion));
                 RaisePropertyChanged(nameof(SelectedWorkspaceFeatures));
                 RaisePropertyChanged(nameof(SelectedWorkspaceServices));
                 RaisePropertyChanged(nameof(SelectedWorkspaceAgent));
@@ -534,6 +540,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedRepositoryPath => string.IsNullOrWhiteSpace(SelectedWorkspace?.Snapshot.Record.RepositoryPath) ? SelectedWorkspacePath : SelectedWorkspace!.Snapshot.Record.RepositoryPath;
     public string SelectedWorkspaceShortPath => SelectedWorkspace?.ShortRootPath ?? "-";
     public string SelectedWorkspaceImage => SelectedWorkspace?.Image ?? "-";
+    public string SelectedWorkspaceNodeVersion => SelectedWorkspace is null ? "-" : $"Node.js {SelectedWorkspace.Snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion()} LTS";
     public string SelectedWorkspaceFeatures => SelectedWorkspace?.FeaturesSummary ?? "-";
     public string SelectedWorkspaceServices => SelectedWorkspace?.ServicesSummary ?? "-";
     public string SelectedWorkspaceStatus => SelectedWorkspace?.StatusLabel ?? "-";
@@ -876,6 +883,11 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 Name = workspaceName,
                 Image = string.IsNullOrWhiteSpace(SelectedTemplate?.WorkspaceImage) ? "ubuntu:24.04" : SelectedTemplate.WorkspaceImage,
+            },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+                Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
             },
             Features = AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
             Services = AvailableServices.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
@@ -1461,6 +1473,7 @@ public sealed class MainWindowViewModel : ObservableObject
                     var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
                     _profileManager.EnsureManagedProfile(snapshot.Definition, snapshot.Definition.Terminal.Font, resolvedFace);
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Managed Windows Terminal profile ensured for font '{snapshot.Definition.Terminal.Font.Family}'.");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "runtime", $"Effective Node.js runtime: {snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion()}.");
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile: {_profileManager.GetProfileName(snapshot.Definition)}");
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Configured font: {resolvedFace}");
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Terminal profile file: {_profileManager.GetFragmentFilePath()}");
@@ -1554,6 +1567,24 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             ShowOracleActionError("Open SQL Developer Failed", "The app could not open SQL Developer.", exception.Message, "Use Open SQLcl instead, or verify the SQL Developer installation path on Windows.");
         }
+    }
+
+    private async Task RunTmpReprovisionWorkflowAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            var snapshot = _workspaceOrchestrator.LoadSnapshot(SelectedWorkspace.RootPath);
+            EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
+            AppendWorkspaceLog(snapshot.Paths.RootPath, "dev", $"Developer tmp reprovision requested for '{snapshot.Definition.Workspace.Name}'.");
+            await _tmpReprovisionWorkflowService.RunAsync(snapshot.Paths.RootPath, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+            StatusMessage = $"Developer tmp reprovision completed for '{snapshot.Definition.Workspace.Name}'.";
+            await ReloadWorkspaceListAsync(snapshot.Paths.RootPath);
+        });
     }
 
     private void RunWorkspaceScript(string scriptFileName, string successMessage)
@@ -2283,6 +2314,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RunOracleTutorialQueryCommand.RaiseCanExecuteChanged();
         TestOracleConnectionCommand.RaiseCanExecuteChanged();
         OpenSqlDeveloperCommand.RaiseCanExecuteChanged();
+        RunTmpReprovisionWorkflowCommand.RaiseCanExecuteChanged();
         RaisePropertyChanged(nameof(CanShutDownSelectedWorkspace));
         RaisePropertyChanged(nameof(SelectedPrimaryActionLabel));
         RaisePropertyChanged(nameof(ShowRecoverWorkspaceAction));

@@ -2,11 +2,74 @@
 
 id: document-processing
 displayName: Document Processing
-description: Tools for document conversion, PDF handling, and image work.
+description: End-to-end tooling for report generation, PDF conversion, diagrams, validation, and Windows-compatible document fonts.
 dependencies:
   apt:
     - pandoc
+    - libreoffice
+    - graphviz
+    - plantuml
     - imagemagick
     - poppler-utils
     - ghostscript
     - qpdf
+    - fonts-dejavu
+    - fonts-liberation
+    - fonts-crosextra-carlito
+    - fonts-crosextra-caladea
+    - fonts-noto
+    - fonts-noto-cjk
+    - fonts-noto-extra
+    - fonts-noto-color-emoji
+    - fonts-roboto
+    - fonts-inter
+    - fonts-firacode
+    - fonts-jetbrains-mono
+  npm:
+    - playwright
+    - '@mermaid-js/mermaid-cli'
+  pip:
+    - weasyprint
+    - markdown-it-py
+    - pypdf
+    - pymupdf
+    - reportlab
+postInstall:
+  - |
+    if command -v typst >/dev/null 2>&1; then
+      typst --version
+    elif apt-cache policy typst | grep -F "Candidate:" | grep -Fvq "(none)"; then
+      apt-get install -y typst
+    else
+      case "$(uname -m)" in
+        x86_64) typst_asset=typst-x86_64-unknown-linux-musl.tar.xz ;;
+        aarch64|arm64) typst_asset=typst-aarch64-unknown-linux-musl.tar.xz ;;
+        *) echo "[document-processing] Unsupported architecture for automatic Typst install: $(uname -m)" >&2; exit 1 ;;
+      esac
+      curl -fsSL "https://github.com/typst/typst/releases/latest/download/${typst_asset}" -o /tmp/typst.tar.xz
+      rm -rf /tmp/typst-install
+      mkdir -p /tmp/typst-install
+      tar -xJf /tmp/typst.tar.xz -C /tmp/typst-install
+      install /tmp/typst-install/typst-*/typst /usr/local/bin/typst
+      rm -rf /tmp/typst.tar.xz /tmp/typst-install
+    fi
+  - |
+    if apt-cache policy ttf-mscorefonts-installer | grep -F "Candidate:" | grep -Fvq "(none)"; then
+      echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections
+      apt-get install -y ttf-mscorefonts-installer
+    else
+      echo "[document-processing] ttf-mscorefonts-installer is unavailable for this Ubuntu image. Skipping Microsoft-compatible core fonts."
+    fi
+  - |
+    mkdir -p /home/opencode/.cache/ms-playwright
+    chown -R opencode:opencode /home/opencode/.cache
+    su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/home/opencode/.cache/ms-playwright; playwright install chromium' opencode
+  - |
+    playwright_chromium_path=$(node -e "const npmRoot=require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim(); const { chromium } = require(npmRoot + '/playwright'); process.stdout.write(chromium.executablePath());")
+    if [ -n "${playwright_chromium_path}" ] && [ -x "${playwright_chromium_path}" ]; then
+      ln -sf "${playwright_chromium_path}" /usr/local/bin/chromium
+    else
+      echo "[document-processing] Playwright Chromium executable could not be resolved after installation." >&2
+      exit 1
+    fi
+  - fc-cache -fv

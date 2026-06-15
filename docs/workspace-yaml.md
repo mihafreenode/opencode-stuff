@@ -38,6 +38,7 @@ provider:
 
 runtime:
   default: default
+  node: 22
 
 features:
   - core
@@ -97,6 +98,29 @@ Use a Docker workspace when portability, reproducibility, and Linux-based develo
 Runtime selection settings.
 
 - `default`: default runtime definition name under `runtimes/`
+- `node`: requested Node.js major version for the workspace runtime, `22` by default for new workspaces
+
+If a workspace omits `runtime.node`, OpenCode Workspace Manager currently normalizes it to Node.js 22 LTS during generated runtime updates and new provisioning runs.
+
+Examples:
+
+```yaml
+runtime:
+  default: default
+  node: 20
+```
+
+```yaml
+runtime:
+  default: default
+  node: 22
+```
+
+```yaml
+runtime:
+  default: default
+  node: 24
+```
 
 ### `features`
 
@@ -147,10 +171,34 @@ The application generates these runtime artifacts beside `workspace.yaml`:
 
 Those files include generated headers that point contributors back to `workspace.yaml` and the catalog manifests.
 
+## Documentation Features Template
+
+The built-in `documentation-analysis` template is presented in the UI as `Documentation Features`.
+
+It is intended for report-heavy work such as manuals, architecture documentation, tutorials, multilingual PDFs, and ODIP analytical reports.
+
+Its generated workspace content includes:
+
+- `DOCUMENTATION-FEATURES.md`
+- `docs/documentation-features.md`
+- `scripts/validate-documentation-tooling.sh`
+- `scripts/demo-documentation-workflows.sh`
+- sample Markdown, HTML, and Mermaid inputs under `samples/documentation/`
+
+The provisioning plan behind that template includes:
+
+- Markdown to PDF tooling with `pandoc` and `typst`
+- HTML to PDF tooling with `weasyprint`
+- diagram tooling with Mermaid, Graphviz, and PlantUML
+- PDF inspection tooling with `poppler-utils`, `pypdf`, and `pymupdf`
+- report-generation tooling with `reportlab`
+- Windows-friendly font coverage with Liberation, Carlito, Caladea, Noto, Inter, Roboto, JetBrains Mono, Fira Code, and optional Microsoft core fonts when the Ubuntu image provides `ttf-mscorefonts-installer`
+
 ## v0.1 Default Example
 
 When the UI creates a new workspace in the MVP, it starts from:
 
 - `image: ubuntu:24.04`
 - the always-on `core` feature
+- `runtime.node: 22`
 - any additional features or services selected in the create form

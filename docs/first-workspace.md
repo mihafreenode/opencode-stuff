@@ -2,7 +2,7 @@
 
 This guide is for first-time use.
 
-If WSL, Docker Desktop, and Git credentials are already working, you should be able to create a workspace, open it, start the runtime, and begin working without extra setup.
+If WSL, Docker Desktop, SSH access, and Git credentials are already working, you should be able to create a workspace, open it, start the runtime, and begin working without extra setup.
 
 ## First 5 Minutes
 
@@ -20,11 +20,13 @@ Confirm that you have:
 
 - WSL installed
 - Docker Desktop installed and running
+- Docker Desktop WSL integration enabled for your Ubuntu distribution
 - Git credentials configured
+- SSH access configured for your Git provider
 - Windows Terminal installed
 - .NET 10 Desktop Runtime installed
 
-If you still need setup help, use [Windows Setup](windows-prerequisites.md).
+If you still need setup help, use [Windows Setup](windows-prerequisites.md), especially the `Configure SSH Access` and `Docker Desktop And WSL Integration` sections.
 
 ## Create A Workspace
 

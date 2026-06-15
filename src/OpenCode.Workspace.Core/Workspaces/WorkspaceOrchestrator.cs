@@ -222,6 +222,7 @@ public sealed class WorkspaceOrchestrator
             Runtime = new WorkspaceRuntimeDefinition
             {
                 Default = "default",
+                Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
             },
             Features = new List<string> { "core" },
             Services = new List<string>(),
@@ -345,6 +346,7 @@ public sealed class WorkspaceOrchestrator
                     Runtime = new WorkspaceRuntimeDefinition
                     {
                         Default = "default",
+                        Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
                     },
                     Features = new List<string> { "core" },
                     Services = new List<string>(),

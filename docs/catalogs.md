@@ -31,7 +31,7 @@ Feature manifests are best for:
 - apt package groups
 - npm package groups
 - pip package groups
-- post-install commands such as `npx playwright install`
+- post-install commands such as `playwright install chromium`, conditional font package setup, or `fc-cache -fv`
 
 ## Add A Skill
 
@@ -58,6 +58,8 @@ Service manifests are best for:
 Create `catalog/templates/<id>.yaml`.
 
 Templates select a friendly starting combination of features and services, but the durable workspace behavior still ends up in `workspace.yaml`.
+
+For new workspaces, the generated `workspace.yaml` also defaults `runtime.node` to `22` unless a future template or direct workspace edit requests another supported major version.
 
 ## Portability Rule
 

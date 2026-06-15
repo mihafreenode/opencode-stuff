@@ -225,7 +225,11 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", script);
         Assert.Contains("apt-get install -y git curl", script);
+        Assert.Contains("https://deb.nodesource.com/setup_22.x", script);
+        Assert.Contains("apt-get install -y nodejs", script);
         Assert.Contains("useradd -m -d /home/opencode -s /bin/bash opencode", script);
+        Assert.Contains("npm --version", script);
+        Assert.Contains("node -e \"console.log(process.version)\"", script);
         Assert.Contains("npm install -g opencode-ai", script);
         Assert.Contains("curl -sS https://starship.rs/install.sh | sh -s -- -y", script);
         Assert.Contains("source /opt/opencode-workspace/config/opencode-shell-init.sh", script);
@@ -295,6 +299,45 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("Reinstalled SQLcl failed runtime validation after activation", script);
         Assert.Contains("java -version", script);
         Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
+    }
+
+    [Fact]
+    public void ProvisioningGenerator_ForDocumentationWorkspace_IncludesToolingAndFontSetup()
+    {
+        var generator = new ProvisioningScriptGenerator();
+        var script = generator.Generate(new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "documentation-features" },
+                Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 24 },
+                Features = new List<string> { "core", "document-processing" },
+                Terminal = new TerminalPreferences
+                {
+                    Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                    Utilities = new TerminalUtilityPreferences(),
+                },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = new[] { "pandoc", "fonts-crosextra-carlito", "fonts-jetbrains-mono" },
+            NpmPackages = new[] { "playwright", "@mermaid-js/mermaid-cli" },
+            PipPackages = new[] { "weasyprint", "pypdf", "pymupdf", "reportlab" },
+            PostInstallCommands = new[]
+            {
+                "command -v typst >/dev/null 2>&1 || install /tmp/typst-install/typst-*/typst /usr/local/bin/typst",
+                "playwright install chromium",
+                "fc-cache -fv",
+            },
+        });
+
+        Assert.Contains("apt-get install -y pandoc fonts-crosextra-carlito fonts-jetbrains-mono", script);
+        Assert.Contains("https://deb.nodesource.com/setup_24.x", script);
+        Assert.Contains("npm install -g playwright @mermaid-js/mermaid-cli", script);
+        Assert.Contains("pip3 install --break-system-packages weasyprint pypdf pymupdf reportlab", script);
+        Assert.Contains("command -v typst", script);
+        Assert.Contains("playwright install chromium", script);
+        Assert.Contains("fc-cache -fv", script);
     }
 
     [Fact]

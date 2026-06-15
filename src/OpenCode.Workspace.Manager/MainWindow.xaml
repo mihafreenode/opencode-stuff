@@ -261,6 +261,8 @@
                             <TextBlock Text="{Binding SelectedWorkspaceSessionStatus}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedImageLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceImage}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,12,0,4" Text="Node Runtime" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedWorkspaceNodeVersion}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedFeaturesLabel}" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedWorkspaceFeatures}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,12,0,4" Text="{Binding SelectedServicesLabel}" FontWeight="SemiBold" />

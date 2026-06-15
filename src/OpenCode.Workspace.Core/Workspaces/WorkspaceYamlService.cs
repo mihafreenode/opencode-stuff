@@ -57,6 +57,7 @@ public sealed class WorkspaceYamlService
             Runtime = new WorkspaceRuntimeDefinition
             {
                 Default = string.IsNullOrWhiteSpace(definition.Runtime.Default) ? "default" : definition.Runtime.Default.Trim(),
+                Node = definition.Runtime.GetEffectiveNodeMajorVersion(),
             },
             Features = definition.Features.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Skills = definition.Skills.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

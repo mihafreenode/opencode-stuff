@@ -60,8 +60,16 @@ public sealed class WorkspaceProviderDefinition
 
 public sealed class WorkspaceRuntimeDefinition
 {
+    public const int DefaultNodeMajorVersion = 22;
+
     [YamlMember(Alias = "default")]
     public string Default { get; init; } = "default";
+
+    [YamlMember(Alias = "node")]
+    public int Node { get; init; } = DefaultNodeMajorVersion;
+
+    public int GetEffectiveNodeMajorVersion()
+        => Node > 0 ? Node : DefaultNodeMajorVersion;
 }
 
 /// <summary>

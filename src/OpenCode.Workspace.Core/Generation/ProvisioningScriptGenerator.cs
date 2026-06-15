@@ -57,6 +57,11 @@ public sealed class ProvisioningScriptGenerator
             builder.AppendLine($"apt-get install -y {string.Join(" ", aptPackages)}");
         }
 
+        builder.AppendLine();
+        builder.AppendLine("# Install the requested Node.js runtime from NodeSource so modern npm packages use a consistent LTS baseline.");
+        builder.AppendLine($"curl -fsSL https://deb.nodesource.com/setup_{workspace.Definition.Runtime.GetEffectiveNodeMajorVersion()}.x | bash -");
+        builder.AppendLine("apt-get install -y nodejs");
+
         if (isOracleDemoWorkspace)
         {
             builder.AppendLine();
@@ -285,8 +290,8 @@ public sealed class ProvisioningScriptGenerator
         if (workspace.PipPackages.Count > 0)
         {
             builder.AppendLine();
-            builder.AppendLine("# Install pip packages declared by workspace features.");
-            builder.AppendLine($"pip3 install {string.Join(" ", workspace.PipPackages)}");
+            builder.AppendLine("# Ubuntu 24.04 marks the system Python as externally managed, so disposable workspace runtimes must opt into global pip installs explicitly.");
+            builder.AppendLine($"pip3 install --break-system-packages {string.Join(" ", workspace.PipPackages)}");
         }
 
         if (workspace.PostInstallCommands.Count > 0)
@@ -335,6 +340,8 @@ public sealed class ProvisioningScriptGenerator
         builder.AppendLine("git --version");
         builder.AppendLine("python3 --version");
         builder.AppendLine("node --version");
+        builder.AppendLine("node -e \"console.log(process.version)\"");
+        builder.AppendLine("npm --version");
         builder.AppendLine("opencode --version");
         builder.AppendLine("su -s /bin/bash -c 'screen --version' opencode");
 

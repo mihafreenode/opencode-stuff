@@ -8,9 +8,12 @@ The goal is simple: get the machine ready so you can create or open a workspace 
 
 1. WSL2 available
 2. Docker Desktop installed and running
+3. Docker Desktop WSL integration enabled for your Ubuntu distribution
+4. WSL version compatible with Docker Desktop
 3. Git installed with credentials configured
-4. Windows Terminal installed
-5. .NET 10 Desktop Runtime installed
+4. SSH key configured for your Git hosting provider
+5. Windows Terminal installed
+6. .NET 10 Desktop Runtime installed
 
 ## Quick Install
 
@@ -20,6 +23,14 @@ winget install Microsoft.WindowsTerminal
 winget install Git.Git
 winget install Microsoft.DotNet.DesktopRuntime.10
 ```
+
+Optional:
+
+```powershell
+winget install TortoiseGit.TortoiseGit
+```
+
+TortoiseGit is optional, but some developers find it useful for visual Git history, visual merge support, branch management, and tag management.
 
 If WSL is not installed yet:
 
@@ -59,12 +70,144 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
+## Configure SSH Access
+
+Many people configure Git name and email successfully, then get stuck later when clone, fetch, or push uses SSH.
+
+### Default SSH Location
+
+```text
+%USERPROFILE%\.ssh
+```
+
+Typical files:
+
+```text
+id_ed25519
+id_ed25519.pub
+
+or
+
+id_rsa
+id_rsa.pub
+```
+
+For new keys, prefer `ed25519`.
+
+### Generate SSH Key
+
+```powershell
+ssh-keygen -t ed25519 -C "you@example.com"
+```
+
+### Display Public Key
+
+```powershell
+type %USERPROFILE%\.ssh\id_ed25519.pub
+```
+
+### Verify Connectivity
+
+```powershell
+ssh -T git@github.com
+```
+
+The exact SSH host depends on your Git provider.
+
 ## Next Step
 
 Once the checks pass, continue with:
 
 - [First Workspace Guide](first-workspace.md)
 - [WSL Windows Interop Troubleshooting](troubleshooting/wsl-windows-interop.md)
+
+## Docker Desktop And WSL Integration
+
+Docker Desktop can be installed and running while Ubuntu integration is still disabled.
+
+### Check WSL
+
+```powershell
+wsl --status
+wsl -l -v
+```
+
+Expected example:
+
+```text
+Ubuntu-24.04           Running   2
+docker-desktop         Running   2
+docker-desktop-data    Running   2
+```
+
+- Ubuntu should use WSL2.
+- Docker Desktop relies on WSL2.
+
+### Verify Docker
+
+```powershell
+docker version
+docker compose version
+```
+
+### Verify WSL Integration
+
+In Docker Desktop, open:
+
+`Settings` -> `Resources` -> `WSL Integration`
+
+Confirm `Ubuntu-24.04` or your selected distribution is enabled.
+
+Disabled integration can cause workspace provisioning failures even when Docker itself appears healthy.
+
+## Keep WSL Updated
+
+Sometimes Docker Desktop expects newer WSL components than the machine currently has.
+
+Check version:
+
+```powershell
+wsl --version
+```
+
+Update:
+
+```powershell
+wsl --update
+```
+
+Restart WSL:
+
+```powershell
+wsl --shutdown
+```
+
+Windows updates, Docker Desktop upgrades, and WSL upgrades can occasionally leave components out of sync. Updating WSL is a common repair step.
+
+## Optional WSL Resource Limits
+
+If WSL is using too much memory on a developer workstation, you can set a simple cap in:
+
+```text
+%USERPROFILE%\.wslconfig
+```
+
+Example:
+
+```ini
+[wsl2]
+memory=8GB
+processors=4
+swap=2GB
+```
+
+Apply changes:
+
+```powershell
+wsl --shutdown
+```
+
+This is often useful on 16 GB and 32 GB systems. It limits maximum WSL memory usage, and active WSL sessions restart when WSL shuts down.
 
 ## Where People Usually Get Stuck
 
@@ -91,6 +234,65 @@ Action:
 1. Run the `git config --global` commands above.
 2. Try again.
 
+### Docker Desktop WSL integration is disabled
+
+Symptoms:
+
+- Docker appears healthy
+- Workspace provisioning fails
+- Containers fail to start correctly
+
+Action:
+
+1. Open Docker Desktop.
+2. Go to `Settings` -> `Resources` -> `WSL Integration`.
+3. Enable Ubuntu integration.
+
+### SSH authentication fails
+
+Symptoms:
+
+- Clone fails
+- Fetch fails
+- Push fails
+
+Action:
+
+1. Verify the SSH key exists under `%USERPROFILE%\.ssh`.
+2. Verify the public key is registered with your Git provider.
+3. Test connectivity with `ssh -T`.
+
+### WSL version is too old
+
+Symptoms:
+
+- Docker integration issues
+- Unexpected startup failures
+- Workspace provisioning problems
+
+Action:
+
+```powershell
+wsl --update
+wsl --shutdown
+```
+
+Then restart Docker Desktop.
+
+### WSL uses too much memory
+
+Symptoms:
+
+- Windows becomes slow
+- High memory usage
+- Docker performance issues
+
+Action:
+
+1. Configure `%USERPROFILE%\.wslconfig`.
+2. Run `wsl --shutdown`.
+3. Start Docker Desktop again.
+
 ### Windows Terminal is missing
 
 Action:
@@ -108,3 +310,25 @@ Action:
 ### Windows executables fail from Ubuntu/WSL
 
 If `cmd.exe`, `powershell.exe`, or `pwsh.exe` are found on `PATH` but fail with `Exec format error`, see [Debugging WSL Windows Interop](troubleshooting/wsl-windows-interop.md).
+
+## Full Health Check
+
+If you need to report a setup issue or collect the basics before asking for help, run:
+
+```powershell
+wsl --status
+wsl -l -v
+wsl --version
+docker version
+docker compose version
+git --version
+ssh -V
+wt --version
+dotnet --list-runtimes
+```
+
+This output is useful when reporting setup issues or requesting support.
+
+## Future App Checks
+
+Future versions of the application may validate Git installation, SSH configuration, WSL installation, WSL version, Docker availability, Docker Desktop WSL integration, and available system resources from inside the app itself.

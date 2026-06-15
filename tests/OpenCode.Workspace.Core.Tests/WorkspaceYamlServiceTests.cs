@@ -25,6 +25,7 @@ public sealed class WorkspaceYamlServiceTests
             Runtime = new WorkspaceRuntimeDefinition
             {
                 Default = "default",
+                Node = 22,
             },
             Features = new List<string> { "core", "document-processing" },
             Services = new List<string> { "postgres", "pgadmin" },
@@ -53,6 +54,7 @@ public sealed class WorkspaceYamlServiceTests
             Assert.Equal("git", roundTripped.Provider.Type);
             Assert.Equal("https://example.test/docs-workspace.git", roundTripped.Provider.Url);
             Assert.Equal("default", roundTripped.Runtime.Default);
+            Assert.Equal(22, roundTripped.Runtime.Node);
             Assert.Contains("core", roundTripped.Features);
             Assert.Contains("document-processing", roundTripped.Features);
             Assert.Contains("postgres", roundTripped.Services);
@@ -60,6 +62,53 @@ public sealed class WorkspaceYamlServiceTests
             Assert.Equal("JetBrainsMono Nerd Font", roundTripped.Terminal.Font.Family);
             Assert.Equal("starship", roundTripped.Terminal.Prompt.Provider);
             Assert.True(roundTripped.Terminal.Utilities.Zoxide);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public void Read_WhenNodeVersionIsOmitted_DefaultsToNode22()
+    {
+        var service = new WorkspaceYamlService();
+        var filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(filePath, """
+workspace:
+  id: legacy-workspace
+  name: legacy-workspace
+  image: ubuntu:24.04
+provider:
+  type: git
+runtime:
+  default: default
+features:
+  - core
+skills: []
+services: []
+mcp: []
+agent:
+  profile: opencode-default
+terminal:
+  font:
+    provider: nerd-fonts
+    family: JetBrainsMono Nerd Font
+  prompt:
+    provider: starship
+  installIfMissing: true
+  utilities:
+    zoxide: false
+    fzf: false
+""");
+
+            var definition = service.Read(filePath);
+
+            Assert.Equal(22, definition.Runtime.Node);
+            Assert.Equal(22, definition.Runtime.GetEffectiveNodeMajorVersion());
         }
         finally
         {

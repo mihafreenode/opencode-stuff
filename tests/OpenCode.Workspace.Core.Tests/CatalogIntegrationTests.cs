@@ -33,6 +33,7 @@ public sealed class CatalogIntegrationTests
 
         Assert.Equal("portable-data", definition.Workspace.Name);
         Assert.Equal("ubuntu:24.04", definition.Workspace.Image);
+        Assert.Equal(22, definition.Runtime.Node);
         Assert.Contains("core", definition.Features);
         Assert.Contains("postgres", definition.Services);
         Assert.Contains("pgadmin", definition.Services);
@@ -67,6 +68,13 @@ public sealed class CatalogIntegrationTests
 
         Assert.Contains(resolved.Features, feature => feature.Id == "core");
         Assert.Contains(resolved.AptPackages, packageName => packageName == "pandoc");
+        Assert.Contains(resolved.AptPackages, packageName => packageName == "fonts-crosextra-carlito");
+        Assert.Contains(resolved.NpmPackages, packageName => packageName == "playwright");
+        Assert.Contains(resolved.NpmPackages, packageName => packageName == "@mermaid-js/mermaid-cli");
+        Assert.Contains(resolved.PipPackages, packageName => packageName == "weasyprint");
+        Assert.Contains(resolved.PostInstallCommands, command => command.Contains("command -v typst", StringComparison.Ordinal));
+        Assert.Contains(resolved.PostInstallCommands, command => command.Contains("playwright install chromium", StringComparison.Ordinal));
+        Assert.Contains(resolved.PostInstallCommands, command => command.Contains("fc-cache -fv", StringComparison.Ordinal));
         Assert.Equal(resolved.AptPackages.Count, resolved.AptPackages.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 

@@ -1,6 +1,6 @@
 id: documentation-analysis
-displayName: Documentation Analysis
-description: Documentation-focused workspace with PDF and OCR utilities.
+displayName: Documentation Features
+description: Complete documentation workspace with PDF, diagrams, report generation, OCR, and validation tooling.
 features:
   - core
   - document-processing

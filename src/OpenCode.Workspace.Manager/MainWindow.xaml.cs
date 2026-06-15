@@ -242,6 +242,7 @@ public partial class MainWindow : Window
         menu.Items.Add(new MenuItem { Header = viewModel.OpenAdvancedGitViewLabel, Command = viewModel.OpenAdvancedGitViewCommand });
         menu.Items.Add(new MenuItem { Header = viewModel.ShutDownLabel, Command = viewModel.ShutDownWorkspaceCommand });
         menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Developer: Run Tmp Reprovision Workflow", Command = viewModel.RunTmpReprovisionWorkflowCommand });
         menu.Items.Add(new MenuItem { Header = viewModel.RemoveLabel, Command = viewModel.RemoveWorkspaceCommand });
         return menu;
     }

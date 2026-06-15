@@ -71,6 +71,23 @@ The environment can be reset and recreated at any time.
 
 **Learn more:** [Oracle PL/SQL Demo Workspace](docs/oracle-demo.md)
 
+## Featured Workspace: Documentation Features
+
+The Documentation Features workspace is a ready-to-run report and publishing environment for teams that need reliable PDF output, diagrams, validation, and broad Windows-compatible font coverage inside Ubuntu workspaces.
+
+Included tooling covers:
+
+- Markdown to PDF with `pandoc` and `typst`
+- HTML to PDF with `weasyprint`
+- Mermaid, Graphviz, and PlantUML diagrams
+- PDF inspection with `pdfinfo`, `pypdf`, and `pymupdf`
+- Report generation with `reportlab`
+- multilingual and business-document fonts including Carlito, Caladea, Liberation, Noto, Inter, Roboto, JetBrains Mono, Fira Code, and optional Microsoft-compatible core fonts
+
+Each generated workspace also includes validation and demo scripts so the toolchain can be checked immediately after provisioning.
+
+**Learn more:** [Documentation Features Workspace](docs/documentation-features.md)
+
 ## Who Is This For?
 
 - developers using AI coding agents
@@ -134,6 +151,10 @@ Detailed setup:
 ## Development
 
 Development is centered on durable workspaces, disposable runtimes, and repeatable setup.
+
+Node.js 22 LTS is the default runtime baseline for new workspaces.
+
+Why: recent documentation, analytics, visualization, browser automation, diagram generation, MCP tooling, and AI-adjacent npm packages increasingly target Node 20+ and Node 22 LTS. Using Node 22 reduces engine warnings and compatibility drift across workspace templates.
 
 ## Safety & Recovery
 

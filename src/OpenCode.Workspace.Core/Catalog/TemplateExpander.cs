@@ -17,6 +17,11 @@ public sealed class TemplateExpander
                 Name = workspaceName,
                 Image = string.IsNullOrWhiteSpace(template.WorkspaceImage) ? "ubuntu:24.04" : template.WorkspaceImage,
             },
+            Runtime = new WorkspaceRuntimeDefinition
+            {
+                Default = "default",
+                Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
+            },
             Features = template.Features.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Services = template.Services.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             Skills = template.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

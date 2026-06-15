@@ -647,6 +647,15 @@ Before recording screenshots:
 
 The goal is reliable product validation, not maximum automation.
 
+## Developer Reprovision Workflow
+
+When the user says `reprovision workspace <name>` in this development context, use the existing working `.tmp` reprovision workflow as-is.
+
+- do not invent a new product-level reprovision system unless explicitly requested
+- do not replace it with a new lifecycle or CLI flow
+- preserve the generated `.tmp` project approach that rebuilds and runs against the selected workspace
+- treat this as a developer helper similar to rebuild-and-run, not a normal user-facing workspace repair action
+
 ## Exception-First GUI Debugging
 
 When investigating Windows GUI issues, prefer exception capture over UI automation.

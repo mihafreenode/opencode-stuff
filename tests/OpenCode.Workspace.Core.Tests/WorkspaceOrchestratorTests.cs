@@ -111,6 +111,55 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public void CreateWorkspace_ForDocumentProcessing_WritesDocumentationGuidesAndScripts()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core", "document-processing"));
+
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "documentation-features.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "DOCUMENTATION-FEATURES.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-documentation-tooling.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "demo-documentation-workflows.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "samples", "documentation", "report.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "samples", "documentation", "report.html")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "samples", "documentation", "architecture.mmd")));
+
+            var quickGuide = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "DOCUMENTATION-FEATURES.md"));
+            var validationScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-documentation-tooling.sh"));
+            var demoScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "demo-documentation-workflows.sh"));
+
+            Assert.Contains("scripts/validate-documentation-tooling.sh", quickGuide);
+            Assert.Contains("scripts/demo-documentation-workflows.sh", quickGuide);
+            Assert.Contains("require_command pandoc", validationScript);
+            Assert.Contains("require_command node", validationScript);
+            Assert.Contains("node -e \"console.log(process.version)\"", validationScript);
+            Assert.Contains("fc-list | sort", validationScript);
+            Assert.Contains("fc-match Calibri", validationScript);
+            Assert.Contains("pandoc \"${workspace_root}/samples/documentation/report.md\"", demoScript);
+            Assert.Contains("weasyprint \"${workspace_root}/samples/documentation/report.html\"", demoScript);
+            Assert.Contains("mmdc -p \"${output_dir}/mermaid-puppeteer.json\" -i \"${workspace_root}/samples/documentation/architecture.mmd\"", demoScript);
+            Assert.Contains("pdfinfo \"${output_dir}/markdown-report.pdf\"", demoScript);
+
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                var validationMode = File.GetUnixFileMode(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-documentation-tooling.sh"));
+                var demoMode = File.GetUnixFileMode(Path.Combine(snapshot.Paths.RootPath, "scripts", "demo-documentation-workflows.sh"));
+                Assert.True(validationMode.HasFlag(UnixFileMode.UserExecute));
+                Assert.True(demoMode.HasFlag(UnixFileMode.UserExecute));
+            }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public void WriteAppliedState_WritesAppliedStateFile()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -620,6 +669,7 @@ public sealed class WorkspaceOrchestratorTests
             Runtime = new WorkspaceRuntimeDefinition
             {
                 Default = "default",
+                Node = 22,
             },
             Features = new List<string> { "core", "document-processing", "ocr-processing", "spellcheck" },
             Services = new List<string>(),
@@ -644,7 +694,26 @@ public sealed class WorkspaceOrchestratorTests
 
     private static WorkspaceResolver CreateResolver(string? additionalDocumentProcessingAptPackage = null)
     {
-        var documentPackages = new List<string> { "pandoc" };
+        var documentPackages = new List<string>
+        {
+            "pandoc",
+            "poppler-utils",
+            "graphviz",
+            "plantuml",
+            "libreoffice",
+            "fonts-dejavu",
+            "fonts-liberation",
+            "fonts-crosextra-carlito",
+            "fonts-crosextra-caladea",
+            "fonts-noto",
+            "fonts-noto-cjk",
+            "fonts-noto-extra",
+            "fonts-noto-color-emoji",
+            "fonts-roboto",
+            "fonts-inter",
+            "fonts-firacode",
+            "fonts-jetbrains-mono",
+        };
         if (!string.IsNullOrWhiteSpace(additionalDocumentProcessingAptPackage))
         {
             documentPackages.Add(additionalDocumentProcessingAptPackage);
@@ -662,7 +731,18 @@ public sealed class WorkspaceOrchestratorTests
                 new FeatureManifest
                 {
                     Id = "document-processing",
-                    Dependencies = new DependencySet { Apt = documentPackages },
+                    Dependencies = new DependencySet
+                    {
+                        Apt = documentPackages,
+                        Npm = new List<string> { "playwright", "@mermaid-js/mermaid-cli" },
+                        Pip = new List<string> { "weasyprint", "markdown-it-py", "pypdf", "pymupdf", "reportlab" },
+                    },
+                    PostInstall =
+                    [
+                        "command -v typst >/dev/null 2>&1 || install /tmp/typst-install/typst-*/typst /usr/local/bin/typst",
+                        "playwright install chromium",
+                        "fc-cache -fv",
+                    ],
                 },
                 new FeatureManifest
                 {
