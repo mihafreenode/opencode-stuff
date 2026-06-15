@@ -394,17 +394,46 @@ public sealed class WindowsDockerIntegrationTests
 
             snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition);
 
-            var workspaceYaml = File.ReadAllText(Path.Combine(workspaceRoot, "workspace.yaml"));
-            var provisionScript = File.ReadAllText(Path.Combine(workspaceRoot, "mounts", "config", "provision.sh"));
+            Assert.True(File.Exists(snapshot.Paths.ComposePath), $"Missing generated compose file: {snapshot.Paths.ComposePath}");
+            Assert.True(File.Exists(snapshot.Paths.EnvironmentFilePath), $"Missing generated environment file: {snapshot.Paths.EnvironmentFilePath}");
+            Assert.True(File.Exists(snapshot.Paths.ProvisionScriptPath), $"Missing generated provision script: {snapshot.Paths.ProvisionScriptPath}");
+            Assert.True(File.Exists(snapshot.Paths.StarshipConfigPath), $"Missing generated starship config: {snapshot.Paths.StarshipConfigPath}");
+            Assert.True(File.Exists(snapshot.Paths.ShellInitScriptPath), $"Missing generated shell init script: {snapshot.Paths.ShellInitScriptPath}");
+            Assert.True(File.Exists(snapshot.Paths.AttachWrapperScriptPath), $"Missing generated attach wrapper: {snapshot.Paths.AttachWrapperScriptPath}");
+
+            var workspaceYaml = File.ReadAllText(snapshot.Paths.WorkspaceYamlPath);
+            var composeYaml = File.ReadAllText(snapshot.Paths.ComposePath);
+            var environmentFile = File.ReadAllText(snapshot.Paths.EnvironmentFilePath);
+            var provisionScript = File.ReadAllText(snapshot.Paths.ProvisionScriptPath);
+            var shellInitScript = File.ReadAllText(snapshot.Paths.ShellInitScriptPath);
+            var attachWrapper = File.ReadAllText(snapshot.Paths.AttachWrapperScriptPath);
+
             Assert.Contains("node: 22", workspaceYaml);
+            Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", composeYaml);
+            Assert.Contains("image: ubuntu:24.04", composeYaml);
+            Assert.Contains("container_name: node22-smoke-workspace", composeYaml);
+            Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", environmentFile);
+            Assert.Contains("WORKSPACE_NAME=node22-smoke", environmentFile);
             Assert.Contains("https://deb.nodesource.com/setup_22.x", provisionScript);
             Assert.Contains("apt-get remove -y nodejs npm || true", provisionScript);
+            Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", shellInitScript);
+            Assert.Contains("export STARSHIP_CONFIG=/opt/opencode-workspace/config/starship.toml", shellInitScript);
+            Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", attachWrapper);
+            Assert.Contains("$attachUser = 'opencode'", attachWrapper);
 
             var aptInstallLine = provisionScript.Split('\n').First(line => line.StartsWith("apt-get install -y ", StringComparison.Ordinal));
             Assert.DoesNotContain(" nodejs", aptInstallLine, StringComparison.Ordinal);
             Assert.DoesNotContain(" npm", aptInstallLine, StringComparison.Ordinal);
 
-            await orchestrator.ProvisionAsync(snapshot);
+            try
+            {
+                await orchestrator.ProvisionAsync(snapshot);
+            }
+            catch (InvalidOperationException exception) when (IsLinuxContainerPlatformSkipCondition(exception.Message, out var skipReason))
+            {
+                Skip.If(true, skipReason);
+                return;
+            }
 
             var nodeVersionResult = await dockerService.RunSimpleDockerCommandAsync(
                 ["exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "node --version"],
@@ -435,6 +464,28 @@ public sealed class WindowsDockerIntegrationTests
                 Directory.Delete(appDataRoot, recursive: true);
             }
         }
+    }
+
+    private static bool IsLinuxContainerPlatformSkipCondition(string message, out string skipReason)
+    {
+        foreach (var marker in new[]
+                 {
+                     "no matching manifest for windows",
+                     "image operating system \"linux\" cannot be used on this platform",
+                     "operating system is not supported",
+                 })
+        {
+            if (!message.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            skipReason = $"Docker is available but cannot start the Linux workspace image in this environment (likely Windows container mode): {marker}";
+            return true;
+        }
+
+        skipReason = string.Empty;
+        return false;
     }
 
     private static WorkspaceOrchestrator CreateWorkspaceOrchestrator(string appDataRoot)
