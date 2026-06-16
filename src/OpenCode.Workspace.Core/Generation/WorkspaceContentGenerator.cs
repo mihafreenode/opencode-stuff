@@ -324,7 +324,7 @@ The demo script writes generated outputs under `artifacts/documentation-demo/`:
 - Emoji coverage: `Noto Color Emoji`
 - Developer snippets: `JetBrains Mono` and `Fira Code`
 
-This makes the workspace suitable for business reports, architecture manuals, tutorials, multilingual content, diagrams, and ODIP analytical reports.
+This makes the workspace suitable for business reports, architecture manuals, tutorials, multilingual content, diagrams, and analytical reporting.
 """;
 
     private static string DocumentationFeaturesQuickGuide() => """
@@ -368,7 +368,7 @@ scripts/demo-documentation-workflows.sh
 """;
 
     private static string DocumentSampleMarkdown() => """
-# ODIP Analytical Report Draft
+# Analytical Report Draft
 
 This sample exercises the Markdown to PDF toolchain with multilingual text, developer formatting, and Unicode coverage.
 
@@ -389,7 +389,7 @@ This sample exercises the Markdown to PDF toolchain with multilingual text, deve
 
 ```text
 SELECT report_name, generated_at_utc
-FROM odip_reports
+FROM generated_reports
 ORDER BY generated_at_utc DESC;
 ```
 """;
@@ -575,7 +575,7 @@ c.setTitle("Documentation Features ReportLab Sample")
 c.setFont("Helvetica", 14)
 c.drawString(72, 800, "Documentation Features Workspace")
 c.setFont("Helvetica", 11)
-c.drawString(72, 778, "ReportLab generated PDF smoke test for ODIP-style analytical output.")
+c.drawString(72, 778, "ReportLab generated PDF smoke test for analytical reporting output.")
 c.drawString(72, 756, "This verifies Python-side report generation is ready out of the box.")
 c.save()
 PY

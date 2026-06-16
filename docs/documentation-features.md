@@ -11,7 +11,7 @@ It is intended for:
 - architecture documents
 - multilingual PDFs
 - diagram-heavy technical documentation
-- ODIP analytical reports
+- data analysis and reporting
 
 ## Included Tooling
 

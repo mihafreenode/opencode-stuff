@@ -200,7 +200,7 @@ Those files include generated headers that point contributors back to `workspace
 
 The built-in `documentation-analysis` template is presented in the UI as `Documentation Features`.
 
-It is intended for report-heavy work such as manuals, architecture documentation, tutorials, multilingual PDFs, and ODIP analytical reports.
+It is intended for report-heavy work such as manuals, architecture documentation, tutorials, multilingual PDFs, and data analysis and reporting.
 
 Its generated workspace content includes:
 
