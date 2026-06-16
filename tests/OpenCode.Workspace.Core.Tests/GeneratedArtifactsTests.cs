@@ -231,6 +231,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("apt-cache policy nodejs | sed -n '1,20p'", script);
         Assert.Contains("useradd -m -d /home/opencode -s /bin/bash opencode", script);
         Assert.Contains("npm --version", script);
+        Assert.Contains("python --version", script);
+        Assert.Contains("python3 --version", script);
+        Assert.Contains("which python", script);
+        Assert.Contains("which python3", script);
         Assert.Contains("node -e \"console.log(process.version)\"", script);
         Assert.Contains("npm install -g opencode-ai", script);
         Assert.Contains("curl -sS https://starship.rs/install.sh | sh -s -- -y", script);

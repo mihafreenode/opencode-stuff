@@ -94,6 +94,14 @@ mounts/config/provision.sh
 
 That file is generated intentionally so contributors can inspect the exact installation plan.
 
+Python note:
+
+- Python 3 is the supported runtime in generated workspaces.
+- `python` is intentionally mapped to Python 3 for compatibility.
+- Both `python` and `python3` should work in fresh workspaces.
+
+If a script fails with `python: command not found`, reprovision or regenerate the workspace so the latest base package plan is applied.
+
 ## The Runtime Stopped Unexpectedly
 
 During the smoke test, the workspace, PostgreSQL, and pgAdmin containers all exited together with code `255` after a Docker Desktop interruption.

@@ -125,6 +125,7 @@ Included tooling covers:
 - Mermaid, Graphviz, and PlantUML diagrams
 - PDF inspection with `pdfinfo`, `pypdf`, and `pymupdf`
 - Report generation with `reportlab`
+- Python 3 tooling with both `python` and `python3` commands available for compatibility
 - multilingual and business-document fonts including Carlito, Caladea, Liberation, Noto, Inter, Roboto, JetBrains Mono, Fira Code, and optional Microsoft-compatible core fonts
 
 Each generated workspace also includes validation and demo scripts so the toolchain can be checked immediately after provisioning.

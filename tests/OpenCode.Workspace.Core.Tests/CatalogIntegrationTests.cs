@@ -72,6 +72,7 @@ public sealed class CatalogIntegrationTests
         Assert.Contains(resolved.NpmPackages, packageName => packageName == "playwright");
         Assert.Contains(resolved.NpmPackages, packageName => packageName == "@mermaid-js/mermaid-cli");
         Assert.Contains(resolved.PipPackages, packageName => packageName == "weasyprint");
+        Assert.Contains(resolved.AptPackages, packageName => packageName == "python-is-python3");
         Assert.Contains(resolved.PostInstallCommands, command => command.Contains("command -v typst", StringComparison.Ordinal));
         Assert.Contains(resolved.PostInstallCommands, command => command.Contains("playwright install chromium", StringComparison.Ordinal));
         Assert.Contains(resolved.PostInstallCommands, command => command.Contains("fc-cache -fv", StringComparison.Ordinal));

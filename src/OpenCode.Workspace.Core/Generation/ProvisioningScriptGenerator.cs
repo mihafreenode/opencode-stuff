@@ -341,7 +341,10 @@ public sealed class ProvisioningScriptGenerator
         builder.AppendLine();
         builder.AppendLine("# Verify the main tools that contributors expect to exist after provisioning.");
         builder.AppendLine("git --version");
+        builder.AppendLine("python --version");
         builder.AppendLine("python3 --version");
+        builder.AppendLine("which python");
+        builder.AppendLine("which python3");
         builder.AppendLine("node --version");
         builder.AppendLine("node -e \"console.log(process.version)\"");
         builder.AppendLine("npm --version");
