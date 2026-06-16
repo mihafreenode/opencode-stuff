@@ -10,4 +10,20 @@ This Oracle workspace family treats the repository as executable onboarding know
 - onboarding docs explain expected learning and delivery flows
 - safe local workspaces reduce the need for risky shared-environment access
 
+Typical onboarding flow:
+
+```text
+Clone Repository
+    ↓
+Open Repository
+    ↓
+Workspace Discovered
+    ↓
+Provision Environment
+    ↓
+Read Docs
+    ↓
+Run Tutorial
+```
+
 The repository contains not only source code but also the knowledge required to work with that source code.

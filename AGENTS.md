@@ -487,6 +487,106 @@ Windows validation rules:
 - if Windows executables fail from WSL with `cannot execute binary file: Exec format error`, verify `cat /proc/sys/fs/binfmt_misc/WSLInterop` before assuming a `PATH` problem
 - WSL interop troubleshooting is documented in `docs/troubleshooting/wsl-windows-interop.md`
 
+## Runtime Validation: WSL vs Windows Host
+
+OpenCode Workspace Manager is a Windows application.
+
+Validate features from the environment that actually owns them.
+
+Examples:
+
+- WPF -> Windows
+- Windows Terminal -> Windows
+- Docker Desktop -> Windows
+- SQL Developer -> Windows
+- WSL integration -> WSL + Windows
+- Linux container behavior -> container
+- Browser UI -> browser
+
+When runtime validation involves Docker Desktop, Oracle containers, Windows Terminal, or WPF behavior, prefer Windows-host validation.
+
+When validating runtime behavior from WSL, first check whether Docker is reachable from the current shell:
+
+```bash
+docker version
+```
+
+If WSL Docker is unavailable, check Windows Docker Desktop:
+
+```powershell
+powershell.exe -NoProfile -Command "docker version"
+```
+
+If WSL Docker is unavailable but Windows `docker version` succeeds, continue validation through Windows PowerShell instead of stopping.
+
+Do not report WSL `/var/run/docker.sock` failure as a product defect unless Windows Docker Desktop is also unreachable or the product is explicitly expected to support WSL-local Docker for that scenario.
+
+Report both checks separately:
+
+- WSL Docker result
+- Windows Docker result
+
+Use Windows Docker Desktop result as authoritative for product runtime validation.
+
+Prefer checked-in validation tooling over ad-hoc temporary scripts or inline-generated runner projects.
+
+For Oracle runtime smoke validation, use:
+
+- `tools/OracleRuntimeSmoke/`
+- `scripts/testing/oracle-runtime-smoke.ps1`
+
+## Runtime Validation Ladder
+
+Always validate in this order:
+
+```text
+Static Tests
+    ↓
+Windows Solution Tests
+    ↓
+Smoke Runner Dry Run
+    ↓
+Live Runtime Smoke
+    ↓
+Manual Validation
+```
+
+Rules:
+
+- do not start Oracle containers if static validation is failing
+- do not start Oracle containers if Windows-host solution tests are failing
+- do not classify runtime issues before dry-run validation succeeds
+- each stage should reduce uncertainty before moving to the next
+
+This prevents debugging Oracle when the real problem is generation, tooling, or configuration.
+
+## Validation Tooling Is Part Of The Product
+
+Treat validation tooling as a first-class component.
+
+Examples:
+
+- smoke runners
+- reprovision tools
+- diagnostics
+- health checks
+- recovery tools
+- onboarding validators
+
+Failures in these tools should be classified separately as `Validation Tooling Failure`.
+
+Prefer:
+
+- checked-in tooling
+- versioned tooling
+- tested tooling
+
+Avoid:
+
+- large ad-hoc PowerShell commands
+- generated temporary projects
+- unversioned validation scripts
+
 ## Contributor Coding Guidance
 
 Prefer:

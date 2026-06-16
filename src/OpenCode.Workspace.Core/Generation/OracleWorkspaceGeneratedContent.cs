@@ -78,6 +78,22 @@ Use this workspace when the goal is learning PL/SQL in a safe local Oracle envir
 2. Run `scripts/verify-oracle-demo.sh`.
 3. Open `tutorial/oracle/START-HERE-ORACLE.md`.
 
+### Onboarding Flow
+
+```text
+Clone Repository
+    ↓
+Open Repository
+    ↓
+Workspace Discovered
+    ↓
+Provision Environment
+    ↓
+Read Docs
+    ↓
+Run Tutorial
+```
+
 ### Progression
 
 This template is the first step in the Oracle onboarding path:
@@ -111,6 +127,8 @@ This workspace extends the Oracle PL/SQL demo with Oracle APEX and ORDS so onboa
 3. Open APEX with `scripts/open-apex.ps1`.
 4. Run `scripts/health-check-database.sh`, `scripts/health-check-ords.sh`, and `scripts/health-check-apex.sh` inside the workspace runtime.
 
+This workspace focuses on the traditional Oracle APEX Builder workflow in a reproducible local onboarding environment.
+
 ## Additional Learning Resources
 
 For users who want a structured Slovenian introduction to traditional Oracle APEX development, see:
@@ -125,6 +143,12 @@ This workspace provides the reproducible environment and automation, while the b
 
     private static string OracleApexLangDemoDoc() => """
 ## Oracle APEXlang Demo
+
+This workspace demonstrates a source-controlled Oracle APEX workflow.
+
+Oracle now uses `APEXlang` as the name for the Open Application Specification Language introduced in APEX 26.1.
+
+It extends Oracle APEX rather than replacing the Builder workflow.
 
 This workspace demonstrates a source-controlled APEX workflow:
 
@@ -172,6 +196,10 @@ Workspace Discovered
 Review Configuration
     ↓
 Provision Environment
+    ↓
+Read Docs
+    ↓
+Run Tutorial
     ↓
 Start Learning
 ```
@@ -235,6 +263,8 @@ This repository was generated as the `{kind}` Oracle workspace variant.
 ## APEXlang Introduction
 
 APEXlang keeps APEX application changes reviewable in Git instead of leaving the full history only inside the builder.
+
+Oracle refers to this language as the Open Application Specification Language, or APEXlang.
 
 Use this workspace to practice:
 

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenCode.Workspace.Core\OpenCode.Workspace.Core.csproj" />
+    <ProjectReference Include="..\..\tools\OracleRuntimeSmoke\OracleRuntimeSmoke.csproj" />
   </ItemGroup>
 
 </Project>

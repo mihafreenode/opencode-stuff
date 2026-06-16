@@ -13,3 +13,6 @@ coverage/
 
 # Local workspaces used while validating the app
 .workspaces/
+
+# Runtime smoke validation artifacts
+artifacts/oracle-runtime-smoke/

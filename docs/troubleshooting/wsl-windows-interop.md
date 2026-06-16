@@ -112,4 +112,14 @@ Use Windows PowerShell for:
 - screenshots
 - Windows capability tests
 
+When runtime validation also depends on Docker Desktop, Oracle containers, Windows Terminal, or SQL Developer integration, treat Windows host validation as authoritative even if the initiating workflow started in WSL.
+
+If `docker version` fails in WSL but succeeds through:
+
+```powershell
+powershell.exe -NoProfile -Command "docker version"
+```
+
+classify that as an environment difference between WSL and Windows host validation, not as a product defect by itself.
+
 Report Linux and Windows results separately. Do not treat Linux `dotnet` results as a substitute for Windows validation.

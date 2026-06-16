@@ -431,6 +431,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 }
 
                 RaisePropertyChanged(nameof(IsOracleDemoTemplateSelected));
+                RaisePropertyChanged(nameof(OracleTemplateSummaryTitle));
+                RaisePropertyChanged(nameof(OracleTemplateIncludesSummary));
             }
         }
     }
@@ -684,6 +686,7 @@ public sealed class MainWindowViewModel : ObservableObject
         ? "Use the copied localhost connection details to connect quickly during the demo."
         : "SQL Developer is optional. If it is not installed, continue with Open SQLcl and the local tutorial.";
     public bool IsOracleDemoTemplateSelected => SelectedTemplate is not null && OracleWorkspaceFamily.IsOracleWorkspace(SelectedTemplate);
+    public string OracleTemplateSummaryTitle => GetOracleTemplateSummaryTitle();
     public string OracleTemplateIncludesSummary => string.Join(Environment.NewLine, GetOracleTemplateIncludesSummary());
     public bool IsWorkspaceListLoading
     {
@@ -1974,6 +1977,8 @@ public sealed class MainWindowViewModel : ObservableObject
             AvailableFeatures.Add(new SelectableItemViewModel
             {
                 Id = feature.Id,
+                BaseDisplayName = feature.DisplayName,
+                BaseDescription = feature.Description,
                 DisplayName = feature.DisplayName,
                 Description = feature.Description,
                 IsLocked = feature.AlwaysEnabled,
@@ -1987,6 +1992,8 @@ public sealed class MainWindowViewModel : ObservableObject
             AvailableServices.Add(new SelectableItemViewModel
             {
                 Id = service.Id,
+                BaseDisplayName = service.DisplayName,
+                BaseDescription = service.Description,
                 DisplayName = service.DisplayName,
                 Description = service.Description,
                 IsSelected = false,
@@ -1996,28 +2003,41 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void ApplyTemplate(TemplateManifest template)
     {
+        ResetCatalogSelectionPresentation();
+        var requiredFeatures = GetRequiredOracleFeatureIds(template);
+        var requiredServices = GetRequiredOracleServiceIds(template);
+
         foreach (var feature in AvailableFeatures)
         {
+            var isRequired = requiredFeatures.Contains(feature.Id);
+            feature.IsLocked = feature.Id == "core" || isRequired;
             feature.IsSelected = feature.IsLocked || template.Features.Contains(feature.Id, StringComparer.OrdinalIgnoreCase);
+            ApplyOracleSelectionPresentation(feature, requiredFeatures, template, isService: false);
         }
 
         foreach (var service in AvailableServices)
         {
-            service.IsSelected = template.Services.Contains(service.Id, StringComparer.OrdinalIgnoreCase);
+            var isRequired = requiredServices.Contains(service.Id);
+            service.IsLocked = isRequired;
+            service.IsSelected = service.IsLocked || template.Services.Contains(service.Id, StringComparer.OrdinalIgnoreCase);
+            ApplyOracleSelectionPresentation(service, requiredServices, template, isService: true);
         }
     }
 
     private void SelectCatalogItems(IEnumerable<string> selectedFeatures, IEnumerable<string> selectedServices)
     {
+        ResetCatalogSelectionPresentation();
         var featureIds = new HashSet<string>(selectedFeatures, StringComparer.OrdinalIgnoreCase);
         foreach (var feature in AvailableFeatures)
         {
+            feature.IsLocked = string.Equals(feature.Id, "core", StringComparison.OrdinalIgnoreCase);
             feature.IsSelected = feature.IsLocked || featureIds.Contains(feature.Id);
         }
 
         var serviceIds = new HashSet<string>(selectedServices, StringComparer.OrdinalIgnoreCase);
         foreach (var service in AvailableServices)
         {
+            service.IsLocked = false;
             service.IsSelected = serviceIds.Contains(service.Id);
         }
     }
@@ -2610,26 +2630,131 @@ public sealed class MainWindowViewModel : ObservableObject
     private IEnumerable<string> GetOracleTemplateIncludesSummary()
     {
         var kind = SelectedTemplate is null ? OracleWorkspaceKind.None : OracleWorkspaceFamily.Detect(SelectedTemplate);
-        yield return "✓ Oracle Free Database";
-        yield return "✓ SQLcl";
-
-        if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
+        switch (kind)
         {
-            yield return "✓ Oracle APEX";
-            yield return "✓ ORDS";
-            yield return "✓ Customers Sample Data";
+            case OracleWorkspaceKind.PlSql:
+                yield return "✓ Oracle Free Database";
+                yield return "✓ SQLcl";
+                yield return "✓ PL/SQL Tutorial";
+                yield return "✓ Sample Schema";
+                yield return "✓ Sample Procedures";
+                break;
+            case OracleWorkspaceKind.Apex:
+                yield return "✓ Oracle Free Database";
+                yield return "✓ Oracle APEX";
+                yield return "✓ Oracle REST Data Services (ORDS)";
+                yield return "✓ SQLcl";
+                yield return "✓ Sample Customers Application";
+                yield return "✓ Browser-Based Development";
+                break;
+            case OracleWorkspaceKind.ApexLang:
+                yield return "✓ Oracle Free Database";
+                yield return "✓ Oracle APEX";
+                yield return "✓ Oracle REST Data Services (ORDS)";
+                yield return "✓ SQLcl";
+                yield return "✓ APEXlang Export/Import";
+                yield return "✓ Source-Control Workflow";
+                yield return "✓ Team Onboarding Assets";
+                break;
         }
-        else
+    }
+
+    private string GetOracleTemplateSummaryTitle()
+        => SelectedTemplate is null
+            ? "Oracle Workspace Template"
+            : OracleWorkspaceFamily.Detect(SelectedTemplate) switch
+            {
+                OracleWorkspaceKind.PlSql => "Oracle PL/SQL Demo",
+                OracleWorkspaceKind.Apex => "Oracle APEX Demo",
+                OracleWorkspaceKind.ApexLang => "Oracle APEXlang Demo",
+                _ => "Oracle Workspace Template",
+            };
+
+    private void ResetCatalogSelectionPresentation()
+    {
+        foreach (var feature in AvailableFeatures)
         {
-            yield return "✓ Tutorial";
-            yield return "✓ Sample Schema";
+            feature.DisplayName = feature.BaseDisplayName;
+            feature.Description = feature.BaseDescription;
+            feature.IsLocked = string.Equals(feature.Id, "core", StringComparison.OrdinalIgnoreCase);
         }
 
-        if (kind == OracleWorkspaceKind.ApexLang)
+        foreach (var service in AvailableServices)
         {
-            yield return "✓ APEXlang Export/Import Scripts";
+            service.DisplayName = service.BaseDisplayName;
+            service.Description = service.BaseDescription;
+            service.IsLocked = false;
+        }
+    }
+
+    private void ApplyOracleSelectionPresentation(SelectableItemViewModel item, HashSet<string> requiredIds, TemplateManifest template, bool isService)
+    {
+        item.DisplayName = item.BaseDisplayName;
+        item.Description = item.BaseDescription;
+
+        if (!OracleWorkspaceFamily.IsOracleWorkspace(template) || !requiredIds.Contains(item.Id))
+        {
+            return;
         }
 
-        yield return "✓ AI Skills";
+        var kind = OracleWorkspaceFamily.Detect(template);
+        var suffix = kind switch
+        {
+            OracleWorkspaceKind.ApexLang when string.Equals(item.Id, OracleWorkspaceFamily.OracleBaseFeatureId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.Id, OracleWorkspaceFamily.OracleDatabaseServiceId, StringComparison.OrdinalIgnoreCase)
+                => " (Inherited PL/SQL Foundation)",
+            OracleWorkspaceKind.ApexLang when string.Equals(item.Id, OracleWorkspaceFamily.OracleApexFeatureId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.Id, OracleWorkspaceFamily.OracleOrdsServiceId, StringComparison.OrdinalIgnoreCase)
+                => " (Inherited APEX Requirement)",
+            OracleWorkspaceKind.Apex when string.Equals(item.Id, OracleWorkspaceFamily.OracleBaseFeatureId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.Id, OracleWorkspaceFamily.OracleDatabaseServiceId, StringComparison.OrdinalIgnoreCase)
+                => " (Inherited PL/SQL Foundation)",
+            _ => " (Required)",
+        };
+
+        item.DisplayName = item.BaseDisplayName + suffix;
+        item.Description = item.BaseDescription + (isService
+            ? " This service is required for the selected Oracle template."
+            : " This asset is required for the selected Oracle template.");
+    }
+
+    private static HashSet<string> GetRequiredOracleFeatureIds(TemplateManifest template)
+    {
+        var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        switch (OracleWorkspaceFamily.Detect(template))
+        {
+            case OracleWorkspaceKind.PlSql:
+                required.Add(OracleWorkspaceFamily.OracleBaseFeatureId);
+                break;
+            case OracleWorkspaceKind.Apex:
+                required.Add(OracleWorkspaceFamily.OracleBaseFeatureId);
+                required.Add(OracleWorkspaceFamily.OracleApexFeatureId);
+                break;
+            case OracleWorkspaceKind.ApexLang:
+                required.Add(OracleWorkspaceFamily.OracleBaseFeatureId);
+                required.Add(OracleWorkspaceFamily.OracleApexFeatureId);
+                required.Add(OracleWorkspaceFamily.OracleApexLangFeatureId);
+                break;
+        }
+
+        return required;
+    }
+
+    private static HashSet<string> GetRequiredOracleServiceIds(TemplateManifest template)
+    {
+        var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        switch (OracleWorkspaceFamily.Detect(template))
+        {
+            case OracleWorkspaceKind.PlSql:
+                required.Add(OracleWorkspaceFamily.OracleDatabaseServiceId);
+                break;
+            case OracleWorkspaceKind.Apex:
+            case OracleWorkspaceKind.ApexLang:
+                required.Add(OracleWorkspaceFamily.OracleDatabaseServiceId);
+                required.Add(OracleWorkspaceFamily.OracleOrdsServiceId);
+                break;
+        }
+
+        return required;
     }
 }

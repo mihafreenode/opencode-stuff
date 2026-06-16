@@ -87,7 +87,7 @@
                             <Border Margin="0,14,0,0" Padding="14" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="10" BorderThickness="1"
                                     Visibility="{Binding IsOracleDemoTemplateSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Text="Oracle Workspace Template" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OracleTemplateSummaryTitle}" FontSize="18" FontWeight="SemiBold" />
                                     <TextBlock Margin="0,10,0,0" Text="Includes:" FontWeight="SemiBold" />
                                     <TextBlock Margin="0,8,0,0" Text="{Binding OracleTemplateIncludesSummary}" TextWrapping="Wrap" />
                                     <TextBlock Margin="0,14,0,0"
@@ -115,7 +115,7 @@
                             <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding AvailableServices}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}">
+                                        <CheckBox Margin="0,4,0,4" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanChangeSelection}">
                                             <StackPanel>
                                                 <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding Description}" Foreground="{StaticResource BrandTextMutedBrush}" TextWrapping="Wrap" />

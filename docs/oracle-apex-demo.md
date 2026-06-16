@@ -1,8 +1,26 @@
 # Oracle APEX Demo
 
-The Oracle APEX Demo extends the Oracle PL/SQL path with local APEX and ORDS onboarding.
+Oracle APEX Demo extends the Oracle PL/SQL path with browser-based Oracle application development.
 
-The goal is to let a new teammate provision a reproducible local Oracle environment, open `http://localhost:8181/ords`, and continue learning from there.
+It uses Oracle Database Free, Oracle REST Data Services (ORDS), Oracle APEX, and SQLcl to provide a reproducible local environment for learning and onboarding.
+
+## What This Demo Is For
+
+This workspace focuses on the traditional Oracle APEX Builder workflow.
+
+The goal is to let a new teammate provision a reproducible local Oracle environment, open `http://localhost:8181/ords`, and continue learning from there without manually rebuilding Oracle setup details.
+
+## Progression
+
+```text
+Oracle PL/SQL Demo
+    ↓
+Oracle APEX Demo
+    ↓
+Oracle APEXlang Demo
+```
+
+Oracle APEX Demo is the middle step in that progression. It keeps PL/SQL foundations visible while adding browser-based application development on top.
 
 ## Additional Learning Resources
 

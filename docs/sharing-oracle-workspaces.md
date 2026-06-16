@@ -11,3 +11,5 @@ The important idea is that the repository carries:
 - automation scripts
 
 That makes the repository itself an onboarding asset.
+
+For a practical explanation of what belongs in `AGENTS.md`, see [AGENTS.md Guide](agents-guide.md).

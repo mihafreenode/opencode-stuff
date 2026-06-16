@@ -1,6 +1,6 @@
 # OpenCode Workspace Manager
 
-OpenCode Workspace Manager is a Windows WPF application for durable AI workspaces with disposable runtimes, local recovery, and safe Git-based working flows.
+OpenCode Workspace Manager is a Windows WPF application for durable workspaces, repository onboarding, and reusable development environments with disposable runtimes, local recovery, and safe Git-based working flows.
 
 <img src="docs/walkthrough/images/main-window.png" alt="OpenCode Workspace Manager main window" width="900" />
 
@@ -9,6 +9,8 @@ OpenCode Workspace Manager is a Windows WPF application for durable AI workspace
 OpenCode Workspace Manager lets you work with AI agents in isolated, reproducible workspaces without risking your main branch or development environment.
 
 Import an existing Git checkout, create a temporary workspace branch, work safely, and recover progress using Save Points and Checkpoints.
+
+It is a workspace manager first, not a Docker launcher and not a single-template demo host.
 
 ## Existing Workspace Discovery
 
@@ -53,6 +55,22 @@ Workspace Discovered
 
 The repository contains not only source code, but also the knowledge required to work with that source code.
 
+Onboarding flow:
+
+```text
+Repository
+    ↓
+Workspace Discovery
+    ↓
+Provision Environment
+    ↓
+Read Documentation
+    ↓
+Start Working
+```
+
+The Oracle family below is one concrete example of that onboarding model. It is not a platform requirement for every repository.
+
 ## Inside The Workspace
 
 OpenCode Workspace Manager creates and protects durable workspaces.
@@ -79,40 +97,64 @@ Import the checkout, create an isolated workspace branch, open a disposable runt
 
 -> [Existing Git Checkout Workflow](docs/walkthrough/existing-git-checkout.md)
 
-## Featured Workspace: Oracle PL/SQL Demo
+## Oracle Family
 
 Not every workspace starts with an existing Git repository.
 
-The Oracle PL/SQL Demo workspace is a concrete example of what Workspace Manager enables: a safe local environment for learning Oracle, understanding existing PL/SQL, experimenting freely, onboarding new developers, and validating ideas before touching shared environments.
+The Oracle family shows how repository discovery, onboarding documentation, and reusable development environments work together:
+
+```text
+Oracle PL/SQL Demo
+    ↓
+Oracle APEX Demo
+    ↓
+Oracle APEXlang Demo
+```
+
+- Oracle PL/SQL Demo: Oracle onboarding foundation for learning SQLcl, schema objects, procedures, triggers, and local Oracle workflows safely.
+- Oracle APEX Demo: browser-based Oracle application development with Oracle Database Free, ORDS, Oracle APEX, and SQLcl in a reproducible local environment.
+- Oracle APEXlang Demo: source-controlled Oracle APEX workflow with export, validation, import, and team onboarding assets.
+
+Start with Oracle PL/SQL Demo first, then continue into APEX, then APEXlang.
 
 Many Oracle teams rely heavily on shared development or staging databases.
 
-The Oracle PL/SQL Demo workspace provides a local environment where developers can learn, experiment, troubleshoot, and understand PL/SQL without affecting shared systems.
+The Oracle family provides local environments where developers can learn, experiment, troubleshoot, and understand Oracle workflows without affecting shared systems.
 
-It can be created in minutes, reset when needed, and reused as a repeatable onboarding and practice environment.
+These workspaces can be created in minutes, reset when needed, and reused as repeatable onboarding and practice environments.
 
 Supporting tools and content include:
 
 - Oracle Database Free
+- Oracle APEX
+- Oracle REST Data Services (ORDS)
 - SQLcl
 - SQL*Plus
 - SQL Developer integration
 - sample schema and data
 - PL/SQL procedures and triggers
-- guided tutorials
+- guided tutorials and lifecycle docs
 - AI-assisted PL/SQL explanation
+- source-controlled APEX export/import assets
 
 Developers can:
 
 - learn Oracle tooling
 - understand existing PL/SQL
+- learn browser-based Oracle application development
 - experiment with queries and schema changes
+- review exported APEX artifacts in Git
 - prototype ideas safely
 - validate concepts before touching shared environments
 
 The environment can be reset and recreated at any time.
 
-**Learn more:** [Oracle PL/SQL Demo Workspace](docs/oracle-demo.md)
+Learn more:
+
+- [Oracle PL/SQL Demo](docs/oracle-plsql-demo.md)
+- [Oracle APEX Demo](docs/oracle-apex-demo.md)
+- [Oracle APEXlang Demo](docs/oracle-apexlang-demo.md)
+- [Oracle Lifecycle Workflows](docs/oracle-lifecycle-workflows.md)
 
 ## Featured Workspace: Documentation Features
 
@@ -144,6 +186,12 @@ Each generated workspace also includes validation and demo scripts so the toolch
 OpenCode Stuff packages tools, documentation, automation, and AI into reusable workspaces that can be opened on another machine with minimal setup.
 
 A workspace is the durable body of work. A runtime is the replaceable tool environment. A session is the temporary execution where work happens.
+
+The product model is:
+
+- durable workspaces
+- repository onboarding
+- reusable development environments
 
 Recommended for existing projects: use the [Existing Git Checkout Workflow](docs/walkthrough/existing-git-checkout.md) to create an isolated workspace branch instead of working directly on `main`.
 
@@ -262,7 +310,19 @@ Read more:
 - [Workspace YAML](docs/workspace-yaml.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Fact Sheet](docs/fact-sheet.md)
-- [Oracle PL/SQL Demo Workspace](docs/oracle-demo.md)
+- [Oracle PL/SQL Demo](docs/oracle-plsql-demo.md)
+- [Oracle APEX Demo](docs/oracle-apex-demo.md)
+- [Oracle APEXlang Demo](docs/oracle-apexlang-demo.md)
+- [Oracle Lifecycle Workflows](docs/oracle-lifecycle-workflows.md)
+- [Team Onboarding](docs/team-onboarding.md)
+- [Sharing Oracle Workspaces](docs/sharing-oracle-workspaces.md)
+
+### Onboarding Guidance
+
+- [Existing Workspace Discovery](#existing-workspace-discovery)
+- [Workspace YAML](docs/workspace-yaml.md)
+- [AGENTS.md Guide](docs/agents-guide.md)
+- [AGENTS.md](AGENTS.md)
 
 ## Learn More
 

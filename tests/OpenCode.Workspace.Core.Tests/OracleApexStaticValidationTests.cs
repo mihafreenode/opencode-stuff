@@ -27,9 +27,37 @@ public sealed class OracleApexStaticValidationTests
         Assert.DoesNotContain("oracle-apex-demo", plsql.Features);
         Assert.DoesNotContain("oracle-apexlang-demo", plsql.Features);
 
+        Assert.Contains("oracle-demo", apex.Features);
+        Assert.Contains("oracle-apex-demo", apex.Features);
         Assert.Contains("oracle-ords", apex.Services);
+
+        Assert.Contains("oracle-demo", apexlang.Features);
+        Assert.Contains("oracle-apex-demo", apexlang.Features);
         Assert.Contains("oracle-ords", apexlang.Services);
         Assert.Contains("oracle-apexlang-demo", apexlang.Features);
+    }
+
+    [Fact]
+    public void OracleTemplates_EncodeApexlangExtendsApexSemantics()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var templates = provider.LoadTemplates();
+
+        var plsql = templates.Single(template => template.Id == "oracle-plsql-demo");
+        var apex = templates.Single(template => template.Id == "oracle-apex-demo");
+        var apexlang = templates.Single(template => template.Id == "oracle-apexlang-demo");
+
+        Assert.Equal(["core", "oracle-demo"], plsql.Features);
+        Assert.Equal(["oracle-demo"], plsql.Services);
+
+        Assert.Contains("oracle-demo", apex.Features);
+        Assert.Contains("oracle-apex-demo", apex.Features);
+        Assert.Equal(["oracle-demo", "oracle-ords"], apex.Services);
+
+        Assert.Contains("oracle-demo", apexlang.Features);
+        Assert.Contains("oracle-apex-demo", apexlang.Features);
+        Assert.Contains("oracle-apexlang-demo", apexlang.Features);
+        Assert.Equal(["oracle-demo", "oracle-ords"], apexlang.Services);
     }
 
     [Fact]
@@ -127,21 +155,33 @@ public sealed class OracleApexStaticValidationTests
         var beyondPlsqlArticle = File.ReadAllText(Path.Combine(repoRoot, "docs", "articles", "beyond-plsql-oracle-apex.md"));
         var lifecycleDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-lifecycle-workflows.md"));
         var sharingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "sharing-oracle-workspaces.md"));
+        var teamOnboardingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "team-onboarding.md"));
+        var agentsGuideDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "agents-guide.md"));
 
         Assert.Contains("Oracle PL/SQL Demo", plsqlDoc);
         Assert.Contains("Oracle APEX Demo", apexDoc);
+        Assert.Contains("Oracle APEX Demo extends the Oracle PL/SQL path", apexDoc);
         Assert.Contains("Oracle APEXlang Demo", apexLangDoc);
+        Assert.Contains("source-controlled Oracle APEX workflow", apexLangDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Open Application Specification Language", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("From Oracle Demo to Oracle Onboarding", onboardingArticle);
         Assert.Contains("Beyond PL/SQL", beyondPlsqlArticle);
-        Assert.Contains("workflow", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Export", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Validate", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Git Review", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Import", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("source of truth", onboardingArticle, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Run Tutorial", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AGENTS.md Guide", agentsGuideDoc);
+        Assert.Contains("Workspace Discovered", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("University of Maribor", apexDoc);
         Assert.DoesNotContain("University of Maribor", plsqlDoc);
         Assert.DoesNotContain("University of Maribor", apexLangDoc);
 
-        foreach (var content in new[] { plsqlDoc, apexDoc, apexLangDoc, onboardingArticle, beyondPlsqlArticle, lifecycleDoc, sharingDoc })
+        foreach (var content in new[] { plsqlDoc, apexDoc, apexLangDoc, onboardingArticle, beyondPlsqlArticle, lifecycleDoc, sharingDoc, teamOnboardingDoc, agentsGuideDoc })
         {
             Assert.DoesNotContain("already verified", content, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("runtime validation is complete", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("accepts Oracle license", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("redistribute Oracle binaries", content, StringComparison.OrdinalIgnoreCase);
         }
