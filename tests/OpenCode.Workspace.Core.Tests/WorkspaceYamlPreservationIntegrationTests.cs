@@ -129,7 +129,7 @@ x-company:
     {
         var processRunner = new ProcessRunner();
         var catalog = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(catalog.LoadFeatures(), catalog.LoadServices());
+        var resolver = new WorkspaceResolver(catalog.LoadFeatures(), catalog.LoadServices(), catalog.LoadCapabilities());
         var ignorePolicy = new WorkspaceIgnorePolicyService();
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),

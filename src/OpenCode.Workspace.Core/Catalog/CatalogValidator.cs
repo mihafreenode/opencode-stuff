@@ -9,6 +9,27 @@ namespace OpenCode.Workspace.Core.Catalog;
 /// </summary>
 public sealed class CatalogValidator
 {
+    public IReadOnlyList<string> ValidateCapabilities(IEnumerable<CapabilityManifest> capabilities)
+    {
+        var errors = new List<string>();
+        ValidateUniqueIds(capabilities.Select(capability => capability.Id), "capability", errors);
+
+        foreach (var capability in capabilities)
+        {
+            if (string.IsNullOrWhiteSpace(capability.Id))
+            {
+                errors.Add("Capability manifest is missing 'id'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(capability.DisplayName))
+            {
+                errors.Add($"Capability '{capability.Id}' is missing 'displayName'.");
+            }
+        }
+
+        return errors;
+    }
+
     public IReadOnlyList<string> ValidateFeatures(IEnumerable<FeatureManifest> features)
     {
         var errors = new List<string>();
@@ -50,6 +71,25 @@ public sealed class CatalogValidator
             if (string.IsNullOrWhiteSpace(service.Image))
             {
                 errors.Add($"Service '{service.Id}' is missing 'image'.");
+            }
+        }
+
+        return errors;
+    }
+
+    public IReadOnlyList<string> ValidateFeatures(IEnumerable<FeatureManifest> features, IEnumerable<CapabilityManifest> capabilities)
+    {
+        var errors = ValidateFeatures(features).ToList();
+        var capabilityIds = capabilities.Select(capability => capability.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var feature in features)
+        {
+            foreach (var capabilityId in feature.Capabilities)
+            {
+                if (!capabilityIds.Contains(capabilityId))
+                {
+                    errors.Add($"Feature '{feature.Id}' references unknown capability '{capabilityId}'.");
+                }
             }
         }
 

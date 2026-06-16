@@ -128,6 +128,7 @@ public sealed class WindowsDockerIntegrationTests
             {
                 Definition = definition,
                 Features = Array.Empty<FeatureManifest>(),
+                Capabilities = Array.Empty<CapabilityManifest>(),
                 Services = Array.Empty<ServiceManifest>(),
                 AptPackages = Array.Empty<string>(),
                 NpmPackages = Array.Empty<string>(),
@@ -492,7 +493,7 @@ public sealed class WindowsDockerIntegrationTests
     {
         var processRunner = new ProcessRunner();
         var catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices());
+        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities());
         var ignorePolicy = new WorkspaceIgnorePolicyService();
 
         return new WorkspaceOrchestrator(

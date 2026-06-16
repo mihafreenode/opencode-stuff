@@ -1,0 +1,54 @@
+id: analytics
+displayName: Analytics
+description: Spreadsheet, tabular, and report-oriented analysis workflows supported by the workspace toolchain.
+sortOrder: 60
+onboardingRelevance: Useful when the workspace is expected to inspect data, turn spreadsheets into durable outputs, or automate analytical reporting.
+whatItIs: This capability highlights the analysis-oriented workflows supported by the workspace, especially around spreadsheets, tabular documents, PDF deliverables, and derived reporting artifacts.
+whyUseIt: Use it when you need to inspect spreadsheets, summarize business data, or move from raw documents into analytical reporting.
+availableTools:
+  - name: Python
+    purpose: General-purpose scripting for analytical pipelines.
+    supportedWorkflows:
+      - Data processing
+      - Spreadsheet automation
+      - Report preparation
+    commonUseCases:
+      - Parse exported data
+      - Build analysis helpers
+  - name: LibreOffice
+    purpose: Spreadsheet and Office document processing.
+    supportedWorkflows:
+      - Spreadsheet conversion
+      - Office-to-PDF export
+      - Headless office workflows
+    commonUseCases:
+      - Inspect XLSX inputs
+      - Convert spreadsheet outputs
+  - name: Reporting Tooling
+    purpose: Turn analytical results into durable reports.
+    supportedWorkflows:
+      - PDF reporting
+      - Document packaging
+      - Reproducible reporting
+    commonUseCases:
+      - Build business reports
+      - Package analytical findings
+typicalTasks:
+  - Process spreadsheet exports and turn them into readable reports.
+  - Combine tabular analysis with PDF or Office deliverables.
+  - Prepare repeatable analytical outputs for teammates.
+examples:
+  - Convert spreadsheet or Office content into PDF reports.
+  - Use Python and document tooling to prepare dashboard or report inputs.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Generated guide for reporting-oriented document workflows.
+relatedCapabilities:
+  - reporting
+  - document-processing
+  - documentation
+agentStartHere:
+  - label: Documentation Workspace Guide
+    path: docs/documentation-features.md
+    description: Review the analysis and reporting toolchain.

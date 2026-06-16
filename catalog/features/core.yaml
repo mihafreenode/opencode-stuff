@@ -7,6 +7,8 @@ id: core
 displayName: Core
 description: Base tools required for a usable OpenCode workspace.
 alwaysEnabled: true
+capabilities:
+  - repository
 dependencies:
   apt:
     - build-essential

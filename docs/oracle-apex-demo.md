@@ -22,6 +22,8 @@ Oracle APEXlang Demo
 
 Oracle APEX Demo is the middle step in that progression. It keeps PL/SQL foundations visible while adding browser-based application development on top.
 
+Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
+
 ## Customer Orders Demo
 
 Use the shared sample domain to build a small `Customer Orders Demo` application around:

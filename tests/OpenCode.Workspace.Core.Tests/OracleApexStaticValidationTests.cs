@@ -133,7 +133,7 @@ public sealed class OracleApexStaticValidationTests
     public void OracleProvisioningScript_ContainsApexStagesOnlyForApexVariants()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
         var expander = new TemplateExpander();
         var generator = new ProvisioningScriptGenerator();
 
@@ -244,7 +244,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(OracleTemplateTestHelpers.CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = OracleTemplateTestHelpers.CreateTempRoot($"{workspaceName}-root");
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
         var template = provider.LoadTemplates().Single(item => item.Id == templateId);
         var definition = new TemplateExpander().Expand(workspaceName, template);
         return OracleTemplateTestHelpers.CreateOrchestrator(tempRoot, resolver).CreateWorkspace(tempRoot, definition);

@@ -73,6 +73,11 @@ internal static class OracleWorkspaceGeneratedContent
 
 Use this workspace when the goal is learning PL/SQL in a safe local Oracle environment with reproducible setup.
 
+Read more:
+
+- `docs/capabilities/oracle.md`
+- `docs/capabilities/repository.md`
+
 ### Included
 
 - Oracle Database Free
@@ -137,6 +142,11 @@ Oracle APEXlang Demo
 
 This workspace extends the Oracle PL/SQL demo with Oracle APEX and ORDS so onboarding can continue from database objects into local low-code application development.
 
+Read more:
+
+- `docs/capabilities/oracle.md`
+- `docs/oracle-tools/README.md`
+
 ### Included
 
 - Oracle Database Free
@@ -195,6 +205,11 @@ This workspace provides the reproducible environment and automation, while the b
 ## Oracle APEXlang Demo
 
 This workspace demonstrates a source-controlled Oracle APEX workflow.
+
+Read more:
+
+- `docs/capabilities/oracle.md`
+- `docs/oracle-tools/README.md`
 
 Oracle now uses `APEXlang` as the name for the Open Application Specification Language introduced in APEX 26.1.
 
@@ -316,6 +331,13 @@ Start Learning
 - `scripts/`
 - `docs/`
 - `AGENTS.md`
+
+### Capability Discovery
+
+Start here:
+
+- `docs/capabilities/README.md`
+- `docs/capabilities/oracle.md`
 
 No manual recreation of Oracle settings should be required when the repository already contains those files.
 """;

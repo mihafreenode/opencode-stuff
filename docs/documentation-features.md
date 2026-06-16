@@ -2,6 +2,14 @@
 
 The `Documentation Features` workspace profile turns a stock Ubuntu workspace into a complete documentation and reporting environment.
 
+Read more:
+
+- `docs/capabilities/README.md`
+- `docs/capabilities/documentation.md`
+- `docs/capabilities/document-processing.md`
+- `docs/capabilities/analytics.md`
+- `docs/capabilities/reporting.md`
+
 Node.js 22 LTS is the default runtime baseline for this workspace and for newly created workspaces in general.
 
 It is intended for:
@@ -103,3 +111,11 @@ The demo script produces:
 - PDF metadata inspection reports
 
 Outputs are written under `artifacts/documentation-demo/`.
+
+## Capability Discovery
+
+When OCR or spell checking is enabled, also review:
+
+- `docs/capabilities/ocr.md`
+- `docs/capabilities/spell-checking.md`
+- `docs/capabilities/localization.md`

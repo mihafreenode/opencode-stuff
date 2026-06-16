@@ -3,6 +3,8 @@
 id: playwright
 displayName: Playwright
 description: Browser automation support for testing and scraping workflows.
+capabilities:
+  - testing
 dependencies:
   npm:
     - playwright

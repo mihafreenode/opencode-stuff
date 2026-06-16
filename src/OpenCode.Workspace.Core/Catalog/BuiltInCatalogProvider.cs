@@ -24,6 +24,7 @@ public sealed class BuiltInCatalogProvider
     }
 
     public IReadOnlyList<FeatureManifest> LoadFeatures() => LoadAll<FeatureManifest>("features");
+    public IReadOnlyList<CapabilityManifest> LoadCapabilities() => LoadAll<CapabilityManifest>("capabilities");
     public IReadOnlyList<ServiceManifest> LoadServices() => LoadAll<ServiceManifest>("services");
     public IReadOnlyList<SkillManifest> LoadSkills() => LoadAll<SkillManifest>("skills");
     public IReadOnlyList<McpManifest> LoadMcpModules() => LoadAll<McpManifest>("mcp");

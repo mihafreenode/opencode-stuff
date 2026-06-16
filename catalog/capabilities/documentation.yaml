@@ -1,0 +1,52 @@
+id: documentation
+displayName: Documentation
+description: Workspace-local authoring, validation, and onboarding material for manuals, tutorials, reports, and durable project guidance.
+sortOrder: 20
+onboardingRelevance: Useful early when the workspace is documentation-heavy or when you need authored examples instead of inferring workflows from tooling alone.
+whatItIs: This capability collects the authored guides, generated examples, and validation entry points that explain how to produce readable project documentation inside the workspace.
+whyUseIt: Use it when you want the shortest path from workspace attach to understanding the available documentation workflows and their example files.
+availableTools:
+  - name: Documentation Guides
+    purpose: Explain the workspace-specific authoring and validation flow.
+    supportedWorkflows:
+      - Onboarding
+      - Example-driven learning
+      - Capability navigation
+    commonUseCases:
+      - Find the first docs to read
+      - Discover available examples and scripts
+  - name: Validation Scripts
+    purpose: Verify documentation and rendering tooling quickly.
+    supportedWorkflows:
+      - Tool smoke checks
+      - First-run validation
+      - Regression verification
+    commonUseCases:
+      - Confirm the workspace is ready for document work
+      - Demonstrate the installed toolchain
+typicalTasks:
+  - Read the capability catalog and the documentation workspace guide before building reports or manuals.
+  - Run documentation validation scripts to confirm the toolchain is installed and ready.
+  - Use generated sample inputs as a starting point for new documents.
+examples:
+  - Start with docs/documentation-features.md and scripts/validate-documentation-tooling.sh.
+  - Use samples/documentation/report.md and report.html as first-run examples.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Overview of the generated documentation workspace assets.
+  - label: Capability Catalog
+    path: README.md
+    description: Entry point for all enabled capabilities.
+relatedCapabilities:
+  - document-processing
+  - analytics
+  - reporting
+  - testing
+agentStartHere:
+  - label: Capability Catalog
+    path: docs/capabilities/README.md
+    description: Review enabled capabilities and example links.
+  - label: Documentation Workspace Guide
+    path: docs/documentation-features.md
+    description: Follow the documentation onboarding path.

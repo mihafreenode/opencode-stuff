@@ -29,6 +29,8 @@ Oracle APEXlang Demo
 
 In practical terms, APEXlang extends APEX, and APEX extends the PL/SQL path.
 
+Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
+
 ## Try It Yourself
 
 1. export the sample application with `scripts/export-apex.sh`

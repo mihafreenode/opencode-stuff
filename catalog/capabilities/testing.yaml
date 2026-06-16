@@ -1,0 +1,45 @@
+id: testing
+displayName: Testing
+description: Validation, regression, smoke, and browser-automation workflows available inside the workspace.
+sortOrder: 80
+onboardingRelevance: Useful when the fastest way to trust the workspace is to run the supported validation and smoke-test flows.
+whatItIs: This capability captures the testing and validation workflows supported by the workspace, including regression checks, smoke tests, and Playwright-based browser automation when installed.
+whyUseIt: Use it when you want to verify the workspace toolchain quickly or automate browser and document validation tasks.
+availableTools:
+  - name: Playwright
+    purpose: Browser automation for smoke tests, regression checks, and capture workflows.
+    supportedWorkflows:
+      - Browser regression testing
+      - UI smoke testing
+      - Automated validation
+    commonUseCases:
+      - Verify rendered output
+      - Reproduce browser flows
+  - name: Workspace Validation Scripts
+    purpose: Quick capability and environment smoke tests.
+    supportedWorkflows:
+      - Regression testing
+      - Tool availability checks
+      - Documentation smoke testing
+    commonUseCases:
+      - Validate installed tools
+      - Confirm workspace readiness
+typicalTasks:
+  - Run regression testing or smoke testing after reprovision or update.
+  - Use Playwright when browser automation is required.
+  - Validate documentation and rendering toolchains before relying on generated outputs.
+examples:
+  - Run documentation smoke tests before generating deliverables.
+  - Use Playwright or equivalent tooling to validate browser-based workflows.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Includes validation and demo scripts for documentation-heavy workspaces.
+relatedCapabilities:
+  - documentation
+  - reporting
+  - oracle
+agentStartHere:
+  - label: Capability Catalog
+    path: docs/capabilities/README.md
+    description: Review testing and validation workflows before running large changes.

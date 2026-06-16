@@ -1,0 +1,59 @@
+id: document-processing
+displayName: Document Processing
+description: Conversion, PDF generation, Office processing, diagram rendering, and document validation workflows.
+sortOrder: 30
+onboardingRelevance: Useful when the workspace needs reliable PDF, Office, or document-conversion workflows without tool discovery work.
+whatItIs: This capability exposes the installed tools for Markdown, HTML, PDF, Office documents, diagrams, and document inspection so an attached agent can immediately understand the available conversion paths.
+whyUseIt: Use it when you need to convert Office files, generate PDFs, inspect document output, or automate repeatable documentation workflows.
+availableTools:
+  - name: Pandoc
+    purpose: Convert Markdown and other text formats into PDF and other deliverables.
+    supportedWorkflows:
+      - Markdown to PDF
+      - Format conversion
+      - Document automation
+    commonUseCases:
+      - Build manuals
+      - Export reports
+  - name: LibreOffice
+    purpose: Process Office documents and convert spreadsheet or word-processing files.
+    supportedWorkflows:
+      - Office document conversion
+      - Spreadsheet export
+      - Headless batch processing
+    commonUseCases:
+      - Convert DOCX or XLSX files
+      - Produce PDF from Office formats
+  - name: PDF Tooling
+    purpose: Inspect, validate, and transform PDFs.
+    supportedWorkflows:
+      - PDF inspection
+      - Metadata checks
+      - Conversion support
+    commonUseCases:
+      - Verify generated PDFs
+      - Extract or compare PDF metadata
+typicalTasks:
+  - Convert Markdown, HTML, or Office documents into PDF deliverables.
+  - Inspect PDF output and metadata after generation.
+  - Use repeatable conversion scripts instead of manual desktop workflows.
+examples:
+  - Convert samples/documentation/report.md into PDF.
+  - Convert Office documents or spreadsheets through LibreOffice in headless mode.
+  - Review PDF metadata and validation output under artifacts/documentation-demo/.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Generated guide for document-processing workflows.
+  - label: Sample Markdown Report
+    path: ../../samples/documentation/report.md
+    description: Example input for PDF generation.
+relatedCapabilities:
+  - documentation
+  - analytics
+  - reporting
+  - ocr
+agentStartHere:
+  - label: Documentation Workspace Guide
+    path: docs/documentation-features.md
+    description: Start with the generated overview and validation commands.

@@ -150,7 +150,7 @@ public sealed class WorkspaceRefreshStateTests
                 new WorkspaceYamlService(),
                 new WorkspaceDiscoveryService(),
                 new WorkspaceRepository(AppDataRoot),
-                new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices()),
+                new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities()),
                 new ComposeGenerator(),
                 new EnvironmentFileGenerator(),
                 new ProvisioningScriptGenerator(),

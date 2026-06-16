@@ -1,0 +1,81 @@
+id: oracle
+displayName: Oracle
+description: Oracle Database Free, SQLcl, ORDS, APEX, APEXlang, and Oracle onboarding workflows.
+sortOrder: 100
+onboardingRelevance: Start here for Oracle-enabled workspaces so you can follow the intended PL/SQL to APEX to APEXlang progression instead of searching the repository.
+whatItIs: This capability is the Oracle-specific discovery layer for database, APEX, and source-controlled APEXlang workflows in the workspace.
+whyUseIt: Use it when the workspace includes Oracle services or Oracle onboarding assets and you need to understand the official tools, examples, and learning path quickly.
+availableTools:
+  - name: SQLcl
+    purpose: Oracle command-line client for scripts, schema work, and APEX automation.
+    supportedWorkflows:
+      - PL/SQL development
+      - Schema work
+      - APEX automation
+    commonUseCases:
+      - Query demo schemas
+      - Run Oracle scripts
+  - name: Data Pump
+    purpose: Oracle schema and data export/import workflow.
+    supportedWorkflows:
+      - Schema export
+      - Environment snapshots
+      - Data movement
+    commonUseCases:
+      - Backup onboarding snapshots
+      - Refresh sample environments
+  - name: ORDS and APEX
+    purpose: Browser-accessible Oracle APEX development and HTTP access.
+    supportedWorkflows:
+      - Oracle APEX onboarding
+      - REST and browser validation
+      - Sample application work
+    commonUseCases:
+      - Open APEX Builder
+      - Validate ORDS reachability
+  - name: APEXlang
+    purpose: Source-controlled Oracle APEX export, validation, review, and import.
+    supportedWorkflows:
+      - Export and import
+      - Git review
+      - Source-controlled APEX changes
+    commonUseCases:
+      - Review application changes in Git
+      - Validate exported APEX artifacts
+typicalTasks:
+  - Start with PL/SQL onboarding before moving into APEX and then APEXlang.
+  - Use SQLcl, ORDS, and Oracle docs to validate the local Oracle environment.
+  - Review Oracle examples, lifecycle docs, and source-controlled workflows from the generated guides.
+examples:
+  - Follow docs/oracle-plsql-demo.md, then docs/oracle-apex-demo.md, then docs/oracle-apexlang-demo.md.
+  - Use docs/oracle-tools/README.md as the Oracle tool index.
+relatedDocumentation:
+  - label: Oracle Tools Index
+    path: ../oracle-tools/README.md
+    description: Oracle-specific catalog for SQLcl, Data Pump, ORDS, SQL Developer, APEX export/import, and APEXlang.
+  - label: Oracle Samples
+    path: ../oracle-samples.md
+    description: Shared sample domain and progression across Oracle workspaces.
+  - label: Oracle PL/SQL Demo
+    path: ../oracle-plsql-demo.md
+    description: PL/SQL-first onboarding entry point.
+  - label: Oracle APEX Demo
+    path: ../oracle-apex-demo.md
+    description: Browser-based Oracle APEX onboarding step.
+  - label: Oracle APEXlang Demo
+    path: ../oracle-apexlang-demo.md
+    description: Source-controlled APEX workflow step.
+relatedCapabilities:
+  - repository
+  - testing
+agentStartHere:
+  - label: Oracle Tools Index
+    path: docs/oracle-tools/README.md
+    description: Start with the Oracle tool catalog.
+  - label: Oracle Samples
+    path: docs/oracle-samples.md
+    description: Review the shared Oracle sample domain.
+learningProgression:
+  - PL/SQL
+  - APEX
+  - APEXlang

@@ -25,6 +25,7 @@ public sealed class GeneratedArtifactsTests
         {
             Definition = definition,
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = new[]
             {
                 new ServiceManifest
@@ -90,6 +91,7 @@ public sealed class GeneratedArtifactsTests
         {
             Definition = definition,
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = Array.Empty<ServiceManifest>(),
             AptPackages = Array.Empty<string>(),
             NpmPackages = Array.Empty<string>(),
@@ -122,6 +124,7 @@ public sealed class GeneratedArtifactsTests
         {
             Definition = definition,
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = new[]
             {
                 new ServiceManifest
@@ -163,6 +166,7 @@ public sealed class GeneratedArtifactsTests
         {
             Definition = definition,
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = new[]
             {
                 new ServiceManifest
@@ -217,6 +221,7 @@ public sealed class GeneratedArtifactsTests
                 },
             },
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = Array.Empty<ServiceManifest>(),
             AptPackages = new[] { "git", "curl" },
             NpmPackages = Array.Empty<string>(),
@@ -261,6 +266,7 @@ public sealed class GeneratedArtifactsTests
                 },
             },
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = Array.Empty<ServiceManifest>(),
             AptPackages = new[] { "curl", "rlwrap", "unzip", "libaio1" },
             NpmPackages = Array.Empty<string>(),
@@ -321,6 +327,7 @@ public sealed class GeneratedArtifactsTests
                 Services = new List<string> { "oracle-demo", "oracle-ords" },
             },
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = Array.Empty<ServiceManifest>(),
             AptPackages = new[] { "curl", "rlwrap", "unzip" },
             NpmPackages = Array.Empty<string>(),
@@ -352,6 +359,7 @@ public sealed class GeneratedArtifactsTests
                 },
             },
             Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
             Services = Array.Empty<ServiceManifest>(),
             AptPackages = new[] { "pandoc", "fonts-crosextra-carlito", "fonts-jetbrains-mono" },
             NpmPackages = new[] { "playwright", "@mermaid-js/mermaid-cli" },

@@ -3,6 +3,9 @@
 id: spellcheck
 displayName: Spellcheck
 description: Hunspell dictionaries for English and Slovenian.
+capabilities:
+  - spell-checking
+  - localization
 dependencies:
   apt:
     - hunspell

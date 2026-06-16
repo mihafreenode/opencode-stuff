@@ -669,6 +669,15 @@ public sealed class WorkspaceOrchestrator
                 Directory.CreateDirectory(directory);
             }
 
+            if (string.Equals(additionalFile.Key, "AGENTS.md", StringComparison.OrdinalIgnoreCase))
+            {
+                var existingContent = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
+                var resolved = _workspaceResolver.Resolve(definition);
+                var mergedContent = _workspaceContentGenerator.BuildAgentsDocument(resolved, existingContent);
+                File.WriteAllText(fullPath, mergedContent.Replace("\r\n", "\n", StringComparison.Ordinal));
+                continue;
+            }
+
             File.WriteAllText(fullPath, additionalFile.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
             EnsureGeneratedScriptPermissions(fullPath);
         }
@@ -744,7 +753,7 @@ public sealed class WorkspaceOrchestrator
         var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration();
         var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths);
         var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition);
-        var additionalFiles = _workspaceContentGenerator.Generate(definition);
+        var additionalFiles = _workspaceContentGenerator.Generate(resolved);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);
         var desiredStateHash = WorkspaceAppliedStateService.ComputeHash(
             workspaceYaml,

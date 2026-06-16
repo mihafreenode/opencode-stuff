@@ -9,11 +9,18 @@ namespace OpenCode.Workspace.Core.Catalog;
 public sealed class WorkspaceResolver
 {
     private readonly IReadOnlyDictionary<string, FeatureManifest> _featuresById;
+    private readonly IReadOnlyDictionary<string, CapabilityManifest> _capabilitiesById;
     private readonly IReadOnlyDictionary<string, ServiceManifest> _servicesById;
 
     public WorkspaceResolver(IEnumerable<FeatureManifest> features, IEnumerable<ServiceManifest> services)
+        : this(features, services, Array.Empty<CapabilityManifest>())
+    {
+    }
+
+    public WorkspaceResolver(IEnumerable<FeatureManifest> features, IEnumerable<ServiceManifest> services, IEnumerable<CapabilityManifest> capabilities)
     {
         _featuresById = features.ToDictionary(feature => feature.Id, StringComparer.OrdinalIgnoreCase);
+        _capabilitiesById = capabilities.ToDictionary(capability => capability.Id, StringComparer.OrdinalIgnoreCase);
         _servicesById = services.ToDictionary(service => service.Id, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -39,6 +46,25 @@ public sealed class WorkspaceResolver
             }
         }
 
+        var selectedCapabilities = new List<CapabilityManifest>();
+        foreach (var capabilityId in selectedFeatures.SelectMany(feature => feature.Capabilities))
+        {
+            if (!_capabilitiesById.TryGetValue(capabilityId, out var capability))
+            {
+                throw new InvalidOperationException($"Feature-selected capability '{capabilityId}' is missing from the built-in catalog.");
+            }
+
+            if (selectedCapabilities.All(existing => !string.Equals(existing.Id, capability.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedCapabilities.Add(capability);
+            }
+        }
+
+        selectedCapabilities = selectedCapabilities
+            .OrderBy(capability => capability.SortOrder)
+            .ThenBy(capability => capability.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var selectedServices = new List<ServiceManifest>();
         foreach (var serviceId in definition.Services)
         {
@@ -57,6 +83,7 @@ public sealed class WorkspaceResolver
         {
             Definition = definition,
             Features = selectedFeatures,
+            Capabilities = selectedCapabilities,
             Services = selectedServices,
             AptPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Apt).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
             NpmPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Npm).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),

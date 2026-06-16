@@ -11,13 +11,16 @@ public sealed class CatalogIntegrationTests
         var validator = new CatalogValidator();
 
         var features = provider.LoadFeatures();
+        var capabilities = provider.LoadCapabilities();
         var services = provider.LoadServices();
         var templates = provider.LoadTemplates();
 
         Assert.NotEmpty(features);
+        Assert.NotEmpty(capabilities);
         Assert.NotEmpty(services);
         Assert.NotEmpty(templates);
-        Assert.Empty(validator.ValidateFeatures(features));
+        Assert.Empty(validator.ValidateCapabilities(capabilities));
+        Assert.Empty(validator.ValidateFeatures(features, capabilities));
         Assert.Empty(validator.ValidateServices(services));
         Assert.Empty(validator.ValidateTemplates(templates, features, services));
     }
@@ -58,7 +61,7 @@ public sealed class CatalogIntegrationTests
     public void WorkspaceResolver_DeduplicatesDependenciesAndAlwaysEnablesCore()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
 
         var resolved = resolver.Resolve(new OpenCode.Workspace.Core.Models.WorkspaceDefinition
         {

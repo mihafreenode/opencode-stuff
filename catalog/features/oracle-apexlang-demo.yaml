@@ -4,6 +4,8 @@ id: oracle-apexlang-demo
 displayName: Oracle APEXlang Demo Assets
 description: Source-controlled Oracle APEXlang export and import scripts, onboarding docs, and repository workflow helpers.
 alwaysEnabled: false
+capabilities:
+  - oracle
 dependencies:
   apt:
     - curl

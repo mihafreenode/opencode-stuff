@@ -1,0 +1,45 @@
+id: spell-checking
+displayName: Spell Checking
+description: Proofreading workflows based on installed dictionaries and workspace-local text processing.
+sortOrder: 50
+onboardingRelevance: Useful when document quality, proofreading, or language-sensitive review matters early in the workflow.
+whatItIs: This capability describes the installed spell-checking tooling and the language-aware proofreading workflows available in the workspace.
+whyUseIt: Use it when you need repeatable proofreading for extracted text, generated reports, or multilingual content.
+availableTools:
+  - name: Hunspell
+    purpose: Dictionary-based spell checking for workspace text.
+    supportedWorkflows:
+      - Proofreading
+      - Language validation
+      - Post-OCR cleanup
+    commonUseCases:
+      - Check English content
+      - Check Slovenian content
+  - name: Workspace Text Pipelines
+    purpose: Combine extracted or generated text with spell-check workflows.
+    supportedWorkflows:
+      - OCR cleanup
+      - Report proofreading
+      - Translation review support
+    commonUseCases:
+      - Validate OCR output
+      - Review generated manuals
+typicalTasks:
+  - Proofread English and Slovenian text after conversion or OCR.
+  - Run dictionary checks on documentation and reports.
+  - Use spell-checking as part of localization or review workflows.
+examples:
+  - Check OCR-extracted text before publishing a searchable PDF.
+  - Validate multilingual report drafts before handoff.
+relatedDocumentation:
+  - label: Capability Catalog
+    path: README.md
+    description: Start from the capability index and follow related language workflows.
+relatedCapabilities:
+  - localization
+  - ocr
+  - documentation
+agentStartHere:
+  - label: Capability Catalog
+    path: docs/capabilities/README.md
+    description: Review installed language and proofreading capabilities.

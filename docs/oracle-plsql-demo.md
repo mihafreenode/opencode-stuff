@@ -37,6 +37,8 @@ Recommended order:
 5. open the workspace
 6. run the generated Oracle tutorial or verification scripts before moving to shared environments
 
+Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
+
 Progression:
 
 ```text

@@ -9,6 +9,7 @@ public sealed class ResolvedWorkspace
 {
     public required WorkspaceDefinition Definition { get; init; }
     public required IReadOnlyList<FeatureManifest> Features { get; init; }
+    public required IReadOnlyList<CapabilityManifest> Capabilities { get; init; }
     public required IReadOnlyList<ServiceManifest> Services { get; init; }
     public required IReadOnlyList<string> AptPackages { get; init; }
     public required IReadOnlyList<string> NpmPackages { get; init; }

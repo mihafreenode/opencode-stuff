@@ -1,0 +1,56 @@
+id: repository
+displayName: Repository Workflows
+description: Git-backed workspace conventions, AGENTS guidance, save points, working-copy flows, and durable repository onboarding.
+sortOrder: 10
+onboardingRelevance: Start here for workspace structure, safe working-copy habits, and how the repository describes its own environment.
+whatItIs: This capability covers the durable repository conventions that make a workspace self-describing, including workspace configuration, AGENTS guidance, save-point language, and generated workspace artifacts.
+whyUseIt: Use it first when you need to understand how to work safely in the repository before changing code, publishing work, or investigating generated files.
+availableTools:
+  - name: Git
+    purpose: Persistent history, working copies, save points, and publish workflows.
+    supportedWorkflows:
+      - Working copy creation
+      - Save point and publish flows
+      - Reviewable change history
+    commonUseCases:
+      - Preserve work before risky edits
+      - Review changes before publishing
+  - name: workspace.yaml
+    purpose: Canonical workspace intent and feature selection.
+    supportedWorkflows:
+      - Workspace discovery
+      - Runtime regeneration
+      - Capability catalog generation
+    commonUseCases:
+      - Understand enabled features quickly
+      - Change portable workspace behavior
+  - name: AGENTS.md
+    purpose: Repository-specific guidance for humans and AI agents.
+    supportedWorkflows:
+      - Onboarding
+      - Safety guidance
+      - Capability discovery entry point
+    commonUseCases:
+      - Learn local rules without scanning the repository
+      - Resume work after attach or reprovision
+typicalTasks:
+  - Inspect workspace intent through workspace.yaml and the capability catalog before searching the repository.
+  - Create or review Working Copies and Save Points before making significant changes.
+  - Use AGENTS.md and generated capability guidance to follow local repository rules.
+examples:
+  - Open AGENTS.md, then docs/capabilities/README.md, before searching for implementation details.
+  - Review generated files through their headers and edit workspace.yaml or catalog manifests instead of patching runtime artifacts directly.
+relatedDocumentation:
+  - label: Workspace Capability Catalog
+    path: README.md
+    description: Primary discovery index for enabled capabilities.
+  - label: AGENTS Guidance
+    path: ../../AGENTS.md
+    description: Repository-specific workflow and safety guidance.
+relatedCapabilities:
+  - documentation
+  - testing
+agentStartHere:
+  - label: AGENTS Guidance
+    path: docs/capabilities/README.md
+    description: Start with the capability catalog before searching the repository.

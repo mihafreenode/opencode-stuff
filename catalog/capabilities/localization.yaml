@@ -1,0 +1,45 @@
+id: localization
+displayName: Localization
+description: Language-aware workflows for multilingual content, dictionary validation, and text review.
+sortOrder: 90
+onboardingRelevance: Useful when the workspace handles multiple languages or needs post-OCR proofreading before publishing.
+whatItIs: This capability documents the multilingual review and language-sensitive workflows available in the workspace.
+whyUseIt: Use it when you need to validate localized content, proofread multilingual text, or support language-specific review workflows.
+availableTools:
+  - name: Hunspell Dictionaries
+    purpose: Spell checking for supported languages.
+    supportedWorkflows:
+      - Multilingual proofreading
+      - Dictionary validation
+      - Localization review
+    commonUseCases:
+      - Review English text
+      - Review Slovenian text
+  - name: OCR and Text Pipelines
+    purpose: Feed extracted text into localization-aware review flows.
+    supportedWorkflows:
+      - Post-OCR proofreading
+      - Translation review support
+      - Multilingual document cleanup
+    commonUseCases:
+      - Clean extracted text
+      - Review converted documents
+typicalTasks:
+  - Proofread multilingual documents before publishing.
+  - Validate supported language workflows after OCR or conversion.
+  - Use localization review as part of reporting and documentation pipelines.
+examples:
+  - Check Slovenian and English content after OCR extraction.
+  - Review language-sensitive report drafts before handoff.
+relatedDocumentation:
+  - label: Capability Catalog
+    path: README.md
+    description: Start from the enabled capability list and follow language-aware workflows.
+relatedCapabilities:
+  - spell-checking
+  - ocr
+  - documentation
+agentStartHere:
+  - label: Capability Catalog
+    path: docs/capabilities/README.md
+    description: Review multilingual and proofreading capabilities first.

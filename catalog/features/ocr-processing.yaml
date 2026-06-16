@@ -3,6 +3,8 @@
 id: ocr-processing
 displayName: OCR Processing
 description: OCR tooling for English and Slovenian documents.
+capabilities:
+  - ocr
 dependencies:
   apt:
     - tesseract-ocr

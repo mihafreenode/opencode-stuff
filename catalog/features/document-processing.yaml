@@ -3,6 +3,12 @@
 id: document-processing
 displayName: Document Processing
 description: End-to-end tooling for report generation, PDF conversion, diagrams, validation, and Windows-compatible document fonts.
+capabilities:
+  - documentation
+  - document-processing
+  - analytics
+  - reporting
+  - testing
 dependencies:
   apt:
     - pandoc

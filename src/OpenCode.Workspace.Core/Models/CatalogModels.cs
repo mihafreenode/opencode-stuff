@@ -21,6 +21,9 @@ public sealed class FeatureManifest
     [YamlMember(Alias = "alwaysEnabled")]
     public bool AlwaysEnabled { get; init; }
 
+    [YamlMember(Alias = "capabilities")]
+    public List<string> Capabilities { get; init; } = new();
+
     [YamlMember(Alias = "dependencies")]
     public DependencySet Dependencies { get; init; } = new();
 
@@ -134,6 +137,78 @@ public sealed class McpManifest
 
     [YamlMember(Alias = "displayName")]
     public string DisplayName { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "description")]
+    public string Description { get; init; } = string.Empty;
+}
+
+public sealed class CapabilityManifest
+{
+    [YamlMember(Alias = "id")]
+    public string Id { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "displayName")]
+    public string DisplayName { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "description")]
+    public string Description { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "sortOrder")]
+    public int SortOrder { get; init; }
+
+    [YamlMember(Alias = "onboardingRelevance")]
+    public string OnboardingRelevance { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "whatItIs")]
+    public string WhatItIs { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "whyUseIt")]
+    public string WhyUseIt { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "availableTools")]
+    public List<CapabilityToolManifest> AvailableTools { get; init; } = new();
+
+    [YamlMember(Alias = "typicalTasks")]
+    public List<string> TypicalTasks { get; init; } = new();
+
+    [YamlMember(Alias = "examples")]
+    public List<string> Examples { get; init; } = new();
+
+    [YamlMember(Alias = "relatedDocumentation")]
+    public List<CapabilityDocumentationLinkManifest> RelatedDocumentation { get; init; } = new();
+
+    [YamlMember(Alias = "relatedCapabilities")]
+    public List<string> RelatedCapabilities { get; init; } = new();
+
+    [YamlMember(Alias = "agentStartHere")]
+    public List<CapabilityDocumentationLinkManifest> AgentStartHere { get; init; } = new();
+
+    [YamlMember(Alias = "learningProgression")]
+    public List<string> LearningProgression { get; init; } = new();
+}
+
+public sealed class CapabilityToolManifest
+{
+    [YamlMember(Alias = "name")]
+    public string Name { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "purpose")]
+    public string Purpose { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "supportedWorkflows")]
+    public List<string> SupportedWorkflows { get; init; } = new();
+
+    [YamlMember(Alias = "commonUseCases")]
+    public List<string> CommonUseCases { get; init; } = new();
+}
+
+public sealed class CapabilityDocumentationLinkManifest
+{
+    [YamlMember(Alias = "label")]
+    public string Label { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "path")]
+    public string Path { get; init; } = string.Empty;
 
     [YamlMember(Alias = "description")]
     public string Description { get; init; } = string.Empty;

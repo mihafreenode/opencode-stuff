@@ -10,9 +10,24 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class WorkspaceContentGenerator
 {
-    public IReadOnlyDictionary<string, string> Generate(WorkspaceDefinition definition)
+    private const string GeneratedCapabilityGuidanceBegin = "<!-- BEGIN GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
+    private const string GeneratedCapabilityGuidanceEnd = "<!-- END GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
+    private const string GeneratedOnboardingLinksBegin = "<!-- BEGIN GENERATED ONBOARDING LINKS -->";
+    private const string GeneratedOnboardingLinksEnd = "<!-- END GENERATED ONBOARDING LINKS -->";
+
+    public IReadOnlyDictionary<string, string> Generate(ResolvedWorkspace workspace)
     {
+        var definition = workspace.Definition;
         var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        files[Path.Combine("docs", "capabilities", "README.md")] = WithGeneratedHeader(BuildCapabilityCatalogIndex(workspace));
+
+        foreach (var capability in workspace.Capabilities)
+        {
+            files[Path.Combine("docs", "capabilities", capability.Id + ".md")] = WithGeneratedHeader(BuildCapabilityPage(workspace, capability));
+        }
+
+        files["AGENTS.md"] = BuildAgentsCapabilityGuidance(workspace);
+
         if (IsDocumentationWorkspace(definition))
         {
             files[Path.Combine("docs", "documentation-features.md")] = WithGeneratedHeader(DocumentationFeaturesWorkspaceDoc());
@@ -60,11 +75,298 @@ public sealed class WorkspaceContentGenerator
         return files;
     }
 
+    public static string MergeGeneratedCapabilityGuidance(string? existingContent, string generatedBlockBody)
+        => MergeGeneratedBlock(existingContent, GeneratedCapabilityGuidanceBegin, GeneratedCapabilityGuidanceEnd, generatedBlockBody);
+
+    public static string MergeGeneratedOnboardingLinks(string? existingContent, string generatedBlockBody)
+        => MergeGeneratedBlock(existingContent, GeneratedOnboardingLinksBegin, GeneratedOnboardingLinksEnd, generatedBlockBody);
+
+    private static string MergeGeneratedBlock(string? existingContent, string beginMarker, string endMarker, string generatedBlockBody)
+    {
+        var generatedBlock = string.Join("\n",
+        [
+            beginMarker,
+            generatedBlockBody.Trim(),
+            endMarker,
+        ]);
+
+        if (string.IsNullOrWhiteSpace(existingContent))
+        {
+            return generatedBlock + "\n";
+        }
+
+        var beginIndex = existingContent.IndexOf(beginMarker, StringComparison.Ordinal);
+        var endIndex = existingContent.IndexOf(endMarker, StringComparison.Ordinal);
+
+        if (beginIndex >= 0 && endIndex >= beginIndex)
+        {
+            var replacementEnd = endIndex + endMarker.Length;
+            return existingContent.Substring(0, beginIndex)
+                + generatedBlock
+                + existingContent.Substring(replacementEnd);
+        }
+
+        var trimmed = existingContent.TrimEnd();
+        return trimmed + "\n\n" + generatedBlock + "\n";
+    }
+
     private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
         => OracleWorkspaceFamily.IsOracleWorkspace(definition);
 
     private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
         => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);
+
+    private static string BuildCapabilityCatalogIndex(ResolvedWorkspace workspace)
+    {
+        var lines = new List<string>
+        {
+            "# Capability Catalog",
+            string.Empty,
+            "Use this catalog before searching the repository or probing the runtime.",
+            string.Empty,
+            "## Enabled Capabilities",
+            string.Empty,
+        };
+
+        foreach (var capability in workspace.Capabilities)
+        {
+            lines.Add($"- [x] {capability.DisplayName}");
+        }
+
+        foreach (var capability in workspace.Capabilities)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"## {capability.DisplayName}");
+            lines.Add(string.Empty);
+            lines.Add(capability.Description);
+            lines.Add(string.Empty);
+            lines.Add($"Onboarding relevance: {capability.OnboardingRelevance}");
+            lines.Add(string.Empty);
+            lines.Add($"Available tools: {string.Join(", ", capability.AvailableTools.Select(tool => tool.Name))}");
+            lines.Add(string.Empty);
+            lines.Add($"Read more: [{capability.DisplayName}]({capability.Id}.md)");
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string BuildCapabilityPage(ResolvedWorkspace workspace, CapabilityManifest capability)
+    {
+        var enabledCapabilities = workspace.Capabilities.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var lines = new List<string>
+        {
+            $"# {capability.DisplayName}",
+            string.Empty,
+            "## What It Is",
+            string.Empty,
+            capability.WhatItIs,
+            string.Empty,
+            "## Why Use It",
+            string.Empty,
+            capability.WhyUseIt,
+            string.Empty,
+            "## Available Tools",
+            string.Empty,
+        };
+
+        foreach (var tool in capability.AvailableTools)
+        {
+            lines.Add($"### {tool.Name}");
+            lines.Add(string.Empty);
+            lines.Add($"Purpose: {tool.Purpose}");
+            lines.Add(string.Empty);
+            lines.Add($"Supported workflows: {string.Join(", ", tool.SupportedWorkflows)}");
+            lines.Add(string.Empty);
+            lines.Add($"Common use cases: {string.Join(", ", tool.CommonUseCases)}");
+            lines.Add(string.Empty);
+        }
+
+        lines.Add("## Typical Tasks");
+        lines.Add(string.Empty);
+        foreach (var task in capability.TypicalTasks)
+        {
+            lines.Add($"- {task}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Examples");
+        lines.Add(string.Empty);
+        foreach (var example in capability.Examples)
+        {
+            lines.Add($"- {example}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Related Documentation");
+        lines.Add(string.Empty);
+        foreach (var document in capability.RelatedDocumentation.Where(item => !string.IsNullOrWhiteSpace(item.Path) && IsWorkspaceLinkAvailable(workspace, item.Path)))
+        {
+            lines.Add($"- [{document.Label}]({document.Path})");
+            if (!string.IsNullOrWhiteSpace(document.Description))
+            {
+                lines.Add(document.Description);
+            }
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Related Capabilities");
+        lines.Add(string.Empty);
+        foreach (var relatedCapabilityId in capability.RelatedCapabilities)
+        {
+            if (enabledCapabilities.TryGetValue(relatedCapabilityId, out var relatedCapability))
+            {
+                lines.Add($"- [{relatedCapability.DisplayName}]({relatedCapability.Id}.md)");
+            }
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string BuildAgentsCapabilityGuidance(ResolvedWorkspace workspace)
+    {
+        var lines = new List<string>
+        {
+            "## Workspace Capability Discovery",
+            string.Empty,
+            "Start here:",
+            string.Empty,
+            "- docs/capabilities/README.md",
+            string.Empty,
+            "This catalog describes:",
+            string.Empty,
+            "- enabled capabilities",
+            "- available tools",
+            "- onboarding materials",
+            "- examples",
+            "- supported workflows",
+            string.Empty,
+            "Do not scan the repository first.",
+            string.Empty,
+            "Use the capability catalog before searching the workspace.",
+        };
+
+        foreach (var capability in workspace.Capabilities)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"## {capability.DisplayName} Guidance");
+            lines.Add(string.Empty);
+            lines.Add("Start here:");
+            lines.Add(string.Empty);
+            lines.Add($"- docs/capabilities/{capability.Id}.md");
+
+            foreach (var link in capability.AgentStartHere.Where(item => !string.IsNullOrWhiteSpace(item.Path) && IsWorkspaceLinkAvailable(workspace, item.Path)))
+            {
+                lines.Add($"- {link.Path}");
+            }
+
+            if (capability.LearningProgression.Count > 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("Learning progression:");
+                lines.Add(string.Empty);
+                lines.Add(string.Join("\n    ↓\n", capability.LearningProgression));
+            }
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string BuildAgentsOnboardingLinks(ResolvedWorkspace workspace)
+    {
+        var emittedLinks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lines = new List<string>
+        {
+            "## Enabled Onboarding Materials",
+        };
+
+        foreach (var capability in workspace.Capabilities)
+        {
+            var links = GetEnabledOnboardingLinks(workspace, capability)
+                .Where(link => emittedLinks.Add(link))
+                .ToList();
+            if (links.Count == 0)
+            {
+                continue;
+            }
+
+            lines.Add(string.Empty);
+            lines.Add($"{capability.DisplayName}:");
+            lines.Add(string.Empty);
+            foreach (var link in links)
+            {
+                lines.Add($"- {link}");
+            }
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static IEnumerable<string> GetEnabledOnboardingLinks(ResolvedWorkspace workspace, CapabilityManifest capability)
+    {
+        var links = new List<string> { $"docs/capabilities/{capability.Id}.md" };
+
+        foreach (var link in capability.AgentStartHere.Where(item => !string.IsNullOrWhiteSpace(item.Path) && IsWorkspaceLinkAvailable(workspace, item.Path)))
+        {
+            links.Add(link.Path);
+        }
+
+        if (string.Equals(capability.Id, "oracle", StringComparison.OrdinalIgnoreCase))
+        {
+            links.Add("docs/oracle-plsql-demo.md");
+
+            if (workspace.Definition.Features.Contains("oracle-apex-demo", StringComparer.OrdinalIgnoreCase))
+            {
+                links.Add("docs/oracle-apex-demo.md");
+            }
+
+            if (workspace.Definition.Features.Contains("oracle-apexlang-demo", StringComparer.OrdinalIgnoreCase))
+            {
+                links.Add("docs/oracle-apexlang-demo.md");
+            }
+        }
+
+        if (string.Equals(capability.Id, "document-processing", StringComparison.OrdinalIgnoreCase))
+        {
+            links.Add("docs/documentation-features.md");
+        }
+
+        return links
+            .Where(link => !string.IsNullOrWhiteSpace(link) && IsWorkspaceLinkAvailable(workspace, link))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public string BuildAgentsDocument(ResolvedWorkspace workspace, string? existingContent)
+    {
+        var withCapabilityGuidance = MergeGeneratedCapabilityGuidance(existingContent, BuildAgentsCapabilityGuidance(workspace));
+        return MergeGeneratedOnboardingLinks(withCapabilityGuidance, BuildAgentsOnboardingLinks(workspace));
+    }
+
+    private static bool IsWorkspaceLinkAvailable(ResolvedWorkspace workspace, string path)
+    {
+        if (string.Equals(path, "README.md", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "../../AGENTS.md", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(path, "docs/capabilities/README.md", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (path.Contains("documentation-features", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("samples/documentation", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsDocumentationWorkspace(workspace.Definition);
+        }
+
+        if (path.Contains("oracle-tools", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-samples", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-plsql-demo", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-apex-demo", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsOracleDemoWorkspace(workspace.Definition);
+        }
+
+        return true;
+    }
 
     private static string WithGeneratedHeader(string body)
         => string.Join("\n",
@@ -281,6 +583,14 @@ public sealed class WorkspaceContentGenerator
 
 This workspace is prepared for modern documentation and reporting workflows on Ubuntu while staying close to how documents render on Windows systems.
 
+Read more:
+
+- `docs/capabilities/documentation.md`
+- `docs/capabilities/document-processing.md`
+- `docs/capabilities/analytics.md`
+- `docs/capabilities/reporting.md`
+- `docs/capabilities/testing.md`
+
 ### Included Capabilities
 
 - Markdown to PDF with `pandoc` and `typst`
@@ -371,6 +681,14 @@ scripts/demo-documentation-workflows.sh
 - `samples/documentation/report.md`
 - `samples/documentation/report.html`
 - `samples/documentation/architecture.mmd`
+
+## Read More
+
+- `docs/capabilities/README.md`
+- `docs/capabilities/documentation.md`
+- `docs/capabilities/document-processing.md`
+- `docs/capabilities/ocr.md` when OCR is enabled
+- `docs/capabilities/spell-checking.md` when spell checking is enabled
 """;
 
     private static string DocumentSampleMarkdown() => """

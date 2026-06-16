@@ -22,7 +22,7 @@ public sealed class AppBootstrapper
         var catalogProvider = new BuiltInCatalogProvider(catalogRoot);
         var yamlService = new WorkspaceYamlService();
         var repository = new WorkspaceRepository(applicationDataRoot);
-        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices());
+        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities());
         var environmentFileGenerator = new EnvironmentFileGenerator();
         var composeGenerator = new ComposeGenerator();
         var provisioningScriptGenerator = new ProvisioningScriptGenerator();

@@ -145,7 +145,7 @@ var catalogRoot = Path.Combine(repositoryRoot, "catalog");
 var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenCode.Workspace.Manager");
 
 var provider = new BuiltInCatalogProvider(catalogRoot);
-var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices());
+var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
 var ignorePolicy = new WorkspaceIgnorePolicyService();
 var orchestrator = new WorkspaceOrchestrator(
     new WorkspaceYamlService(),

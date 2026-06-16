@@ -1,0 +1,45 @@
+id: reporting
+displayName: Reporting
+description: Repeatable report generation across Markdown, HTML, PDF, diagrams, and Office-style document outputs.
+sortOrder: 70
+onboardingRelevance: Useful when the workspace exists to produce durable deliverables instead of only raw data or code changes.
+whatItIs: This capability describes how the workspace produces repeatable reports and presentation-ready outputs from authored or processed content.
+whyUseIt: Use it when you need business reports, technical documentation, presentation material, or other durable outputs that should stay version-controlled and reproducible.
+availableTools:
+  - name: Pandoc and Typst
+    purpose: Build printable reports from Markdown and text sources.
+    supportedWorkflows:
+      - Report generation
+      - PDF publishing
+      - Repeatable document builds
+    commonUseCases:
+      - Build analytical reports
+      - Generate manuals
+  - name: WeasyPrint and ReportLab
+    purpose: Alternative PDF and programmatic report generation paths.
+    supportedWorkflows:
+      - HTML to PDF
+      - Python-driven reporting
+      - Custom report layouts
+    commonUseCases:
+      - Produce PDF deliverables from HTML
+      - Build scripted reports
+typicalTasks:
+  - Generate reports from Markdown, HTML, or Office-source content.
+  - Produce durable PDF outputs for sharing or review.
+  - Include diagrams and tabular content in repeatable report workflows.
+examples:
+  - Generate a PDF report from samples/documentation/report.md.
+  - Produce HTML-to-PDF output and attach inspection metadata.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Generated guide for report-generation workflows.
+relatedCapabilities:
+  - analytics
+  - document-processing
+  - documentation
+agentStartHere:
+  - label: Documentation Workspace Guide
+    path: docs/documentation-features.md
+    description: Review report-generation tools and example outputs.

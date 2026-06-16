@@ -1,0 +1,45 @@
+id: ocr
+displayName: OCR
+description: Optical character recognition for scanned PDFs and image-based documents.
+sortOrder: 40
+onboardingRelevance: Useful when source documents are scanned, image-based, or otherwise not directly searchable.
+whatItIs: This capability documents the OCR tooling that can extract text from scanned documents, image files, and PDF pages inside the workspace.
+whyUseIt: Use it when you need searchable text from scanned documents, screenshots, or PDFs before analysis, spell checking, or localization work.
+availableTools:
+  - name: Tesseract
+    purpose: Extract text from images and scanned document pages.
+    supportedWorkflows:
+      - Scanned PDF extraction
+      - Image text extraction
+      - OCR pipeline automation
+    commonUseCases:
+      - Convert scanned PDFs to searchable text
+      - Extract text from screenshots or photos
+  - name: PDF Imaging Helpers
+    purpose: Prepare scanned PDF pages for OCR.
+    supportedWorkflows:
+      - PDF page conversion
+      - Image preprocessing
+      - OCR batching
+    commonUseCases:
+      - Split PDF pages to images
+      - Improve OCR input quality
+typicalTasks:
+  - Extract text from scanned documents before analysis or proofreading.
+  - Convert PDF pages to images and run OCR in batches.
+  - Combine OCR output with document-processing or localization workflows.
+examples:
+  - Run OCR over scanned PDF pages and feed the extracted text into spell-checking.
+  - Extract text from image-based reports before converting them into searchable deliverables.
+relatedDocumentation:
+  - label: Documentation Workspace Guide
+    path: ../documentation-features.md
+    description: Generated guide covering OCR-enabled document workflows.
+relatedCapabilities:
+  - document-processing
+  - spell-checking
+  - localization
+agentStartHere:
+  - label: Capability Catalog
+    path: docs/capabilities/README.md
+    description: Confirm OCR is enabled and review related document workflows.
