@@ -8,6 +8,7 @@ It focuses on:
 - SQLcl-based onboarding
 - sample PL/SQL objects and data
 - repeatable workspace generation
+- one shared `Customers / Products / Orders` sample domain
 
 ## First-Time Onboarding
 
@@ -47,3 +48,19 @@ Oracle APEXlang Demo
 ```
 
 Use Oracle APEX Demo only after this PL/SQL foundation is comfortable.
+
+## Try It Yourself
+
+1. query `DEMO_CUSTOMERS`
+2. query `DEMO_PRODUCTS`
+3. query `DEMO_ORDER_SUMMARY_V`
+4. execute `demo_customer_api.get_customer(1)`
+5. inspect the view definition for `DEMO_ORDER_SUMMARY_V`
+
+## Related Topics
+
+- [Oracle Samples](oracle-samples.md)
+- [SQLcl](oracle-tools/sqlcl.md)
+- [Data Pump](oracle-tools/data-pump.md)
+- [SQL Developer](oracle-tools/sql-developer.md)
+- [Oracle Lifecycle Workflows](oracle-lifecycle-workflows.md)

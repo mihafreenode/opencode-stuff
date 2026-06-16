@@ -28,3 +28,18 @@ Oracle APEXlang Demo
 ```
 
 In practical terms, APEXlang extends APEX, and APEX extends the PL/SQL path.
+
+## Try It Yourself
+
+1. export the sample application with `scripts/export-apex.sh`
+2. validate the exported artifact with `scripts/validate-apex.sh`
+3. review the change in Git
+4. import the application back into the local environment
+
+## Related Topics
+
+- [Oracle Samples](oracle-samples.md)
+- [APEXlang](oracle-tools/apexlang.md)
+- [APEX Export / Import](oracle-tools/apex-export-import.md)
+- [SQLcl](oracle-tools/sqlcl.md)
+- [Oracle Lifecycle Workflows](oracle-lifecycle-workflows.md)

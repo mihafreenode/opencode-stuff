@@ -23,10 +23,19 @@ public sealed class OracleApexTemplateRegressionTests
             var snapshot = OracleTemplateTestHelpers.CreateOrchestrator(tempRoot, resolver).CreateWorkspace(tempRoot, definition);
 
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apex-demo.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-samples.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "README.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "health-check-ords.sh")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "open-ords.ps1")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "03-customers-schema.sql")));
             Assert.False(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
+
+            var schemaSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "03-customers-schema.sql"));
+            Assert.Contains("CREATE TABLE demo_customers", schemaSql);
+            Assert.Contains("CREATE TABLE demo_products", schemaSql);
+            Assert.Contains("CREATE TABLE demo_orders", schemaSql);
+            Assert.Contains("CREATE OR REPLACE VIEW demo_order_summary_v", schemaSql);
+            Assert.Contains("CREATE OR REPLACE PACKAGE demo_customer_api", schemaSql);
         }
         finally
         {
@@ -50,10 +59,16 @@ public sealed class OracleApexTemplateRegressionTests
 
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apexlang-demo.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "apexlang-introduction.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "apexlang.md")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh")));
             Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-apex.sh")));
+
+            var appStub = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx"));
+            Assert.Contains("Customer Orders Demo", appStub);
+            Assert.Contains("DEMO_ORDER_SUMMARY_V", appStub);
+            Assert.Contains("DEMO_CUSTOMER_API", appStub);
 
             var workspaceYaml = File.ReadAllText(snapshot.Paths.WorkspaceYamlPath);
             Assert.Contains("oracle-ords", workspaceYaml);

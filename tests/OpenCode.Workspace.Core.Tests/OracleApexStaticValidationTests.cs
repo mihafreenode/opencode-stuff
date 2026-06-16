@@ -66,12 +66,22 @@ public sealed class OracleApexStaticValidationTests
         var snapshot = CreateWorkspaceFromTemplate("oracle-apex-demo", "oracle-apex-static");
 
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apex-demo.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-samples.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "sharing-oracle-workspaces.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "README.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "ords.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "03-customers-schema.sql")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "04-customers-sample-data.sql")));
         Assert.False(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
+
+        var schemaSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "03-customers-schema.sql"));
+        Assert.Contains("DEMO_CUSTOMERS", schemaSql.ToUpperInvariant());
+        Assert.Contains("DEMO_PRODUCTS", schemaSql.ToUpperInvariant());
+        Assert.Contains("DEMO_ORDERS", schemaSql.ToUpperInvariant());
+        Assert.Contains("DEMO_ORDER_SUMMARY_V", schemaSql.ToUpperInvariant());
+        Assert.Contains("DEMO_CUSTOMER_API", schemaSql.ToUpperInvariant());
     }
 
     [Fact]
@@ -81,6 +91,7 @@ public sealed class OracleApexStaticValidationTests
 
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apexlang-demo.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "apexlang-introduction.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "apexlang.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh")));
@@ -157,14 +168,20 @@ public sealed class OracleApexStaticValidationTests
         var sharingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "sharing-oracle-workspaces.md"));
         var teamOnboardingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "team-onboarding.md"));
         var agentsGuideDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "agents-guide.md"));
+        var samplesDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-samples.md"));
+        var toolsIndexDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-tools", "README.md"));
 
         Assert.Contains("Oracle PL/SQL Demo", plsqlDoc);
+        Assert.Contains("Try It Yourself", plsqlDoc);
         Assert.Contains("Oracle APEX Demo", apexDoc);
         Assert.Contains("Oracle APEX Demo extends the Oracle PL/SQL path", apexDoc);
+        Assert.Contains("Interactive Report", apexDoc);
         Assert.Contains("Oracle APEXlang Demo", apexLangDoc);
         Assert.Contains("source-controlled Oracle APEX workflow", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Open Application Specification Language", apexLangDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Try It Yourself", apexLangDoc);
         Assert.Contains("From Oracle Demo to Oracle Onboarding", onboardingArticle);
+        Assert.Contains("Try It Yourself", onboardingArticle);
         Assert.Contains("Beyond PL/SQL", beyondPlsqlArticle);
         Assert.Contains("Export", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Validate", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
@@ -174,17 +191,52 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Run Tutorial", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AGENTS.md Guide", agentsGuideDoc);
         Assert.Contains("Workspace Discovered", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DEMO_ORDER_SUMMARY_V", samplesDoc);
+        Assert.Contains("DEMO_CUSTOMER_API", samplesDoc);
+        Assert.Contains("SQLcl", toolsIndexDoc);
+        Assert.Contains("Data Pump", toolsIndexDoc);
+        Assert.Contains("ORDS", toolsIndexDoc);
+        Assert.Contains("APEX Export / Import", toolsIndexDoc);
+        Assert.Contains("APEXlang", toolsIndexDoc);
+        Assert.Contains("SQL Developer", toolsIndexDoc);
         Assert.Contains("University of Maribor", apexDoc);
         Assert.DoesNotContain("University of Maribor", plsqlDoc);
         Assert.DoesNotContain("University of Maribor", apexLangDoc);
+        Assert.Contains("oracle-tools/sqlcl.md", plsqlDoc);
+        Assert.Contains("oracle-tools/ords.md", apexDoc);
+        Assert.Contains("oracle-tools/apexlang.md", apexLangDoc);
 
-        foreach (var content in new[] { plsqlDoc, apexDoc, apexLangDoc, onboardingArticle, beyondPlsqlArticle, lifecycleDoc, sharingDoc, teamOnboardingDoc, agentsGuideDoc })
+        foreach (var content in new[] { plsqlDoc, apexDoc, apexLangDoc, onboardingArticle, beyondPlsqlArticle, lifecycleDoc, sharingDoc, teamOnboardingDoc, agentsGuideDoc, samplesDoc, toolsIndexDoc })
         {
             Assert.DoesNotContain("already verified", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("runtime validation is complete", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("accepts Oracle license", content, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("redistribute Oracle binaries", content, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public void OracleToolsDocs_Exist_AndNoReportingTemplateWasAdded()
+    {
+        var repoRoot = TestPaths.RepositoryRoot;
+        var toolDocs = new[]
+        {
+            Path.Combine(repoRoot, "docs", "oracle-tools", "README.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "sqlcl.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "data-pump.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "ords.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "apex-export-import.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "apexlang.md"),
+            Path.Combine(repoRoot, "docs", "oracle-tools", "sql-developer.md"),
+        };
+
+        foreach (var path in toolDocs)
+        {
+            Assert.True(File.Exists(path), $"Expected tool doc to exist: {path}");
+        }
+
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        Assert.DoesNotContain(provider.LoadTemplates(), template => template.Id.Contains("reporting", StringComparison.OrdinalIgnoreCase));
     }
 
     private static WorkspaceSnapshot CreateWorkspaceFromTemplate(string templateId, string workspaceName)
