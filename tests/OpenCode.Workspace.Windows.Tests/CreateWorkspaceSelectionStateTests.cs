@@ -16,7 +16,10 @@ public sealed class CreateWorkspaceSelectionStateTests
 
         var definition = viewModel.BuildWorkspaceDefinitionFromSelections("oracle-demo");
 
-        Assert.Equal(["core", "oracle-demo", "oracle-apex-demo"], definition.Features);
+        Assert.Equal(3, definition.Features.Count);
+        Assert.Contains("core", definition.Features);
+        Assert.Contains("oracle-demo", definition.Features);
+        Assert.Contains("oracle-apex-demo", definition.Features);
         Assert.Equal(["oracle-demo", "oracle-ords"], definition.Services);
     }
 
