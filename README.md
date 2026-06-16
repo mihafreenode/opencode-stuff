@@ -10,6 +10,49 @@ OpenCode Workspace Manager lets you work with AI agents in isolated, reproducibl
 
 Import an existing Git checkout, create a temporary workspace branch, work safely, and recover progress using Save Points and Checkpoints.
 
+## Existing Workspace Discovery
+
+Templates are a starting point, not the long-term source of truth.
+
+When a repository already contains workspace configuration, OpenCode Workspace Manager now loads that repository-owned configuration instead of starting from application defaults.
+
+Supported repository configuration paths are:
+
+- `workspace.yaml`
+- `workspace.yml`
+- `.opencode/profile.yaml`
+- `.opencode/profile.yml`
+
+That means a repository can carry its own onboarding experience through Git:
+
+- `workspace.yaml`
+- `AGENTS.md`
+- `README.md`
+- `docs/`
+- tutorials
+- scripts
+- troubleshooting notes
+
+Workflow:
+
+```text
+Template
+    ↓
+Create Workspace
+    ↓
+Customize
+    ↓
+Commit to Git
+    ↓
+Clone Repository
+    ↓
+Open Repository
+    ↓
+Workspace Discovered
+```
+
+The repository contains not only source code, but also the knowledge required to work with that source code.
+
 ## Inside The Workspace
 
 OpenCode Workspace Manager creates and protects durable workspaces.

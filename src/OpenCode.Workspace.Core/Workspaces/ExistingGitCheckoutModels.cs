@@ -14,7 +14,9 @@ public sealed class ExistingGitCheckoutPlan
     public required string RepositoryPath { get; init; }
     public required string WorkspaceName { get; init; }
     public required GitRepositoryInspection Repository { get; init; }
-    public bool HasWorkspaceYaml { get; init; }
+    public required WorkspaceDiscoveryResult DiscoveryResult { get; init; }
+    public WorkspaceDefinition? LoadedDefinition { get; init; }
+    public bool HasWorkspaceConfiguration => DiscoveryResult.Status != WorkspaceDiscoveryStatus.NotFound;
 }
 
 public sealed class ExistingGitCheckoutImportRequest

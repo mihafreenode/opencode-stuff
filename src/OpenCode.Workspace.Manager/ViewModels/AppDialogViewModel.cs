@@ -10,16 +10,16 @@ public sealed class AppDialogViewModel
         Message = message;
         Buttons = buttons;
         OkLabel = localization.Get("actions.ok");
-        YesLabel = localization.Get("actions.yes");
-        NoLabel = localization.Get("actions.no");
+        PrimaryLabel = buttons == AppDialogButtons.OpenFileCancel ? "Open File" : localization.Get("actions.yes");
+        SecondaryLabel = buttons == AppDialogButtons.OpenFileCancel ? localization.Get("actions.cancel") : localization.Get("actions.no");
     }
 
     public string Title { get; }
     public string Message { get; }
     public AppDialogButtons Buttons { get; }
     public string OkLabel { get; }
-    public string YesLabel { get; }
-    public string NoLabel { get; }
+    public string PrimaryLabel { get; }
+    public string SecondaryLabel { get; }
     public bool ShowOk => Buttons == AppDialogButtons.Ok;
-    public bool ShowYesNo => Buttons == AppDialogButtons.YesNo;
+    public bool ShowPrimarySecondary => Buttons == AppDialogButtons.YesNo || Buttons == AppDialogButtons.OpenFileCancel;
 }

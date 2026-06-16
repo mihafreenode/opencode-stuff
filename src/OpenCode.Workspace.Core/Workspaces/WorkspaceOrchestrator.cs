@@ -13,6 +13,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 public sealed class WorkspaceOrchestrator
 {
     private readonly WorkspaceYamlService _workspaceYamlService;
+    private readonly WorkspaceDiscoveryService _workspaceDiscoveryService;
     private readonly WorkspaceRepository _workspaceRepository;
     private readonly WorkspaceResolver _workspaceResolver;
     private readonly ComposeGenerator _composeGenerator;
@@ -33,6 +34,7 @@ public sealed class WorkspaceOrchestrator
 
     public WorkspaceOrchestrator(
         WorkspaceYamlService workspaceYamlService,
+        WorkspaceDiscoveryService workspaceDiscoveryService,
         WorkspaceRepository workspaceRepository,
         WorkspaceResolver workspaceResolver,
         ComposeGenerator composeGenerator,
@@ -51,6 +53,7 @@ public sealed class WorkspaceOrchestrator
         ITerminalLauncher terminalLauncher)
     {
         _workspaceYamlService = workspaceYamlService;
+        _workspaceDiscoveryService = workspaceDiscoveryService;
         _workspaceRepository = workspaceRepository;
         _workspaceResolver = workspaceResolver;
         _composeGenerator = composeGenerator;
@@ -76,14 +79,16 @@ public sealed class WorkspaceOrchestrator
 
     public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default, bool includeRuntimeInspection = true)
     {
-        var paths = WorkspacePathBuilder.Build(rootPath);
+        var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
+        var configurationPath = ResolveConfigurationPath(rootPath, record?.ConfigurationPath);
+        var paths = WorkspacePathBuilder.Build(rootPath, configurationPath);
         var definition = _workspaceYamlService.Read(paths.WorkspaceYamlPath);
-        var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase))
-            ?? new WorkspaceRecord
+        record ??= new WorkspaceRecord
             {
                 Name = definition.Workspace.Name,
                 RootPath = rootPath,
                 RepositoryPath = rootPath,
+                ConfigurationPath = paths.WorkspaceYamlRelativePath,
                 CreatedUtc = DateTimeOffset.UtcNow,
                 LastOpenedUtc = DateTimeOffset.UtcNow,
             };
@@ -102,6 +107,7 @@ public sealed class WorkspaceOrchestrator
             Record = record,
             Definition = definition,
             Paths = paths,
+            ConfigurationPath = paths.WorkspaceYamlRelativePath,
             RuntimeState = File.Exists(paths.ComposePath) && Directory.Exists(paths.RootPath)
                 ? WorkspaceRuntimeState.Unknown
                 : WorkspaceRuntimeState.Stopped,
@@ -122,6 +128,7 @@ public sealed class WorkspaceOrchestrator
                 Record = snapshot.Record,
                 Definition = snapshot.Definition,
                 Paths = snapshot.Paths,
+                ConfigurationPath = snapshot.ConfigurationPath,
                 RuntimeState = WorkspaceRuntimeState.Unknown,
                 Safety = snapshot.Safety,
                 Session = new WorkspaceSessionSnapshot
@@ -143,6 +150,7 @@ public sealed class WorkspaceOrchestrator
             Record = snapshot.Record,
             Definition = snapshot.Definition,
             Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
             RuntimeState = runtimeState,
             Safety = snapshot.Safety,
             Session = new WorkspaceSessionSnapshot
@@ -181,6 +189,7 @@ public sealed class WorkspaceOrchestrator
             Name = definition.Workspace.Name,
             RootPath = rootPath,
             RepositoryPath = rootPath,
+            ConfigurationPath = paths.WorkspaceYamlRelativePath,
             SourceType = WorkspaceSourceType.NewWorkspace,
             CreatedUtc = now,
             LastOpenedUtc = now,
@@ -200,11 +209,19 @@ public sealed class WorkspaceOrchestrator
 
     public WorkspaceSnapshot OpenFolderAsWorkspace(string rootPath, string? workspaceName = null, Action<CommandLogEntry>? log = null)
     {
-        var paths = WorkspacePathBuilder.Build(rootPath);
-        if (File.Exists(paths.WorkspaceYamlPath))
+        var discovery = _workspaceDiscoveryService.Discover(rootPath);
+        if (discovery.Status == WorkspaceDiscoveryStatus.Invalid)
+        {
+            var configurationPath = discovery.ConfigurationPath ?? "workspace configuration";
+            throw new InvalidOperationException($"Invalid workspace configuration found at '{configurationPath}'. {discovery.ErrorMessage}".Trim());
+        }
+
+        if (discovery.Status == WorkspaceDiscoveryStatus.Found)
         {
             return LoadSnapshot(rootPath);
         }
+
+        var paths = WorkspacePathBuilder.Build(rootPath);
 
         var folderName = string.IsNullOrWhiteSpace(workspaceName) ? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) : workspaceName.Trim();
         var definition = new WorkspaceDefinition
@@ -245,13 +262,32 @@ public sealed class WorkspaceOrchestrator
         var folderName = string.IsNullOrWhiteSpace(workspaceName)
             ? Path.GetFileName(repositoryRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
             : workspaceName.Trim();
+        var discovery = _workspaceDiscoveryService.Discover(repositoryRoot);
+        WorkspaceDefinition? loadedDefinition = null;
+        if (discovery.Status == WorkspaceDiscoveryStatus.Found && !string.IsNullOrWhiteSpace(discovery.ConfigurationPath))
+        {
+            try
+            {
+                loadedDefinition = _workspaceYamlService.Read(Path.Combine(repositoryRoot, discovery.ConfigurationPath.Replace('/', Path.DirectorySeparatorChar)));
+            }
+            catch (Exception exception)
+            {
+                discovery = new WorkspaceDiscoveryResult
+                {
+                    Status = WorkspaceDiscoveryStatus.Invalid,
+                    ConfigurationPath = discovery.ConfigurationPath,
+                    ErrorMessage = exception.Message,
+                };
+            }
+        }
 
         return new ExistingGitCheckoutPlan
         {
             RepositoryPath = repositoryRoot,
             WorkspaceName = folderName,
             Repository = inspection,
-            HasWorkspaceYaml = File.Exists(Path.Combine(repositoryRoot, "workspace.yaml")),
+            DiscoveryResult = discovery,
+            LoadedDefinition = loadedDefinition,
         };
     }
 
@@ -301,8 +337,16 @@ public sealed class WorkspaceOrchestrator
                 break;
         }
 
-        var paths = WorkspacePathBuilder.Build(request.RepositoryPath);
-        var definition = File.Exists(paths.WorkspaceYamlPath)
+        var discovery = _workspaceDiscoveryService.Discover(request.RepositoryPath);
+        if (discovery.Status == WorkspaceDiscoveryStatus.Invalid)
+        {
+            var invalidConfigurationPath = discovery.ConfigurationPath ?? "workspace configuration";
+            throw new InvalidOperationException($"Invalid workspace configuration found at '{invalidConfigurationPath}'. {discovery.ErrorMessage}".Trim());
+        }
+
+        var activeConfigurationPath = discovery.ConfigurationPath ?? "workspace.yaml";
+        var paths = WorkspacePathBuilder.Build(request.RepositoryPath, activeConfigurationPath);
+        var definition = discovery.Status == WorkspaceDiscoveryStatus.Found
             ? _workspaceYamlService.Read(paths.WorkspaceYamlPath)
             : request.InitialDefinition is not null
                 ? new WorkspaceDefinition
@@ -364,6 +408,7 @@ public sealed class WorkspaceOrchestrator
             Name = definition.Workspace.Name,
             RootPath = request.RepositoryPath,
             RepositoryPath = request.RepositoryPath,
+            ConfigurationPath = paths.WorkspaceYamlRelativePath,
             SourceType = WorkspaceSourceType.ExistingGitCheckout,
             ImportedFromExistingCheckout = true,
             OriginalDefaultBranch = inspection.DefaultBranch,
@@ -501,7 +546,7 @@ public sealed class WorkspaceOrchestrator
 
         if (File.Exists(snapshot.Paths.WorkspaceYamlPath))
         {
-            File.Copy(snapshot.Paths.WorkspaceYamlPath, Path.Combine(checkpointPath, "workspace.yaml"), overwrite: true);
+            File.Copy(snapshot.Paths.WorkspaceYamlPath, Path.Combine(checkpointPath, Path.GetFileName(snapshot.Paths.WorkspaceYamlPath)), overwrite: true);
         }
 
         if (File.Exists(snapshot.Paths.ArtifactIndexPath))
@@ -602,7 +647,7 @@ public sealed class WorkspaceOrchestrator
     {
         var generatedArtifacts = GenerateArtifacts(definition, paths);
 
-        File.WriteAllText(paths.WorkspaceYamlPath, generatedArtifacts.WorkspaceYaml);
+        _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
         File.WriteAllText(paths.ComposePath, generatedArtifacts.ComposeYaml);
         File.WriteAllText(paths.EnvironmentFilePath, generatedArtifacts.EnvironmentFile);
         File.WriteAllText(paths.StarshipConfigPath, generatedArtifacts.StarshipConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -1060,6 +1105,22 @@ public sealed class WorkspaceOrchestrator
         }
 
         throw new InvalidOperationException("The configured workspace provider does not support existing Git checkout import.");
+    }
+
+    private string ResolveConfigurationPath(string rootPath, string? configuredPath)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return WorkspacePathBuilder.NormalizeConfigurationRelativePath(configuredPath);
+        }
+
+        var discovery = _workspaceDiscoveryService.Discover(rootPath);
+        if (discovery.Status == WorkspaceDiscoveryStatus.Found && !string.IsNullOrWhiteSpace(discovery.ConfigurationPath))
+        {
+            return discovery.ConfigurationPath;
+        }
+
+        return "workspace.yaml";
     }
 
     private sealed record GeneratedFilesUpdateResult(GeneratedWorkspaceArtifacts Artifacts, bool ComposeWasUpdated);

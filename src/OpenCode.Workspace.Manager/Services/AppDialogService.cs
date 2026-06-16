@@ -30,6 +30,18 @@ public static class AppDialogService
         return dialog.Result;
     }
 
+    public static AppDialogResult ShowOpenFileCancel(Window? owner, PoLocalizationService localization, string title, string message)
+    {
+        if (!CanShowDialog(owner))
+        {
+            return AppDialogResult.Cancel;
+        }
+
+        var dialog = CreateDialog(owner, title, message, AppDialogButtons.OpenFileCancel, localization);
+        dialog.ShowDialog();
+        return dialog.Result;
+    }
+
     private static bool CanShowDialog(Window? owner)
     {
         if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
@@ -64,6 +76,7 @@ public enum AppDialogButtons
 {
     Ok,
     YesNo,
+    OpenFileCancel,
 }
 
 public enum AppDialogResult
@@ -72,4 +85,6 @@ public enum AppDialogResult
     Ok,
     Yes,
     No,
+    OpenFile,
+    Cancel,
 }

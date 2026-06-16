@@ -72,7 +72,7 @@ public partial class CreateWorkspaceDialog : Window
         }
     }
 
-    private void BrowseExistingRepository_OnClick(object sender, RoutedEventArgs e)
+    private async void BrowseExistingRepository_OnClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel viewModel)
         {
@@ -82,17 +82,26 @@ public partial class CreateWorkspaceDialog : Window
         var dialog = new OpenFolderDialog();
         if (dialog.ShowDialog() == true)
         {
-            viewModel.ExistingRepositoryPath = dialog.FolderName;
+            var selectedPath = dialog.FolderName;
+            viewModel.ExistingRepositoryPath = selectedPath;
             if (string.IsNullOrWhiteSpace(viewModel.NewWorkspaceName))
             {
-                viewModel.NewWorkspaceName = System.IO.Path.GetFileName(dialog.FolderName.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+                viewModel.NewWorkspaceName = System.IO.Path.GetFileName(selectedPath.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
             }
+
+            await TryLoadRepositoryConfigurationAsync(viewModel, selectedPath);
         }
     }
 
     private async Task ImportExistingGitCheckoutAsync(MainWindowViewModel viewModel)
     {
         var plan = await viewModel.InspectExistingGitCheckoutFromDialogAsync();
+        if (plan.DiscoveryResult.Status == WorkspaceDiscoveryStatus.Invalid)
+        {
+            await ShowInvalidRepositoryConfigurationAsync(plan);
+            return;
+        }
+
         var branchDialog = new ExistingGitCheckoutBranchDialog(plan, _localization)
         {
             Owner = this,
@@ -173,5 +182,62 @@ public partial class CreateWorkspaceDialog : Window
 
         DialogResult = true;
         Close();
+    }
+
+    private async Task TryLoadRepositoryConfigurationAsync(MainWindowViewModel viewModel, string repositoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var plan = await viewModel.LoadExistingRepositoryConfigurationAsync(repositoryPath);
+            if (plan.DiscoveryResult.Status == WorkspaceDiscoveryStatus.Invalid)
+            {
+                await ShowInvalidRepositoryConfigurationAsync(plan);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task ShowInvalidRepositoryConfigurationAsync(ExistingGitCheckoutPlan plan)
+    {
+        var configurationPath = plan.DiscoveryResult.ConfigurationPath ?? "workspace configuration";
+        var errorMessage = plan.DiscoveryResult.ErrorMessage ?? "The configuration could not be loaded.";
+        var message = $"Invalid workspace configuration found.{Environment.NewLine}{Environment.NewLine}Path:{Environment.NewLine}{configurationPath}{Environment.NewLine}{Environment.NewLine}The repository already contains workspace settings, but the configuration could not be loaded.{Environment.NewLine}{Environment.NewLine}{errorMessage}{Environment.NewLine}{Environment.NewLine}Please fix the configuration file and try again.{Environment.NewLine}{Environment.NewLine}The application will not replace this file automatically.";
+        var choice = AppDialogService.ShowOpenFileCancel(this, _localization, "Invalid workspace configuration found.", message);
+        if (choice != AppDialogResult.OpenFile)
+        {
+            return;
+        }
+
+        var filePath = System.IO.Path.Combine(plan.RepositoryPath, configurationPath.Replace('/', System.IO.Path.DirectorySeparatorChar));
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = filePath,
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{filePath}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch
+            {
+            }
+        }
     }
 }

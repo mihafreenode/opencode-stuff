@@ -46,6 +46,7 @@ public sealed class AppBootstrapper
         var appBuildInfoService = new AppBuildInfoService(applicationBasePath);
         var orchestrator = new WorkspaceOrchestrator(
             yamlService,
+            new WorkspaceDiscoveryService(),
             repository,
             resolver,
             composeGenerator,

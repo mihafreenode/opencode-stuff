@@ -67,6 +67,7 @@ public sealed class WindowsCapabilityIntegrationTests
                 Workspace = new OpenCode.Workspace.Core.Models.WorkspaceMetadata { Name = "smoke data workspace" },
             },
             Paths = OpenCode.Workspace.Core.Workspaces.WorkspacePathBuilder.Build(rootPath),
+            ConfigurationPath = "workspace.yaml",
             RuntimeState = OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running,
             Safety = new OpenCode.Workspace.Core.Models.WorkspaceSafetySnapshot
             {

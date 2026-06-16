@@ -4,7 +4,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public static class WorkspacePathBuilder
 {
-    public static WorkspacePaths Build(string workspaceRootPath)
+    public static WorkspacePaths Build(string workspaceRootPath, string configurationRelativePath = "workspace.yaml")
     {
         var mountsRoot = Path.Combine(workspaceRootPath, "mounts");
         var configPath = Path.Combine(mountsRoot, "config");
@@ -12,12 +12,14 @@ public static class WorkspacePathBuilder
         var checkpointsPath = Path.Combine(historyPath, "checkpoints");
         var artifactsPath = Path.Combine(workspaceRootPath, "artifacts");
         var runtimesPath = Path.Combine(workspaceRootPath, "runtimes");
+        var normalizedConfigurationPath = NormalizeConfigurationRelativePath(configurationRelativePath);
 
         return new WorkspacePaths
         {
             RootPath = workspaceRootPath,
             GitIgnorePath = Path.Combine(workspaceRootPath, ".gitignore"),
-            WorkspaceYamlPath = Path.Combine(workspaceRootPath, "workspace.yaml"),
+            WorkspaceYamlRelativePath = normalizedConfigurationPath,
+            WorkspaceYamlPath = Path.Combine(workspaceRootPath, normalizedConfigurationPath.Replace('/', Path.DirectorySeparatorChar)),
             ComposePath = Path.Combine(workspaceRootPath, "compose.yaml"),
             EnvironmentFilePath = Path.Combine(workspaceRootPath, ".env"),
             MountsRootPath = mountsRoot,
@@ -45,6 +47,15 @@ public static class WorkspacePathBuilder
             ArtifactRunsPath = Path.Combine(artifactsPath, "runs"),
             ArtifactIndexPath = Path.Combine(artifactsPath, "index.json"),
         };
+    }
+
+    public static string NormalizeConfigurationRelativePath(string configurationRelativePath)
+    {
+        var candidate = string.IsNullOrWhiteSpace(configurationRelativePath)
+            ? "workspace.yaml"
+            : configurationRelativePath.Trim().Replace('\\', '/');
+
+        return candidate.TrimStart('/');
     }
 
     public static string ToDockerVolumePath(string windowsPath) => windowsPath.Replace("\\", "/", StringComparison.Ordinal);

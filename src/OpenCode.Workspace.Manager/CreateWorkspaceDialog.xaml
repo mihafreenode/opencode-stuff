@@ -63,6 +63,20 @@
                             </DockPanel>
                             <TextBlock Margin="0,4,0,0" Foreground="#FFB91C1C" Text="{Binding ExistingRepositoryPathValidationMessage}" TextWrapping="Wrap" />
                             <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="Workspace files stay inside the selected repository folder." TextWrapping="Wrap" />
+
+                            <Border Margin="0,14,0,0"
+                                    Padding="14"
+                                    Background="{StaticResource BrandSurfaceSubtleBrush}"
+                                    CornerRadius="10"
+                                    BorderThickness="1"
+                                    Visibility="{Binding ShowRepositoryConfigurationBanner, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding RepositoryConfigurationBannerTitle}" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,8,0,0" Text="{Binding RepositoryConfigurationBannerMessage}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0" Text="Path" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding LoadedRepositoryConfigurationPath}" TextWrapping="Wrap" Foreground="{StaticResource BrandTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <StackPanel Visibility="{Binding ShowCatalogSelectionOptions, Converter={StaticResource BooleanToVisibilityConverter}}">

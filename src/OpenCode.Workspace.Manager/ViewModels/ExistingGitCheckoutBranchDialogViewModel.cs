@@ -43,9 +43,9 @@ public sealed class ExistingGitCheckoutBranchDialogViewModel : ObservableObject
     public string CurrentBranchSummary => $"Current branch: {Plan.Repository.CurrentBranch}";
     public string DefaultBranchSummary => $"Default branch: {Plan.Repository.DefaultBranch}";
     public string RemoteOriginSummary => string.IsNullOrWhiteSpace(Plan.Repository.RemoteUrl) ? "Remote origin: not configured" : $"Remote origin: {Plan.Repository.RemoteUrl}";
-    public string WorkspaceDefinitionSummary => Plan.HasWorkspaceYaml
-        ? "Existing workspace.yaml found. OpenCode will keep using it and refresh generated runtime files."
-        : "No workspace.yaml found yet. Continue and OpenCode will create workspace.yaml and runtime files in this repository.";
+    public string WorkspaceDefinitionSummary => Plan.HasWorkspaceConfiguration
+        ? $"Existing workspace configuration found at '{Plan.DiscoveryResult.ConfigurationPath}'. OpenCode will keep using that file and refresh generated runtime files."
+        : "No workspace configuration found yet. Continue and OpenCode will create workspace.yaml and runtime files in this repository.";
     public string DirtyStatusSummary => Plan.Repository.HasUncommittedChanges || Plan.Repository.UntrackedFileCount > 0
         ? "Uncommitted local changes present"
         : "Working tree is clean";

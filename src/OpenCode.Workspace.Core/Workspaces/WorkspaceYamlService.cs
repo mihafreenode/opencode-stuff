@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -39,6 +40,55 @@ public sealed class WorkspaceYamlService
     public string Write(WorkspaceDefinition definition)
     {
         return _serializer.Serialize(Normalize(definition));
+    }
+
+    public void WriteToFile(string filePath, WorkspaceDefinition definition)
+    {
+        var normalizedDefinition = Normalize(definition);
+        if (!File.Exists(filePath))
+        {
+            WriteNewFile(filePath, Write(normalizedDefinition));
+            return;
+        }
+
+        var stream = new YamlStream();
+        using (var reader = File.OpenText(filePath))
+        {
+            stream.Load(reader);
+        }
+        if (stream.Documents.Count == 0 || stream.Documents[0].RootNode is not YamlMappingNode rootMapping)
+        {
+            throw new InvalidOperationException($"Workspace configuration at '{filePath}' is not a YAML mapping document and cannot be updated safely.");
+        }
+
+        var updatedDocument = ParseMapping(Write(normalizedDefinition));
+        foreach (var child in updatedDocument.Children)
+        {
+            rootMapping.Children[child.Key] = child.Value;
+        }
+
+        using var writer = new StringWriter();
+        stream.Save(writer, assignAnchors: false);
+        File.WriteAllText(filePath, writer.ToString());
+    }
+
+    private static YamlMappingNode ParseMapping(string yaml)
+    {
+        using var reader = new StringReader(yaml);
+        var stream = new YamlStream();
+        stream.Load(reader);
+        return (YamlMappingNode)stream.Documents[0].RootNode;
+    }
+
+    private static void WriteNewFile(string filePath, string yaml)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(filePath, yaml);
     }
 
     private static WorkspaceDefinition Normalize(WorkspaceDefinition definition)

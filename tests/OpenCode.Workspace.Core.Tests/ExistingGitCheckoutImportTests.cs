@@ -229,12 +229,211 @@ public sealed class ExistingGitCheckoutImportTests
         }
     }
 
+    [Theory]
+    [InlineData("workspace.yml")]
+    [InlineData(".opencode/profile.yaml")]
+    [InlineData(".opencode/profile.yml")]
+    public async Task ImportExistingGitCheckoutAsync_PreservesDiscoveredConfigurationPath(string relativePath)
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var configPath = Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+            File.WriteAllText(configPath, new WorkspaceYamlService().Write(new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "Existing Workspace", Image = "ubuntu:24.04" },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+                Features = ["core"],
+                Services = ["postgres"],
+                Skills = [],
+                Mcp = [],
+            }));
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "Ignored Name",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            });
+
+            Assert.Equal(relativePath, snapshot.ConfigurationPath);
+            Assert.Equal(relativePath, snapshot.Record.ConfigurationPath);
+            Assert.Equal(configPath, snapshot.Paths.WorkspaceYamlPath);
+            Assert.False(File.Exists(Path.Combine(rootPath, "workspace.yaml")) && !string.Equals(relativePath, "workspace.yaml", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task InspectExistingGitCheckoutAsync_InvalidDiscoveredConfiguration_ReturnsInvalid()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            Directory.CreateDirectory(Path.Combine(rootPath, ".opencode"));
+            File.WriteAllText(Path.Combine(rootPath, ".opencode/profile.yaml".Replace('/', Path.DirectorySeparatorChar)), "workspace: [\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var plan = await orchestrator.InspectExistingGitCheckoutAsync(rootPath, "My Project");
+
+            Assert.Equal(WorkspaceDiscoveryStatus.Invalid, plan.DiscoveryResult.Status);
+            Assert.Equal(".opencode/profile.yaml", plan.DiscoveryResult.ConfigurationPath);
+            Assert.False(string.IsNullOrWhiteSpace(plan.DiscoveryResult.ErrorMessage));
+            Assert.Null(plan.LoadedDefinition);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_InvalidDiscoveredConfiguration_ThrowsAndDoesNotCreateWorkspaceYaml()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            Directory.CreateDirectory(Path.Combine(rootPath, ".opencode"));
+            File.WriteAllText(Path.Combine(rootPath, ".opencode", "profile.yaml"), "workspace: [\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "My Project",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            }));
+
+            Assert.Contains("Invalid workspace configuration found", exception.Message);
+            Assert.False(File.Exists(Path.Combine(rootPath, "workspace.yaml")));
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_PreservesUnrelatedYamlValuesWhenRefreshingGeneratedFiles()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var profilePath = Path.Combine(rootPath, ".opencode", "profile.yaml");
+            Directory.CreateDirectory(Path.GetDirectoryName(profilePath)!);
+            File.WriteAllText(profilePath, """
+workspace:
+  name: Existing Workspace
+provider:
+  type: git
+runtime:
+  default: default
+features:
+  - core
+services:
+  - postgres
+skills: []
+mcp: []
+agent:
+  profile: opencode-default
+terminal:
+  font:
+    provider: nerd-fonts
+    family: JetBrainsMono Nerd Font
+  prompt:
+    provider: starship
+  installIfMissing: true
+  utilities:
+    zoxide: false
+    fzf: false
+customSection:
+  owner: onboarding-team
+""");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "Ignored Name",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            });
+
+            var refreshedYaml = File.ReadAllText(profilePath);
+
+            Assert.Equal(".opencode/profile.yaml", snapshot.ConfigurationPath);
+            Assert.Contains("customSection:", refreshedYaml);
+            Assert.Contains("owner: onboarding-team", refreshedYaml);
+            Assert.DoesNotContain("workspace.yaml", refreshedYaml, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
     private static WorkspaceOrchestrator CreateOrchestrator(string appDataRoot)
     {
         var processRunner = new ProcessRunner();
         var resolver = new WorkspaceResolver(new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog")).LoadFeatures(), new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog")).LoadServices());
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
             new WorkspaceRepository(appDataRoot),
             resolver,
             new ComposeGenerator(),

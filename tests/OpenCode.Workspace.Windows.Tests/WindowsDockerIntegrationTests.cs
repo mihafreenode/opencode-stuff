@@ -497,6 +497,7 @@ public sealed class WindowsDockerIntegrationTests
 
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
             new WorkspaceRepository(appDataRoot),
             resolver,
             new ComposeGenerator(),

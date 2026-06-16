@@ -12,6 +12,31 @@ Read this after the README and first-workspace guide if you want to understand h
 
 It is user-owned, durable, and intended to stay portable between the local-first OpenCode Stuff environment and future hosted workspace environments.
 
+## Repository Onboarding
+
+Templates are used once.
+
+After a repository contains workspace configuration, that repository becomes the source of truth for onboarding and workspace setup.
+
+OpenCode Workspace Manager discovers these supported configuration paths when opening an existing repository:
+
+- `workspace.yaml`
+- `workspace.yml`
+- `.opencode/profile.yaml`
+- `.opencode/profile.yml`
+
+The application keeps using the discovered path. It does not auto-migrate or silently normalize repository layout.
+
+In practice, that means the repository can carry:
+
+- source code
+- workspace configuration
+- onboarding docs
+- AGENTS guidance
+- scripts and troubleshooting notes
+
+Together these form a reusable project knowledge base.
+
 ## Ownership Rules
 
 - edit `workspace.yaml` to change lasting workspace behavior

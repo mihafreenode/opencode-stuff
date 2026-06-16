@@ -71,6 +71,7 @@ public sealed class MainWindowViewModelRecoveryActionTests
                 Mcp = [],
             },
             Paths = paths,
+            ConfigurationPath = paths.WorkspaceYamlRelativePath,
             RuntimeState = WorkspaceRuntimeState.Stopped,
             Safety = new WorkspaceSafetySnapshot
             {

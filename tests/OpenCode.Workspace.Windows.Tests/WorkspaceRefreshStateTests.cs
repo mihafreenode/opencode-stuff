@@ -148,6 +148,7 @@ public sealed class WorkspaceRefreshStateTests
             var ignorePolicyService = new WorkspaceIgnorePolicyService();
             return new WorkspaceOrchestrator(
                 new WorkspaceYamlService(),
+                new WorkspaceDiscoveryService(),
                 new WorkspaceRepository(AppDataRoot),
                 new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices()),
                 new ComposeGenerator(),

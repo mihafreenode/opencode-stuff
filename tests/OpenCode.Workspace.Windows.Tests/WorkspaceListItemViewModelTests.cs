@@ -70,6 +70,7 @@ public sealed class WorkspaceListItemViewModelTests
         {
             RootPath = rootPath,
             GitIgnorePath = Path.Combine(rootPath, ".gitignore"),
+            WorkspaceYamlRelativePath = "workspace.yaml",
             WorkspaceYamlPath = Path.Combine(rootPath, "workspace.yaml"),
             ComposePath = Path.Combine(rootPath, "compose.yaml"),
             EnvironmentFilePath = Path.Combine(rootPath, ".env"),
@@ -123,6 +124,7 @@ public sealed class WorkspaceListItemViewModelTests
                 Services = services.ToList(),
             },
             Paths = paths,
+            ConfigurationPath = paths.WorkspaceYamlRelativePath,
             RuntimeState = runtimeState,
             Safety = new WorkspaceSafetySnapshot
             {

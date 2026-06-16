@@ -21,14 +21,18 @@ public partial class AppDialogWindow : Window
 
     private void Yes_OnClick(object sender, RoutedEventArgs e)
     {
-        Result = AppDialogResult.Yes;
+        Result = DataContext is ViewModels.AppDialogViewModel { Buttons: AppDialogButtons.OpenFileCancel }
+            ? AppDialogResult.OpenFile
+            : AppDialogResult.Yes;
         DialogResult = true;
         Close();
     }
 
     private void No_OnClick(object sender, RoutedEventArgs e)
     {
-        Result = AppDialogResult.No;
+        Result = DataContext is ViewModels.AppDialogViewModel { Buttons: AppDialogButtons.OpenFileCancel }
+            ? AppDialogResult.Cancel
+            : AppDialogResult.No;
         DialogResult = false;
         Close();
     }

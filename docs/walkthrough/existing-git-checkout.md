@@ -24,6 +24,17 @@ The app inspects the selected folder and shows:
 - whether local changes are still uncommitted
 - ahead/behind if tracking data is available
 
+If the repository already contains workspace configuration, the app loads it immediately and uses it as the initial UI state.
+
+Supported configuration paths are:
+
+- `workspace.yaml`
+- `workspace.yml`
+- `.opencode/profile.yaml`
+- `.opencode/profile.yml`
+
+That repository-owned configuration becomes the source of truth. The app does not silently replace it or fall back to template defaults when the discovered file is invalid.
+
 ![Existing repository selected in Create Workspace dialog](images/existing-checkout-03-repository-detected.png)
 
 ## Choose Branch Strategy
@@ -78,6 +89,7 @@ When you reopen the imported workspace later:
 - the app refreshes Git status from the repository
 - the current branch is shown as it really is at that moment
 - the app does not silently switch branches
+- the app keeps using the same discovered workspace configuration path
 
 ## Finishing Work
 

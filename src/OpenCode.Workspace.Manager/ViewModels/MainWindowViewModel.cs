@@ -35,6 +35,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _newWorkspacePath;
     private string _existingRepositoryPath = string.Empty;
     private WorkspaceSourceType _selectedWorkspaceSourceType;
+    private WorkspaceDefinition? _loadedRepositoryDefinition;
+    private string _loadedRepositoryConfigurationPath = string.Empty;
+    private string _loadedRepositoryConfigurationError = string.Empty;
+    private bool _loadedRepositoryConfigurationIsInvalid;
     private string _statusMessage;
     private bool _isWorkspaceListLoading = true;
     private bool _workspaceListLoadFailed;
@@ -408,7 +412,11 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedTemplate, value) && value is not null)
             {
-                ApplyTemplate(value);
+                if (_loadedRepositoryDefinition is null)
+                {
+                    ApplyTemplate(value);
+                }
+
                 RaisePropertyChanged(nameof(IsOracleDemoTemplateSelected));
             }
         }
@@ -455,6 +463,7 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _existingRepositoryPath, value))
             {
+                ClearLoadedRepositoryConfiguration();
                 if (string.IsNullOrWhiteSpace(_newWorkspaceName))
                 {
                     var folderName = GetWorkspaceNameFromPath(value);
@@ -743,6 +752,13 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool IsNewWorkspaceSource => SelectedWorkspaceSourceType == WorkspaceSourceType.NewWorkspace;
     public bool IsExistingGitCheckoutSource => SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout;
     public bool ShowCatalogSelectionOptions => true;
+    public bool HasLoadedRepositoryConfiguration => _loadedRepositoryDefinition is not null;
+    public bool HasInvalidRepositoryConfiguration => _loadedRepositoryConfigurationIsInvalid;
+    public bool ShowRepositoryConfigurationBanner => HasLoadedRepositoryConfiguration;
+    public string LoadedRepositoryConfigurationPath => _loadedRepositoryConfigurationPath;
+    public string RepositoryConfigurationBannerTitle => "Existing workspace configuration found.";
+    public string RepositoryConfigurationBannerMessage => "This repository already contains workspace settings. The configuration has been loaded and can be reviewed or modified.";
+    public string InvalidRepositoryConfigurationMessage => _loadedRepositoryConfigurationError;
     public string CreateWorkspaceDisabledReason => string.Empty;
     public string WorkspaceNameValidationMessage => string.IsNullOrWhiteSpace(NewWorkspaceName)
         ? _localization.Get("validation.workspaceNameRequired")
@@ -752,6 +768,8 @@ public sealed class MainWindowViewModel : ObservableObject
         : string.Empty;
     public string ExistingRepositoryPathValidationMessage => SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout && string.IsNullOrWhiteSpace(ExistingRepositoryPath)
         ? "Select an existing Git checkout."
+        : SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout && HasInvalidRepositoryConfiguration
+            ? "Fix the existing repository configuration before continuing."
         : string.Empty;
     public string WorkspaceLoadingTitle => "Loading workspaces...";
     public string WorkspaceLoadingDescription => "Please wait while workspace status is refreshed.";
@@ -821,6 +839,7 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         SelectedWorkspaceSourceType = WorkspaceSourceType.NewWorkspace;
         ExistingRepositoryPath = string.Empty;
+        ClearLoadedRepositoryConfiguration();
         LoadCatalogSelections();
 
         var templateToApply = SelectedTemplate
@@ -864,7 +883,19 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public async Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutFromDialogAsync()
-        => await _workspaceOrchestrator.InspectExistingGitCheckoutAsync(ExistingRepositoryPath.Trim(), NewWorkspaceName.Trim());
+    {
+        var plan = await _workspaceOrchestrator.InspectExistingGitCheckoutAsync(ExistingRepositoryPath.Trim(), NewWorkspaceName.Trim());
+        ApplyRepositoryConfigurationFromPlan(plan);
+        return plan;
+    }
+
+    public async Task<ExistingGitCheckoutPlan> LoadExistingRepositoryConfigurationAsync(string repositoryPath)
+    {
+        ExistingRepositoryPath = repositoryPath.Trim();
+        var plan = await _workspaceOrchestrator.InspectExistingGitCheckoutAsync(ExistingRepositoryPath, NewWorkspaceName.Trim());
+        ApplyRepositoryConfigurationFromPlan(plan);
+        return plan;
+    }
 
     public async Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName)
     {
@@ -888,25 +919,41 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public WorkspaceDefinition BuildWorkspaceDefinitionFromSelections(string workspaceName)
-        => new()
+    {
+        var baseDefinition = _loadedRepositoryDefinition;
+        return new WorkspaceDefinition
         {
             Workspace = new WorkspaceMetadata
             {
                 Name = workspaceName,
-                Image = string.IsNullOrWhiteSpace(SelectedTemplate?.WorkspaceImage) ? "ubuntu:24.04" : SelectedTemplate.WorkspaceImage,
+                Id = string.IsNullOrWhiteSpace(baseDefinition?.Workspace.Id) ? WorkspacePathBuilder.Slugify(workspaceName) : baseDefinition.Workspace.Id,
+                Image = baseDefinition?.Workspace.Image
+                    ?? (string.IsNullOrWhiteSpace(SelectedTemplate?.WorkspaceImage) ? "ubuntu:24.04" : SelectedTemplate.WorkspaceImage),
+            },
+            Provider = new WorkspaceProviderDefinition
+            {
+                Type = string.IsNullOrWhiteSpace(baseDefinition?.Provider.Type) ? "git" : baseDefinition.Provider.Type,
+                Url = baseDefinition?.Provider.Url,
             },
             Runtime = new WorkspaceRuntimeDefinition
             {
-                Default = "default",
-                Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
+                Default = baseDefinition?.Runtime.Default ?? "default",
+                Node = baseDefinition?.Runtime.Node ?? WorkspaceRuntimeDefinition.DefaultNodeMajorVersion,
             },
             Features = AvailableFeatures.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
             Services = AvailableServices.Where(item => item.IsSelected).Select(item => item.Id).ToList(),
-            Skills = SelectedTemplate?.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>(),
-            Mcp = SelectedTemplate?.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>(),
+            Skills = baseDefinition?.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? SelectedTemplate?.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? new List<string>(),
+            Mcp = baseDefinition?.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? SelectedTemplate?.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? new List<string>(),
             Agent = new AgentPreferences
             {
-                Profile = AgentProfileResolver.BuiltInDefault.ProfileId,
+                Profile = string.IsNullOrWhiteSpace(baseDefinition?.Agent.Profile) ? AgentProfileResolver.BuiltInDefault.ProfileId : baseDefinition.Agent.Profile,
+                Provider = baseDefinition?.Agent.Provider,
+                Connection = baseDefinition?.Agent.Connection,
+                Model = baseDefinition?.Agent.Model,
             },
             Terminal = new TerminalPreferences
             {
@@ -927,6 +974,77 @@ public sealed class MainWindowViewModel : ObservableObject
                 },
             },
         };
+    }
+
+    public void ClearLoadedRepositoryConfiguration()
+    {
+        _loadedRepositoryDefinition = null;
+        _loadedRepositoryConfigurationPath = string.Empty;
+        _loadedRepositoryConfigurationError = string.Empty;
+        _loadedRepositoryConfigurationIsInvalid = false;
+        RaisePropertyChanged(nameof(HasLoadedRepositoryConfiguration));
+        RaisePropertyChanged(nameof(HasInvalidRepositoryConfiguration));
+        RaisePropertyChanged(nameof(ShowRepositoryConfigurationBanner));
+        RaisePropertyChanged(nameof(LoadedRepositoryConfigurationPath));
+        RaisePropertyChanged(nameof(InvalidRepositoryConfigurationMessage));
+        RaisePropertyChanged(nameof(ExistingRepositoryPathValidationMessage));
+        RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
+    }
+
+    public void ApplyInvalidRepositoryConfiguration(string configurationPath, string errorMessage)
+    {
+        _loadedRepositoryDefinition = null;
+        _loadedRepositoryConfigurationPath = configurationPath;
+        _loadedRepositoryConfigurationError = errorMessage;
+        _loadedRepositoryConfigurationIsInvalid = true;
+        RaisePropertyChanged(nameof(HasLoadedRepositoryConfiguration));
+        RaisePropertyChanged(nameof(HasInvalidRepositoryConfiguration));
+        RaisePropertyChanged(nameof(ShowRepositoryConfigurationBanner));
+        RaisePropertyChanged(nameof(LoadedRepositoryConfigurationPath));
+        RaisePropertyChanged(nameof(InvalidRepositoryConfigurationMessage));
+        RaisePropertyChanged(nameof(ExistingRepositoryPathValidationMessage));
+        RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
+    }
+
+    public void ApplyRepositoryConfigurationFromPlan(ExistingGitCheckoutPlan plan)
+    {
+        if (plan.DiscoveryResult.Status == WorkspaceDiscoveryStatus.Invalid)
+        {
+            ApplyInvalidRepositoryConfiguration(
+                plan.DiscoveryResult.ConfigurationPath ?? "workspace configuration",
+                plan.DiscoveryResult.ErrorMessage ?? "The configuration could not be loaded.");
+            return;
+        }
+
+        if (plan.LoadedDefinition is null || string.IsNullOrWhiteSpace(plan.DiscoveryResult.ConfigurationPath))
+        {
+            ClearLoadedRepositoryConfiguration();
+            return;
+        }
+
+        _loadedRepositoryDefinition = plan.LoadedDefinition;
+        _loadedRepositoryConfigurationPath = plan.DiscoveryResult.ConfigurationPath;
+        _loadedRepositoryConfigurationError = string.Empty;
+        _loadedRepositoryConfigurationIsInvalid = false;
+
+        // Once a repository has declared its workspace configuration, those values
+        // become the initial UI state instead of template defaults.
+        NewWorkspaceName = plan.LoadedDefinition.Workspace.Name;
+        SelectCatalogItems(plan.LoadedDefinition.Features, plan.LoadedDefinition.Services);
+        SelectedPromptProvider = plan.LoadedDefinition.Terminal.Prompt.Provider;
+        SelectedFontFamily = plan.LoadedDefinition.Terminal.Font.Family;
+        InstallTerminalIfMissing = plan.LoadedDefinition.Terminal.InstallIfMissing;
+        InstallZoxide = plan.LoadedDefinition.Terminal.Utilities.Zoxide;
+        InstallFzf = plan.LoadedDefinition.Terminal.Utilities.Fzf;
+
+        RaisePropertyChanged(nameof(HasLoadedRepositoryConfiguration));
+        RaisePropertyChanged(nameof(HasInvalidRepositoryConfiguration));
+        RaisePropertyChanged(nameof(ShowRepositoryConfigurationBanner));
+        RaisePropertyChanged(nameof(LoadedRepositoryConfigurationPath));
+        RaisePropertyChanged(nameof(InvalidRepositoryConfigurationMessage));
+        RaisePropertyChanged(nameof(ExistingRepositoryPathValidationMessage));
+        RaisePropertyChanged(nameof(CanCreateWorkspaceForDialog));
+    }
 
     private async Task CreateWorkspaceAsync(string buttonSource = "HeaderCreateButton", Action<string>? diagnosticsLog = null)
     {
@@ -1761,7 +1879,8 @@ public sealed class MainWindowViewModel : ObservableObject
         var loadedWorkspaces = new List<WorkspaceListItemViewModel>();
         foreach (var record in _workspaceOrchestrator.LoadWorkspaceRecords())
         {
-            if (!File.Exists(Path.Combine(record.RootPath, "workspace.yaml")))
+            var configurationPath = WorkspacePathBuilder.NormalizeConfigurationRelativePath(record.ConfigurationPath);
+            if (!File.Exists(Path.Combine(record.RootPath, configurationPath.Replace('/', Path.DirectorySeparatorChar))))
             {
                 continue;
             }
@@ -1853,6 +1972,21 @@ public sealed class MainWindowViewModel : ObservableObject
         foreach (var service in AvailableServices)
         {
             service.IsSelected = template.Services.Contains(service.Id, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private void SelectCatalogItems(IEnumerable<string> selectedFeatures, IEnumerable<string> selectedServices)
+    {
+        var featureIds = new HashSet<string>(selectedFeatures, StringComparer.OrdinalIgnoreCase);
+        foreach (var feature in AvailableFeatures)
+        {
+            feature.IsSelected = feature.IsLocked || featureIds.Contains(feature.Id);
+        }
+
+        var serviceIds = new HashSet<string>(selectedServices, StringComparer.OrdinalIgnoreCase);
+        foreach (var service in AvailableServices)
+        {
+            service.IsSelected = serviceIds.Contains(service.Id);
         }
     }
 
@@ -1985,7 +2119,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return SelectedWorkspaceSourceType == WorkspaceSourceType.ExistingGitCheckout
-            ? !string.IsNullOrWhiteSpace(ExistingRepositoryPath)
+            ? !string.IsNullOrWhiteSpace(ExistingRepositoryPath) && !HasInvalidRepositoryConfiguration
             : !string.IsNullOrWhiteSpace(NewWorkspacePath);
     }
 

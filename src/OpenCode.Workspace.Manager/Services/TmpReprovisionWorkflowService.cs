@@ -149,6 +149,7 @@ var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServi
 var ignorePolicy = new WorkspaceIgnorePolicyService();
 var orchestrator = new WorkspaceOrchestrator(
     new WorkspaceYamlService(),
+    new WorkspaceDiscoveryService(),
     new WorkspaceRepository(appDataRoot),
     resolver,
     new ComposeGenerator(),

@@ -115,4 +115,79 @@ terminal:
             File.Delete(filePath);
         }
     }
+
+    [Fact]
+    public void WriteToFile_PreservesUnrelatedTopLevelValues()
+    {
+        var service = new WorkspaceYamlService();
+        var filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(filePath, """
+workspace:
+  name: existing-workspace
+provider:
+  type: git
+runtime:
+  default: default
+features:
+  - core
+services: []
+skills: []
+mcp: []
+agent:
+  profile: opencode-default
+terminal:
+  font:
+    provider: nerd-fonts
+    family: JetBrainsMono Nerd Font
+  prompt:
+    provider: starship
+  installIfMissing: true
+  utilities:
+    zoxide: false
+    fzf: false
+customSection:
+  owner: team
+  notes:
+    - keep me
+""");
+
+            service.WriteToFile(filePath, new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "updated-workspace",
+                    Image = "ubuntu:24.04",
+                },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+                Features = ["core"],
+                Services = ["postgres"],
+                Skills = [],
+                Mcp = [],
+                Agent = new AgentPreferences { Profile = AgentProfileResolver.BuiltInDefault.ProfileId },
+                Terminal = new TerminalPreferences
+                {
+                    InstallIfMissing = true,
+                    Font = new TerminalFontPreferences { Provider = "nerd-fonts", Family = "JetBrainsMono Nerd Font" },
+                    Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                    Utilities = new TerminalUtilityPreferences(),
+                },
+            });
+
+            var updatedYaml = File.ReadAllText(filePath);
+
+            Assert.Contains("customSection:", updatedYaml);
+            Assert.Contains("owner: team", updatedYaml);
+            Assert.Contains("- keep me", updatedYaml);
+            Assert.Contains("name: updated-workspace", updatedYaml);
+            Assert.Contains("- postgres", updatedYaml);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
 }

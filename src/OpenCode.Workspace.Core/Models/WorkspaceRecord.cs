@@ -3,13 +3,14 @@ namespace OpenCode.Workspace.Core.Models;
 /// <summary>
 /// The repository keeps a small Windows-local index of known workspaces so the
 /// app can reopen them quickly. The durable workspace behavior still lives in the
-/// user-owned workspace.yaml file inside each workspace folder.
+/// user-owned workspace configuration file inside each workspace folder.
 /// </summary>
 public sealed class WorkspaceRecord
 {
     public string Name { get; init; } = string.Empty;
     public string RootPath { get; init; } = string.Empty;
     public string RepositoryPath { get; init; } = string.Empty;
+    public string ConfigurationPath { get; init; } = "workspace.yaml";
     public WorkspaceSourceType SourceType { get; init; } = WorkspaceSourceType.NewWorkspace;
     public bool ImportedFromExistingCheckout { get; init; }
     public string OriginalDefaultBranch { get; init; } = string.Empty;
@@ -34,6 +35,7 @@ public sealed class WorkspacePaths
 {
     public required string RootPath { get; init; }
     public required string GitIgnorePath { get; init; }
+    public required string WorkspaceYamlRelativePath { get; init; }
     public required string WorkspaceYamlPath { get; init; }
     public required string ComposePath { get; init; }
     public required string EnvironmentFilePath { get; init; }
@@ -83,6 +85,7 @@ public sealed class WorkspaceSnapshot
     public required WorkspaceRecord Record { get; init; }
     public required WorkspaceDefinition Definition { get; init; }
     public required WorkspacePaths Paths { get; init; }
+    public required string ConfigurationPath { get; init; }
     public required WorkspaceRuntimeState RuntimeState { get; init; }
     public required WorkspaceSafetySnapshot Safety { get; init; }
     public required WorkspaceSessionSnapshot Session { get; init; }

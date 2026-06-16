@@ -220,6 +220,7 @@ public sealed class WorkspaceOrchestratorTests
                 Record = reloaded.Record,
                 Definition = reloaded.Definition,
                 Paths = reloaded.Paths,
+                ConfigurationPath = reloaded.ConfigurationPath,
                 RuntimeState = WorkspaceRuntimeState.Running,
                 Safety = reloaded.Safety,
                 Session = reloaded.Session,
@@ -798,6 +799,7 @@ public sealed class WorkspaceOrchestratorTests
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
             new WorkspaceRepository(GetAppDataRoot(tempRoot)),
             resolver,
             new ComposeGenerator(),
@@ -820,6 +822,7 @@ public sealed class WorkspaceOrchestratorTests
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
             new WorkspaceRepository(GetAppDataRoot(tempRoot)),
             resolver,
             new ComposeGenerator(),

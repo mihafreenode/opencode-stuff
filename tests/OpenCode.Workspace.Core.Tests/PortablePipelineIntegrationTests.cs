@@ -90,6 +90,7 @@ public sealed class PortablePipelineIntegrationTests
         {
             var orchestrator = new WorkspaceOrchestrator(
                 new WorkspaceYamlService(),
+                new WorkspaceDiscoveryService(),
                 new WorkspaceRepository(Path.Combine(tempRoot, ".appdata")),
                 new WorkspaceResolver(
                     [new FeatureManifest { Id = "core", AlwaysEnabled = true, Dependencies = new DependencySet() }],

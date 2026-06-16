@@ -30,6 +30,9 @@ public sealed class WorkspaceIgnorePolicyService
     private static readonly string[] TrackedExact =
     [
         "workspace.yaml",
+        "workspace.yml",
+        ".opencode/profile.yaml",
+        ".opencode/profile.yml",
         "history/timeline.yaml",
         ".editorconfig",
         ".gitattributes",

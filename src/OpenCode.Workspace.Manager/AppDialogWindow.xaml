@@ -24,9 +24,9 @@
                        xml:space="preserve" />
             <DockPanel Grid.Row="2" Margin="0,22,0,0" LastChildFill="False">
                 <Button DockPanel.Dock="Right" Width="100" Height="36" Content="{Binding OkLabel}" Click="Ok_OnClick" Visibility="{Binding ShowOk, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowYesNo, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Button Width="100" Height="36" Margin="0,0,10,0" Content="{Binding NoLabel}" Click="No_OnClick" />
-                    <Button Width="100" Height="36" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding YesLabel}" Click="Yes_OnClick" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowPrimarySecondary, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Button Width="100" Height="36" Margin="0,0,10,0" Content="{Binding SecondaryLabel}" Click="No_OnClick" />
+                    <Button Width="100" Height="36" Style="{StaticResource PrimaryButtonStyle}" Content="{Binding PrimaryLabel}" Click="Yes_OnClick" />
                 </StackPanel>
             </DockPanel>
         </Grid>
