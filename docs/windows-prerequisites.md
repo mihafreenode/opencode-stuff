@@ -114,6 +114,48 @@ ssh -T git@github.com
 
 The exact SSH host depends on your Git provider.
 
+## Optional Documentation Tools
+
+Most project documentation is written in Markdown (`.md`).
+
+### Simple Approach
+
+Many users prefer:
+
+- Notepad++
+- Notepad3
+- Sublime Text
+
+combined with:
+
+- Google Chrome
+- Microsoft Edge
+
+using a Markdown Viewer extension.
+
+This provides a fast workflow for reading onboarding guides, architecture documents, tutorials, and workspace documentation without installing a full development environment.
+
+### Visual Studio Code
+
+Visual Studio Code is a popular option for users who regularly edit documentation.
+
+Benefits include:
+
+- Markdown preview
+- Git integration
+- repository-wide search
+- extension support
+
+Optional installation:
+
+```powershell
+winget install Microsoft.VisualStudioCode
+```
+
+### Documentation-Only Users
+
+If your primary goal is reading onboarding guides, architecture documents, tutorials, or workspace documentation, a browser with Markdown viewing support is often sufficient.
+
 ## Next Step
 
 Once the checks pass, continue with:
