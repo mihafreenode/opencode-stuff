@@ -295,7 +295,7 @@
                             <Border Margin="0,16,0,0" Padding="12" Background="{StaticResource BrandSurfaceSubtleBrush}" CornerRadius="8"
                                     Visibility="{Binding SelectedWorkspaceHasOracleDemo, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Text="Oracle Demo Database" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="Oracle Workspace" FontSize="18" FontWeight="SemiBold" />
                                     <TextBlock Margin="0,8,0,0" Text="Status" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding SelectedOracleDemoStatus}" TextWrapping="Wrap" />
                                     <TextBlock Margin="0,8,0,0" Text="Startup Progress" FontWeight="SemiBold" />
@@ -315,12 +315,18 @@
                                         <Button Margin="8,0,0,0" Padding="14,8" Content="View Logs" Command="{Binding ViewOracleLogsCommand}" />
                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Copy Connection Details" Command="{Binding CopyOracleConnectionDetailsCommand}" />
                                     </WrapPanel>
-                                    <WrapPanel Margin="0,8,0,0">
-                                        <Button Padding="14,8" Content="Open Tutorial" Click="OpenQuickTutorial_OnClick" />
-                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Open SQLcl" Command="{Binding OpenOracleSqlclCommand}" />
-                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Run Tutorial Query" Command="{Binding RunOracleTutorialQueryCommand}" />
-                                        <Button Margin="8,0,0,0" Padding="14,8" Content="Test Connection" Command="{Binding TestOracleConnectionCommand}" />
-                                    </WrapPanel>
+                                     <WrapPanel Margin="0,8,0,0">
+                                         <Button Padding="14,8" Content="Open Tutorial" Click="OpenQuickTutorial_OnClick" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Open ORDS" Command="{Binding OpenOracleOrdsCommand}"
+                                                 Visibility="{Binding SelectedWorkspaceHasOracleApex, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Open APEX" Command="{Binding OpenOracleApexCommand}"
+                                                 Visibility="{Binding SelectedWorkspaceHasOracleApex, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Open SQLcl" Command="{Binding OpenOracleSqlclCommand}" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Open SQL Worksheet" Command="{Binding OpenOracleSqlWorksheetCommand}"
+                                                 Visibility="{Binding SelectedWorkspaceHasOracleApex, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Run Tutorial Query" Command="{Binding RunOracleTutorialQueryCommand}" />
+                                         <Button Margin="8,0,0,0" Padding="14,8" Content="Test Connection" Command="{Binding TestOracleConnectionCommand}" />
+                                     </WrapPanel>
                                     <TextBlock Margin="0,12,0,0" Text="{Binding SqlDeveloperStatus}" FontWeight="SemiBold" />
                                     <TextBlock Margin="0,8,0,0" Foreground="{StaticResource BrandTextSecondaryBrush}" Text="{Binding SqlDeveloperGuidance}" TextWrapping="Wrap" />
                                     <WrapPanel Margin="0,8,0,0">

@@ -19,13 +19,16 @@ public static class AppDialogService
     }
 
     public static AppDialogResult ShowYesNo(Window? owner, PoLocalizationService localization, string title, string message)
+        => ShowYesNo(owner, localization, title, message, null, null);
+
+    public static AppDialogResult ShowYesNo(Window? owner, PoLocalizationService localization, string title, string message, string? primaryLabel, string? secondaryLabel)
     {
         if (!CanShowDialog(owner))
         {
             return AppDialogResult.No;
         }
 
-        var dialog = CreateDialog(owner, title, message, AppDialogButtons.YesNo, localization);
+        var dialog = CreateDialog(owner, title, message, AppDialogButtons.YesNo, localization, primaryLabel, secondaryLabel);
         dialog.ShowDialog();
         return dialog.Result;
     }
@@ -63,12 +66,12 @@ public static class AppDialogService
         return application.Dispatcher.CheckAccess() && !application.Dispatcher.HasShutdownStarted && !application.Dispatcher.HasShutdownFinished;
     }
 
-    private static AppDialogWindow CreateDialog(Window? owner, string title, string message, AppDialogButtons buttons, PoLocalizationService localization)
+    private static AppDialogWindow CreateDialog(Window? owner, string title, string message, AppDialogButtons buttons, PoLocalizationService localization, string? primaryLabel = null, string? secondaryLabel = null)
         => new()
         {
             Owner = owner,
             ShowInTaskbar = false,
-            DataContext = new AppDialogViewModel(title, message, buttons, localization),
+            DataContext = new AppDialogViewModel(title, message, buttons, localization, primaryLabel, secondaryLabel),
         };
 }
 

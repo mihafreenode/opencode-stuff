@@ -43,7 +43,7 @@ public sealed class CatalogIntegrationTests
     public void TemplateExpander_CarriesTemplateSkillsAndMcpSelections()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var template = provider.LoadTemplates().Single(item => item.Id == "oracle-plsql-demo");
+        var template = provider.LoadTemplates().Single(item => item.Id == "oracle-apexlang-demo");
         var expander = new TemplateExpander();
 
         var definition = expander.Expand("oracle-demo", template);
@@ -51,6 +51,7 @@ public sealed class CatalogIntegrationTests
         Assert.Contains("oracle-explain-procedure", definition.Skills);
         Assert.Contains("oracle-sqlcl", definition.Mcp);
         Assert.Contains("oracle-demo", definition.Services);
+        Assert.Contains("oracle-ords", definition.Services);
     }
 
     [Fact]
@@ -88,5 +89,16 @@ public sealed class CatalogIntegrationTests
         Assert.DoesNotContain("libaio1", oracleFeature.Dependencies.Apt, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("libaio1t64", oracleFeature.Dependencies.Apt, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(oracleFeature.PostInstall, command => command.Contains("apt-get install -y libaio1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void OracleCatalog_ContainsPlSqlApexAndApexLangTemplates()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var templates = provider.LoadTemplates();
+
+        Assert.Contains(templates, template => template.Id == "oracle-plsql-demo");
+        Assert.Contains(templates, template => template.Id == "oracle-apex-demo");
+        Assert.Contains(templates, template => template.Id == "oracle-apexlang-demo");
     }
 }

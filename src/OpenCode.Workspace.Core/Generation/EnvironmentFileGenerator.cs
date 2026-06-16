@@ -17,7 +17,7 @@ public sealed class EnvironmentFileGenerator
             $"WORKSPACE_SLUG={slug}",
         };
 
-        if (definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase))
+        if (OracleWorkspaceFamily.IsOracleWorkspace(definition))
         {
             lines.AddRange(
             [
@@ -25,6 +25,10 @@ public sealed class EnvironmentFileGenerator
                 "ORACLE_DEMO_USERNAME=demo_user",
                 "ORACLE_DEMO_PASSWORD=demo_password",
                 "ORACLE_DEMO_SERVICE=FREEPDB1",
+                "ORACLE_DEMO_CONNECTION=demo_user/demo_password@//oracle-demo:1521/FREEPDB1",
+                "ORACLE_ORDS_PORT=8181",
+                "ORACLE_ORDS_BASE_URL=http://localhost:8181/ords",
+                "ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex",
             ]);
         }
 

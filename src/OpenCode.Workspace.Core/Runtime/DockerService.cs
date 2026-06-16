@@ -279,12 +279,8 @@ public sealed class DockerService
     }
 
     private static IReadOnlyList<string> GetComposeProfiles(WorkspaceDefinition definition)
-    {
-        if (definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase))
-        {
-            return ["oracle-demo"];
-        }
-
-        return Array.Empty<string>();
-    }
+        => definition.Services
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(service => service, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 }

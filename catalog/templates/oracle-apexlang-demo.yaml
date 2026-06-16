@@ -1,0 +1,22 @@
+# Built-in template manifest: oracle-apexlang-demo
+
+id: oracle-apexlang-demo
+displayName: Oracle APEXlang Demo
+description: Local Oracle Free workspace with SQLcl, ORDS, source-controlled APEXlang scripts, and full Oracle onboarding workflow docs.
+workspaceImage: ubuntu:24.04
+features:
+  - core
+  - oracle-demo
+  - oracle-apex-demo
+  - oracle-apexlang-demo
+services:
+  - oracle-demo
+  - oracle-ords
+skills:
+  - oracle-explain-procedure
+  - oracle-explain-trigger
+  - oracle-debug-procedure
+  - oracle-refactor-procedure
+  - oracle-generate-test-cases
+mcp:
+  - oracle-sqlcl

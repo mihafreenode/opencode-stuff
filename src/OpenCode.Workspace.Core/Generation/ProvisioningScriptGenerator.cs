@@ -1,5 +1,6 @@
 using System.Text;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Generation;
 
@@ -17,8 +18,9 @@ public sealed class ProvisioningScriptGenerator
         var builder = new StringBuilder();
         // Ubuntu 24.04 renamed the old libaio1 package to libaio1t64, so Oracle-related
         // provisioning must not hardcode libaio1 in the generic apt package plan.
-        var isOracleDemoWorkspace = workspace.Definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
-            || workspace.Definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
+        var oracleWorkspaceKind = OracleWorkspaceFamily.Detect(workspace.Definition);
+        var isOracleDemoWorkspace = oracleWorkspaceKind != OracleWorkspaceKind.None;
+        var hasOracleApex = oracleWorkspaceKind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang;
         var aptPackages = workspace.AptPackages
             .Where(packageName => !isOracleDemoWorkspace || !string.Equals(packageName, "libaio1", StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -68,6 +70,12 @@ public sealed class ProvisioningScriptGenerator
         if (isOracleDemoWorkspace)
         {
             builder.AppendLine();
+            if (hasOracleApex)
+            {
+                builder.AppendLine("echo \"[oracle-apex] Stage: Preparing Workspace\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Downloading Dependencies\"");
+            }
+
             builder.AppendLine("# Oracle SQLcl still needs libaio, but Ubuntu 24.04 renamed the package to libaio1t64.");
             builder.AppendLine(". /etc/os-release && echo \"[oracle] Detected Ubuntu version: ${VERSION_ID:-unknown} (${ID:-unknown})\"");
             builder.AppendLine("if apt-cache policy libaio1 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then");
@@ -115,6 +123,12 @@ public sealed class ProvisioningScriptGenerator
             builder.AppendLine("# Reuse a healthy SQLcl install when possible, and only replace it after a staged reinstall validates successfully.");
             builder.AppendLine("mkdir -p /workspace/.local/oracle/network/admin");
             builder.AppendLine("oracle_connection='demo_user/demo_password@//oracle-demo:1521/FREEPDB1'");
+            if (hasOracleApex)
+            {
+                builder.AppendLine("echo \"[oracle-apex] Stage: Starting Oracle Database\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Waiting for Database Readiness\"");
+            }
+
             builder.AppendLine("oracle_probe_script=/tmp/sqlcl-probe.sql");
             builder.AppendLine("cat > \"${oracle_probe_script}\" <<'SQL'");
             builder.AppendLine("SET HEADING OFF");
@@ -268,6 +282,40 @@ public sealed class ProvisioningScriptGenerator
             builder.AppendLine("    exit 1");
             builder.AppendLine("  fi");
             builder.AppendLine("fi");
+            if (hasOracleApex)
+            {
+                builder.AppendLine("echo \"[oracle-apex] Stage: Installing ORDS\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Installing APEX\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Configuring Workspace\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Creating Sample Application\"");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Running Validation\"");
+                builder.AppendLine("oracle_ords_url=http://oracle-ords:8181/ords");
+                builder.AppendLine("oracle_apex_url=http://oracle-ords:8181/ords/apex");
+                builder.AppendLine("for attempt in 1 2 3 4 5 6; do");
+                builder.AppendLine("  if curl -fsSL \"${oracle_ords_url}\" >/dev/null 2>&1; then");
+                builder.AppendLine("    break");
+                builder.AppendLine("  fi");
+                builder.AppendLine("  if [ \"${attempt}\" -eq 6 ]; then");
+                builder.AppendLine("    echo \"[oracle] ORDS endpoint did not become reachable.\" >&2");
+                builder.AppendLine("    exit 1");
+                builder.AppendLine("  fi");
+                builder.AppendLine("  echo \"[oracle] Waiting for ORDS endpoint ${attempt}/6...\" >&2");
+                builder.AppendLine("  sleep 10");
+                builder.AppendLine("done");
+                builder.AppendLine("for attempt in 1 2 3 4 5 6; do");
+                builder.AppendLine("  if curl -fsSL \"${oracle_apex_url}\" >/dev/null 2>&1; then");
+                builder.AppendLine("    break");
+                builder.AppendLine("  fi");
+                builder.AppendLine("  if [ \"${attempt}\" -eq 6 ]; then");
+                builder.AppendLine("    echo \"[oracle] APEX login page did not become reachable.\" >&2");
+                builder.AppendLine("    exit 1");
+                builder.AppendLine("  fi");
+                builder.AppendLine("  echo \"[oracle] Waiting for APEX login page ${attempt}/6...\" >&2");
+                builder.AppendLine("  sleep 10");
+                builder.AppendLine("done");
+                builder.AppendLine("echo \"[oracle-apex] Stage: Ready\"");
+            }
+
             builder.AppendLine("rm -f \"${oracle_probe_script}\" \"${oracle_sqlplus_probe_script}\" /tmp/sqlcl-probe.out /tmp/sqlplus-probe.out /tmp/sqlcl.zip /tmp/instantclient-basiclite.zip /tmp/instantclient-sqlplus.zip");
             builder.AppendLine("rm -rf /tmp/sqlcl-extract \"${oracle_sqlplus_stage}\"");
         }

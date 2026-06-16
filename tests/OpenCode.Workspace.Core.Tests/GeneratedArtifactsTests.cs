@@ -198,6 +198,7 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("ORACLE_PASSWORD=change-on-first-demo", content);
         Assert.Contains("ORACLE_DEMO_SERVICE=FREEPDB1", content);
+        Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", content);
     }
 
     [Fact]
@@ -305,6 +306,32 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("Reinstalled SQLcl failed runtime validation after activation", script);
         Assert.Contains("java -version", script);
         Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
+    }
+
+    [Fact]
+    public void ProvisioningGenerator_ForOracleApexWorkspace_WaitsForOrdsAndApex()
+    {
+        var generator = new ProvisioningScriptGenerator();
+        var script = generator.Generate(new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apex-demo" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = new[] { "curl", "rlwrap", "unzip" },
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        });
+
+        Assert.Contains("oracle_ords_url=http://oracle-ords:8181/ords", script);
+        Assert.Contains("oracle_apex_url=http://oracle-ords:8181/ords/apex", script);
+        Assert.Contains("ORDS endpoint did not become reachable", script);
+        Assert.Contains("APEX login page did not become reachable", script);
     }
 
     [Fact]

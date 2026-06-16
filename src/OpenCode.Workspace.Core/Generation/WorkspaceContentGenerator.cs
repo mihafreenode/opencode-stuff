@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Generation;
 
@@ -50,12 +51,17 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("test-oracle-connection.ps1")] = TestConnectionScript();
         files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
         files[Path.Combine("scripts", "start-opencode-oracle-demo.ps1")] = StartOpenCodeOracleDemoScript();
+
+        foreach (var pair in OracleWorkspaceGeneratedContent.Generate(definition, WithGeneratedHeader, WithGeneratedSqlHeader, WithGeneratedScriptHeader))
+        {
+            files[pair.Key] = pair.Value;
+        }
+
         return files;
     }
 
     private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
-        => definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
-            || definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
+        => OracleWorkspaceFamily.IsOracleWorkspace(definition);
 
     private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
         => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);

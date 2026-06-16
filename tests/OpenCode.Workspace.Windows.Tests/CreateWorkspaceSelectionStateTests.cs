@@ -12,12 +12,12 @@ public sealed class CreateWorkspaceSelectionStateTests
     {
         var viewModel = CreateViewModel();
 
-        viewModel.SelectedTemplate = viewModel.Templates.Single(template => template.Id == "oracle-plsql-demo");
+        viewModel.SelectedTemplate = viewModel.Templates.Single(template => template.Id == "oracle-apex-demo");
 
         var definition = viewModel.BuildWorkspaceDefinitionFromSelections("oracle-demo");
 
-        Assert.Equal(["core", "oracle-demo"], definition.Features);
-        Assert.Equal(["oracle-demo"], definition.Services);
+        Assert.Equal(["core", "oracle-demo", "oracle-apex-demo"], definition.Features);
+        Assert.Equal(["oracle-demo", "oracle-ords"], definition.Services);
     }
 
     [Fact]

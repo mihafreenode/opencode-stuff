@@ -1,0 +1,12 @@
+# Built-in feature manifest: oracle-apex-demo
+
+id: oracle-apex-demo
+displayName: Oracle APEX Demo Assets
+description: Oracle APEX onboarding content, ORDS helpers, sample Customers data, and generated health-check scripts.
+alwaysEnabled: false
+dependencies:
+  apt:
+    - curl
+    - jq
+postInstall:
+  - 'mkdir -p /workspace/apex /workspace/docs /workspace/scripts /workspace/sql'

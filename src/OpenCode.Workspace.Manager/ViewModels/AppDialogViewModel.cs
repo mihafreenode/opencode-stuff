@@ -4,14 +4,14 @@ namespace OpenCode.Workspace.Manager.ViewModels;
 
 public sealed class AppDialogViewModel
 {
-    public AppDialogViewModel(string title, string message, AppDialogButtons buttons, PoLocalizationService localization)
+    public AppDialogViewModel(string title, string message, AppDialogButtons buttons, PoLocalizationService localization, string? primaryLabel = null, string? secondaryLabel = null)
     {
         Title = title;
         Message = message;
         Buttons = buttons;
         OkLabel = localization.Get("actions.ok");
-        PrimaryLabel = buttons == AppDialogButtons.OpenFileCancel ? "Open File" : localization.Get("actions.yes");
-        SecondaryLabel = buttons == AppDialogButtons.OpenFileCancel ? localization.Get("actions.cancel") : localization.Get("actions.no");
+        PrimaryLabel = primaryLabel ?? (buttons == AppDialogButtons.OpenFileCancel ? "Open File" : localization.Get("actions.yes"));
+        SecondaryLabel = secondaryLabel ?? (buttons == AppDialogButtons.OpenFileCancel ? localization.Get("actions.cancel") : localization.Get("actions.no"));
     }
 
     public string Title { get; }

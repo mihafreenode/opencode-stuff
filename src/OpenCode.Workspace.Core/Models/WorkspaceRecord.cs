@@ -19,6 +19,7 @@ public sealed class WorkspaceRecord
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset LastOpenedUtc { get; init; }
     public DateTimeOffset? LastPreparedUtc { get; init; }
+    public bool OracleSoftwareNoticeShown { get; init; }
     public string? LastOperationName { get; init; }
     public string? LastOperationResult { get; init; }
     public bool? LastOperationSucceeded { get; init; }

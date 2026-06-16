@@ -1,0 +1,12 @@
+# Built-in feature manifest: oracle-apexlang-demo
+
+id: oracle-apexlang-demo
+displayName: Oracle APEXlang Demo Assets
+description: Source-controlled Oracle APEXlang export and import scripts, onboarding docs, and repository workflow helpers.
+alwaysEnabled: false
+dependencies:
+  apt:
+    - curl
+    - jq
+postInstall:
+  - 'mkdir -p /workspace/apex /workspace/docs /workspace/scripts /workspace/sql'

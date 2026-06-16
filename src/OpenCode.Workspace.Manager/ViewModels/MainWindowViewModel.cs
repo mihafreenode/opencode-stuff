@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Models;
@@ -29,6 +30,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly AppBuildInfo _appBuildInfo;
     private readonly AgentProfileResolver _agentProfileResolver = new();
     private readonly Dictionary<string, List<WorkspaceLogLineViewModel>> _workspaceLogsByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _oracleNoticeAcknowledgedWorkspacePaths = new(StringComparer.OrdinalIgnoreCase);
     private WorkspaceListItemViewModel? _selectedWorkspace;
     private TemplateManifest? _selectedTemplate;
     private string _newWorkspaceName = "demo-workspace";
@@ -53,6 +55,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly string? _sqlDeveloperExecutablePath;
     private string? _oracleStartupStageOverride;
     private static readonly TimeSpan CreateWorkspaceTimeout = TimeSpan.FromSeconds(20);
+
+    internal Func<string, AppDialogResult>? OracleNoticePromptOverrideForTests { get; set; }
+    internal string? LastOracleNoticeMessageForTests { get; private set; }
 
     public MainWindowViewModel(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -203,7 +208,10 @@ public sealed class MainWindowViewModel : ObservableObject
         ResetOracleDemoCommand = new AsyncRelayCommand(ResetOracleDemoAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         ViewOracleLogsCommand = new AsyncRelayCommand(ViewOracleLogsAsync, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         CopyOracleConnectionDetailsCommand = new RelayCommand(CopyOracleConnectionDetails, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        OpenOracleOrdsCommand = new RelayCommand(OpenOracleOrds, () => SelectedWorkspaceHasOracleApex && !IsBusy);
+        OpenOracleApexCommand = new RelayCommand(OpenOracleApex, () => SelectedWorkspaceHasOracleApex && !IsBusy);
         OpenOracleSqlclCommand = new RelayCommand(OpenOracleSqlcl, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
+        OpenOracleSqlWorksheetCommand = new RelayCommand(OpenOracleSqlWorksheet, () => SelectedWorkspaceHasOracleApex && !IsBusy);
         RunOracleTutorialQueryCommand = new RelayCommand(RunOracleTutorialQuery, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         TestOracleConnectionCommand = new RelayCommand(TestOracleConnection, () => SelectedWorkspaceHasOracleDemo && !IsBusy);
         OpenSqlDeveloperCommand = new RelayCommand(OpenSqlDeveloper, () => SelectedWorkspaceHasOracleDemo && IsSqlDeveloperDetected && !IsBusy);
@@ -333,7 +341,10 @@ public sealed class MainWindowViewModel : ObservableObject
     public AsyncRelayCommand ResetOracleDemoCommand { get; }
     public AsyncRelayCommand ViewOracleLogsCommand { get; }
     public RelayCommand CopyOracleConnectionDetailsCommand { get; }
+    public RelayCommand OpenOracleOrdsCommand { get; }
+    public RelayCommand OpenOracleApexCommand { get; }
     public RelayCommand OpenOracleSqlclCommand { get; }
+    public RelayCommand OpenOracleSqlWorksheetCommand { get; }
     public RelayCommand RunOracleTutorialQueryCommand { get; }
     public RelayCommand TestOracleConnectionCommand { get; }
     public RelayCommand OpenSqlDeveloperCommand { get; }
@@ -356,6 +367,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 RaisePropertyChanged(nameof(SelectedWorkspaceServices));
                 RaisePropertyChanged(nameof(SelectedWorkspaceAgent));
                 RaisePropertyChanged(nameof(SelectedWorkspaceHasOracleDemo));
+                RaisePropertyChanged(nameof(SelectedWorkspaceHasOracleApex));
+                RaisePropertyChanged(nameof(SelectedWorkspaceHasOracleApexLang));
                 RaisePropertyChanged(nameof(SelectedOracleDemoStatus));
                 RaisePropertyChanged(nameof(OracleStartupStage));
                 RaisePropertyChanged(nameof(OracleOpenCodeGuidance));
@@ -644,7 +657,9 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SelectedWorkspaceAgent => SelectedWorkspace is null
         ? "-"
         : _agentProfileResolver.Resolve(SelectedWorkspace.Snapshot.Definition).ProfileId;
-    public bool SelectedWorkspaceHasOracleDemo => SelectedWorkspace?.Snapshot.Definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase) == true;
+    public bool SelectedWorkspaceHasOracleDemo => SelectedWorkspace is not null && OracleWorkspaceFamily.IsOracleWorkspace(SelectedWorkspace.Snapshot.Definition);
+    public bool SelectedWorkspaceHasOracleApex => SelectedWorkspace is not null && OracleWorkspaceFamily.HasApex(SelectedWorkspace.Snapshot.Definition);
+    public bool SelectedWorkspaceHasOracleApexLang => SelectedWorkspace is not null && OracleWorkspaceFamily.HasApexLang(SelectedWorkspace.Snapshot.Definition);
     public string SelectedOracleDemoStatus => SelectedWorkspace?.Snapshot.RuntimeState switch
     {
         WorkspaceRuntimeState.Running => "Running",
@@ -656,7 +671,9 @@ public sealed class MainWindowViewModel : ObservableObject
     public string OracleDemoServiceName => "FREEPDB1";
     public string OracleDemoUsername => "demo_user";
     public string OracleDemoPassword => "demo_password";
-    public string OracleDemoProvisioningNote => "First provisioning downloads Oracle SQLcl from Oracle and requires internet access. After that, the demo database and tutorial run locally. OpenCode inside the workspace uses demo_user/demo_password@//oracle-demo:1521/FREEPDB1.";
+    public string OracleDemoProvisioningNote => SelectedWorkspaceHasOracleApex
+        ? "First provisioning downloads Oracle SQLcl from Oracle and prepares ORDS reachability checks. After that, the Oracle database, ORDS, and local APEX onboarding flow run locally. OpenCode inside the workspace uses demo_user/demo_password@//oracle-demo:1521/FREEPDB1."
+        : "First provisioning downloads Oracle SQLcl from Oracle and requires internet access. After that, the demo database and tutorial run locally. OpenCode inside the workspace uses demo_user/demo_password@//oracle-demo:1521/FREEPDB1.";
     public string OracleStartupStage => SelectedWorkspaceHasOracleDemo && !string.IsNullOrWhiteSpace(_oracleStartupStageOverride)
         ? _oracleStartupStageOverride!
         : GetOracleStartupStageFromSnapshot();
@@ -666,15 +683,8 @@ public sealed class MainWindowViewModel : ObservableObject
     public string SqlDeveloperGuidance => IsSqlDeveloperDetected
         ? "Use the copied localhost connection details to connect quickly during the demo."
         : "SQL Developer is optional. If it is not installed, continue with Open SQLcl and the local tutorial.";
-    public bool IsOracleDemoTemplateSelected => string.Equals(SelectedTemplate?.Id, "oracle-plsql-demo", StringComparison.OrdinalIgnoreCase);
-    public string OracleTemplateIncludesSummary => string.Join(Environment.NewLine, new[]
-    {
-        "✓ Oracle Free Database",
-        "✓ SQLcl",
-        "✓ Tutorial",
-        "✓ Sample Schema",
-        "✓ AI Skills",
-    });
+    public bool IsOracleDemoTemplateSelected => SelectedTemplate is not null && OracleWorkspaceFamily.IsOracleWorkspace(SelectedTemplate);
+    public string OracleTemplateIncludesSummary => string.Join(Environment.NewLine, GetOracleTemplateIncludesSummary());
     public bool IsWorkspaceListLoading
     {
         get => _isWorkspaceListLoading;
@@ -1221,6 +1231,11 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 if (snapshot.UpdateRequired || snapshot.AppliedState is null)
                 {
+                    if (!EnsureOracleSoftwareNoticeReviewed(snapshot))
+                    {
+                        return;
+                    }
+
                     await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
                     PersistWorkspaceRecord(snapshot, StartWorkspaceLabel, "Provisioned and started workspace.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
                     StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' was prepared and started.";
@@ -1388,6 +1403,11 @@ public sealed class MainWindowViewModel : ObservableObject
 
         if (IsOracleDemoWorkspace(snapshot.Definition))
         {
+            if (!EnsureOracleSoftwareNoticeReviewed(snapshot))
+            {
+                return;
+            }
+
             SetOracleStartupStage("Provisioning SQLcl");
             StatusMessage = "Provisioning Oracle demo workspace. SQLcl is downloaded from Oracle on first run and requires internet access.";
             AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Provisioning Oracle demo workspace. SQLcl download requires internet access on first run.");
@@ -1427,6 +1447,12 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 if (snapshot.UpdateRequired || snapshot.AppliedState is null)
                 {
+                    if (!EnsureOracleSoftwareNoticeReviewed(snapshot))
+                    {
+                        StatusMessage = "Oracle software notice was cancelled. Provisioning did not start.";
+                        return;
+                    }
+
                     SetOracleStartupStage("Provisioning SQLcl");
                     StatusMessage = "Provisioning Oracle demo workspace. SQLcl is downloaded from Oracle on first run and requires internet access.";
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Starting Oracle demo workspace. SQLcl download requires internet access on first run.");
@@ -1670,6 +1696,12 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     private void OpenOracleSqlcl() => RunWorkspaceScript("open-sqlcl.ps1", "Opened SQLcl launcher.");
+
+    private void OpenOracleOrds() => OpenOracleUrl("http://localhost:8181/ords", "Opened ORDS.");
+
+    private void OpenOracleApex() => OpenOracleUrl("http://localhost:8181/ords/apex", "Opened APEX.");
+
+    private void OpenOracleSqlWorksheet() => RunWorkspaceScript(Path.Combine("scripts", "open-sql-worksheet.ps1"), "Opened SQL worksheet launcher.");
 
     private void RunOracleTutorialQuery() => RunWorkspaceScript("run-tutorial-query.ps1", "Ran Oracle tutorial query.");
 
@@ -2249,7 +2281,103 @@ public sealed class MainWindowViewModel : ObservableObject
             return "Finish Oracle provisioning first. OpenCode should use the known local demo connection and wait for the panel to show Running and Ready before verification.";
         }
 
-        return "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and run scripts/verify-oracle-demo.sh.";
+        return SelectedWorkspaceHasOracleApex
+            ? "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and validate database, ORDS, and APEX reachability before application work."
+            : "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and run scripts/verify-oracle-demo.sh.";
+    }
+
+    private bool EnsureOracleSoftwareNoticeReviewed(WorkspaceSnapshot snapshot)
+    {
+        if (!IsOracleDemoWorkspace(snapshot.Definition)
+            || snapshot.Record.OracleSoftwareNoticeShown
+            || _oracleNoticeAcknowledgedWorkspacePaths.Contains(snapshot.Record.RootPath))
+        {
+            return true;
+        }
+
+        var message = string.Join(Environment.NewLine + Environment.NewLine, new[]
+        {
+            "This workspace provisions Oracle software from Oracle-provided sources.",
+            "Oracle software is subject to Oracle licensing terms.",
+            "Please review applicable Oracle licensing information before continuing.",
+            "Oracle Database Free: https://www.oracle.com/database/free/",
+            "Oracle APEX: https://apex.oracle.com/",
+            "Oracle ORDS: https://www.oracle.com/database/technologies/appdev/rest.html",
+            "Oracle Licensing Information: https://www.oracle.com/corporate/license/",
+        });
+
+        LastOracleNoticeMessageForTests = message;
+
+        AppDialogResult result;
+        if (OracleNoticePromptOverrideForTests is not null)
+        {
+            result = OracleNoticePromptOverrideForTests(message);
+        }
+        else
+        {
+            if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA || Application.Current is null)
+            {
+                return true;
+            }
+
+            result = AppDialogService.ShowYesNo(
+                TryGetDialogOwner(),
+                _localization,
+                "Oracle Software Notice",
+                message,
+                "Continue",
+                "Cancel");
+        }
+
+        if (result != AppDialogResult.Yes)
+        {
+            return false;
+        }
+
+        _oracleNoticeAcknowledgedWorkspacePaths.Add(snapshot.Record.RootPath);
+
+        _workspaceOrchestrator.SaveRecord(new WorkspaceRecord
+        {
+            Name = snapshot.Record.Name,
+            RootPath = snapshot.Record.RootPath,
+            RepositoryPath = snapshot.Record.RepositoryPath,
+            ConfigurationPath = snapshot.Record.ConfigurationPath,
+            SourceType = snapshot.Record.SourceType,
+            ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+            OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+            SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+            RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+            CreatedUtc = snapshot.Record.CreatedUtc,
+            LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+            LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+            OracleSoftwareNoticeShown = true,
+            LastOperationName = snapshot.Record.LastOperationName,
+            LastOperationResult = snapshot.Record.LastOperationResult,
+            LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+            LastOperationUtc = snapshot.Record.LastOperationUtc,
+        });
+
+        return true;
+    }
+
+    internal bool EnsureOracleSoftwareNoticeReviewedForTests(WorkspaceSnapshot snapshot)
+        => EnsureOracleSoftwareNoticeReviewed(snapshot);
+
+    private void OpenOracleUrl(string url, string successMessage)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true,
+            });
+            StatusMessage = successMessage;
+        }
+        catch (Exception exception)
+        {
+            ShowOracleActionError("Oracle URL Action Failed", $"The app could not open '{url}'.", exception.Message, "Verify the default browser configuration on Windows and try again.");
+        }
     }
 
     private void SetOracleStartupStage(string stage)
@@ -2379,6 +2507,7 @@ public sealed class MainWindowViewModel : ObservableObject
             CreatedUtc = snapshot.Record.CreatedUtc,
             LastOpenedUtc = lastOpenedUtc ?? snapshot.Record.LastOpenedUtc,
             LastPreparedUtc = lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
+            OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
             LastOperationName = operationName,
             LastOperationResult = operationResult,
             LastOperationSucceeded = succeeded,
@@ -2409,6 +2538,7 @@ public sealed class MainWindowViewModel : ObservableObject
             CreatedUtc = snapshot.Record.CreatedUtc,
             LastOpenedUtc = lastOpenedUtc ?? snapshot.Record.LastOpenedUtc,
             LastPreparedUtc = lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
+            OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
             LastOperationName = operationName,
             LastOperationResult = operationResult,
             LastOperationSucceeded = succeeded,
@@ -2455,7 +2585,10 @@ public sealed class MainWindowViewModel : ObservableObject
         ResetOracleDemoCommand.RaiseCanExecuteChanged();
         ViewOracleLogsCommand.RaiseCanExecuteChanged();
         CopyOracleConnectionDetailsCommand.RaiseCanExecuteChanged();
+        OpenOracleOrdsCommand.RaiseCanExecuteChanged();
+        OpenOracleApexCommand.RaiseCanExecuteChanged();
         OpenOracleSqlclCommand.RaiseCanExecuteChanged();
+        OpenOracleSqlWorksheetCommand.RaiseCanExecuteChanged();
         RunOracleTutorialQueryCommand.RaiseCanExecuteChanged();
         TestOracleConnectionCommand.RaiseCanExecuteChanged();
         OpenSqlDeveloperCommand.RaiseCanExecuteChanged();
@@ -2472,6 +2605,31 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
-        => definition.Services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
-            || definition.Features.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase);
+        => OracleWorkspaceFamily.IsOracleWorkspace(definition);
+
+    private IEnumerable<string> GetOracleTemplateIncludesSummary()
+    {
+        var kind = SelectedTemplate is null ? OracleWorkspaceKind.None : OracleWorkspaceFamily.Detect(SelectedTemplate);
+        yield return "✓ Oracle Free Database";
+        yield return "✓ SQLcl";
+
+        if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
+        {
+            yield return "✓ Oracle APEX";
+            yield return "✓ ORDS";
+            yield return "✓ Customers Sample Data";
+        }
+        else
+        {
+            yield return "✓ Tutorial";
+            yield return "✓ Sample Schema";
+        }
+
+        if (kind == OracleWorkspaceKind.ApexLang)
+        {
+            yield return "✓ APEXlang Export/Import Scripts";
+        }
+
+        yield return "✓ AI Skills";
+    }
 }
