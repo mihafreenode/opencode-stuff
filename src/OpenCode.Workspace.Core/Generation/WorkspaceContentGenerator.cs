@@ -72,6 +72,12 @@ public sealed class WorkspaceContentGenerator
             files[pair.Key] = pair.Value;
         }
 
+        var oracleSettings = OracleWorkspaceSettings.From(definition);
+        foreach (var key in files.Keys.ToList())
+        {
+            files[key] = ReplaceOracleHostFacingEndpoints(files[key], oracleSettings);
+        }
+
         return files;
     }
 
@@ -115,6 +121,12 @@ public sealed class WorkspaceContentGenerator
 
     private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
         => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);
+
+    private static string ReplaceOracleHostFacingEndpoints(string content, OracleWorkspaceSettings oracleSettings)
+        => content
+            .Replace("http://localhost:8181/ords/apex", oracleSettings.ApexLoginUrl, StringComparison.Ordinal)
+            .Replace("http://localhost:8181/ords", oracleSettings.OrdsBaseUrl, StringComparison.Ordinal)
+            .Replace("//localhost:1521/", $"//localhost:{oracleSettings.HostPort}/", StringComparison.Ordinal);
 
     private static string BuildCapabilityCatalogIndex(ResolvedWorkspace workspace)
     {

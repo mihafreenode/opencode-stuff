@@ -35,6 +35,9 @@ public sealed class DockerService
     public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "ps", "--status", "running", "--services" }, log, cancellationToken);
 
+    public Task<ProcessResult> GetComposePsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => RunComposeAsync(paths, definition, new[] { "ps" }, log, cancellationToken);
+
     public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "logs", serviceName }, log, cancellationToken);
 
@@ -183,6 +186,12 @@ public sealed class DockerService
             return validationResult;
         }
 
+        var portConflictResult = await DetectOraclePortConflictAsync(paths, definition, log, cancellationToken);
+        if (portConflictResult is not null)
+        {
+            return portConflictResult;
+        }
+
         var result = await RunComposeAsync(paths, definition, new[] { "up", "-d" }, log, cancellationToken);
         if (result.IsSuccess)
         {
@@ -283,4 +292,164 @@ public sealed class DockerService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(service => service, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private async Task<ProcessResult?> DetectOraclePortConflictAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        if (!OracleWorkspaceFamily.IsOracleWorkspace(definition))
+        {
+            return null;
+        }
+
+        var oracleSettings = OracleWorkspaceSettings.From(definition);
+        var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
+        var ports = new List<OracleHostPortCheck>
+        {
+            new(oracleSettings.HostPort, "Oracle", "another Oracle demo workspace is running", "Oracle Database is already running locally"),
+        };
+
+        if (OracleWorkspaceFamily.HasApex(definition))
+        {
+            ports.Add(new OracleHostPortCheck(oracleSettings.OrdsPort, "Oracle ORDS/APEX", "another Oracle APEX workspace is running", "another service is already using the ORDS/APEX port locally"));
+        }
+
+        var dockerPsResult = await RunDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" }, paths.RootPath, log, cancellationToken);
+        var composePsResult = await GetComposePsAsync(paths, definition, log, cancellationToken);
+
+        foreach (var port in ports)
+        {
+            var containerOwner = dockerPsResult.IsSuccess ? FindPortOwningContainer(dockerPsResult.StandardOutputLines, port.Port, projectName) : null;
+            if (containerOwner?.BelongsToCurrentWorkspace == true)
+            {
+                continue;
+            }
+
+            var hostDiagnostic = await GetHostPortDiagnosticAsync(port.Port, cancellationToken);
+            if (containerOwner is null && !hostDiagnostic.IsInUse)
+            {
+                continue;
+            }
+
+            var message = BuildOraclePortConflictMessage(port, containerOwner, hostDiagnostic, dockerPsResult, composePsResult);
+            log?.Invoke(new CommandLogEntry { Source = "app", Message = message });
+
+            return new ProcessResult
+            {
+                Command = $"oracle-port-preflight {port.Port}",
+                ExitCode = 1,
+                StandardOutput = string.Empty,
+                StandardError = message,
+                StandardOutputLines = Array.Empty<string>(),
+                StandardErrorLines = message.Split(Environment.NewLine),
+                Duration = TimeSpan.Zero,
+                FailureClassification = WorkspaceFailureClassification.EnvironmentPortConflict,
+            };
+        }
+
+        return null;
+    }
+
+    private async Task<HostPortDiagnostic> GetHostPortDiagnosticAsync(int port, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var script = $"$connections = Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue; if (-not $connections) {{ exit 0 }}; foreach ($connection in ($connections | Sort-Object OwningProcess -Unique)) {{ $processName = 'unknown'; try {{ $processName = (Get-Process -Id $connection.OwningProcess -ErrorAction Stop).ProcessName }} catch {{ }}; Write-Output ('LISTEN port={port} pid=' + $connection.OwningProcess + ' process=' + $processName) }}";
+                var result = await _processRunner.RunAsync("powershell.exe", new[] { "-NoProfile", "-Command", script }, cancellationToken: cancellationToken);
+                var lines = result.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => line.Trim()).ToList();
+                return new HostPortDiagnostic(lines.Count > 0, lines);
+            }
+
+            var command = $"ss -ltnp '( sport = :{port} )' 2>/dev/null || true";
+            var linuxResult = await _processRunner.RunAsync("bash", new[] { "-lc", command }, cancellationToken: cancellationToken);
+            var linuxLines = linuxResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => line.Trim()).ToList();
+            return new HostPortDiagnostic(linuxLines.Count > 1, linuxLines);
+        }
+        catch
+        {
+            return new HostPortDiagnostic(false, Array.Empty<string>());
+        }
+    }
+
+    private static ContainerPortOwner? FindPortOwningContainer(IEnumerable<string> dockerPsLines, int hostPort, string currentProjectName)
+    {
+        foreach (var line in dockerPsLines)
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || !trimmed.Contains($":{hostPort}->", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parts = trimmed.Split('\t', 2);
+            var containerName = parts[0].Trim();
+            if (string.IsNullOrWhiteSpace(containerName))
+            {
+                continue;
+            }
+
+            var belongsToCurrentWorkspace = containerName.Equals($"{currentProjectName}-workspace", StringComparison.OrdinalIgnoreCase)
+                || containerName.StartsWith(currentProjectName + "-", StringComparison.OrdinalIgnoreCase);
+
+            return new ContainerPortOwner(containerName, belongsToCurrentWorkspace);
+        }
+
+        return null;
+    }
+
+    private static string BuildOraclePortConflictMessage(OracleHostPortCheck port, ContainerPortOwner? containerOwner, HostPortDiagnostic hostDiagnostic, ProcessResult dockerPsResult, ProcessResult composePsResult)
+    {
+        var lines = new List<string>
+        {
+            $"{port.Label} port {port.Port} is already in use.",
+            string.Empty,
+            "Likely causes:",
+            $"- {port.LikelyCauseOne}",
+            $"- {port.LikelyCauseTwo}",
+            "- stale container still owns the port",
+        };
+
+        if (containerOwner is not null)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Owning container: {containerOwner.ContainerName}");
+        }
+
+        if (hostDiagnostic.Details.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Host port details:");
+            lines.AddRange(hostDiagnostic.Details.Select(detail => $"- {detail}"));
+        }
+
+        if (composePsResult.IsSuccess && !string.IsNullOrWhiteSpace(composePsResult.StandardOutput))
+        {
+            lines.Add(string.Empty);
+            lines.Add("This workspace docker compose ps:");
+            lines.Add(composePsResult.StandardOutput.Trim());
+        }
+
+        if (dockerPsResult.IsSuccess && !string.IsNullOrWhiteSpace(dockerPsResult.StandardOutput))
+        {
+            lines.Add(string.Empty);
+            lines.Add("Running containers:");
+            lines.Add(dockerPsResult.StandardOutput.Trim());
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Suggested actions:");
+        lines.Add("- Stop other Oracle workspace");
+        lines.Add("- Use a different port");
+        lines.Add("- Open Docker containers");
+        lines.Add("- Run recovery cleanup for this workspace only");
+        lines.Add("- Retry");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private sealed record OracleHostPortCheck(int Port, string Label, string LikelyCauseOne, string LikelyCauseTwo);
+
+    private sealed record ContainerPortOwner(string ContainerName, bool BelongsToCurrentWorkspace);
+
+    private sealed record HostPortDiagnostic(bool IsInUse, IReadOnlyList<string> Details);
 }

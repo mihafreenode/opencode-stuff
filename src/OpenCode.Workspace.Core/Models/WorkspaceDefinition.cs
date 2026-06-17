@@ -35,6 +35,9 @@ public sealed class WorkspaceDefinition
 
     [YamlMember(Alias = "agent")]
     public AgentPreferences Agent { get; init; } = new();
+
+    [YamlMember(Alias = "oracle")]
+    public OracleWorkspacePreferences Oracle { get; init; } = new();
 }
 
 public sealed class WorkspaceMetadata
@@ -134,6 +137,15 @@ public sealed class AgentPreferences
 
     [YamlMember(Alias = "model")]
     public string? Model { get; init; }
+}
+
+public sealed class OracleWorkspacePreferences
+{
+    [YamlMember(Alias = "hostPort")]
+    public int? HostPort { get; init; }
+
+    [YamlMember(Alias = "ordsPort")]
+    public int? OrdsPort { get; init; }
 }
 
 public sealed class ResolvedAgentProfile

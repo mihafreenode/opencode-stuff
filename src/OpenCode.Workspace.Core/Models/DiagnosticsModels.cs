@@ -31,7 +31,14 @@ public sealed class ProcessResult
     public required IReadOnlyList<string> StandardOutputLines { get; init; }
     public required IReadOnlyList<string> StandardErrorLines { get; init; }
     public required TimeSpan Duration { get; init; }
+    public WorkspaceFailureClassification FailureClassification { get; init; }
     public bool IsSuccess => ExitCode == 0;
+}
+
+public enum WorkspaceFailureClassification
+{
+    None,
+    EnvironmentPortConflict,
 }
 
 public sealed class CommandLogEntry

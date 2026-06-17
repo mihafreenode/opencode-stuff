@@ -1094,6 +1094,12 @@ public sealed class WorkspaceOrchestrator
         }
 
         var details = string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError;
+
+        if (result.FailureClassification == WorkspaceFailureClassification.EnvironmentPortConflict)
+        {
+            throw new WorkspaceEnvironmentConflictException(details.Trim());
+        }
+
         throw new InvalidOperationException($"{failureMessage}{Environment.NewLine}Command: {result.Command}{Environment.NewLine}Exit code: {result.ExitCode}{Environment.NewLine}{details}".Trim());
     }
 

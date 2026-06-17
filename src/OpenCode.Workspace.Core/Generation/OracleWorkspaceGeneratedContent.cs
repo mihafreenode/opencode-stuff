@@ -12,6 +12,7 @@ internal static class OracleWorkspaceGeneratedContent
         Func<string, string> withGeneratedScriptHeader)
     {
         var kind = OracleWorkspaceFamily.Detect(definition);
+        var oracleSettings = OracleWorkspaceSettings.From(definition);
         if (kind == OracleWorkspaceKind.None)
         {
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -40,8 +41,8 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("scripts", "health-check-ords.sh")] = withGeneratedScriptHeader(HealthCheckOrdsScript());
             files[Path.Combine("scripts", "health-check-apex.sh")] = withGeneratedScriptHeader(HealthCheckApexScript());
             files[Path.Combine("scripts", "health-check-sqlcl.sh")] = withGeneratedScriptHeader(HealthCheckSqlclScript());
-            files[Path.Combine("scripts", "open-ords.ps1")] = OpenOrdsScript();
-            files[Path.Combine("scripts", "open-apex.ps1")] = OpenApexScript();
+            files[Path.Combine("scripts", "open-ords.ps1")] = OpenOrdsScript(oracleSettings.OrdsBaseUrl);
+            files[Path.Combine("scripts", "open-apex.ps1")] = OpenApexScript(oracleSettings.ApexLoginUrl);
             files[Path.Combine("scripts", "open-sql-worksheet.ps1")] = OpenSqlWorksheetScript();
             files[Path.Combine("tutorial", "oracle", "init", "03-customers-schema.sql")] = withGeneratedSqlHeader(CustomersSchemaSql());
             files[Path.Combine("tutorial", "oracle", "init", "04-customers-sample-data.sql")] = withGeneratedSqlHeader(CustomersSampleDataSql());
@@ -955,14 +956,14 @@ workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 "$workspace_root/scripts/validate-apex.sh" "$workspace_root/apex/application.apx"
 """;
 
-    private static string OpenOrdsScript() => """
+    private static string OpenOrdsScript(string ordsBaseUrl) => $"""
 $ErrorActionPreference = 'Stop'
-Start-Process 'http://localhost:8181/ords'
+Start-Process '{ordsBaseUrl}'
 """;
 
-    private static string OpenApexScript() => """
+    private static string OpenApexScript(string apexLoginUrl) => $"""
 $ErrorActionPreference = 'Stop'
-Start-Process 'http://localhost:8181/ords/apex'
+Start-Process '{apexLoginUrl}'
 """;
 
     private static string OpenSqlWorksheetScript() => """

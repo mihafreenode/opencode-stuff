@@ -7,7 +7,7 @@ image: gvenzl/oracle-free:23-slim-faststart
 profiles:
   - oracle-demo
 hostPorts:
-  - 1521:1521
+  - ${ORACLE_HOST_PORT}:1521
 environment:
   ORACLE_PASSWORD: ${ORACLE_PASSWORD}
 restart: unless-stopped

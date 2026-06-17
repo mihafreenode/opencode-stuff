@@ -117,9 +117,11 @@ public sealed class OracleApexStaticValidationTests
 
         Assert.Contains("oracle-demo:", apexCompose);
         Assert.Contains("oracle-ords:", apexCompose);
-        Assert.Contains("8181:8181", apexCompose);
+        Assert.Contains("${ORACLE_HOST_PORT}:1521", apexCompose);
+        Assert.Contains("${ORACLE_ORDS_PORT}:8181", apexCompose);
         Assert.Contains("oracle-demo:", apexLangCompose);
         Assert.Contains("oracle-ords:", apexLangCompose);
+        Assert.Contains("ORACLE_HOST_PORT=1521", apexEnv);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", apexEnv);
         Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex", apexEnv);
 

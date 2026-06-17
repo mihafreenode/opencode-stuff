@@ -669,7 +669,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _ => "Unknown",
     };
     public string OracleDemoHost => "localhost";
-    public string OracleDemoPort => "1521";
+    public string OracleDemoPort => GetOracleSettings().HostPort.ToString();
     public string OracleDemoServiceName => "FREEPDB1";
     public string OracleDemoUsername => "demo_user";
     public string OracleDemoPassword => "demo_password";
@@ -1700,9 +1700,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void OpenOracleSqlcl() => RunWorkspaceScript("open-sqlcl.ps1", "Opened SQLcl launcher.");
 
-    private void OpenOracleOrds() => OpenOracleUrl("http://localhost:8181/ords", "Opened ORDS.");
+    private void OpenOracleOrds() => OpenOracleUrl(GetOracleSettings().OrdsBaseUrl, "Opened ORDS.");
 
-    private void OpenOracleApex() => OpenOracleUrl("http://localhost:8181/ords/apex", "Opened APEX.");
+    private void OpenOracleApex() => OpenOracleUrl(GetOracleSettings().ApexLoginUrl, "Opened APEX.");
 
     private void OpenOracleSqlWorksheet() => RunWorkspaceScript(Path.Combine("scripts", "open-sql-worksheet.ps1"), "Opened SQL worksheet launcher.");
 
@@ -2305,6 +2305,11 @@ public sealed class MainWindowViewModel : ObservableObject
             ? "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and validate database, ORDS, and APEX reachability before application work."
             : "OpenCode inside the workspace should use demo_user/demo_password@//oracle-demo:1521/FREEPDB1. Use the known local demo connection, do not ask for credentials, and run scripts/verify-oracle-demo.sh.";
     }
+
+    private OracleWorkspaceSettings GetOracleSettings()
+        => SelectedWorkspace is null
+            ? OracleWorkspaceSettings.From(new WorkspaceDefinition())
+            : OracleWorkspaceSettings.From(SelectedWorkspace.Snapshot.Definition);
 
     private bool EnsureOracleSoftwareNoticeReviewed(WorkspaceSnapshot snapshot)
     {

@@ -202,6 +202,7 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("ORACLE_PASSWORD=change-on-first-demo", content);
         Assert.Contains("ORACLE_DEMO_SERVICE=FREEPDB1", content);
+        Assert.Contains("ORACLE_HOST_PORT=1521", content);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", content);
     }
 

@@ -19,6 +19,7 @@ public sealed class EnvironmentFileGenerator
 
         if (OracleWorkspaceFamily.IsOracleWorkspace(definition))
         {
+            var oracleSettings = OracleWorkspaceSettings.From(definition);
             lines.AddRange(
             [
                 "ORACLE_PASSWORD=change-on-first-demo",
@@ -26,9 +27,10 @@ public sealed class EnvironmentFileGenerator
                 "ORACLE_DEMO_PASSWORD=demo_password",
                 "ORACLE_DEMO_SERVICE=FREEPDB1",
                 "ORACLE_DEMO_CONNECTION=demo_user/demo_password@//oracle-demo:1521/FREEPDB1",
-                "ORACLE_ORDS_PORT=8181",
-                "ORACLE_ORDS_BASE_URL=http://localhost:8181/ords",
-                "ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex",
+                $"ORACLE_HOST_PORT={oracleSettings.HostPort}",
+                $"ORACLE_ORDS_PORT={oracleSettings.OrdsPort}",
+                $"ORACLE_ORDS_BASE_URL={oracleSettings.OrdsBaseUrl}",
+                $"ORACLE_APEX_LOGIN_URL={oracleSettings.ApexLoginUrl}",
             ]);
         }
 
