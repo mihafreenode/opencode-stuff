@@ -59,11 +59,18 @@ Users may be attached to:
 
 OpenCode sessions provide the best onboarding experience.
 
-Validation artifact:
+## Docker Desktop Exec Example
 
-- `artifacts/screenshots/opencode-in-docker-for-windows-exec.png`
+The screenshot below shows OpenCode running inside Docker Desktop Exec.
 
-This screenshot captures a real Docker Desktop Exec onboarding flow where the workspace capability catalog is used to answer practical discovery questions from inside the container terminal experience.
+It demonstrates:
+
+- capability catalog discovery
+- onboarding document discovery
+- agent-assisted workspace exploration
+- practical workspace usage without Windows Terminal
+
+![OpenCode in Docker Desktop Exec](../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)
 
 ## Recommended Reading Order
 

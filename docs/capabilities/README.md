@@ -34,11 +34,11 @@ Tool guidance:
 - agents should verify installed tools before claiming they are available
 - if a documented tool is missing, report that clearly instead of assuming it exists
 
-Validation artifact:
-
-- `../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png`
+## Example
 
 This screenshot shows a real discoverability flow from Docker Desktop Exec, including a natural capability question about Excel processing and a missing-tool case where `weasyprint` was not installed.
+
+![Capability discovery from Docker Desktop Exec](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)
 
 ## Enabled Capabilities
 

@@ -72,15 +72,18 @@ public sealed class CapabilityDocumentationTests
         Assert.Contains("## Connecting to a Workspace Session", onboarding);
         Assert.Contains("opencode -s resume", onboarding);
         Assert.Contains("Docker Desktop Exec", onboarding);
+        Assert.Contains("![OpenCode in Docker Desktop Exec](../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", onboarding);
         Assert.Contains("docs/capabilities/oracle.md", onboarding);
         Assert.Contains("docs/troubleshooting/workspace-sessions.md", onboarding);
         Assert.Contains("docs/capabilities/documentation.md", documentationFeatures);
+        Assert.Contains("![Capability discovery from Docker Desktop Exec](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", catalog);
 
         Assert.Contains("root@container:/#", sessionTroubleshooting);
         Assert.Contains("No sessions available", sessionTroubleshooting);
         Assert.Contains("Capability catalog missing", sessionTroubleshooting);
         Assert.Contains("weasyprint: command not found", sessionTroubleshooting);
         Assert.Contains("Docker Desktop Exec", sessionTroubleshooting);
+        Assert.Contains("![Workspace session troubleshooting example](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", sessionTroubleshooting);
 
         foreach (var fileName in capabilityFiles)
         {
@@ -98,6 +101,29 @@ public sealed class CapabilityDocumentationTests
 
                 var fullPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(filePath)!, link.Replace('/', Path.DirectorySeparatorChar)));
                 Assert.True(File.Exists(fullPath), $"Expected documentation link target to exist: {fileName} -> {link}");
+            }
+        }
+    }
+
+    [Fact]
+    public void OnboardingDocs_EmbeddedScreenshotPaths_Exist()
+    {
+        var root = TestPaths.RepositoryRoot;
+        var docsToCheck = new[]
+        {
+            Path.Combine(root, "docs", "team-onboarding.md"),
+            Path.Combine(root, "docs", "capabilities", "README.md"),
+            Path.Combine(root, "docs", "troubleshooting", "workspace-sessions.md"),
+        };
+
+        foreach (var docPath in docsToCheck)
+        {
+            var content = File.ReadAllText(docPath);
+            foreach (Match match in Regex.Matches(content, @"!\[[^\]]*\]\(([^)]+)\)"))
+            {
+                var relativePath = match.Groups[1].Value;
+                var fullPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(docPath)!, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+                Assert.True(File.Exists(fullPath), $"Expected embedded screenshot to exist: {docPath} -> {relativePath}");
             }
         }
     }
