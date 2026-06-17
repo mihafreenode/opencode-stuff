@@ -1,0 +1,39 @@
+# Oracle APEX API package discovery map.
+# Reference-only metadata for humans and AI agents.
+
+runtime:
+  - APEX_APPLICATION
+  - APEX_UTIL
+  - APEX_SESSION
+
+json:
+  - APEX_JSON
+
+collections:
+  - APEX_COLLECTION
+
+rest:
+  - APEX_WEB_SERVICE
+  - APEX_EXEC
+
+mail:
+  - APEX_MAIL
+
+files:
+  - APEX_DATA_EXPORT
+  - APEX_DATA_PARSER
+
+workflow:
+  - APEX_WORKFLOW
+  - APEX_HUMAN_TASK
+
+plugins:
+  - APEX_PLUGIN
+  - APEX_JAVASCRIPT
+
+security:
+  - APEX_ACL
+  - APEX_AUTHENTICATION
+
+ai:
+  - APEX_AI

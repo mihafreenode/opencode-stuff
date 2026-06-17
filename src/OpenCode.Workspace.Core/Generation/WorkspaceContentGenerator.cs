@@ -363,11 +363,26 @@ public sealed class WorkspaceContentGenerator
 
         if (string.Equals(capability.Id, "oracle", StringComparison.OrdinalIgnoreCase))
         {
+            links.Add("docs/oracle-documentation-strategy.md");
+            links.Add("docs/oracle-documentation-discovery.md");
+            links.Add("docs/reference/oracle-knowledge-map.yaml");
+            links.Add("docs/reference/oracle-plsql-index.md");
+            links.Add("docs/reference/oracle-database-index.md");
             links.Add("docs/oracle-plsql-demo.md");
 
             if (workspace.Definition.Features.Contains("oracle-apex-demo", StringComparer.OrdinalIgnoreCase))
             {
                 links.Add("docs/oracle-apex-demo.md");
+                links.Add("docs/reference/oracle-apex-index.md");
+                links.Add("docs/reference/oracle-apex-books.md");
+                links.Add("docs/reference/oracle-apex-api-reference.md");
+                links.Add("docs/reference/oracle-apex-administration.md");
+                links.Add("docs/reference/oracle-apex-installation.md");
+                links.Add("docs/reference/oracle-apex-release-notes.md");
+                links.Add("docs/reference/oracle-apex-version-archives.md");
+                links.Add("docs/reference/oracle-apex-api-map.yaml");
+                links.Add("docs/reference/oracle-apex-api-packages.md");
+                links.Add("docs/reference/oracle-ords-index.md");
             }
 
             if (workspace.Definition.Features.Contains("oracle-apexlang-demo", StringComparer.OrdinalIgnoreCase))
@@ -411,7 +426,11 @@ public sealed class WorkspaceContentGenerator
             || path.Contains("oracle-samples", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-plsql-demo", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-apex-demo", StringComparison.OrdinalIgnoreCase)
-            || path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase))
+            || path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-documentation-strategy", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("oracle-documentation-discovery", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("docs/reference/oracle-", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("skills/oracle/", StringComparison.OrdinalIgnoreCase))
         {
             return IsOracleDemoWorkspace(workspace.Definition);
         }

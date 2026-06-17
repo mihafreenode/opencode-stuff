@@ -157,6 +157,28 @@ User- or contributor-owned durable inputs:
 - `catalog/templates/*.yaml`
 - `Localization/*.po`
 
+## Oracle Documentation Strategy
+
+When working with Oracle technologies:
+
+1. Check local documentation indexes under `docs/reference`.
+2. Use official Oracle documentation as the authoritative source.
+3. Prefer Oracle documentation over blogs and forum posts.
+4. Use APEXlang documentation first when working with Oracle APEX application definitions.
+5. Use ORDS documentation first for REST and deployment topics.
+6. Use Oracle SQL and PL/SQL documentation for database implementation details.
+
+### Oracle Documentation Discovery
+
+For Oracle-related work:
+
+1. Check `docs/reference/oracle-knowledge-map.yaml`.
+2. Use APEXlang documentation for application definitions.
+3. Use APEX API documentation for PL/SQL packages.
+4. Use ORDS documentation for REST and deployment.
+5. Use version-matched Oracle documentation whenever possible.
+6. Prefer official Oracle documentation over community sources.
+
 ## Generated Artifacts
 
 Generated runtime artifacts include:

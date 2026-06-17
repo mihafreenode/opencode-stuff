@@ -1,0 +1,30 @@
+# Oracle documentation discovery map.
+# Reference-only metadata for humans and AI agents.
+
+apex:
+  specification:
+    - oracle-apexlang-index.md
+    - oracle-apexlang-navigation.md
+  books:
+    - oracle-apex-books.md
+  runtime:
+    - oracle-apex-api-reference.md
+    - oracle-apex-api-packages.md
+    - oracle-apex-api-map.yaml
+  administration:
+    - oracle-apex-administration.md
+  installation:
+    - oracle-apex-installation.md
+  release_notes:
+    - oracle-apex-release-notes.md
+  version_archives:
+    - oracle-apex-version-archives.md
+
+ords:
+  deployment:
+    - oracle-ords-index.md
+
+database:
+  sql:
+    - oracle-plsql-index.md
+    - oracle-database-index.md

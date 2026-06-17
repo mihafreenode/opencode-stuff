@@ -58,6 +58,9 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("oracle-apex-demo", apexlang.Features);
         Assert.Contains("oracle-apexlang-demo", apexlang.Features);
         Assert.Equal(["oracle-demo", "oracle-ords"], apexlang.Services);
+
+        Assert.Contains("runtime", apex.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("runtime", apexlang.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -71,8 +74,31 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "sharing-oracle-workspaces.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-documentation-strategy.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-documentation-discovery.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "README.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "ords.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-knowledge-map.yaml")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-index.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-books.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-reference.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-administration.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-installation.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-release-notes.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-version-archives.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-map.yaml")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-packages.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-ords-index.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-plsql-index.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-database-index.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "apex.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "ords.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "plsql.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "database.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "update-oracle-doc-index.ps1")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "update-oracle-doc-index.sh")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "update-oracle-navigation-index.ps1")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "update-oracle-navigation-index.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "03-customers-schema.sql")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "tutorial", "oracle", "init", "04-customers-sample-data.sql")));
         Assert.False(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
@@ -101,6 +127,13 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "sharing-oracle-workspaces.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-documentation-discovery.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apexlang-index.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apexlang-navigation.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-knowledge-map.yaml")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-map.yaml")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-packages.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "apexlang.md")));
 
         AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh"), "apex export", "ORACLE_DEMO_CONNECTION");
         AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh"), "sql -S", "ORACLE_DEMO_CONNECTION");
@@ -116,16 +149,31 @@ public sealed class OracleApexStaticValidationTests
         var apexCompose = File.ReadAllText(apexSnapshot.Paths.ComposePath);
         var apexLangCompose = File.ReadAllText(apexLangSnapshot.Paths.ComposePath);
         var apexEnv = File.ReadAllText(apexSnapshot.Paths.EnvironmentFilePath);
+        var plsqlSnapshot = CreateWorkspaceFromTemplate("oracle-plsql-demo", "oracle-plsql-compose");
+        var plsqlCompose = File.ReadAllText(plsqlSnapshot.Paths.ComposePath);
 
         Assert.Contains("oracle-demo:", apexCompose);
         Assert.Contains("oracle-ords:", apexCompose);
         Assert.Contains("${ORACLE_HOST_PORT}:1521", apexCompose);
-        Assert.Contains("${ORACLE_ORDS_PORT}:8181", apexCompose);
+        Assert.Contains("${ORACLE_ORDS_PORT}:8080", apexCompose);
+        Assert.Contains("ORACLE_PWD: \"${ORACLE_PASSWORD}\"", apexCompose);
+        Assert.Contains("DBHOST: \"oracle-demo\"", apexCompose);
+        Assert.Contains("DBPORT: \"1521\"", apexCompose);
+        Assert.Contains("DBSERVICENAME: \"FREEPDB1\"", apexCompose);
+        Assert.DoesNotContain("/etc/ords/config", apexCompose);
+        Assert.DoesNotContain("DB_HOSTNAME:", apexCompose);
+        Assert.DoesNotContain("DB_PORT:", apexCompose);
+        Assert.DoesNotContain("DB_SERVICE:", apexCompose);
+        Assert.DoesNotContain("ORDS_PUBLIC_USER_PASSWORD:", apexCompose);
         Assert.Contains("oracle-demo:", apexLangCompose);
         Assert.Contains("oracle-ords:", apexLangCompose);
+        Assert.Contains("ORACLE_PWD: \"${ORACLE_PASSWORD}\"", apexLangCompose);
+        Assert.DoesNotContain("/etc/ords/config", apexLangCompose);
         Assert.Contains("ORACLE_HOST_PORT=1521", apexEnv);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", apexEnv);
-        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex", apexEnv);
+        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex_admin", apexEnv);
+        Assert.DoesNotContain("oracle-ords:", plsqlCompose);
+        Assert.DoesNotContain("ORACLE_PWD:", plsqlCompose);
 
         var method = typeof(DockerService).GetMethod("GetComposeProfiles", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
@@ -157,6 +205,9 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Stage: Creating Sample Application", apexScript);
         Assert.Contains("Stage: Running Validation", apexScript);
         Assert.Contains("Stage: Ready", apexScript);
+        Assert.Contains("OracleRuntimeFailure: APEX installation media missing", apexScript);
+        Assert.Contains(".local/oracle/downloads", apexScript);
+        Assert.Contains("apex_admin", apexScript);
     }
 
     [Fact]
@@ -179,8 +230,11 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Try It Yourself", plsqlDoc);
         Assert.Contains("Oracle APEX Demo", apexDoc);
         Assert.Contains("Oracle APEX Demo extends the Oracle PL/SQL path", apexDoc);
+        Assert.Contains(".local/oracle/downloads/", apexDoc);
+        Assert.Contains("does not redistribute Oracle APEX ZIP files", apexDoc);
         Assert.Contains("Interactive Report", apexDoc);
         Assert.Contains("Oracle APEXlang Demo", apexLangDoc);
+        Assert.Contains(".local/oracle/downloads/", apexLangDoc);
         Assert.Contains("source-controlled Oracle APEX workflow", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Open Application Specification Language", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Try It Yourself", apexLangDoc);
@@ -241,6 +295,110 @@ public sealed class OracleApexStaticValidationTests
 
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
         Assert.DoesNotContain(provider.LoadTemplates(), template => template.Id.Contains("reporting", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void OracleDocumentationReferences_AndSkills_ExistInRepository()
+    {
+        var repoRoot = TestPaths.RepositoryRoot;
+        var referenceDocs = new[]
+        {
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-index.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-books.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-api-reference.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-administration.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-installation.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-release-notes.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-version-archives.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apexlang-index.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apexlang-navigation.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-ords-index.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-plsql-index.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-database-index.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-api-map.yaml"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-apex-api-packages.md"),
+            Path.Combine(repoRoot, "docs", "reference", "oracle-knowledge-map.yaml"),
+            Path.Combine(repoRoot, "docs", "oracle-documentation-strategy.md"),
+            Path.Combine(repoRoot, "docs", "oracle-documentation-discovery.md"),
+        };
+
+        var skillDocs = new[]
+        {
+            Path.Combine(repoRoot, "skills", "oracle", "apex.md"),
+            Path.Combine(repoRoot, "skills", "oracle", "apexlang.md"),
+            Path.Combine(repoRoot, "skills", "oracle", "ords.md"),
+            Path.Combine(repoRoot, "skills", "oracle", "plsql.md"),
+            Path.Combine(repoRoot, "skills", "oracle", "database.md"),
+        };
+
+        foreach (var path in referenceDocs.Concat(skillDocs))
+        {
+            Assert.True(File.Exists(path), $"Expected Oracle reference asset to exist: {path}");
+        }
+
+        var apexLangIndex = File.ReadAllText(Path.Combine(repoRoot, "docs", "reference", "oracle-apexlang-index.md"));
+        var strategy = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-documentation-strategy.md"));
+        var knowledgeMap = File.ReadAllText(Path.Combine(repoRoot, "docs", "reference", "oracle-knowledge-map.yaml"));
+        var apexSkill = File.ReadAllText(Path.Combine(repoRoot, "skills", "oracle", "apex.md"));
+
+        Assert.Contains("https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/", apexLangIndex);
+        Assert.Contains("references, not Oracle documentation copies", strategy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("oracle-apex-api-reference.md", knowledgeMap);
+        Assert.Contains("docs/reference/oracle-apex-index.md", apexSkill);
+    }
+
+    [Fact]
+    public void OracleAgentsGuidance_AndPlaceholderScripts_DescribeReferenceOnlyPolicy()
+    {
+        var repoRoot = TestPaths.RepositoryRoot;
+        var agents = File.ReadAllText(Path.Combine(repoRoot, "AGENTS.md"));
+        var ps1 = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-doc-index.ps1"));
+        var sh = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-doc-index.sh"));
+        var navPs1 = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-navigation-index.ps1"));
+        var navSh = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-navigation-index.sh"));
+
+        Assert.Contains("## Oracle Documentation Strategy", agents);
+        Assert.Contains("### Oracle Documentation Discovery", agents);
+        Assert.Contains("docs/reference", agents);
+        Assert.Contains("Use official Oracle documentation as the authoritative source.", agents);
+        Assert.Contains("docs/reference/oracle-knowledge-map.yaml", agents);
+        Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", ps1);
+        Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", sh);
+        Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", navPs1);
+        Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", navSh);
+    }
+
+    [Fact]
+    public void OracleWorkspaces_IncludeReferencesOnly_AndDoNotBundleOracleManualCopies()
+    {
+        var snapshot = CreateWorkspaceFromTemplate("oracle-apexlang-demo", "oracle-reference-policy");
+
+        var referenceRoot = Path.Combine(snapshot.Paths.RootPath, "docs", "reference");
+        var skillRoot = Path.Combine(snapshot.Paths.RootPath, "skills", "oracle");
+        var allFiles = Directory.EnumerateFiles(snapshot.Paths.RootPath, "*", SearchOption.AllDirectories).ToList();
+
+        Assert.All(Directory.EnumerateFiles(referenceRoot), path => Assert.Contains(Path.GetExtension(path), new[] { ".md", ".yaml" }));
+        Assert.All(Directory.EnumerateFiles(skillRoot), path => Assert.Equal(".md", Path.GetExtension(path)));
+        Assert.DoesNotContain(allFiles, path => string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(allFiles, path => path.Contains("mirror", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(allFiles, path => path.Contains("manual", StringComparison.OrdinalIgnoreCase) && string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase));
+
+        var provisioningScript = File.ReadAllText(snapshot.Paths.ProvisionScriptPath);
+        Assert.DoesNotContain("docs.oracle.com", provisioningScript, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("download-oracle-doc", provisioningScript, StringComparison.OrdinalIgnoreCase);
+
+        var knowledgeMap = File.ReadAllText(Path.Combine(referenceRoot, "oracle-knowledge-map.yaml"));
+        var apiMap = File.ReadAllText(Path.Combine(referenceRoot, "oracle-apex-api-map.yaml"));
+        Assert.Contains("oracle-apex-api-reference.md", knowledgeMap);
+        Assert.Contains("APEX_JSON", apiMap);
+    }
+
+    [Fact]
+    public void Repository_DoesNotTrackOracleApexMedia()
+    {
+        var repoRoot = TestPaths.RepositoryRoot;
+        var localOracleRoot = Path.Combine(repoRoot, ".local", "oracle", "downloads");
+        Assert.False(Directory.Exists(localOracleRoot), "Repository should not track .local/oracle/downloads contents.");
     }
 
     private static WorkspaceSnapshot CreateWorkspaceFromTemplate(string templateId, string workspaceName)
