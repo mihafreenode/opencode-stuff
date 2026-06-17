@@ -14,6 +14,12 @@ Users may be attached to:
 
 OpenCode sessions provide the best onboarding experience.
 
+Validation artifact:
+
+- `../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png`
+
+This screenshot captures a real Docker Desktop Exec session where capability discovery worked, but the shell context and installed-tool state still needed to be explained clearly.
+
 ## I only see a root shell
 
 Symptoms:

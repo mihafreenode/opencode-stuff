@@ -59,6 +59,12 @@ Users may be attached to:
 
 OpenCode sessions provide the best onboarding experience.
 
+Validation artifact:
+
+- `artifacts/screenshots/opencode-in-docker-for-windows-exec.png`
+
+This screenshot captures a real Docker Desktop Exec onboarding flow where the workspace capability catalog is used to answer practical discovery questions from inside the container terminal experience.
+
 ## Recommended Reading Order
 
 1. `README.md`
