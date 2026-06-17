@@ -4,11 +4,15 @@ Oracle APEX Demo extends the Oracle PL/SQL path with browser-based Oracle applic
 
 It uses Oracle Database Free, Oracle REST Data Services (ORDS), Oracle APEX, and SQLcl to provide a reproducible local environment for learning and onboarding.
 
+Oracle APEX media is user-provided. The repository does not redistribute Oracle APEX ZIP files.
+
+Place the official Oracle APEX ZIP under `.local/oracle/downloads/` as `apex.zip` or an official filename such as `apex_24.2_en.zip`, then reprovision the workspace.
+
 ## What This Demo Is For
 
 This workspace focuses on the traditional Oracle APEX Builder workflow.
 
-The goal is to let a new teammate provision a reproducible local Oracle environment, open `http://localhost:8181/ords`, and continue learning from there without manually rebuilding Oracle setup details.
+The goal is to let a new teammate provision a reproducible local Oracle environment, open `http://localhost:8181/ords`, open `http://localhost:8181/ords/apex_admin`, and continue learning from there without manually rebuilding Oracle setup details.
 
 ## Progression
 

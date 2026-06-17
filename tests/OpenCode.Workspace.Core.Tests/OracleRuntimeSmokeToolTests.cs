@@ -1,4 +1,5 @@
 using System.Reflection;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -65,6 +66,175 @@ public sealed class OracleRuntimeSmokeToolTests
     }
 
     [Fact]
+    public void ClassifyOrdsFailure_RecognizesConfigurationIssue()
+    {
+        var classification = OracleRuntimeSmokeCli.ClassifyOrdsFailure(
+            "ERROR: The container can't find a valid configuration in Oracle REST Data Services config directory /etc/ords/config. To install the product declare CONN_STRING and ORACLE_PWD or DBHOST, DBPORT, DBSERVICENAME, and ORACLE_PWD.",
+            "{}");
+
+        Assert.Equal("configuration issue", classification);
+    }
+
+    [Fact]
+    public void ClassifyOrdsFailure_RecognizesConfigurationVolumeIssue()
+    {
+        var classification = OracleRuntimeSmokeCli.ClassifyOrdsFailure(
+            "ERROR: The ORDS config directory /etc/ords/config is empty, please validate you ords config volume.",
+            "{}");
+
+        Assert.Equal("ORDS configuration volume issue", classification);
+    }
+
+    [Fact]
+    public void ClassifyApexInstallationState_RecognizesMissingApex()
+    {
+        var classification = OracleRuntimeSmokeCli.ClassifyApexInstallationState("==REGISTRY==\n==USERS==\n==INVALID==\n");
+
+        Assert.Equal("APEX not installed", classification);
+    }
+
+    [Fact]
+    public void ClassifyApexInstallationState_RecognizesInstalledApex()
+    {
+        var classification = OracleRuntimeSmokeCli.ClassifyApexInstallationState("==REGISTRY==\nAPEX\nOracle APEX\n24.2\nVALID\n==USERS==\nAPEX_240200\n==INVALID==\n==VERSION==\n24.2\n");
+
+        Assert.Equal("APEX installed", classification);
+    }
+
+    [Fact]
+    public void FormatApexRouteDiagnostics_EmitsExpectedFields()
+    {
+        var content = OracleRuntimeSmokeCli.FormatApexRouteDiagnostics([
+            new RouteProbeResult("/ords/apex_admin", "http://localhost:8181/ords/apex_admin", 200, null, "<html>admin</html>"),
+            new RouteProbeResult("/ords/apex", "http://localhost:8181/ords/apex", 404, null, "not found"),
+        ]);
+
+        Assert.Contains("URL=http://localhost:8181/ords/apex_admin", content);
+        Assert.Contains("STATUS=200", content);
+        Assert.Contains("URL=http://localhost:8181/ords/apex", content);
+        Assert.Contains("STATUS=404", content);
+        Assert.Contains("BODY=not found", content);
+    }
+
+    [Fact]
+    public void DockerContainerRuntimeState_FromInspectJson_ExtractsRestartAndExitDetails()
+    {
+        const string inspectJson = """
+        [
+          {
+            "RestartCount": 9,
+            "Image": "sha256:test",
+            "State": {
+              "Status": "restarting",
+              "Running": true,
+              "ExitCode": 1,
+              "Health": {
+                "Status": "unhealthy"
+              }
+            },
+            "Config": {
+              "Image": "container-registry.oracle.com/database/ords:latest",
+              "Env": ["DB_HOSTNAME=oracle-demo", "DB_PORT=1521"],
+              "Entrypoint": ["docker-entrypoint.sh"],
+              "WorkingDir": "/opt/oracle/ords"
+            },
+            "HostConfig": {
+              "PortBindings": {
+                "8080/tcp": [{ "HostPort": "8181" }]
+              }
+            },
+            "Mounts": [
+              { "Source": "/host/config", "Destination": "/etc/ords/config" }
+            ],
+            "NetworkSettings": {
+              "Networks": {
+                "default": {
+                  "IPAddress": "172.31.0.3"
+                }
+              }
+            }
+          }
+        ]
+        """;
+
+        var state = DockerContainerRuntimeState.FromInspectJson(inspectJson);
+
+        Assert.Equal("restarting", state.Status);
+        Assert.True(state.Running);
+        Assert.Equal(9, state.RestartCount);
+        Assert.Equal(1, state.ExitCode);
+        Assert.Equal("unhealthy", state.HealthStatus);
+        Assert.Contains("container-registry.oracle.com/database/ords:latest", state.ImageConfig);
+        Assert.Contains("8080/tcp=>8181", state.PublishedPorts);
+        Assert.Contains("/host/config->/etc/ords/config", state.Mounts);
+        Assert.Contains("DB_HOSTNAME=oracle-demo", state.Environment);
+        Assert.Equal("172.31.0.3", state.NetworkAddress);
+    }
+
+    [Fact]
+    public void WriteSummary_IncludesOrdsDiagnosticsFields()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"ords-summary-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(artifactsRoot);
+
+        try
+        {
+            var summary = new SmokeRunSummary("oracle-apex-demo", artifactsRoot)
+            {
+                FailureClassification = SmokeFailureClassification.OracleRuntimeFailure.ToString(),
+                OrdsFailureClassification = "configuration issue",
+                OrdsRestartCount = 9,
+                OrdsExitCode = 1,
+                OrdsLastLogLine = "ERROR: The container can't find a valid configuration in Oracle REST Data Services config directory /etc/ords/config.",
+                OrdsHostPort = 8181,
+                OrdsContainerPort = 8080,
+                OrdsBaseUrlTested = "http://localhost:8181/ords",
+                ApexUrlTested = "http://localhost:8181/ords/apex_admin",
+                OrdsHttpStatusCode = 200,
+                ApexHttpStatusCode = 302,
+                ApexMediaFound = true,
+                ApexMediaPath = "/workspace/.local/oracle/downloads/apex.zip",
+                ApexInstalled = true,
+                ApexVersion = "24.2",
+                ApexRegistryStatus = "VALID",
+                ApexSchemasPresent = true,
+                ApexInstallationState = "APEX installed",
+                Result = "Workspace validation failed. Service 'oracle-ords' is not reported as running by Docker Compose.",
+            };
+
+            var method = typeof(OracleRuntimeSmokeCli).GetMethod("WriteSummary", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            method!.Invoke(null, [artifactsRoot, summary]);
+
+            var content = File.ReadAllText(Path.Combine(artifactsRoot, "summary.txt"));
+            Assert.Contains("ords_failure_classification=configuration issue", content);
+            Assert.Contains("ords_restart_count=9", content);
+            Assert.Contains("ords_exit_code=1", content);
+            Assert.Contains("ords_last_log_line=ERROR: The container can't find a valid configuration", content);
+            Assert.Contains("ords_host_port=8181", content);
+            Assert.Contains("ords_container_port=8080", content);
+            Assert.Contains("ords_base_url_tested=http://localhost:8181/ords", content);
+            Assert.Contains("apex_url_tested=http://localhost:8181/ords/apex_admin", content);
+            Assert.Contains("ords_http_status_code=200", content);
+            Assert.Contains("apex_http_status_code=302", content);
+            Assert.Contains("apex_media_found=True", content);
+            Assert.Contains("apex_media_path=/workspace/.local/oracle/downloads/apex.zip", content);
+            Assert.Contains("apex_installed=True", content);
+            Assert.Contains("apex_version=24.2", content);
+            Assert.Contains("apex_registry_status=VALID", content);
+            Assert.Contains("apex_schemas_present=True", content);
+            Assert.Contains("apex_installation_state=APEX installed", content);
+        }
+        finally
+        {
+            if (Directory.Exists(artifactsRoot))
+            {
+                Directory.Delete(artifactsRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void RuntimeSmokeDocs_ExplainWslAndWindowsHostSelection()
     {
         var root = TestPaths.RepositoryRoot;
@@ -91,5 +261,51 @@ public sealed class OracleRuntimeSmokeToolTests
         Assert.Contains("scripts/testing/oracle-runtime-smoke.ps1", agentsDoc);
 
         Assert.Contains("Windows host validation as authoritative", troubleshootingDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("official Oracle APEX ZIP placed under `.local/oracle/downloads/`", smokeDoc);
+    }
+
+    [Fact]
+    public void CaptureGeneratedArtifacts_RedactsOraclePassword_AndPreservesCorrectedOrdsConfig()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"oracle-smoke-artifacts-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"oracle-smoke-artifacts-output-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        Directory.CreateDirectory(artifactsRoot);
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(workspaceRoot);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ComposePath)!);
+            File.WriteAllText(paths.ComposePath, "services:\n  oracle-ords:\n    environment:\n      ORACLE_PWD: ${ORACLE_PASSWORD}\n      DBHOST: oracle-demo\n      DBPORT: 1521\n      DBSERVICENAME: FREEPDB1\n");
+            File.WriteAllText(paths.WorkspaceYamlPath, "workspace:\n  name: smoke\n");
+            File.WriteAllText(paths.EnvironmentFilePath, "ORACLE_PASSWORD=change-on-first-demo\nORACLE_DEMO_PASSWORD=demo-password\nORACLE_ORDS_PORT=8181\n");
+
+            var method = typeof(OracleRuntimeSmokeCli).GetMethod("CaptureGeneratedArtifacts", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            method!.Invoke(null, [paths, artifactsRoot]);
+
+            var redactedEnv = File.ReadAllText(Path.Combine(artifactsRoot, "env.redacted"));
+            var copiedCompose = File.ReadAllText(Path.Combine(artifactsRoot, "compose.yaml"));
+
+            Assert.Contains("ORACLE_PASSWORD=<redacted>", redactedEnv);
+            Assert.Contains("ORACLE_DEMO_PASSWORD=<redacted>", redactedEnv);
+            Assert.Contains("ORACLE_ORDS_PORT=8181", redactedEnv);
+            Assert.Contains("ORACLE_PWD: ${ORACLE_PASSWORD}", copiedCompose);
+            Assert.Contains("DBHOST: oracle-demo", copiedCompose);
+            Assert.Contains("DBPORT: 1521", copiedCompose);
+            Assert.Contains("DBSERVICENAME: FREEPDB1", copiedCompose);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(artifactsRoot))
+            {
+                Directory.Delete(artifactsRoot, recursive: true);
+            }
+        }
     }
 }

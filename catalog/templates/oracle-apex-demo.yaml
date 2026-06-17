@@ -2,7 +2,7 @@
 
 id: oracle-apex-demo
 displayName: Oracle APEX Demo
-description: Local Oracle Free workspace with SQLcl, ORDS, APEX onboarding docs, and sample Customers data for reproducible APEX learning.
+description: Local Oracle Free workspace with SQLcl, ORDS, real APEX runtime provisioning, and sample Customers data for reproducible APEX learning.
 workspaceImage: ubuntu:24.04
 features:
   - core

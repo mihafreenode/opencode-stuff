@@ -31,6 +31,8 @@ In practical terms, APEXlang extends APEX, and APEX extends the PL/SQL path.
 
 Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
 
+Oracle APEX media is user-provided for local runtime provisioning. Place the official Oracle APEX ZIP under `.local/oracle/downloads/` before reprovisioning this workspace.
+
 ## Try It Yourself
 
 1. export the sample application with `scripts/export-apex.sh`

@@ -29,7 +29,7 @@ This keeps onboarding coherent across:
 - understand basic tables and relationships
 - query a view instead of joining everything manually every time
 - run packaged logic from SQLcl or SQL Developer
-- build a small browser application on top of the same schema
+- build a small browser application on top of the same schema after APEX runtime is installed
 - export, validate, review, and re-import the same application definition
 
 ## Progression

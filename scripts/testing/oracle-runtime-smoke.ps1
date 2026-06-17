@@ -4,7 +4,7 @@ param(
     [string]$WorkspaceRoot,
     [string]$ArtifactsRoot,
     [ValidateSet("auto", "current", "windows")]
-    [string]$Host = "auto",
+    [string]$ValidationHost = "auto",
     [switch]$DryRun
 )
 
@@ -18,7 +18,7 @@ $arguments = @(
     "--project", $projectPath,
     "--",
     "--template", $Template,
-    "--host", $Host,
+    "--host", $ValidationHost,
     "--invoked-from-wrapper"
 )
 

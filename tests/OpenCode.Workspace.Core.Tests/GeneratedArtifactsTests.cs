@@ -336,10 +336,10 @@ public sealed class GeneratedArtifactsTests
             PostInstallCommands = Array.Empty<string>(),
         });
 
-        Assert.Contains("oracle_ords_url=http://oracle-ords:8181/ords", script);
-        Assert.Contains("oracle_apex_url=http://oracle-ords:8181/ords/apex", script);
+        Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
+        Assert.Contains("oracle_apex_url=http://oracle-ords:8080/ords/apex_admin", script);
         Assert.Contains("ORDS endpoint did not become reachable", script);
-        Assert.Contains("APEX login page did not become reachable", script);
+        Assert.Contains("OracleRuntimeFailure: APEX login route not reachable", script);
     }
 
     [Fact]

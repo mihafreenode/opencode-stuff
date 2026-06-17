@@ -22,7 +22,7 @@ Use ORDS when you want to:
 
 ```bash
 curl -fsSL http://localhost:8181/ords
-curl -fsSL http://localhost:8181/ords/apex
+curl -fsSL http://localhost:8181/ords/apex_admin
 ```
 
 ## Relationship To Other Tools

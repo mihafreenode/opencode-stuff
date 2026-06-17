@@ -36,6 +36,7 @@ scripts/import-apex.sh
 
 - part of Oracle APEX workflow guidance
 - scripted here through SQLcl-oriented helpers
+- local runtime provisioning requires a user-provided official Oracle APEX ZIP under `.local/oracle/downloads/`
 
 ## Beginner Exercise
 

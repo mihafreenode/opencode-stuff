@@ -9,6 +9,12 @@ It is not part of the default CI or unit-test suite because Oracle and APEX prov
 - Docker
 - network access to Oracle-provided sources
 - enough time for Oracle Database Free, SQLcl, and ORDS setup
+- official Oracle APEX ZIP placed under `.local/oracle/downloads/` for APEX templates
+
+Current APEX smoke requires:
+
+- Oracle Database with APEX installed
+- ORDS configured for APEX
 
 ## Runtime Validation Host Selection
 
@@ -97,6 +103,9 @@ The smoke runner classifies failures separately as:
 - creates and provisions an `oracle-apex-demo` workspace
 - waits for Oracle database readiness
 - waits for ORDS readiness
+- reports whether APEX media was found
+- reports whether APEX is installed in the database
+- reports APEX version when available
 - checks that the APEX login URL responds with HTTP success or redirect
 - runs a SQLcl test query inside the workspace container
 

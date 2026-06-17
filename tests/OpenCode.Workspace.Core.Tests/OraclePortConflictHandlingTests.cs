@@ -22,7 +22,7 @@ public sealed class OraclePortConflictHandlingTests
         Assert.Contains("ORACLE_HOST_PORT=1522", content);
         Assert.Contains("ORACLE_ORDS_PORT=8182", content);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8182/ords", content);
-        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8182/ords/apex", content);
+        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8182/ords/apex_admin", content);
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public sealed class OraclePortConflictHandlingTests
         var compose = new ComposeGenerator().Generate(resolved, WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "oracle-apex-ports")));
 
         Assert.Contains("\"${ORACLE_HOST_PORT}:1521\"", compose);
-        Assert.Contains("\"${ORACLE_ORDS_PORT}:8181\"", compose);
+        Assert.Contains("\"${ORACLE_ORDS_PORT}:8080\"", compose);
     }
 
     [Fact]

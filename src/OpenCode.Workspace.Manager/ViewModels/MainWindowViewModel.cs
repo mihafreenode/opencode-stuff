@@ -2322,9 +2322,13 @@ public sealed class MainWindowViewModel : ObservableObject
 
         var message = string.Join(Environment.NewLine + Environment.NewLine, new[]
         {
-            "This workspace provisions Oracle software from Oracle-provided sources.",
+            OracleWorkspaceFamily.HasApex(snapshot.Definition)
+                ? "This workspace provisions Oracle software and may install Oracle APEX and ORDS from Oracle-provided sources."
+                : "This workspace provisions Oracle software from Oracle-provided sources.",
             "Oracle software is subject to Oracle licensing terms.",
-            "Please review applicable Oracle licensing information before continuing.",
+            OracleWorkspaceFamily.HasApex(snapshot.Definition)
+                ? "This repository does not redistribute Oracle software. Continue only if you are allowed to use these Oracle components."
+                : "Please review applicable Oracle licensing information before continuing.",
             "Oracle Database Free: https://www.oracle.com/database/free/",
             "Oracle APEX: https://apex.oracle.com/",
             "Oracle ORDS: https://www.oracle.com/database/technologies/appdev/rest.html",
