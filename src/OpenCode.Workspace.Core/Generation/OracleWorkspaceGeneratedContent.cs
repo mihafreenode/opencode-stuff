@@ -322,6 +322,43 @@ Run Tutorial
 Start Learning
 ```
 
+### Connecting to a Workspace Session
+
+Most onboarding exercises assume the user is connected to an OpenCode session rather than a root shell.
+
+Typical workflow:
+
+```bash
+su opencode
+cd /workspace
+opencode -s resume
+```
+
+Useful commands:
+
+```bash
+opencode sessions
+opencode -s <session-id>
+```
+
+Suggested first questions:
+
+- What capabilities are available?
+- What onboarding docs exist?
+- What tools are installed?
+
+### Using Docker Desktop Exec
+
+Docker Desktop Exec is a valid way to access a workspace.
+
+You may be attached to:
+
+- root shell
+- opencode user shell
+- OpenCode session
+
+OpenCode sessions provide the best onboarding experience.
+
 ### Durable Inputs
 
 - `workspace.yaml`
@@ -339,6 +376,12 @@ Start here:
 
 - `docs/capabilities/README.md`
 - `docs/capabilities/oracle.md`
+- `docs/oracle-plsql-demo.md`
+- `docs/oracle-apex-demo.md`
+- `docs/oracle-apexlang-demo.md`
+- `docs/oracle-tools/README.md`
+- `docs/oracle-samples.md`
+- `docs/troubleshooting/workspace-sessions.md`
 
 No manual recreation of Oracle settings should be required when the repository already contains those files.
 """;

@@ -20,12 +20,18 @@ public sealed class WorkspaceCapabilityCatalogTests
 
         var catalogPath = Path.Combine(snapshot.Paths.RootPath, "docs", "capabilities", "README.md");
         var agentsPath = Path.Combine(snapshot.Paths.RootPath, "AGENTS.md");
+        var onboardingPath = Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md");
+        var troubleshootingPath = Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md");
 
         Assert.True(File.Exists(catalogPath));
         Assert.True(File.Exists(agentsPath));
+        Assert.True(File.Exists(onboardingPath));
+        Assert.True(File.Exists(troubleshootingPath));
 
         var catalog = File.ReadAllText(catalogPath);
         var agents = File.ReadAllText(agentsPath);
+        var onboarding = File.ReadAllText(onboardingPath);
+        var troubleshooting = File.ReadAllText(troubleshootingPath);
 
         Assert.Contains("Repository Workflows", catalog);
         Assert.Contains("Documentation", catalog);
@@ -37,6 +43,11 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("Testing", catalog);
         Assert.Contains("Localization", catalog);
         Assert.Contains("Read more: [Document Processing](document-processing.md)", catalog);
+        Assert.Contains("## Getting Started", catalog);
+        Assert.Contains("Docker Desktop Exec", catalog);
+        Assert.Contains("Can I process Excel files?", catalog);
+        Assert.Contains("../team-onboarding.md", catalog);
+        Assert.Contains("../troubleshooting/workspace-sessions.md", catalog);
 
         Assert.Contains("docs/capabilities/README.md", agents);
         Assert.Contains("BEGIN GENERATED WORKSPACE CAPABILITY GUIDANCE", agents);
@@ -49,6 +60,19 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("docs/capabilities/document-processing.md", agents);
         Assert.Contains("docs/capabilities/ocr.md", agents);
         Assert.Contains("docs/capabilities/spell-checking.md", agents);
+        Assert.Contains("docs/team-onboarding.md", agents);
+        Assert.Contains("docs/troubleshooting/workspace-sessions.md", agents);
+        Assert.DoesNotContain("su opencode", agents);
+
+        Assert.Contains("## Connecting to a Workspace Session", onboarding);
+        Assert.Contains("Docker Desktop Exec", onboarding);
+        Assert.Contains("docs/capabilities/README.md", onboarding);
+        Assert.Contains("docs/troubleshooting/workspace-sessions.md", onboarding);
+
+        Assert.Contains("root@container:/#", troubleshooting);
+        Assert.Contains("No sessions available", troubleshooting);
+        Assert.Contains("Capability catalog missing", troubleshooting);
+        Assert.Contains("weasyprint: command not found", troubleshooting);
 
         AssertCapabilityLinksResolve(snapshot.Paths.RootPath);
     }
@@ -64,6 +88,8 @@ public sealed class WorkspaceCapabilityCatalogTests
 
         var catalogPath = Path.Combine(snapshot.Paths.RootPath, "docs", "capabilities", "README.md");
         var testingPath = Path.Combine(snapshot.Paths.RootPath, "docs", "capabilities", "testing.md");
+        var onboardingPath = Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md");
+        var troubleshootingPath = Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md");
         var userDocPath = Path.Combine(snapshot.Paths.RootPath, "docs", "user-notes.md");
         var mountedMarkerPath = Path.Combine(snapshot.Paths.RootPath, "mounts", "user", "oracle-volume-marker.txt");
 
@@ -71,6 +97,8 @@ public sealed class WorkspaceCapabilityCatalogTests
         Directory.CreateDirectory(Path.GetDirectoryName(mountedMarkerPath)!);
         File.WriteAllText(catalogPath, "STALE CATALOG");
         File.WriteAllText(testingPath, "STALE TESTING PAGE");
+        File.WriteAllText(onboardingPath, "STALE TEAM ONBOARDING");
+        File.WriteAllText(troubleshootingPath, "STALE TROUBLESHOOTING");
         File.WriteAllText(userDocPath, "user-owned docs survive regenerate");
         File.WriteAllText(mountedMarkerPath, "persistent volume marker");
 
@@ -79,11 +107,17 @@ public sealed class WorkspaceCapabilityCatalogTests
 
         var catalog = File.ReadAllText(catalogPath);
         var testing = File.ReadAllText(testingPath);
+        var onboarding = File.ReadAllText(onboardingPath);
+        var troubleshooting = File.ReadAllText(troubleshootingPath);
 
         Assert.DoesNotContain("STALE CATALOG", catalog);
         Assert.DoesNotContain("STALE TESTING PAGE", testing);
+        Assert.DoesNotContain("STALE TEAM ONBOARDING", onboarding);
+        Assert.DoesNotContain("STALE TROUBLESHOOTING", troubleshooting);
         Assert.Contains("Document Processing", catalog);
         Assert.Contains("Playwright", testing);
+        Assert.Contains("Docker Desktop Exec", onboarding);
+        Assert.Contains("Capability catalog missing", troubleshooting);
         Assert.Equal("user-owned docs survive regenerate", File.ReadAllText(userDocPath));
         Assert.Equal("persistent volume marker", File.ReadAllText(mountedMarkerPath));
         AssertCapabilityLinksResolve(snapshot.Paths.RootPath);
@@ -130,6 +164,9 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("docs/capabilities/README.md", agents);
         Assert.Contains("docs/capabilities/document-processing.md", agents);
         Assert.Contains("docs/documentation-features.md", agents);
+        Assert.Contains("docs/team-onboarding.md", agents);
+        Assert.Contains("docs/troubleshooting/workspace-sessions.md", agents);
+        Assert.DoesNotContain("su opencode", agents);
         Assert.Equal(agentsAfterFirstRegenerate, agents);
         Assert.Single(Regex.Matches(onboardingBlock, Regex.Escape("docs/documentation-features.md")).Cast<Match>());
     }

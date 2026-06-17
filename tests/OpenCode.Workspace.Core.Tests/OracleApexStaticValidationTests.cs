@@ -68,6 +68,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apex-demo.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-samples.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "sharing-oracle-workspaces.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "README.md")));
@@ -97,6 +98,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-apex.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "sharing-oracle-workspaces.md")));
 

@@ -2,6 +2,38 @@
 
 Use this catalog before searching the repository or probing installed binaries.
 
+## Getting Started
+
+If using a shell:
+
+```bash
+su opencode
+cd /workspace
+opencode -s resume
+```
+
+Docker Desktop Exec is a valid way to access a workspace, but the best onboarding experience starts from an OpenCode session rather than a root shell.
+
+Then review:
+
+- capability catalog
+- onboarding materials
+- workspace documentation
+
+Read more:
+
+- [Team Onboarding](../team-onboarding.md)
+- [Workspace Sessions Troubleshooting](../troubleshooting/workspace-sessions.md)
+
+The capability catalog is intended to answer questions such as `Can I process Excel files?`, `What PDF tools are available?`, `What OCR tools are available?`, `What Oracle tooling exists?`, and `What onboarding materials are available?` without repository-wide searching.
+
+Tool guidance:
+
+- capability docs describe supported workflows
+- capability docs may mention optional tools
+- agents should verify installed tools before claiming they are available
+- if a documented tool is missing, report that clearly instead of assuming it exists
+
 ## Enabled Capabilities
 
 - [x] Repository Workflows

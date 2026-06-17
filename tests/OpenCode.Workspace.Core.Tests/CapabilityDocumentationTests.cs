@@ -38,10 +38,15 @@ public sealed class CapabilityDocumentationTests
         var oracle = File.ReadAllText(Path.Combine(capabilityRoot, "oracle.md"));
         var onboarding = File.ReadAllText(Path.Combine(root, "docs", "team-onboarding.md"));
         var documentationFeatures = File.ReadAllText(Path.Combine(root, "docs", "documentation-features.md"));
+        var sessionTroubleshooting = File.ReadAllText(Path.Combine(root, "docs", "troubleshooting", "workspace-sessions.md"));
 
         Assert.Contains("Repository Workflows", catalog);
         Assert.Contains("Documentation", catalog);
         Assert.Contains("Oracle", catalog);
+        Assert.Contains("## Getting Started", catalog);
+        Assert.Contains("Docker Desktop Exec", catalog);
+        Assert.Contains("Can I process Excel files?", catalog);
+        Assert.Contains("Workspace Sessions Troubleshooting", catalog);
 
         Assert.Contains("PDF", documentProcessing);
         Assert.Contains("Office", documentProcessing, StringComparison.OrdinalIgnoreCase);
@@ -64,8 +69,18 @@ public sealed class CapabilityDocumentationTests
         Assert.Contains("APEX", oracle);
         Assert.Contains("APEXlang", oracle);
 
+        Assert.Contains("## Connecting to a Workspace Session", onboarding);
+        Assert.Contains("opencode -s resume", onboarding);
+        Assert.Contains("Docker Desktop Exec", onboarding);
         Assert.Contains("docs/capabilities/oracle.md", onboarding);
+        Assert.Contains("docs/troubleshooting/workspace-sessions.md", onboarding);
         Assert.Contains("docs/capabilities/documentation.md", documentationFeatures);
+
+        Assert.Contains("root@container:/#", sessionTroubleshooting);
+        Assert.Contains("No sessions available", sessionTroubleshooting);
+        Assert.Contains("Capability catalog missing", sessionTroubleshooting);
+        Assert.Contains("weasyprint: command not found", sessionTroubleshooting);
+        Assert.Contains("Docker Desktop Exec", sessionTroubleshooting);
 
         foreach (var fileName in capabilityFiles)
         {

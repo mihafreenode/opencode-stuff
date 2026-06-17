@@ -27,6 +27,8 @@ public sealed class WorkspaceContentGenerator
         }
 
         files["AGENTS.md"] = BuildAgentsCapabilityGuidance(workspace);
+        files[Path.Combine("docs", "team-onboarding.md")] = WithGeneratedHeader(BuildTeamOnboardingDoc(workspace));
+        files[Path.Combine("docs", "troubleshooting", "workspace-sessions.md")] = WithGeneratedHeader(BuildWorkspaceSessionsTroubleshootingDoc(workspace));
 
         if (IsDocumentationWorkspace(definition))
         {
@@ -135,6 +137,38 @@ public sealed class WorkspaceContentGenerator
             "# Capability Catalog",
             string.Empty,
             "Use this catalog before searching the repository or probing the runtime.",
+            string.Empty,
+            "## Getting Started",
+            string.Empty,
+            "If using a shell:",
+            string.Empty,
+            "```bash",
+            "su opencode",
+            "cd /workspace",
+            "opencode -s resume",
+            "```",
+            string.Empty,
+            "Docker Desktop Exec is a valid way to access a workspace, but the best onboarding experience starts from an OpenCode session rather than a root shell.",
+            string.Empty,
+            "Then review:",
+            string.Empty,
+            "- capability catalog",
+            "- onboarding materials",
+            "- workspace documentation",
+            string.Empty,
+            "Read more:",
+            string.Empty,
+            "- [Team Onboarding](../team-onboarding.md)",
+            "- [Workspace Sessions Troubleshooting](../troubleshooting/workspace-sessions.md)",
+            string.Empty,
+            "The capability catalog is intended to answer questions such as `Can I process Excel files?`, `What PDF tools are available?`, `What OCR tools are available?`, `What Oracle tooling exists?`, and `What onboarding materials are available?` without repository-wide searching.",
+            string.Empty,
+            "Tool guidance:",
+            string.Empty,
+            "- capability docs describe supported workflows",
+            "- capability docs may mention optional tools",
+            "- agents should verify installed tools before claiming they are available",
+            "- if a documented tool is missing, report that clearly instead of assuming it exists",
             string.Empty,
             "## Enabled Capabilities",
             string.Empty,
@@ -255,6 +289,11 @@ public sealed class WorkspaceContentGenerator
             "Do not scan the repository first.",
             string.Empty,
             "Use the capability catalog before searching the workspace.",
+            string.Empty,
+            "If attached to a container shell rather than an OpenCode session, see:",
+            string.Empty,
+            "- docs/team-onboarding.md",
+            "- docs/troubleshooting/workspace-sessions.md",
         };
 
         foreach (var capability in workspace.Capabilities)
@@ -379,6 +418,198 @@ public sealed class WorkspaceContentGenerator
 
         return true;
     }
+
+    private static string BuildTeamOnboardingDoc(ResolvedWorkspace workspace)
+    {
+        var onboardingLinks = workspace.Capabilities
+            .SelectMany(capability => GetEnabledOnboardingLinks(workspace, capability))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(link => link, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var lines = new List<string>
+        {
+            "# Team Onboarding",
+            string.Empty,
+            "This workspace is intended to be discovered, opened, and resumed through an OpenCode session rather than a root shell.",
+            string.Empty,
+            "## Connecting to a Workspace Session",
+            string.Empty,
+            "Most onboarding exercises assume you are connected to an OpenCode session rather than a root shell.",
+            string.Empty,
+            "Typical workflow:",
+            string.Empty,
+            "```bash",
+            "su opencode",
+            "cd /workspace",
+            "opencode -s resume",
+            "```",
+            string.Empty,
+            "Useful commands:",
+            string.Empty,
+            "```bash",
+            "opencode sessions",
+            "opencode -s <session-id>",
+            "```",
+            string.Empty,
+            "Suggested first questions:",
+            string.Empty,
+            "- What capabilities are available?",
+            "- What onboarding docs exist?",
+            "- What tools are installed?",
+            string.Empty,
+            "## Using Docker Desktop Exec",
+            string.Empty,
+            "Docker Desktop Exec is a valid way to access a workspace.",
+            string.Empty,
+            "You may be attached to:",
+            string.Empty,
+            "- root shell",
+            "- opencode user shell",
+            "- OpenCode session",
+            string.Empty,
+            "OpenCode sessions provide the best onboarding experience.",
+            string.Empty,
+            "## Start Here",
+            string.Empty,
+            "- `docs/capabilities/README.md`",
+            "- `docs/troubleshooting/workspace-sessions.md`",
+        };
+
+        if (onboardingLinks.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Enabled Onboarding Materials");
+            lines.Add(string.Empty);
+            lines.AddRange(onboardingLinks.Select(link => $"- `{link}`"));
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string BuildWorkspaceSessionsTroubleshootingDoc(ResolvedWorkspace workspace)
+        => """
+# Workspace Sessions Troubleshooting
+
+Use this guide when the workspace starts but you are not yet in a usable OpenCode session.
+
+## Using Docker Desktop Exec
+
+Docker Desktop Exec is a valid way to access a workspace.
+
+You may land in:
+
+- root shell
+- opencode user shell
+- OpenCode session
+
+OpenCode sessions provide the best onboarding experience.
+
+## I only see a root shell
+
+Symptoms:
+
+```text
+root@container:/#
+```
+
+Resolution:
+
+```bash
+su opencode
+cd /workspace
+opencode -s resume
+```
+
+## opencode command not found
+
+Possible causes:
+
+- wrong user
+- PATH issue
+- provisioning incomplete
+
+Recovery steps:
+
+1. switch to `opencode` with `su opencode`
+2. verify provisioning completed
+3. reprovision or recover the workspace if `opencode` is still unavailable
+
+## No sessions available
+
+Possible causes:
+
+- workspace never initialized
+- session removed
+- provisioning failed
+
+Recovery steps:
+
+1. run `opencode sessions`
+2. verify the workspace was provisioned successfully
+3. recover or reprovision the workspace
+
+## Cannot attach to session
+
+Diagnostics:
+
+```bash
+opencode sessions
+```
+
+Recovery steps:
+
+1. confirm you are running as `opencode`
+2. confirm the current directory is `/workspace`
+3. retry `opencode -s resume` or `opencode -s <session-id>`
+4. review workspace diagnostics and provisioning logs
+
+## Workspace starts but agent is not running
+
+Investigation steps:
+
+1. verify the workspace is provisioned
+2. verify `opencode sessions` shows a restorable session
+3. reopen the session with `opencode -s resume`
+4. reprovision if the runtime or agent bootstrap was incomplete
+
+## Capability catalog missing
+
+Expected files:
+
+```text
+docs/capabilities/README.md
+```
+
+Recovery:
+
+- reprovision workspace
+- regenerate documentation
+
+## AGENTS.md missing or outdated
+
+Recovery:
+
+- reprovision workspace
+- verify generated blocks
+
+## Tool mentioned in docs but not installed
+
+Example symptom:
+
+```text
+weasyprint: command not found
+```
+
+Resolution:
+
+1. verify the capability catalog
+2. verify installed tooling
+3. review workspace feature configuration
+4. reprovision if required
+
+Agents should not claim a tool exists merely because documentation mentions it.
+""";
 
     private static string WithGeneratedHeader(string body)
         => string.Join("\n",
