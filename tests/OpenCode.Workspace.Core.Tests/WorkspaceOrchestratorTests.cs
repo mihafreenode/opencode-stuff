@@ -195,9 +195,14 @@ public sealed class WorkspaceOrchestratorTests
             Assert.Contains("docs/reference/agent-onboarding/analytics.md", agents);
             Assert.Contains("docs/reference/agent-onboarding/education.md", agents);
             Assert.DoesNotContain("docs/reference/agent-onboarding/publishing.md", agents);
+            var analysisPy = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "analysis.py"));
+            Assert.Contains("pd.read_excel(", analysisPy);
+            Assert.DoesNotContain("kpis.xlsx\").read_text", analysisPy, StringComparison.Ordinal);
             Assert.Contains("--host 0.0.0.0", smokeScript);
+            Assert.Contains("--port \"${port}\"", smokeScript);
             Assert.Contains("curl -fsS \"http://127.0.0.1:${port}\"", smokeScript);
             Assert.Contains("trap cleanup EXIT", smokeScript);
+            Assert.Contains("kill \"${pid}\"", smokeScript);
 
             using var workbook = ZipFile.OpenRead(workbookPath);
             Assert.Contains(workbook.Entries, entry => entry.FullName == "xl/workbook.xml");
@@ -231,15 +236,80 @@ public sealed class WorkspaceOrchestratorTests
 
             var readme = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "examples", "publishing", "README.md"));
             var validation = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-publishing-tooling.sh"));
+            var demo = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "demo-publishing-workflows.sh"));
             var agents = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "AGENTS.md"));
+            var provision = File.ReadAllText(snapshot.Paths.ProvisionScriptPath);
 
             Assert.Contains("1. Markdown", readme);
             Assert.Contains("2. Typst", readme);
             Assert.Contains("3. LaTeX", readme);
+            Assert.Contains("source -> build -> validate -> inspect", readme);
             Assert.Contains("qpdf --check", validation);
             Assert.Contains("typst --version", validation);
+            Assert.Contains("pandoc", validation);
+            Assert.Contains("latexmk", validation);
+            Assert.Contains("pdflatex", validation);
+            Assert.Contains("biber", validation);
+            Assert.Contains("rsvg-convert", validation);
+            Assert.Contains("pdftotext", validation);
+            Assert.Contains("pandoc", demo);
+            Assert.Contains("latexmk -pdf", demo);
+            Assert.Contains("qpdf --check", demo);
+            Assert.Contains("pdftotext", demo);
+            Assert.Contains("rsvg-convert", demo);
+            Assert.Contains("typst compile", demo);
             Assert.Contains("docs/reference/agent-onboarding/publishing.md", agents);
             Assert.DoesNotContain("docs/reference/agent-onboarding/education.md", agents);
+            Assert.Contains("command -v typst", provision);
+            Assert.Contains("install /tmp/typst-install/typst-*/typst /usr/local/bin/typst", provision);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void CreateWorkspace_WithoutAnalytics_DoesNotGenerateMarimoArtifacts()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core"));
+
+            Assert.False(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "smoke-marimo.sh")));
+            Assert.False(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-analytics-tooling.sh")));
+
+            var env = File.ReadAllText(snapshot.Paths.EnvironmentFilePath);
+            var compose = File.ReadAllText(snapshot.Paths.ComposePath);
+            Assert.DoesNotContain("MARIMO_PORT=", env);
+            Assert.DoesNotContain("127.0.0.1:${MARIMO_PORT}:2718", compose);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Regenerate_ForAnalyticsWorkspace_DoesNotDuplicateMarimoPortMappings()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, CreateDefinition("core", "analytics-reporting"), includeRuntimeInspection: false);
+
+            await orchestrator.RegenerateAsync(snapshot);
+            await orchestrator.RegenerateAsync(snapshot);
+
+            var compose = File.ReadAllText(snapshot.Paths.ComposePath);
+            Assert.Equal(1, compose.Split('\n').Count(line => line.Contains("127.0.0.1:${MARIMO_PORT}:2718", StringComparison.Ordinal)));
         }
         finally
         {

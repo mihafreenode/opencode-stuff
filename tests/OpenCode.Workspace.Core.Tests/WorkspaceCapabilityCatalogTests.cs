@@ -215,6 +215,49 @@ public sealed class WorkspaceCapabilityCatalogTests
         AssertCapabilityLinksResolve(snapshot.Paths.RootPath);
     }
 
+    [Theory]
+    [InlineData("analytics-only", null, "analytics-reporting", false, true, false, false)]
+    [InlineData("analytics-education", null, "analytics-reporting,education-knowledge-pack", false, true, true, false)]
+    [InlineData("publishing-only", null, "publishing-tex", false, false, false, true)]
+    [InlineData("publishing-pack", null, "publishing-tex,publishing-knowledge-pack", false, false, false, true)]
+    [InlineData("oracle-apex", "oracle-apex-demo", null, true, false, false, false)]
+    [InlineData("oracle-apexlang", "oracle-apexlang-demo", null, true, false, false, false)]
+    public async Task AgentsGuidance_UsesRelevantOnboardingLinksWithoutCapabilityDuplication(
+        string workspaceName,
+        string? templateId,
+        string? commaSeparatedFeatures,
+        bool expectOracle,
+        bool expectAnalytics,
+        bool expectEducation,
+        bool expectPublishing)
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        using var fixture = new WorkspaceCapabilityCatalogFixture();
+        var snapshot = templateId is not null
+            ? await fixture.CreateWorkspaceFromTemplateAsync(templateId, workspaceName)
+            : await fixture.CreateWorkspaceAsync(workspaceName, commaSeparatedFeatures!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var agents = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "AGENTS.md"));
+        var onboardingBlock = ExtractBlock(agents, "<!-- BEGIN GENERATED ONBOARDING LINKS -->", "<!-- END GENERATED ONBOARDING LINKS -->");
+
+        Assert.Contains("## Additional Agent Guidance", agents);
+
+        Assert.Equal(expectOracle, agents.Contains("docs/reference/agent-onboarding/oracle.md", StringComparison.Ordinal));
+        Assert.Equal(expectAnalytics, agents.Contains("docs/reference/agent-onboarding/analytics.md", StringComparison.Ordinal));
+        Assert.Equal(expectEducation, agents.Contains("docs/reference/agent-onboarding/education.md", StringComparison.Ordinal));
+        Assert.Equal(expectPublishing, agents.Contains("docs/reference/agent-onboarding/publishing.md", StringComparison.Ordinal));
+
+        Assert.DoesNotContain("docs/reference/agent-onboarding/oracle.md", onboardingBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("docs/reference/agent-onboarding/analytics.md", onboardingBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("docs/reference/agent-onboarding/education.md", onboardingBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("docs/reference/agent-onboarding/publishing.md", onboardingBlock, StringComparison.Ordinal);
+
+        if (expectOracle)
+        {
+            Assert.Contains("docs/oracle-documentation-strategy.md", onboardingBlock);
+        }
+    }
+
     [Fact]
     public void AgentsMerge_AppendsGeneratedBlockWhenMissing()
     {

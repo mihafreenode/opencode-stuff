@@ -4,16 +4,68 @@ category: knowledge-pack
 lifecycle: preview
 onboarding:
   - docs/reference/agent-onboarding/publishing.md
+skillRefs:
+  - skills/publishing/markdown-report.md
+  - skills/publishing/typst-report.md
+  - skills/publishing/latex-paper.md
 sources:
   - name: Typst Documentation
     category: publishing
     url: https://typst.app/docs/
-    description: Modern document authoring reference.
+    description: Modern, concise document authoring system.
+  - name: LaTeX Documentation
+    category: publishing
+    url: https://www.latex-project.org/help/documentation/
+    description: Core LaTeX documentation and guides.
+  - name: TeX Live Documentation
+    category: publishing
+    url: https://tug.org/texlive/doc.html
+    description: TeX Live package and distribution documentation.
+  - name: Overleaf Guides
+    category: publishing
+    url: https://www.overleaf.com/learn
+    description: Practical LaTeX and bibliography guidance.
   - name: Pandoc Manual
     category: publishing
     url: https://pandoc.org/MANUAL.html
     description: Canonical Pandoc reference.
+  - name: Pandoc Demos
+    category: publishing
+    url: https://pandoc.org/demos.html
+    description: Example conversions and workflows.
+  - name: BibLaTeX Documentation
+    category: citations
+    url: https://ctan.org/pkg/biblatex
+    description: Citation and bibliography package reference.
+  - name: Biber Documentation
+    category: citations
+    url: https://ctan.org/pkg/biber
+    description: Bibliography processor reference.
+  - name: CTAN
+    category: publishing
+    url: https://ctan.org/
+    description: Package archive for TeX and LaTeX ecosystems.
+  - name: Graphviz Documentation
+    category: diagrams
+    url: https://graphviz.org/documentation/
+    description: Diagram generation reference.
+  - name: Mermaid Documentation
+    category: diagrams
+    url: https://mermaid.js.org/
+    description: Text-based diagrams and flowcharts.
+  - name: Inkscape Command Line
+    category: diagrams
+    url: https://inkscape.org/doc/inkscape-man.html
+    description: SVG conversion and automation guidance.
+  - name: SVG W3C Reference
+    category: diagrams
+    url: https://www.w3.org/Graphics/SVG/
+    description: Vector graphics specification reference.
   - name: qpdf Documentation
     category: pdf
     url: https://qpdf.readthedocs.io/
     description: PDF validation and transformation tooling.
+  - name: Poppler Documentation
+    category: pdf
+    url: https://poppler.freedesktop.org/
+    description: PDF inspection and text extraction tools.

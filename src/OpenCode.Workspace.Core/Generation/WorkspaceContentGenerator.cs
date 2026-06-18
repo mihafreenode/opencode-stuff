@@ -396,7 +396,7 @@ public sealed class WorkspaceContentGenerator
             }
         }
 
-        var additionalGuidance = KnowledgePackContentGenerator.GetOnboardingLinks(workspace);
+        var additionalGuidance = GetAdditionalAgentGuidanceLinks(workspace);
         if (additionalGuidance.Count > 0)
         {
             lines.Add(string.Empty);
@@ -409,6 +409,37 @@ public sealed class WorkspaceContentGenerator
         }
 
         return string.Join("\n", lines);
+    }
+
+    private static IReadOnlyList<string> GetAdditionalAgentGuidanceLinks(ResolvedWorkspace workspace)
+    {
+        var links = KnowledgePackContentGenerator.GetOnboardingLinks(workspace).ToList();
+
+        if (IsOracleDemoWorkspace(workspace.Definition))
+        {
+            links.Add("docs/reference/agent-onboarding/oracle.md");
+        }
+
+        if (HasFeature(workspace.Definition, "analytics-reporting"))
+        {
+            links.Add("docs/reference/agent-onboarding/analytics.md");
+        }
+
+        if (HasFeature(workspace.Definition, "education-knowledge-pack"))
+        {
+            links.Add("docs/reference/agent-onboarding/education.md");
+        }
+
+        if (HasFeature(workspace.Definition, "publishing-tex"))
+        {
+            links.Add("docs/reference/agent-onboarding/publishing.md");
+        }
+
+        return links
+            .Where(link => !string.IsNullOrWhiteSpace(link) && IsWorkspaceLinkAvailable(workspace, link))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(link => link, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string BuildAgentsOnboardingLinks(ResolvedWorkspace workspace)
@@ -1165,14 +1196,21 @@ This project is not affiliated with the author.
 import json
 from pathlib import Path
 
-import marimo as mo
+import marimo
 import pandas as pd
 
+__generated_with = "0.11.0"
 app = marimo.App(width="medium")
 
 
 @app.cell
-def _():
+def __():
+    import marimo as mo
+    return mo,
+
+
+@app.cell
+def __():
     root = Path(__file__).parent
     customers = json.loads((root / "sample-data" / "customers.json").read_text(encoding="utf-8"))
     orders = pd.read_csv(root / "sample-data" / "orders.csv")
@@ -1181,7 +1219,7 @@ def _():
 
 
 @app.cell
-def _(customers, orders):
+def __(customers, orders):
     customer_frame = pd.DataFrame(customers)
     monthly_totals = orders.groupby("month", as_index=False)["amount"].sum().sort_values("month")
     customer_totals = orders.groupby("customer_id", as_index=False)["amount"].sum().merge(customer_frame, on="customer_id", how="left")
@@ -1189,7 +1227,7 @@ def _(customers, orders):
 
 
 @app.cell
-def _(customer_totals, kpis, monthly_totals):
+def __(customer_totals, kpis, monthly_totals, mo):
     total_revenue = monthly_totals["amount"].sum()
     top_segment = kpis.loc[kpis["Metric"] == "Top Segment", "Value"].iloc[0]
     summary = mo.md(
@@ -1201,7 +1239,7 @@ def _(customer_totals, kpis, monthly_totals):
 
 
 @app.cell
-def _(customer_totals, monthly_totals, summary):
+def __(customer_totals, monthly_totals, mo, summary):
     mo.vstack([
         summary,
         mo.md("## Monthly totals"),
@@ -1502,16 +1540,16 @@ Typst is often easier than LaTeX while staying source-controlled and review-frie
 """;
 
     private static string PublishingLatexPaper() => """
-\\documentclass{article}
-\\usepackage[backend=biber]{biblatex}
-\\addbibresource{bibliography.bib}
-\\title{Publishing Demo Paper}
-\\author{OpenCode Workspace Manager}
-\\begin{document}
-\\maketitle
+\documentclass{article}
+\usepackage[backend=biber]{biblatex}
+\addbibresource{bibliography.bib}
+\title{Publishing Demo Paper}
+\author{OpenCode Workspace Manager}
+\begin{document}
+\maketitle
 This LaTeX example remains available for academic compatibility and existing templates.
-\\printbibliography
-\\end{document}
+\printbibliography
+\end{document}
 """;
 
     private static string PublishingBibliography() => """

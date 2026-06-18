@@ -467,6 +467,179 @@ public sealed class WindowsDockerIntegrationTests
         }
     }
 
+    [SkippableFact]
+    public async Task AnalyticsRuntimeAdjacentSmoke_CanBeRunExplicitly_WhenDockerAvailable()
+    {
+        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS=1 to run analytics runtime-adjacent Docker tests.");
+
+        var capabilities = new WindowsHostCapabilities(new ProcessRunner());
+        var dockerCheck = await capabilities.CheckDockerDesktopAsync();
+        Skip.IfNot(dockerCheck.IsAvailable, dockerCheck.Reason);
+
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-analytics-appdata-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-analytics-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(appDataRoot);
+        Directory.CreateDirectory(workspaceRoot);
+
+        var dockerService = new DockerService(new ProcessRunner());
+        WorkspaceSnapshot? snapshot = null;
+
+        try
+        {
+            var orchestrator = CreateWorkspaceOrchestrator(appDataRoot);
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "analytics-smoke", Image = "ubuntu:24.04" },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Features = new List<string> { "core", "analytics-reporting", "education-knowledge-pack", "analytics-sample-data-pack" },
+                Analytics = new AnalyticsWorkspacePreferences { MarimoPort = 2718 },
+            };
+
+            snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition);
+            try
+            {
+                await orchestrator.ProvisionAsync(snapshot);
+            }
+            catch (InvalidOperationException exception) when (IsLinuxContainerPlatformSkipCondition(exception.Message, out var skipReason))
+            {
+                Skip.If(true, skipReason);
+                return;
+            }
+
+            var validate = await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "cd /workspace && scripts/validate-analytics-tooling.sh"
+            ], cancellationToken: CancellationToken.None);
+            Assert.True(validate.IsSuccess, validate.StandardError + Environment.NewLine + validate.StandardOutput);
+
+            var smoke = await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "cd /workspace && scripts/smoke-marimo.sh"
+            ], cancellationToken: CancellationToken.None);
+            Assert.True(smoke.IsSuccess, smoke.StandardError + Environment.NewLine + smoke.StandardOutput);
+
+            var launch = await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition),
+                "bash", "-lc",
+                "cd /workspace && nohup marimo run examples/analytics/analysis.py --host 0.0.0.0 --port \"${MARIMO_PORT:-2718}\" >/tmp/marimo-host-smoke.log 2>&1 & echo $!"
+            ], cancellationToken: CancellationToken.None);
+            Assert.True(launch.IsSuccess, launch.StandardError + Environment.NewLine + launch.StandardOutput);
+
+            ProcessResult? curl = null;
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                curl = await new ProcessRunner().RunAsync("curl", ["-fsS", "http://127.0.0.1:2718"]);
+                if (curl.IsSuccess)
+                {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(1));
+            }
+
+            Assert.NotNull(curl);
+            Assert.True(curl!.IsSuccess, curl.StandardError + Environment.NewLine + curl.StandardOutput);
+
+            await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "pkill -f 'marimo run examples/analytics/analysis.py' || true"
+            ], cancellationToken: CancellationToken.None);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                try
+                {
+                    await dockerService.RemoveAsync(snapshot.Paths, snapshot.Definition);
+                }
+                catch
+                {
+                }
+            }
+
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
+            }
+        }
+    }
+
+    [SkippableFact]
+    public async Task PublishingRuntimeAdjacentSmoke_CanBeRunExplicitly_WhenDockerAvailable()
+    {
+        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS=1 to run publishing runtime-adjacent Docker tests.");
+
+        var capabilities = new WindowsHostCapabilities(new ProcessRunner());
+        var dockerCheck = await capabilities.CheckDockerDesktopAsync();
+        Skip.IfNot(dockerCheck.IsAvailable, dockerCheck.Reason);
+
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-publishing-appdata-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-publishing-workspace-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(appDataRoot);
+        Directory.CreateDirectory(workspaceRoot);
+
+        var dockerService = new DockerService(new ProcessRunner());
+        WorkspaceSnapshot? snapshot = null;
+
+        try
+        {
+            var orchestrator = CreateWorkspaceOrchestrator(appDataRoot);
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "publishing-smoke", Image = "ubuntu:24.04" },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Features = new List<string> { "core", "publishing-tex", "publishing-knowledge-pack" },
+            };
+
+            snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition);
+            try
+            {
+                await orchestrator.ProvisionAsync(snapshot);
+            }
+            catch (InvalidOperationException exception) when (IsLinuxContainerPlatformSkipCondition(exception.Message, out var skipReason))
+            {
+                Skip.If(true, skipReason);
+                return;
+            }
+
+            var validate = await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "cd /workspace && scripts/validate-publishing-tooling.sh"
+            ], cancellationToken: CancellationToken.None);
+            Assert.True(validate.IsSuccess, validate.StandardError + Environment.NewLine + validate.StandardOutput);
+
+            var demo = await dockerService.RunSimpleDockerCommandAsync([
+                "exec", DockerService.GetWorkspaceContainerName(definition), "bash", "-lc", "cd /workspace && scripts/demo-publishing-workflows.sh"
+            ], cancellationToken: CancellationToken.None);
+            Assert.True(demo.IsSuccess, demo.StandardError + Environment.NewLine + demo.StandardOutput);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                try
+                {
+                    await dockerService.RemoveAsync(snapshot.Paths, snapshot.Definition);
+                }
+                catch
+                {
+                }
+            }
+
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
+            }
+        }
+    }
+
     private static bool IsLinuxContainerPlatformSkipCondition(string message, out string skipReason)
     {
         foreach (var marker in new[]
@@ -488,6 +661,9 @@ public sealed class WindowsDockerIntegrationTests
         skipReason = string.Empty;
         return false;
     }
+
+    private static bool ShouldRunRuntimeAdjacentDockerTests()
+        => string.Equals(Environment.GetEnvironmentVariable("OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS"), "1", StringComparison.Ordinal);
 
     private static WorkspaceOrchestrator CreateWorkspaceOrchestrator(string appDataRoot)
     {

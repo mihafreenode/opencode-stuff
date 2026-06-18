@@ -5,16 +5,112 @@ lifecycle: stable
 onboarding:
   - docs/reference/agent-onboarding/analytics.md
   - docs/reference/agent-onboarding/education.md
+skillRefs:
+  - skills/analytics/excel-analysis.md
+  - skills/education/lesson-plan.md
+  - skills/education/project-based-learning.md
 sources:
   - name: Python Documentation
     category: python
     url: https://docs.python.org/3/
     description: Python language and standard library reference.
+  - name: Pandas Documentation
+    category: python
+    url: https://pandas.pydata.org/docs/
+    description: Data analysis and spreadsheet processing reference.
+  - name: NumPy Documentation
+    category: python
+    url: https://numpy.org/doc/stable/
+    description: Numerical computing reference.
+  - name: Matplotlib Documentation
+    category: python
+    url: https://matplotlib.org/stable/
+    description: Visualization and charting reference.
+  - name: Plotly Python Documentation
+    category: python
+    url: https://plotly.com/python/
+    description: Interactive charts and dashboards.
+  - name: Marimo Documentation
+    category: python
+    url: https://docs.marimo.io/
+    description: Reactive Python notebook environment.
+  - name: SciPy Documentation
+    category: python
+    url: https://docs.scipy.org/doc/scipy/
+    description: Scientific computing reference.
+  - name: Statsmodels Documentation
+    category: python
+    url: https://www.statsmodels.org/stable/
+    description: Statistics, regression, and forecasting.
+  - name: Scikit-Learn Documentation
+    category: python
+    url: https://scikit-learn.org/stable/
+    description: Introductory machine learning reference.
+  - name: SymPy Documentation
+    category: python
+    url: https://docs.sympy.org/latest/
+    description: Symbolic mathematics and algebra.
+  - name: NetworkX Documentation
+    category: python
+    url: https://networkx.org/documentation/stable/
+    description: Graph theory and network analysis.
+  - name: Pandoc Documentation
+    category: publishing
+    url: https://pandoc.org/
+    description: Report generation and publishing workflows.
+  - name: Python Data Science Handbook
+    category: python
+    url: https://jakevdp.github.io/PythonDataScienceHandbook/
+    description: Practical examples for analytics education.
   - name: Khan Academy
     category: stem
     url: https://www.khanacademy.org/
     description: Mathematics, statistics, science, economics, and computing.
+  - name: CK-12 Foundation
+    category: stem
+    url: https://www.ck12.org/
+    description: Middle and high school science and mathematics.
+  - name: PhET Simulations
+    category: stem
+    url: https://phet.colorado.edu/
+    description: Interactive simulations for physics, chemistry, and mathematics.
+  - name: NASA STEM Resources
+    category: stem
+    url: https://www.nasa.gov/learning-resources/
+    description: Astronomy, engineering, climate, and space science learning resources.
+  - name: NOAA Education
+    category: stem
+    url: https://www.noaa.gov/education
+    description: Weather, climate, ocean, and environmental science references.
+  - name: CS Unplugged
+    category: stem
+    url: https://www.csunplugged.org/
+    description: Algorithms and computational thinking activities.
+  - name: TeachEngineering
+    category: stem
+    url: https://www.teachengineering.org/
+    description: Engineering projects and classroom activities.
   - name: Our World in Data
     category: analytics
     url: https://ourworldindata.org/
     description: Public data storytelling and charts.
+  - name: Gapminder
+    category: analytics
+    url: https://www.gapminder.org/
+    description: Demographics, development, and geography.
+  - name: UCI Machine Learning Repository
+    category: analytics
+    url: https://archive.ics.uci.edu/
+    description: Datasets for analytics and classroom exercises.
+  - name: Project Gutenberg
+    category: humanities
+    url: https://www.gutenberg.org/
+    description: Public-domain literature for language analysis and reading projects.
+  - name: Library of Congress Classroom Resources
+    category: humanities
+    url: https://www.loc.gov/programs/teachers/
+    description: History, civics, and primary source classroom materials.
+  - name: Internet Encyclopedia of Philosophy
+    category: humanities
+    url: https://iep.utm.edu/
+    description: Philosophy, ethics, and critical thinking reference.
