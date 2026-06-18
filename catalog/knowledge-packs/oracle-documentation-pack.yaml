@@ -1,0 +1,31 @@
+id: oracle-documentation-pack
+title: Oracle Documentation Pack
+category: knowledge-pack
+lifecycle: stable
+description: Reference-only Oracle database and PL/SQL indexes for local workspaces.
+sources:
+  - name: Oracle Database Documentation
+    url: https://docs.oracle.com/en/database/oracle/oracle-database/23/
+    category: database
+    description: Main Oracle Database documentation entry point.
+  - name: Oracle PL/SQL Language Reference
+    url: https://docs.oracle.com/en/database/oracle/oracle-database/23/lnpls/
+    category: plsql
+    description: Language semantics, packages, triggers, and procedural guidance.
+  - name: Oracle Database Error Messages
+    url: https://docs.oracle.com/en/database/oracle/oracle-database/23/errmg/
+    category: database
+    description: Reference for ORA diagnostics.
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/plsql.md
+  - skills/oracle/database.md
+workspacePaths:
+  knowledgeMap: docs/reference/oracle-knowledge-map.yaml
+  knowledgeMapId: oracle-knowledge-pack
+  knowledgeMapTitle: Oracle Knowledge Pack
+  sourceIndex: docs/reference/oracle-database-index.md
+outputAliases:
+  - source: source-index
+    destination: docs/reference/oracle-plsql-index.md

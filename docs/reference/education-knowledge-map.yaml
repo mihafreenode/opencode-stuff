@@ -1,0 +1,20 @@
+id: education-knowledge-pack
+title: Education Knowledge Pack
+category: knowledge-pack
+lifecycle: stable
+onboarding:
+  - docs/reference/agent-onboarding/analytics.md
+  - docs/reference/agent-onboarding/education.md
+sources:
+  - name: Python Documentation
+    category: python
+    url: https://docs.python.org/3/
+    description: Python language and standard library reference.
+  - name: Khan Academy
+    category: stem
+    url: https://www.khanacademy.org/
+    description: Mathematics, statistics, science, economics, and computing.
+  - name: Our World in Data
+    category: analytics
+    url: https://ourworldindata.org/
+    description: Public data storytelling and charts.

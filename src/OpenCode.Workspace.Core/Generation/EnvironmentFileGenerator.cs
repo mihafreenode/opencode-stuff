@@ -34,6 +34,12 @@ public sealed class EnvironmentFileGenerator
             ]);
         }
 
+        if (definition.Features.Contains("analytics-reporting", StringComparer.OrdinalIgnoreCase))
+        {
+            var analyticsSettings = AnalyticsWorkspaceSettings.From(definition);
+            lines.Add($"MARIMO_PORT={analyticsSettings.MarimoPort}");
+        }
+
         lines.Add(string.Empty);
         return string.Join(Environment.NewLine, lines);
     }

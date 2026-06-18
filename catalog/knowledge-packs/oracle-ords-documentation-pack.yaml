@@ -1,0 +1,19 @@
+id: oracle-ords-documentation-pack
+title: Oracle ORDS Documentation Pack
+category: knowledge-pack
+lifecycle: stable
+description: Oracle REST Data Services references for local Oracle and APEX workspaces.
+sources:
+  - name: Oracle REST Data Services Documentation
+    url: https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/
+    category: ords
+    description: ORDS installation, runtime, REST, and deployment guidance.
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/ords.md
+workspacePaths:
+  knowledgeMap: docs/reference/oracle-knowledge-map.yaml
+  knowledgeMapId: oracle-knowledge-pack
+  knowledgeMapTitle: Oracle Knowledge Pack
+  sourceIndex: docs/reference/oracle-ords-index.md

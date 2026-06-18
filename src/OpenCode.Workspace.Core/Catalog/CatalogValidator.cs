@@ -30,6 +30,52 @@ public sealed class CatalogValidator
         return errors;
     }
 
+    public IReadOnlyList<string> ValidateKnowledgePacks(IEnumerable<KnowledgePackManifest> knowledgePacks)
+    {
+        var errors = new List<string>();
+        ValidateUniqueIds(knowledgePacks.Select(pack => pack.Id), "knowledge pack", errors);
+
+        foreach (var pack in knowledgePacks)
+        {
+            if (string.IsNullOrWhiteSpace(pack.Id))
+            {
+                errors.Add("Knowledge pack manifest is missing 'id'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(pack.Title))
+            {
+                errors.Add($"Knowledge pack '{pack.Id}' is missing 'title'.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(pack.Category)
+                && !CatalogConventions.ValidFeatureCategories.Contains(pack.Category))
+            {
+                errors.Add($"Knowledge pack '{pack.Id}' uses unsupported category '{pack.Category}'.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(pack.Lifecycle)
+                && !CatalogConventions.ValidLifecycles.Contains(pack.Lifecycle))
+            {
+                errors.Add($"Knowledge pack '{pack.Id}' uses unsupported lifecycle '{pack.Lifecycle}'.");
+            }
+
+            foreach (var source in pack.Sources)
+            {
+                if (string.IsNullOrWhiteSpace(source.Name))
+                {
+                    errors.Add($"Knowledge pack '{pack.Id}' contains a source without 'name'.");
+                }
+
+                if (string.IsNullOrWhiteSpace(source.Url))
+                {
+                    errors.Add($"Knowledge pack '{pack.Id}' source '{source.Name}' is missing 'url'.");
+                }
+            }
+        }
+
+        return errors;
+    }
+
     public IReadOnlyList<string> ValidateFeatures(IEnumerable<FeatureManifest> features)
     {
         var errors = new List<string>();
@@ -45,6 +91,18 @@ public sealed class CatalogValidator
             if (string.IsNullOrWhiteSpace(feature.DisplayName))
             {
                 errors.Add($"Feature '{feature.Id}' is missing 'displayName'.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(feature.Category)
+                && !CatalogConventions.ValidFeatureCategories.Contains(feature.Category))
+            {
+                errors.Add($"Feature '{feature.Id}' uses unsupported category '{feature.Category}'.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(feature.Lifecycle)
+                && !CatalogConventions.ValidLifecycles.Contains(feature.Lifecycle))
+            {
+                errors.Add($"Feature '{feature.Id}' uses unsupported lifecycle '{feature.Lifecycle}'.");
             }
         }
 
@@ -89,6 +147,42 @@ public sealed class CatalogValidator
                 if (!capabilityIds.Contains(capabilityId))
                 {
                     errors.Add($"Feature '{feature.Id}' references unknown capability '{capabilityId}'.");
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    public IReadOnlyList<string> ValidateFeatures(IEnumerable<FeatureManifest> features, IEnumerable<CapabilityManifest> capabilities, IEnumerable<KnowledgePackManifest> knowledgePacks)
+    {
+        var errors = ValidateFeatures(features, capabilities).ToList();
+        var featureIds = features.Select(feature => feature.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var knowledgePackIds = knowledgePacks.Select(pack => pack.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var feature in features)
+        {
+            foreach (var featureId in feature.Requires)
+            {
+                if (!featureIds.Contains(featureId))
+                {
+                    errors.Add($"Feature '{feature.Id}' requires unknown feature '{featureId}'.");
+                }
+            }
+
+            foreach (var featureId in feature.Recommends)
+            {
+                if (!featureIds.Contains(featureId))
+                {
+                    errors.Add($"Feature '{feature.Id}' recommends unknown feature '{featureId}'.");
+                }
+            }
+
+            foreach (var knowledgePackId in feature.KnowledgePacks)
+            {
+                if (!knowledgePackIds.Contains(knowledgePackId))
+                {
+                    errors.Add($"Feature '{feature.Id}' references unknown knowledge pack '{knowledgePackId}'.");
                 }
             }
         }

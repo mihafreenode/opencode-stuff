@@ -346,7 +346,7 @@ public sealed class WorkspaceCapabilityCatalogTests
                 new WorkspaceYamlService(),
                 new WorkspaceDiscoveryService(),
                 new WorkspaceRepository(AppDataRoot),
-                new WorkspaceResolver(_catalogProvider.LoadFeatures(), _catalogProvider.LoadServices(), _catalogProvider.LoadCapabilities()),
+                new WorkspaceResolver(_catalogProvider.LoadFeatures(), _catalogProvider.LoadServices(), _catalogProvider.LoadCapabilities(), _catalogProvider.LoadKnowledgePacks()),
                 new ComposeGenerator(),
                 new EnvironmentFileGenerator(),
                 new ProvisioningScriptGenerator(),

@@ -207,6 +207,72 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void EnvironmentFileGenerator_IncludesMarimoPortForAnalyticsWorkspace()
+    {
+        var generator = new EnvironmentFileGenerator();
+        var content = generator.Generate(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "analytics-demo" },
+            Features = new List<string> { "core", "analytics-reporting" },
+            Analytics = new AnalyticsWorkspacePreferences { MarimoPort = 3818 },
+        });
+
+        Assert.Contains("MARIMO_PORT=3818", content);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForAnalyticsWorkspace_UsesLoopbackOnlyMarimoPortMapping()
+    {
+        var generator = new ComposeGenerator();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "analytics-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "analytics-reporting" },
+        };
+
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = definition,
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var compose = generator.Generate(resolved, WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "analytics-demo")));
+
+        Assert.Contains("127.0.0.1:${MARIMO_PORT}:2718", compose);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForWorkspaceWithoutAnalytics_DoesNotExposeMarimoPort()
+    {
+        var generator = new ComposeGenerator();
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "core-only", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var compose = generator.Generate(resolved, WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "core-only")));
+        Assert.DoesNotContain("MARIMO_PORT", compose);
+        Assert.DoesNotContain("127.0.0.1:${MARIMO_PORT}:2718", compose);
+    }
+
+    [Fact]
     public void ProvisioningGenerator_IncludesGeneratedHeaderAndOpenCodeInstall()
     {
         var generator = new ProvisioningScriptGenerator();

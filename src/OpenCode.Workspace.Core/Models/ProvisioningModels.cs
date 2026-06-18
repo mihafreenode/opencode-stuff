@@ -10,6 +10,7 @@ public sealed class ResolvedWorkspace
     public required WorkspaceDefinition Definition { get; init; }
     public required IReadOnlyList<FeatureManifest> Features { get; init; }
     public required IReadOnlyList<CapabilityManifest> Capabilities { get; init; }
+    public IReadOnlyList<KnowledgePackManifest> KnowledgePacks { get; init; } = Array.Empty<KnowledgePackManifest>();
     public required IReadOnlyList<ServiceManifest> Services { get; init; }
     public required IReadOnlyList<string> AptPackages { get; init; }
     public required IReadOnlyList<string> NpmPackages { get; init; }
@@ -32,4 +33,5 @@ public sealed class GeneratedWorkspaceArtifacts
     public required string WorkspaceDefinitionHash { get; init; }
     public required string DesiredStateHash { get; init; }
     public required IReadOnlyDictionary<string, string> AdditionalFiles { get; init; }
+    public required IReadOnlyDictionary<string, byte[]> AdditionalBinaryFiles { get; init; }
 }

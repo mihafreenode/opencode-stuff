@@ -100,7 +100,7 @@ public static class OracleRuntimeSmokeCli
             WriteSummary(artifactsRoot, summary);
 
             var provider = new BuiltInCatalogProvider(Path.Combine(repositoryRoot, "catalog"));
-            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var template = provider.LoadTemplates().Single(item => string.Equals(item.Id, options.TemplateId, StringComparison.OrdinalIgnoreCase));
             definition = new TemplateExpander().Expand($"{options.TemplateId}-runtime-smoke-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}", template);
             var orchestrator = CreateOrchestrator(workspaceRoot, resolver);

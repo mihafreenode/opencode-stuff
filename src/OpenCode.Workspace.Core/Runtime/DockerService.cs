@@ -192,6 +192,12 @@ public sealed class DockerService
             return portConflictResult;
         }
 
+        var analyticsPortConflictResult = await DetectAnalyticsPortConflictAsync(paths, definition, log, cancellationToken);
+        if (analyticsPortConflictResult is not null)
+        {
+            return analyticsPortConflictResult;
+        }
+
         var result = await RunComposeAsync(paths, definition, new[] { "up", "-d" }, log, cancellationToken);
         if (result.IsSuccess)
         {
@@ -395,6 +401,81 @@ public sealed class DockerService
         }
 
         return null;
+    }
+
+    private async Task<ProcessResult?> DetectAnalyticsPortConflictAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        if (!definition.Features.Contains("analytics-reporting", StringComparer.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var analyticsSettings = AnalyticsWorkspaceSettings.From(definition);
+        var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
+        var dockerPsResult = await RunDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" }, paths.RootPath, log, cancellationToken);
+        var composePsResult = await GetComposePsAsync(paths, definition, log, cancellationToken);
+        var containerOwner = dockerPsResult.IsSuccess ? FindPortOwningContainer(dockerPsResult.StandardOutputLines, analyticsSettings.MarimoPort, projectName) : null;
+        if (containerOwner?.BelongsToCurrentWorkspace == true)
+        {
+            return null;
+        }
+
+        var hostDiagnostic = await GetHostPortDiagnosticAsync(analyticsSettings.MarimoPort, cancellationToken);
+        if (containerOwner is null && !hostDiagnostic.IsInUse)
+        {
+            return null;
+        }
+
+        var lines = new List<string>
+        {
+            $"Marimo port {analyticsSettings.MarimoPort} is already in use.",
+            string.Empty,
+            "Likely causes:",
+            "- another analytics workspace is already running",
+            "- another local service is already bound to the Marimo host port",
+            "- stale container still owns the port",
+        };
+
+        if (containerOwner is not null)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Owning container: {containerOwner.ContainerName}");
+        }
+
+        if (hostDiagnostic.Details.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Host port details:");
+            lines.AddRange(hostDiagnostic.Details.Select(detail => $"- {detail}"));
+        }
+
+        if (composePsResult.IsSuccess && !string.IsNullOrWhiteSpace(composePsResult.StandardOutput))
+        {
+            lines.Add(string.Empty);
+            lines.Add("This workspace docker compose ps:");
+            lines.Add(composePsResult.StandardOutput.Trim());
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Suggested actions:");
+        lines.Add("- Stop the other analytics workspace");
+        lines.Add("- Set analytics.marimoPort to a different value");
+        lines.Add("- Retry after the port is free");
+
+        var message = string.Join(Environment.NewLine, lines);
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = message });
+
+        return new ProcessResult
+        {
+            Command = $"analytics-port-preflight {analyticsSettings.MarimoPort}",
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = message,
+            StandardOutputLines = Array.Empty<string>(),
+            StandardErrorLines = message.Split(Environment.NewLine),
+            Duration = TimeSpan.Zero,
+            FailureClassification = WorkspaceFailureClassification.EnvironmentPortConflict,
+        };
     }
 
     private static string BuildOraclePortConflictMessage(OracleHostPortCheck port, ContainerPortOwner? containerOwner, HostPortDiagnostic hostDiagnostic, ProcessResult dockerPsResult, ProcessResult composePsResult)

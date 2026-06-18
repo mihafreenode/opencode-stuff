@@ -431,7 +431,7 @@ customSection:
     {
         var processRunner = new ProcessRunner();
         var catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities(), catalogProvider.LoadKnowledgePacks());
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
             new WorkspaceDiscoveryService(),

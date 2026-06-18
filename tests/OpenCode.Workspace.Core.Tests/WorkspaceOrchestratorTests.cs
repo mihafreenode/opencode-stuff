@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
@@ -152,6 +153,93 @@ public sealed class WorkspaceOrchestratorTests
                 Assert.True(validationMode.HasFlag(UnixFileMode.UserExecute));
                 Assert.True(demoMode.HasFlag(UnixFileMode.UserExecute));
             }
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void CreateWorkspace_ForAnalyticsReporting_WritesExamplesValidationAndOnboarding()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core", "analytics-reporting", "education-knowledge-pack", "analytics-sample-data-pack"));
+
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "README.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "analysis.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "sample-data", "customers.json")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "sample-data", "sales.csv")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-analytics-tooling.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "smoke-marimo.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "education-knowledge-map.yaml")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "agent-onboarding", "analytics.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "agent-onboarding", "education.md")));
+
+            var env = File.ReadAllText(snapshot.Paths.EnvironmentFilePath);
+            var compose = File.ReadAllText(snapshot.Paths.ComposePath);
+            var analyticsReadme = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "README.md"));
+            var agents = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "AGENTS.md"));
+            var smokeScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "smoke-marimo.sh"));
+            var workbookPath = Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "sample-data", "kpis.xlsx");
+
+            Assert.Contains("MARIMO_PORT=2718", env);
+            Assert.Contains("127.0.0.1:${MARIMO_PORT}:2718", compose);
+            Assert.Contains("marimo edit examples/analytics/analysis.py", analyticsReadme);
+            Assert.Contains("The Trick That Makes Open LLMs Viable for Python", analyticsReadme);
+            Assert.Contains("docs/reference/agent-onboarding/analytics.md", agents);
+            Assert.Contains("docs/reference/agent-onboarding/education.md", agents);
+            Assert.DoesNotContain("docs/reference/agent-onboarding/publishing.md", agents);
+            Assert.Contains("--host 0.0.0.0", smokeScript);
+            Assert.Contains("curl -fsS \"http://127.0.0.1:${port}\"", smokeScript);
+            Assert.Contains("trap cleanup EXIT", smokeScript);
+
+            using var workbook = ZipFile.OpenRead(workbookPath);
+            Assert.Contains(workbook.Entries, entry => entry.FullName == "xl/workbook.xml");
+            Assert.Contains(workbook.Entries, entry => entry.FullName == "xl/worksheets/sheet1.xml");
+            Assert.Contains(workbook.Entries, entry => entry.FullName == "xl/sharedStrings.xml");
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void CreateWorkspace_ForPublishingTex_WritesExamplesValidationAndOnboarding()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core", "publishing-tex", "publishing-knowledge-pack"));
+
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "publishing", "README.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "publishing", "report.typ")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "publishing", "paper.tex")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-publishing-tooling.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "demo-publishing-workflows.sh")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "publishing-knowledge-map.yaml")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "agent-onboarding", "publishing.md")));
+
+            var readme = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "examples", "publishing", "README.md"));
+            var validation = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-publishing-tooling.sh"));
+            var agents = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "AGENTS.md"));
+
+            Assert.Contains("1. Markdown", readme);
+            Assert.Contains("2. Typst", readme);
+            Assert.Contains("3. LaTeX", readme);
+            Assert.Contains("qpdf --check", validation);
+            Assert.Contains("typst --version", validation);
+            Assert.Contains("docs/reference/agent-onboarding/publishing.md", agents);
+            Assert.DoesNotContain("docs/reference/agent-onboarding/education.md", agents);
         }
         finally
         {
@@ -758,7 +846,42 @@ public sealed class WorkspaceOrchestratorTests
                 new FeatureManifest
                 {
                     Id = "oracle-demo",
+                    KnowledgePacks = new List<string> { "oracle-documentation-pack" },
                     Dependencies = new DependencySet { Apt = new List<string> { "curl", "unzip" } },
+                },
+                new FeatureManifest
+                {
+                    Id = "analytics-reporting",
+                    KnowledgePacks = new List<string> { "education-knowledge-pack" },
+                    Dependencies = new DependencySet
+                    {
+                        Apt = new List<string> { "csvkit", "graphviz", "jq", "miller", "p7zip-full", "poppler-utils", "qpdf", "yq" },
+                        Pip = new List<string> { "marimo", "pandas", "numpy", "openpyxl", "xlsxwriter", "matplotlib", "plotly", "pypdf", "pymupdf", "scipy", "sympy", "scikit-learn", "statsmodels", "seaborn", "jupyterlab", "ipywidgets", "networkx", "folium", "tabulate" },
+                    },
+                },
+                new FeatureManifest
+                {
+                    Id = "education-knowledge-pack",
+                    KnowledgePacks = new List<string> { "education-knowledge-pack" },
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
+                    Id = "publishing-tex",
+                    KnowledgePacks = new List<string> { "publishing-knowledge-pack" },
+                    Dependencies = new DependencySet { Apt = new List<string> { "pandoc", "latexmk", "biber", "qpdf", "poppler-utils", "librsvg2-bin", "inkscape", "ghostscript", "texlive-latex-recommended", "texlive-latex-extra", "texlive-fonts-recommended", "texlive-science" } },
+                    PostInstall = ["command -v typst >/dev/null 2>&1 || install /tmp/typst-install/typst-*/typst /usr/local/bin/typst"],
+                },
+                new FeatureManifest
+                {
+                    Id = "publishing-knowledge-pack",
+                    KnowledgePacks = new List<string> { "publishing-knowledge-pack" },
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
+                    Id = "analytics-sample-data-pack",
+                    Dependencies = new DependencySet(),
                 },
             },
             new[]
@@ -785,6 +908,43 @@ public sealed class WorkspaceOrchestratorTests
                     Profiles = new List<string> { "oracle-demo" },
                     WorkspaceDependsOnCondition = "service_healthy",
                     Volumes = new List<string> { "oracle-demo-data:/opt/oracle/oradata", "${WORKSPACE_TUTORIAL_DOCKER_PATH}/oracle/init:/container-entrypoint-initdb.d" },
+                },
+            },
+            Array.Empty<CapabilityManifest>(),
+            new[]
+            {
+                new KnowledgePackManifest
+                {
+                    Id = "oracle-documentation-pack",
+                    Title = "Oracle Documentation Pack",
+                    Onboarding = new List<string> { "docs/reference/agent-onboarding/oracle.md" },
+                    WorkspacePaths = new KnowledgePackWorkspacePathsManifest
+                    {
+                        KnowledgeMap = "docs/reference/oracle-knowledge-map.yaml",
+                        SourceIndex = "docs/reference/oracle-database-index.md",
+                    },
+                },
+                new KnowledgePackManifest
+                {
+                    Id = "education-knowledge-pack",
+                    Title = "Education Knowledge Pack",
+                    Onboarding = new List<string> { "docs/reference/agent-onboarding/analytics.md", "docs/reference/agent-onboarding/education.md" },
+                    WorkspacePaths = new KnowledgePackWorkspacePathsManifest
+                    {
+                        KnowledgeMap = "docs/reference/education-knowledge-map.yaml",
+                        SourceIndex = "docs/reference/education-knowledge-index.md",
+                    },
+                },
+                new KnowledgePackManifest
+                {
+                    Id = "publishing-knowledge-pack",
+                    Title = "Publishing Knowledge Pack",
+                    Onboarding = new List<string> { "docs/reference/agent-onboarding/publishing.md" },
+                    WorkspacePaths = new KnowledgePackWorkspacePathsManifest
+                    {
+                        KnowledgeMap = "docs/reference/publishing-knowledge-map.yaml",
+                        SourceIndex = "docs/reference/publishing-knowledge-index.md",
+                    },
                 },
             });
     }

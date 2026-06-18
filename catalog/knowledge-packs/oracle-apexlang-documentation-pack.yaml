@@ -1,0 +1,22 @@
+id: oracle-apexlang-documentation-pack
+title: Oracle APEXLang Documentation Pack
+category: knowledge-pack
+lifecycle: stable
+description: Source-controlled Oracle APEXLang references for exported application definitions.
+sources:
+  - name: Oracle APEXLang Index
+    url: https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/
+    category: apexlang
+    description: Source-controlled APEXLang format and reference navigation.
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/apexlang.md
+workspacePaths:
+  knowledgeMap: docs/reference/oracle-knowledge-map.yaml
+  knowledgeMapId: oracle-knowledge-pack
+  knowledgeMapTitle: Oracle Knowledge Pack
+  sourceIndex: docs/reference/oracle-apexlang-index.md
+outputAliases:
+  - source: source-index
+    destination: docs/reference/oracle-apexlang-navigation.md

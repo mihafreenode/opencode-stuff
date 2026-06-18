@@ -3,7 +3,13 @@
 id: oracle-apexlang-demo
 displayName: Oracle APEXlang Demo Assets
 description: Source-controlled Oracle APEXlang export and import scripts, onboarding docs, and repository workflow helpers.
+category: runtime
+lifecycle: stable
 alwaysEnabled: false
+knowledgePacks:
+  - oracle-apex-documentation-pack
+  - oracle-ords-documentation-pack
+  - oracle-apexlang-documentation-pack
 capabilities:
   - oracle
 dependencies:

@@ -493,7 +493,7 @@ public sealed class WindowsDockerIntegrationTests
     {
         var processRunner = new ProcessRunner();
         var catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities(), catalogProvider.LoadKnowledgePacks());
         var ignorePolicy = new WorkspaceIgnorePolicyService();
 
         return new WorkspaceOrchestrator(

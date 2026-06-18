@@ -1,30 +1,35 @@
-# Oracle documentation discovery map.
-# Reference-only metadata for humans and AI agents.
-
-apex:
-  specification:
-    - oracle-apexlang-index.md
-    - oracle-apexlang-navigation.md
-  books:
-    - oracle-apex-books.md
-  runtime:
-    - oracle-apex-api-reference.md
-    - oracle-apex-api-packages.md
-    - oracle-apex-api-map.yaml
-  administration:
-    - oracle-apex-administration.md
-  installation:
-    - oracle-apex-installation.md
-  release_notes:
-    - oracle-apex-release-notes.md
-  version_archives:
-    - oracle-apex-version-archives.md
-
-ords:
-  deployment:
-    - oracle-ords-index.md
-
-database:
-  sql:
-    - oracle-plsql-index.md
-    - oracle-database-index.md
+id: oracle-knowledge-pack
+title: Oracle Knowledge Pack
+category: knowledge-pack
+lifecycle: stable
+packs:
+  - id: oracle-apex-documentation-pack
+    title: Oracle APEX Documentation Pack
+  - id: oracle-apexlang-documentation-pack
+    title: Oracle APEXLang Documentation Pack
+  - id: oracle-documentation-pack
+    title: Oracle Documentation Pack
+  - id: oracle-ords-documentation-pack
+    title: Oracle ORDS Documentation Pack
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/apex.md
+  - skills/oracle/apexlang.md
+  - skills/oracle/database.md
+  - skills/oracle/ords.md
+  - skills/oracle/plsql.md
+outputs:
+  - docs/reference/oracle-apex-api-map.yaml
+  - docs/reference/oracle-apex-api-packages.md
+  - docs/reference/oracle-apex-api-reference.md
+  - docs/reference/oracle-apex-books.md
+  - docs/reference/oracle-apex-index.md
+  - docs/reference/oracle-apex-installation.md
+  - docs/reference/oracle-apex-release-notes.md
+  - docs/reference/oracle-apex-version-archives.md
+  - docs/reference/oracle-apexlang-index.md
+  - docs/reference/oracle-apexlang-navigation.md
+  - docs/reference/oracle-database-index.md
+  - docs/reference/oracle-ords-index.md
+  - docs/reference/oracle-plsql-index.md

@@ -682,6 +682,18 @@ public sealed class WorkspaceOrchestrator
             EnsureGeneratedScriptPermissions(fullPath);
         }
 
+        foreach (var binaryFile in generatedArtifacts.AdditionalBinaryFiles)
+        {
+            var fullPath = Path.Combine(paths.RootPath, binaryFile.Key);
+            var directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllBytes(fullPath, binaryFile.Value);
+        }
+
         // The provisioning script runs inside Linux containers, so it must use LF
         // line endings even when the desktop app generated it on Windows.
         File.WriteAllText(paths.ProvisionScriptPath, generatedArtifacts.ProvisionScript.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -754,6 +766,7 @@ public sealed class WorkspaceOrchestrator
         var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths);
         var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition);
         var additionalFiles = _workspaceContentGenerator.Generate(resolved);
+        var additionalBinaryFiles = _workspaceContentGenerator.GenerateBinaryFiles(resolved);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);
         var desiredStateHash = WorkspaceAppliedStateService.ComputeHash(
             workspaceYaml,
@@ -766,7 +779,8 @@ public sealed class WorkspaceOrchestrator
             screenConfig,
             attachWrapper,
             diagnosticsWrapper,
-            string.Join("\n", additionalFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + item.Value)));
+            string.Join("\n", additionalFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + item.Value)),
+            string.Join("\n", additionalBinaryFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + Convert.ToHexString(item.Value))));
 
         return new GeneratedWorkspaceArtifacts
         {
@@ -783,6 +797,7 @@ public sealed class WorkspaceOrchestrator
             WorkspaceDefinitionHash = workspaceDefinitionHash,
             DesiredStateHash = desiredStateHash,
             AdditionalFiles = additionalFiles,
+            AdditionalBinaryFiles = additionalBinaryFiles,
         };
     }
 

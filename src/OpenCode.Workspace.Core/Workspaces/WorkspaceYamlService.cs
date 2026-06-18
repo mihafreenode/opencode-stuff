@@ -140,6 +140,15 @@ public sealed class WorkspaceYamlService
                 Connection = string.IsNullOrWhiteSpace(definition.Agent.Connection) ? null : definition.Agent.Connection.Trim(),
                 Model = string.IsNullOrWhiteSpace(definition.Agent.Model) ? null : definition.Agent.Model.Trim(),
             },
+            Oracle = new OracleWorkspacePreferences
+            {
+                HostPort = definition.Oracle.HostPort is > 0 ? definition.Oracle.HostPort.Value : null,
+                OrdsPort = definition.Oracle.OrdsPort is > 0 ? definition.Oracle.OrdsPort.Value : null,
+            },
+            Analytics = new AnalyticsWorkspacePreferences
+            {
+                MarimoPort = definition.Analytics.MarimoPort is > 0 ? definition.Analytics.MarimoPort.Value : null,
+            },
         };
     }
 }

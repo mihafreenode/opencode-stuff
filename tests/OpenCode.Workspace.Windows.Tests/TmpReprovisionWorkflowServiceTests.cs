@@ -36,6 +36,7 @@ public sealed class TmpReprovisionWorkflowServiceTests
 
             Assert.Contains("../../src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj", projectText);
             Assert.Contains("provider.LoadCapabilities()", programText);
+            Assert.Contains("provider.LoadKnowledgePacks()", programText);
             Assert.Contains("await orchestrator.ProvisionAsync(snapshot, entry => Console.WriteLine($\"[{entry.Source}] {entry.Message}\"));", programText);
             Assert.Contains("NoOpTerminalLauncher", programText);
         }

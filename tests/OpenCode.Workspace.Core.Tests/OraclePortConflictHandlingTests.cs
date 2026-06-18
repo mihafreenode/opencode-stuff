@@ -29,7 +29,7 @@ public sealed class OraclePortConflictHandlingTests
     public void ComposeGenerator_UsesConfigurableOracleHostPortVariables()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var resolved = resolver.Resolve(new WorkspaceDefinition
         {
             Workspace = new WorkspaceMetadata { Name = "oracle-apex-ports" },
@@ -100,7 +100,7 @@ public sealed class OraclePortConflictHandlingTests
         try
         {
             var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var definition = new WorkspaceDefinition
             {
                 Workspace = new WorkspaceMetadata { Name = "oracle-demo" },

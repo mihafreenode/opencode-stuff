@@ -1,0 +1,11 @@
+# Built-in feature manifest: publishing-knowledge-pack
+
+id: publishing-knowledge-pack
+displayName: Publishing Knowledge Pack
+description: Curated publishing references for Markdown, Typst, LaTeX, citations, diagrams, and PDF validation.
+category: knowledge-pack
+lifecycle: preview
+knowledgePacks:
+  - publishing-knowledge-pack
+capabilities:
+  - reporting

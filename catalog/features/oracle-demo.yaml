@@ -3,7 +3,11 @@
 id: oracle-demo
 displayName: Oracle PL/SQL Demo Assets
 description: SQLcl tooling, Oracle tutorial content, sample PL/SQL, and onboarding guidance for a local Oracle demo workspace.
+category: runtime
+lifecycle: stable
 alwaysEnabled: false
+knowledgePacks:
+  - oracle-documentation-pack
 capabilities:
   - oracle
 dependencies:

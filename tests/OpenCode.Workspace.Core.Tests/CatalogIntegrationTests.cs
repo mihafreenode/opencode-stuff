@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Catalog;
+using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -12,15 +13,18 @@ public sealed class CatalogIntegrationTests
 
         var features = provider.LoadFeatures();
         var capabilities = provider.LoadCapabilities();
+        var knowledgePacks = provider.LoadKnowledgePacks();
         var services = provider.LoadServices();
         var templates = provider.LoadTemplates();
 
         Assert.NotEmpty(features);
         Assert.NotEmpty(capabilities);
+        Assert.NotEmpty(knowledgePacks);
         Assert.NotEmpty(services);
         Assert.NotEmpty(templates);
         Assert.Empty(validator.ValidateCapabilities(capabilities));
-        Assert.Empty(validator.ValidateFeatures(features, capabilities));
+        Assert.Empty(validator.ValidateKnowledgePacks(knowledgePacks));
+        Assert.Empty(validator.ValidateFeatures(features, capabilities, knowledgePacks));
         Assert.Empty(validator.ValidateServices(services));
         Assert.Empty(validator.ValidateTemplates(templates, features, services));
     }
@@ -61,7 +65,7 @@ public sealed class CatalogIntegrationTests
     public void WorkspaceResolver_DeduplicatesDependenciesAndAlwaysEnablesCore()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
 
         var resolved = resolver.Resolve(new OpenCode.Workspace.Core.Models.WorkspaceDefinition
         {
@@ -103,5 +107,29 @@ public sealed class CatalogIntegrationTests
         Assert.Contains(templates, template => template.Id == "oracle-plsql-demo");
         Assert.Contains(templates, template => template.Id == "oracle-apex-demo");
         Assert.Contains(templates, template => template.Id == "oracle-apexlang-demo");
+    }
+
+    [Fact]
+    public void FeatureMetadata_AndKnowledgePacks_LoadForAnalyticsPublishingAndOracle()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var features = provider.LoadFeatures();
+        var knowledgePacks = provider.LoadKnowledgePacks();
+
+        var analytics = features.Single(feature => feature.Id == "analytics-reporting");
+        var publishing = features.Single(feature => feature.Id == "publishing-tex");
+        var education = features.Single(feature => feature.Id == "education-knowledge-pack");
+        var oracle = features.Single(feature => feature.Id == "oracle-demo");
+
+        Assert.Equal(CatalogConventions.RuntimeFeatureCategory, analytics.Category);
+        Assert.Equal(CatalogConventions.StableLifecycle, analytics.Lifecycle);
+        Assert.Contains("education-knowledge-pack", analytics.Recommends);
+        Assert.Equal(CatalogConventions.KnowledgePackFeatureCategory, education.Category);
+        Assert.Equal(CatalogConventions.PreviewLifecycle, publishing.Lifecycle);
+        Assert.Contains("oracle-documentation-pack", oracle.KnowledgePacks);
+
+        Assert.Contains(knowledgePacks, pack => pack.Id == "oracle-documentation-pack");
+        Assert.Contains(knowledgePacks, pack => pack.Id == "education-knowledge-pack");
+        Assert.Contains(knowledgePacks, pack => pack.Id == "publishing-knowledge-pack");
     }
 }

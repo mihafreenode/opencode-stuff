@@ -38,6 +38,9 @@ public sealed class WorkspaceDefinition
 
     [YamlMember(Alias = "oracle")]
     public OracleWorkspacePreferences Oracle { get; init; } = new();
+
+    [YamlMember(Alias = "analytics")]
+    public AnalyticsWorkspacePreferences Analytics { get; init; } = new();
 }
 
 public sealed class WorkspaceMetadata
@@ -146,6 +149,14 @@ public sealed class OracleWorkspacePreferences
 
     [YamlMember(Alias = "ordsPort")]
     public int? OrdsPort { get; init; }
+}
+
+public sealed class AnalyticsWorkspacePreferences
+{
+    public const int DefaultMarimoPort = 2718;
+
+    [YamlMember(Alias = "marimoPort")]
+    public int? MarimoPort { get; init; }
 }
 
 public sealed class ResolvedAgentProfile

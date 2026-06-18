@@ -17,7 +17,7 @@ public sealed class OracleApexTemplateRegressionTests
         try
         {
             var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var template = provider.LoadTemplates().Single(item => item.Id == "oracle-apex-demo");
             var definition = new TemplateExpander().Expand("oracle-apex-workspace", template);
             var snapshot = OracleTemplateTestHelpers.CreateOrchestrator(tempRoot, resolver).CreateWorkspace(tempRoot, definition);
@@ -52,7 +52,7 @@ public sealed class OracleApexTemplateRegressionTests
         try
         {
             var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var template = provider.LoadTemplates().Single(item => item.Id == "oracle-apexlang-demo");
             var definition = new TemplateExpander().Expand("oracle-apexlang-workspace", template);
             var snapshot = OracleTemplateTestHelpers.CreateOrchestrator(tempRoot, resolver).CreateWorkspace(tempRoot, definition);

@@ -46,10 +46,18 @@ runtime:
 
 features:
   - core
+  - analytics-reporting
 
 services: []
 skills: []
 mcp: []
+
+oracle:
+  hostPort: 1522
+  ordsPort: 8182
+
+analytics:
+  marimoPort: 3818
 
 agent:
   profile: opencode-default
@@ -91,6 +99,8 @@ x-company:
                 Mcp = snapshot.Definition.Mcp,
                 Terminal = snapshot.Definition.Terminal,
                 Agent = snapshot.Definition.Agent,
+                Oracle = snapshot.Definition.Oracle,
+                Analytics = snapshot.Definition.Analytics,
             };
 
             var updatedSnapshot = new WorkspaceSnapshot
@@ -115,6 +125,9 @@ x-company:
             Assert.Contains("owner: Miha", yaml);
             Assert.Contains("onboarding: true", yaml);
             Assert.Contains("keep: this", yaml);
+            Assert.Contains("hostPort: 1522", yaml);
+            Assert.Contains("ordsPort: 8182", yaml);
+            Assert.Contains("marimoPort: 3818", yaml);
             Assert.Contains("- postgres", yaml);
             Assert.False(!string.Equals(relativePath, "workspace.yaml", StringComparison.Ordinal) && File.Exists(Path.Combine(repositoryRoot, "workspace.yaml")));
         }
@@ -129,7 +142,7 @@ x-company:
     {
         var processRunner = new ProcessRunner();
         var catalog = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(catalog.LoadFeatures(), catalog.LoadServices(), catalog.LoadCapabilities());
+        var resolver = new WorkspaceResolver(catalog.LoadFeatures(), catalog.LoadServices(), catalog.LoadCapabilities(), catalog.LoadKnowledgePacks());
         var ignorePolicy = new WorkspaceIgnorePolicyService();
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),

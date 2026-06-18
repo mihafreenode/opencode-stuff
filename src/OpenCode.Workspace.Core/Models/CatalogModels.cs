@@ -18,8 +18,23 @@ public sealed class FeatureManifest
     [YamlMember(Alias = "description")]
     public string Description { get; init; } = string.Empty;
 
+    [YamlMember(Alias = "category")]
+    public string? Category { get; init; }
+
+    [YamlMember(Alias = "lifecycle")]
+    public string? Lifecycle { get; init; }
+
     [YamlMember(Alias = "alwaysEnabled")]
     public bool AlwaysEnabled { get; init; }
+
+    [YamlMember(Alias = "requires")]
+    public List<string> Requires { get; init; } = new();
+
+    [YamlMember(Alias = "recommends")]
+    public List<string> Recommends { get; init; } = new();
+
+    [YamlMember(Alias = "knowledgePacks")]
+    public List<string> KnowledgePacks { get; init; } = new();
 
     [YamlMember(Alias = "capabilities")]
     public List<string> Capabilities { get; init; } = new();
@@ -29,6 +44,106 @@ public sealed class FeatureManifest
 
     [YamlMember(Alias = "postInstall")]
     public List<string> PostInstall { get; init; } = new();
+}
+
+public static class CatalogConventions
+{
+    public const string RuntimeFeatureCategory = "runtime";
+    public const string KnowledgePackFeatureCategory = "knowledge-pack";
+    public const string SampleDataPackFeatureCategory = "sample-data-pack";
+    public const string DocumentationPackFeatureCategory = "documentation-pack";
+    public const string TemplatePackFeatureCategory = "template-pack";
+    public const string StableLifecycle = "stable";
+    public const string PreviewLifecycle = "preview";
+    public const string ExperimentalLifecycle = "experimental";
+
+    public static readonly IReadOnlySet<string> ValidFeatureCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        RuntimeFeatureCategory,
+        KnowledgePackFeatureCategory,
+        SampleDataPackFeatureCategory,
+        DocumentationPackFeatureCategory,
+        TemplatePackFeatureCategory,
+    };
+
+    public static readonly IReadOnlySet<string> ValidLifecycles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        StableLifecycle,
+        PreviewLifecycle,
+        ExperimentalLifecycle,
+    };
+}
+
+public sealed class KnowledgePackManifest
+{
+    [YamlMember(Alias = "id")]
+    public string Id { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "title")]
+    public string Title { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "category")]
+    public string Category { get; init; } = CatalogConventions.KnowledgePackFeatureCategory;
+
+    [YamlMember(Alias = "lifecycle")]
+    public string? Lifecycle { get; init; }
+
+    [YamlMember(Alias = "description")]
+    public string Description { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "sources")]
+    public List<KnowledgePackSourceManifest> Sources { get; init; } = new();
+
+    [YamlMember(Alias = "onboarding")]
+    public List<string> Onboarding { get; init; } = new();
+
+    [YamlMember(Alias = "skillRefs")]
+    public List<string> SkillRefs { get; init; } = new();
+
+    [YamlMember(Alias = "outputAliases")]
+    public List<KnowledgePackOutputAliasManifest> OutputAliases { get; init; } = new();
+
+    [YamlMember(Alias = "workspacePaths")]
+    public KnowledgePackWorkspacePathsManifest WorkspacePaths { get; init; } = new();
+}
+
+public sealed class KnowledgePackSourceManifest
+{
+    [YamlMember(Alias = "name")]
+    public string Name { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "url")]
+    public string Url { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "category")]
+    public string Category { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "description")]
+    public string Description { get; init; } = string.Empty;
+}
+
+public sealed class KnowledgePackOutputAliasManifest
+{
+    [YamlMember(Alias = "source")]
+    public string Source { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "destination")]
+    public string Destination { get; init; } = string.Empty;
+}
+
+public sealed class KnowledgePackWorkspacePathsManifest
+{
+    [YamlMember(Alias = "knowledgeMap")]
+    public string? KnowledgeMap { get; init; }
+
+    [YamlMember(Alias = "knowledgeMapId")]
+    public string? KnowledgeMapId { get; init; }
+
+    [YamlMember(Alias = "knowledgeMapTitle")]
+    public string? KnowledgeMapTitle { get; init; }
+
+    [YamlMember(Alias = "sourceIndex")]
+    public string? SourceIndex { get; init; }
 }
 
 public sealed class SkillManifest

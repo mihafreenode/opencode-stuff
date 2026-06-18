@@ -8,6 +8,18 @@ namespace OpenCode.Workspace.Windows.Tests;
 public sealed class CreateWorkspaceSelectionStateTests
 {
     [Fact]
+    public void NewFeatureCatalogEntries_AppearInCreateWorkspaceSelections()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.Contains(viewModel.AvailableFeatures, feature => feature.Id == "analytics-reporting");
+        Assert.Contains(viewModel.AvailableFeatures, feature => feature.Id == "education-knowledge-pack");
+        Assert.Contains(viewModel.AvailableFeatures, feature => feature.Id == "publishing-tex");
+        Assert.Contains(viewModel.AvailableFeatures, feature => feature.Id == "publishing-knowledge-pack");
+        Assert.Contains(viewModel.AvailableFeatures, feature => feature.Id == "analytics-sample-data-pack");
+    }
+
+    [Fact]
     public void OracleTemplate_BuildsWorkspaceDefinitionWithOracleService()
     {
         var viewModel = CreateViewModel();

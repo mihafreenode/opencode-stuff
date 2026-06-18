@@ -1,0 +1,42 @@
+# Built-in feature manifest: analytics-reporting
+
+id: analytics-reporting
+displayName: Analytics & Reporting
+description: Tools for JSON, Excel, CSV, charts, dashboards, statistics, and business reporting.
+category: runtime
+lifecycle: stable
+recommends:
+  - education-knowledge-pack
+capabilities:
+  - analytics
+  - reporting
+dependencies:
+  apt:
+    - csvkit
+    - graphviz
+    - jq
+    - miller
+    - p7zip-full
+    - poppler-utils
+    - qpdf
+    - yq
+  pip:
+    - folium
+    - ipywidgets
+    - jupyterlab
+    - marimo
+    - matplotlib
+    - networkx
+    - numpy
+    - openpyxl
+    - pandas
+    - plotly
+    - pypdf
+    - pymupdf
+    - scikit-learn
+    - scipy
+    - seaborn
+    - statsmodels
+    - sympy
+    - tabulate
+    - xlsxwriter

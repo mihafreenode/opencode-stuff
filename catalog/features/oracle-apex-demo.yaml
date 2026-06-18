@@ -3,7 +3,12 @@
 id: oracle-apex-demo
 displayName: Oracle APEX Demo Assets
 description: Oracle APEX onboarding content, ORDS helpers, sample Customers data, and generated health-check scripts.
+category: runtime
+lifecycle: stable
 alwaysEnabled: false
+knowledgePacks:
+  - oracle-apex-documentation-pack
+  - oracle-ords-documentation-pack
 capabilities:
   - oracle
 dependencies:

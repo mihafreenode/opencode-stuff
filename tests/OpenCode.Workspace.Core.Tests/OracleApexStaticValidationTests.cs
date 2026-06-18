@@ -185,7 +185,7 @@ public sealed class OracleApexStaticValidationTests
     public void OracleProvisioningScript_ContainsApexStagesOnlyForApexVariants()
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var expander = new TemplateExpander();
         var generator = new ProvisioningScriptGenerator();
 
@@ -343,6 +343,8 @@ public sealed class OracleApexStaticValidationTests
 
         Assert.Contains("https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/", apexLangIndex);
         Assert.Contains("references, not Oracle documentation copies", strategy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id: oracle-knowledge-pack", knowledgeMap);
+        Assert.Contains("title: Oracle Knowledge Pack", knowledgeMap);
         Assert.Contains("oracle-apex-api-reference.md", knowledgeMap);
         Assert.Contains("docs/reference/oracle-apex-index.md", apexSkill);
     }
@@ -406,7 +408,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(OracleTemplateTestHelpers.CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = OracleTemplateTestHelpers.CreateTempRoot($"{workspaceName}-root");
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
-        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities());
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var template = provider.LoadTemplates().Single(item => item.Id == templateId);
         var definition = new TemplateExpander().Expand(workspaceName, template);
         return OracleTemplateTestHelpers.CreateOrchestrator(tempRoot, resolver).CreateWorkspace(tempRoot, definition);

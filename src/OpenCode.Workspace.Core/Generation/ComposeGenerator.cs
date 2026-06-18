@@ -33,6 +33,11 @@ public sealed class ComposeGenerator
         builder.AppendLine("      - bash");
         builder.AppendLine("      - -lc");
         builder.AppendLine("      - while sleep 3600; do :; done");
+        if (workspace.Definition.Features.Contains("analytics-reporting", StringComparer.OrdinalIgnoreCase))
+        {
+            builder.AppendLine("    ports:");
+            builder.AppendLine("      - \"127.0.0.1:${MARIMO_PORT}:2718\"");
+        }
         builder.AppendLine("    volumes:");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.InboxPath)}:/opt/opencode-workspace/inbox");
         builder.AppendLine($"      - {WorkspacePathBuilder.ToDockerVolumePath(paths.WorkspacePath)}:/workspace");

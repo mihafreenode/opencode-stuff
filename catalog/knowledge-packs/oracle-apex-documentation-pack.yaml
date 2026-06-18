@@ -1,0 +1,44 @@
+id: oracle-apex-documentation-pack
+title: Oracle APEX Documentation Pack
+category: knowledge-pack
+lifecycle: stable
+description: Oracle APEX Builder, administration, API, and version-navigation references.
+sources:
+  - name: Oracle APEX Builder Guide
+    url: https://docs.oracle.com/en/database/oracle/apex/24.2/htmdb/
+    category: apex
+    description: Main APEX Builder documentation.
+  - name: Oracle APEX Administration Guide
+    url: https://docs.oracle.com/en/database/oracle/apex/24.2/aeadm/
+    category: apex
+    description: Administration and workspace operations guidance.
+  - name: Oracle APEX Installation Guide
+    url: https://docs.oracle.com/en/database/oracle/apex/24.2/htmig/
+    category: apex
+    description: Installation and migration guidance.
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/apex.md
+workspacePaths:
+  knowledgeMap: docs/reference/oracle-knowledge-map.yaml
+  knowledgeMapId: oracle-knowledge-pack
+  knowledgeMapTitle: Oracle Knowledge Pack
+  sourceIndex: docs/reference/oracle-apex-index.md
+outputAliases:
+  - source: source-index
+    destination: docs/reference/oracle-apex-books.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-api-reference.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-administration.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-installation.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-release-notes.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-version-archives.md
+  - source: source-index
+    destination: docs/reference/oracle-apex-api-map.yaml
+  - source: source-index
+    destination: docs/reference/oracle-apex-api-packages.md

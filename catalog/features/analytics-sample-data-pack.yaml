@@ -1,0 +1,9 @@
+# Built-in feature manifest: analytics-sample-data-pack
+
+id: analytics-sample-data-pack
+displayName: Analytics Sample Data Pack
+description: Small deterministic datasets for demos, workshops, tutorials, onboarding, and tests.
+category: sample-data-pack
+lifecycle: stable
+capabilities:
+  - analytics

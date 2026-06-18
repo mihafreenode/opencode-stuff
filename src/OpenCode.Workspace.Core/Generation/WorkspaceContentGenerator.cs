@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Compression;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 
@@ -19,6 +20,11 @@ public sealed class WorkspaceContentGenerator
     {
         var definition = workspace.Definition;
         var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in KnowledgePackContentGenerator.Generate(workspace, WithGeneratedHeader))
+        {
+            files[pair.Key] = pair.Value;
+        }
+
         files[Path.Combine("docs", "capabilities", "README.md")] = WithGeneratedHeader(BuildCapabilityCatalogIndex(workspace));
 
         foreach (var capability in workspace.Capabilities)
@@ -30,6 +36,26 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("docs", "team-onboarding.md")] = WithGeneratedHeader(BuildTeamOnboardingDoc(workspace));
         files[Path.Combine("docs", "troubleshooting", "workspace-sessions.md")] = WithGeneratedHeader(BuildWorkspaceSessionsTroubleshootingDoc(workspace));
 
+        if (HasKnowledgePack(workspace, "oracle-documentation-pack") || IsOracleDemoWorkspace(definition))
+        {
+            files[Path.Combine("docs", "reference", "agent-onboarding", "oracle.md")] = WithGeneratedHeader(OracleAgentOnboardingDoc());
+        }
+
+        if (HasKnowledgePack(workspace, "education-knowledge-pack") || HasFeature(definition, "analytics-reporting"))
+        {
+            files[Path.Combine("docs", "reference", "agent-onboarding", "analytics.md")] = WithGeneratedHeader(AnalyticsAgentOnboardingDoc());
+        }
+
+        if (HasKnowledgePack(workspace, "education-knowledge-pack"))
+        {
+            files[Path.Combine("docs", "reference", "agent-onboarding", "education.md")] = WithGeneratedHeader(EducationAgentOnboardingDoc());
+        }
+
+        if (HasKnowledgePack(workspace, "publishing-knowledge-pack") || HasFeature(definition, "publishing-tex"))
+        {
+            files[Path.Combine("docs", "reference", "agent-onboarding", "publishing.md")] = WithGeneratedHeader(PublishingAgentOnboardingDoc());
+        }
+
         if (IsDocumentationWorkspace(definition))
         {
             files[Path.Combine("docs", "documentation-features.md")] = WithGeneratedHeader(DocumentationFeaturesWorkspaceDoc());
@@ -39,6 +65,39 @@ public sealed class WorkspaceContentGenerator
             files[Path.Combine("samples", "documentation", "architecture.mmd")] = WithGeneratedMermaidHeader(DocumentSampleMermaid());
             files[Path.Combine("scripts", "validate-documentation-tooling.sh")] = DocumentationToolingValidationScript();
             files[Path.Combine("scripts", "demo-documentation-workflows.sh")] = DocumentationWorkflowDemoScript();
+        }
+
+        if (HasFeature(definition, "analytics-reporting"))
+        {
+            files[Path.Combine("examples", "analytics", "README.md")] = WithGeneratedHeader(AnalyticsExamplesReadme());
+            files[Path.Combine("examples", "analytics", "analysis.py")] = AnalyticsMarimoScript();
+            files[Path.Combine("examples", "analytics", "report.md")] = WithGeneratedHeader(AnalyticsReportMarkdown());
+            files[Path.Combine("examples", "analytics", "sample-data", "customers.json")] = AnalyticsCustomersJson();
+            files[Path.Combine("examples", "analytics", "sample-data", "orders.csv")] = AnalyticsOrdersCsv();
+            files[Path.Combine("scripts", "validate-analytics-tooling.sh")] = AnalyticsToolingValidationScript();
+            files[Path.Combine("scripts", "smoke-marimo.sh")] = MarimoSmokeScript();
+        }
+
+        if (HasFeature(definition, "analytics-sample-data-pack"))
+        {
+            files[Path.Combine("examples", "analytics", "sample-data", "sales.csv")] = AnalyticsSampleSalesCsv();
+            files[Path.Combine("examples", "analytics", "sample-data", "inventory.csv")] = AnalyticsSampleInventoryCsv();
+            files[Path.Combine("examples", "analytics", "sample-data", "manufacturing.csv")] = AnalyticsSampleManufacturingCsv();
+            files[Path.Combine("examples", "analytics", "sample-data", "education.csv")] = AnalyticsSampleEducationCsv();
+            files[Path.Combine("examples", "analytics", "sample-data", "survey.csv")] = AnalyticsSampleSurveyCsv();
+            files[Path.Combine("examples", "analytics", "sample-data", "climate.csv")] = AnalyticsSampleClimateCsv();
+        }
+
+        if (HasFeature(definition, "publishing-tex"))
+        {
+            files[Path.Combine("examples", "publishing", "README.md")] = WithGeneratedHeader(PublishingExamplesReadme());
+            files[Path.Combine("examples", "publishing", "report.md")] = WithGeneratedHeader(PublishingMarkdownReport());
+            files[Path.Combine("examples", "publishing", "report.typ")] = PublishingTypstReport();
+            files[Path.Combine("examples", "publishing", "paper.tex")] = PublishingLatexPaper();
+            files[Path.Combine("examples", "publishing", "bibliography.bib")] = PublishingBibliography();
+            files[Path.Combine("examples", "publishing", "diagram.svg")] = PublishingDiagramSvg();
+            files[Path.Combine("scripts", "validate-publishing-tooling.sh")] = PublishingToolingValidationScript();
+            files[Path.Combine("scripts", "demo-publishing-workflows.sh")] = PublishingWorkflowDemoScript();
         }
 
         if (!IsOracleDemoWorkspace(definition))
@@ -78,6 +137,18 @@ public sealed class WorkspaceContentGenerator
         foreach (var key in files.Keys.ToList())
         {
             files[key] = ReplaceOracleHostFacingEndpoints(files[key], oracleSettings);
+        }
+
+        return files;
+    }
+
+    public IReadOnlyDictionary<string, byte[]> GenerateBinaryFiles(ResolvedWorkspace workspace)
+    {
+        var files = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (HasFeature(workspace.Definition, "analytics-reporting"))
+        {
+            files[Path.Combine("examples", "analytics", "sample-data", "kpis.xlsx")] = AnalyticsKpiWorkbook();
         }
 
         return files;
@@ -123,6 +194,12 @@ public sealed class WorkspaceContentGenerator
 
     private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
         => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);
+
+    private static bool HasFeature(WorkspaceDefinition definition, string featureId)
+        => definition.Features.Contains(featureId, StringComparer.OrdinalIgnoreCase);
+
+    private static bool HasKnowledgePack(ResolvedWorkspace workspace, string packId)
+        => workspace.KnowledgePacks.Any(pack => string.Equals(pack.Id, packId, StringComparison.OrdinalIgnoreCase));
 
     private static string ReplaceOracleHostFacingEndpoints(string content, OracleWorkspaceSettings oracleSettings)
         => content
@@ -319,6 +396,18 @@ public sealed class WorkspaceContentGenerator
             }
         }
 
+        var additionalGuidance = KnowledgePackContentGenerator.GetOnboardingLinks(workspace);
+        if (additionalGuidance.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Additional Agent Guidance");
+            lines.Add(string.Empty);
+            foreach (var link in additionalGuidance)
+            {
+                lines.Add($"- {link}");
+            }
+        }
+
         return string.Join("\n", lines);
     }
 
@@ -429,6 +518,7 @@ public sealed class WorkspaceContentGenerator
             || path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-documentation-strategy", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-documentation-discovery", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("agent-onboarding/oracle", StringComparison.OrdinalIgnoreCase)
             || path.Contains("docs/reference/oracle-", StringComparison.OrdinalIgnoreCase)
             || path.Contains("skills/oracle/", StringComparison.OrdinalIgnoreCase))
         {
@@ -952,6 +1042,541 @@ scripts/demo-documentation-workflows.sh
 - `docs/capabilities/ocr.md` when OCR is enabled
 - `docs/capabilities/spell-checking.md` when spell checking is enabled
 """;
+
+    private static string OracleAgentOnboardingDoc() => """
+# Oracle Agent Onboarding
+
+Use the local Oracle indexes first, then switch to the official Oracle documentation linked from them.
+
+- start at `docs/reference/oracle-knowledge-map.yaml`
+- use `docs/reference/oracle-plsql-index.md` for PL/SQL and database topics
+- use `docs/reference/oracle-apex-index.md` and `docs/reference/oracle-ords-index.md` when APEX or ORDS are involved
+- use `docs/reference/oracle-apexlang-index.md` when the artifact is an `.apx` definition
+- use `skills/oracle/` for task-oriented repository guidance
+
+This workspace includes references, not mirrored Oracle manuals.
+""";
+
+    private static string AnalyticsAgentOnboardingDoc() => """
+# Analytics Agent Onboarding
+
+Preferred workflow:
+
+- preserve durable source assets such as `.py`, `.md`, `.csv`, `.json`, and `.xlsx`
+- treat generated `.pdf`, `.html`, `.png`, and `.jpg` outputs as reproducible artifacts
+- prefer `marimo` for interactive analytics because it keeps notebooks as regular Python files
+- keep transformations transparent and version-controlled
+
+OpenCode can help users who are new to Python, but generated code should still be reviewed and explained.
+""";
+
+    private static string EducationAgentOnboardingDoc() => """
+# Education Agent Onboarding
+
+When using the Education Knowledge Pack:
+
+- prefer indexed educational sources before broad web searching
+- adapt explanations to the audience level
+- use conceptual examples for elementary learners
+- use practical projects and datasets for middle school and high school learners
+- include technical depth only when appropriate for technical school or introductory university audiences
+
+Treat AI as a tutor and assistant, not as a replacement for understanding.
+""";
+
+    private static string PublishingAgentOnboardingDoc() => """
+# Publishing Agent Onboarding
+
+Recommended publishing order:
+
+1. Markdown
+2. Typst
+3. LaTeX
+
+Guidance:
+
+- `.md`, `.typ`, `.tex`, `.bib`, and `.svg` files are durable source assets
+- `.pdf`, `.html`, `.png`, and `.jpg` outputs are reproducible build artifacts
+- validate generated PDFs with `qpdf --check` and inspect text with `pdftotext`
+- prefer Markdown when the simplest durable source is enough
+- prefer Typst for modern, concise, AI-friendly authored documents
+- use LaTeX when academic compatibility or existing templates require it
+""";
+
+    private static string AnalyticsExamplesReadme() => """
+# Analytics Examples
+
+This generated example shows a reproducible analytics workflow built from durable source assets.
+
+Durable source assets:
+
+- `.py`
+- `.md`
+- `.csv`
+- `.json`
+- `.xlsx`
+
+Generated build artifacts:
+
+- `.pdf`
+- `.html`
+- `.png`
+- `.jpg`
+
+Preferred interactive workflow:
+
+```bash
+marimo edit examples/analytics/analysis.py --host 0.0.0.0 --port ${MARIMO_PORT}
+```
+
+Run as an application:
+
+```bash
+marimo run examples/analytics/analysis.py --host 0.0.0.0 --port ${MARIMO_PORT}
+```
+
+Validation:
+
+```bash
+scripts/validate-analytics-tooling.sh
+scripts/smoke-marimo.sh
+```
+
+Why Marimo?
+
+- regular Python files
+- Git-friendly reviews
+- reproducible execution
+- reactive notebook model
+- AI-agent friendly editing
+
+JupyterLab remains available as a familiar alternative for classrooms and workshops.
+
+Inspiration and Recommended Viewing:
+
+Several ideas behind this workflow were inspired by the excellent presentation “The Trick That Makes Open LLMs Viable for Python”.
+
+https://www.youtube.com/watch?v=ZBI7BDUK1Es
+
+This project is not affiliated with the author.
+""";
+
+    private static string AnalyticsMarimoScript() => """
+import json
+from pathlib import Path
+
+import marimo as mo
+import pandas as pd
+
+app = marimo.App(width="medium")
+
+
+@app.cell
+def _():
+    root = Path(__file__).parent
+    customers = json.loads((root / "sample-data" / "customers.json").read_text(encoding="utf-8"))
+    orders = pd.read_csv(root / "sample-data" / "orders.csv")
+    kpis = pd.read_excel(root / "sample-data" / "kpis.xlsx")
+    return customers, kpis, orders
+
+
+@app.cell
+def _(customers, orders):
+    customer_frame = pd.DataFrame(customers)
+    monthly_totals = orders.groupby("month", as_index=False)["amount"].sum().sort_values("month")
+    customer_totals = orders.groupby("customer_id", as_index=False)["amount"].sum().merge(customer_frame, on="customer_id", how="left")
+    return customer_frame, customer_totals, monthly_totals
+
+
+@app.cell
+def _(customer_totals, kpis, monthly_totals):
+    total_revenue = monthly_totals["amount"].sum()
+    top_segment = kpis.loc[kpis["Metric"] == "Top Segment", "Value"].iloc[0]
+    summary = mo.md(
+        "# Analytics & Reporting Demo\n\n"
+        f"Total revenue: **{total_revenue:,.0f}**\n\n"
+        f"Top segment from workbook: **{top_segment}**"
+    )
+    return summary
+
+
+@app.cell
+def _(customer_totals, monthly_totals, summary):
+    mo.vstack([
+        summary,
+        mo.md("## Monthly totals"),
+        monthly_totals,
+        mo.md("## Sales by customer"),
+        customer_totals,
+    ])
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+""";
+
+    private static string AnalyticsReportMarkdown() => """
+# KPI Report
+
+This report is a durable source asset. Rebuild generated PDFs or charts instead of hand-editing outputs.
+
+## Questions
+
+- Which month had the highest revenue?
+- Which customer generated the most orders?
+- How could this be explained to a new Python learner with AI assistance?
+""";
+
+    private static string AnalyticsCustomersJson() => """
+[
+  { "customer_id": 1, "customer": "Northwind Studio", "segment": "Education" },
+  { "customer_id": 2, "customer": "Riverside Labs", "segment": "Science" },
+  { "customer_id": 3, "customer": "Atlas Manufacturing", "segment": "Industry" }
+]
+""";
+
+    private static string AnalyticsOrdersCsv() => """
+month,customer_id,amount,orders
+2026-01,1,1200,4
+2026-01,2,950,3
+2026-01,3,1600,5
+2026-02,1,1400,5
+2026-02,2,1100,4
+2026-02,3,1700,5
+2026-03,1,1350,4
+2026-03,2,1250,4
+2026-03,3,1800,6
+""";
+
+    private static byte[] AnalyticsKpiWorkbook()
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            AddZipEntry(archive, "[Content_Types].xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>
+""");
+            AddZipEntry(archive, "_rels/.rels", """
+<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>
+""");
+            AddZipEntry(archive, "docProps/core.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>Analytics KPI Workbook</dc:title>
+  <dc:creator>OpenCode Workspace Manager</dc:creator>
+  <cp:lastModifiedBy>OpenCode Workspace Manager</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">2026-06-18T00:00:00Z</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">2026-06-18T00:00:00Z</dcterms:modified>
+</cp:coreProperties>
+""");
+            AddZipEntry(archive, "docProps/app.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>OpenCode Workspace Manager</Application>
+</Properties>
+""");
+            AddZipEntry(archive, "xl/_rels/workbook.xml.rels", """
+<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>
+""");
+            AddZipEntry(archive, "xl/workbook.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="KPIs" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>
+""");
+            AddZipEntry(archive, "xl/styles.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border/></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>
+""");
+            AddZipEntry(archive, "xl/sharedStrings.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="8" uniqueCount="8">
+  <si><t>Metric</t></si>
+  <si><t>Value</t></si>
+  <si><t>Total Revenue</t></si>
+  <si><t>12350</t></si>
+  <si><t>Average Monthly Revenue</t></si>
+  <si><t>4116.67</t></si>
+  <si><t>Top Segment</t></si>
+  <si><t>Industry</t></si>
+</sst>
+""");
+            AddZipEntry(archive, "xl/worksheets/sheet1.xml", """
+<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
+    <row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>
+    <row r="3"><c r="A3" t="s"><v>4</v></c><c r="B3" t="s"><v>5</v></c></row>
+    <row r="4"><c r="A4" t="s"><v>6</v></c><c r="B4" t="s"><v>7</v></c></row>
+  </sheetData>
+</worksheet>
+""");
+        }
+
+        return stream.ToArray();
+    }
+
+    private static void AddZipEntry(ZipArchive archive, string path, string content)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(entry.Open(), new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        writer.Write(content.Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    private static string AnalyticsSampleSalesCsv() => """
+month,region,revenue
+2026-01,North,4200
+2026-01,South,3900
+2026-02,North,4500
+2026-02,South,4100
+""";
+
+    private static string AnalyticsSampleInventoryCsv() => """
+sku,category,on_hand,reorder_level
+A-100,Sensors,42,15
+A-200,Cables,120,40
+A-300,Controllers,18,10
+""";
+
+    private static string AnalyticsSampleManufacturingCsv() => """
+day,line,units,defects
+2026-03-01,Line-A,120,2
+2026-03-02,Line-A,118,1
+2026-03-01,Line-B,132,4
+""";
+
+    private static string AnalyticsSampleEducationCsv() => """
+class,assignment,average_score
+7A,Probability Survey,84
+8B,Climate Charts,88
+9C,Python Basics,91
+""";
+
+    private static string AnalyticsSampleSurveyCsv() => """
+question,strongly_agree,agree,neutral,disagree
+Enjoyed workshop,12,9,2,1
+Would use charts again,10,11,2,1
+""";
+
+    private static string AnalyticsSampleClimateCsv() => """
+month,temperature_c,rain_mm
+2026-01,2.1,48
+2026-02,4.8,39
+2026-03,9.0,52
+""";
+
+    private static string AnalyticsToolingValidationScript() => WithGeneratedScriptHeader("""
+#!/usr/bin/env bash
+set -euo pipefail
+
+pass() { printf '[pass] %s\n' "$1"; }
+fail() { printf '[fail] %s\n' "$1" >&2; exit 1; }
+require() { "$@" >/dev/null 2>&1 || fail "$*"; pass "$*"; }
+
+require jq --version
+require yq --version
+require mlr --version
+require qpdf --version
+require csvcut --version
+require dot -V
+require marimo --version
+require python3 -c "import pandas, numpy, openpyxl, xlsxwriter, matplotlib, plotly, pypdf, fitz, marimo, scipy, sympy, sklearn, statsmodels, networkx, folium"
+""");
+
+    private static string MarimoSmokeScript() => WithGeneratedScriptHeader("""
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+port=${MARIMO_PORT:-2718}
+pid=''
+
+cleanup() {
+  if [ -n "${pid}" ] && kill -0 "${pid}" >/dev/null 2>&1; then
+    kill "${pid}" >/dev/null 2>&1 || true
+    wait "${pid}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
+marimo run "${workspace_root}/examples/analytics/analysis.py" --host 0.0.0.0 --port "${port}" >/tmp/marimo-smoke.log 2>&1 &
+pid=$!
+
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS "http://127.0.0.1:${port}" >/dev/null; then
+    printf '[pass] Marimo reachable on %s\n' "${port}"
+    exit 0
+  fi
+  sleep 1
+done
+
+cat /tmp/marimo-smoke.log >&2 || true
+printf '[fail] Marimo startup or connectivity check failed on port %s\n' "${port}" >&2
+exit 1
+""");
+
+    private static string PublishingExamplesReadme() => """
+# Publishing Examples
+
+This generated example demonstrates a reproducible publishing pipeline.
+
+Preferred authoring order:
+
+1. Markdown
+2. Typst
+3. LaTeX
+
+Durable source assets:
+
+- `.md`
+- `.typ`
+- `.tex`
+- `.bib`
+- `.svg`
+
+Generated artifacts:
+
+- `.pdf`
+- `.html`
+- `.png`
+- `.jpg`
+
+Standard workflow:
+
+```text
+source -> build -> validate -> inspect
+```
+""";
+
+    private static string PublishingMarkdownReport() => """
+# Publishing Demo Report
+
+This Markdown file is the simplest durable source for a reproducible PDF.
+
+## Validation
+
+- build with `pandoc`
+- validate with `qpdf --check`
+- inspect with `pdftotext`
+""";
+
+    private static string PublishingTypstReport() => """
+= Typst Report
+
+This Typst example shows a concise, modern publishing path.
+
+== Summary
+
+Typst is often easier than LaTeX while staying source-controlled and review-friendly.
+""";
+
+    private static string PublishingLatexPaper() => """
+\\documentclass{article}
+\\usepackage[backend=biber]{biblatex}
+\\addbibresource{bibliography.bib}
+\\title{Publishing Demo Paper}
+\\author{OpenCode Workspace Manager}
+\\begin{document}
+\\maketitle
+This LaTeX example remains available for academic compatibility and existing templates.
+\\printbibliography
+\\end{document}
+""";
+
+    private static string PublishingBibliography() => """
+@online{marimo,
+  title = {Marimo Documentation},
+  url = {https://docs.marimo.io/},
+  year = {2026}
+}
+""";
+
+    private static string PublishingDiagramSvg() => """
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120">
+  <rect x="10" y="10" width="300" height="100" rx="12" fill="#f4f6fb" stroke="#4a5568" />
+  <text x="26" y="48" font-family="Arial" font-size="18">source -> build -> validate -> inspect</text>
+  <text x="26" y="78" font-family="Arial" font-size="14">Durable sources produce reproducible PDF artifacts.</text>
+</svg>
+""";
+
+    private static string PublishingToolingValidationScript() => WithGeneratedScriptHeader("""
+#!/usr/bin/env bash
+set -euo pipefail
+
+pass() { printf '[pass] %s\n' "$1"; }
+fail() { printf '[fail] %s\n' "$1" >&2; exit 1; }
+require() { "$@" >/dev/null 2>&1 || fail "$*"; pass "$*"; }
+
+require pandoc --version
+require latexmk --version
+require pdflatex --version
+require biber --version
+require qpdf --version
+require pdftotext -v
+require rsvg-convert --version
+require inkscape --version
+require gs --version
+require typst --version
+pass "PDF validation workflow includes qpdf --check and pdftotext"
+""");
+
+    private static string PublishingWorkflowDemoScript() => WithGeneratedScriptHeader("""
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+output_dir="${workspace_root}/artifacts/publishing-demo"
+mkdir -p "${output_dir}"
+
+pandoc "${workspace_root}/examples/publishing/report.md" -o "${output_dir}/report-from-markdown.pdf"
+qpdf --check "${output_dir}/report-from-markdown.pdf"
+pdftotext "${output_dir}/report-from-markdown.pdf" - >/dev/null
+
+if command -v typst >/dev/null 2>&1; then
+  typst compile "${workspace_root}/examples/publishing/report.typ" "${output_dir}/report-from-typst.pdf"
+  qpdf --check "${output_dir}/report-from-typst.pdf"
+  pdftotext "${output_dir}/report-from-typst.pdf" - >/dev/null
+fi
+
+latexmk -pdf -output-directory="${output_dir}" "${workspace_root}/examples/publishing/paper.tex"
+qpdf --check "${output_dir}/paper.pdf"
+pdftotext "${output_dir}/paper.pdf" - >/dev/null
+
+rsvg-convert -f pdf -o "${output_dir}/diagram.pdf" "${workspace_root}/examples/publishing/diagram.svg"
+qpdf --check "${output_dir}/diagram.pdf"
+pdftotext "${output_dir}/diagram.pdf" - >/dev/null || true
+""");
 
     private static string DocumentSampleMarkdown() => """
 # Analytical Report Draft

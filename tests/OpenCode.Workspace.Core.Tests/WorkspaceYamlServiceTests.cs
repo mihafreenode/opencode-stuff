@@ -38,6 +38,8 @@ public sealed class WorkspaceYamlServiceTests
                 Prompt = new TerminalPromptPreferences { Provider = "starship" },
                 Utilities = new TerminalUtilityPreferences { Zoxide = true, Fzf = false },
             },
+            Oracle = new OracleWorkspacePreferences { HostPort = 1522, OrdsPort = 8182 },
+            Analytics = new AnalyticsWorkspacePreferences { MarimoPort = 3818 },
         };
 
         var yaml = service.Write(definition);
@@ -62,6 +64,9 @@ public sealed class WorkspaceYamlServiceTests
             Assert.Equal("JetBrainsMono Nerd Font", roundTripped.Terminal.Font.Family);
             Assert.Equal("starship", roundTripped.Terminal.Prompt.Provider);
             Assert.True(roundTripped.Terminal.Utilities.Zoxide);
+            Assert.Equal(1522, roundTripped.Oracle.HostPort);
+            Assert.Equal(8182, roundTripped.Oracle.OrdsPort);
+            Assert.Equal(3818, roundTripped.Analytics.MarimoPort);
         }
         finally
         {

@@ -1,0 +1,19 @@
+id: publishing-knowledge-pack
+title: Publishing Knowledge Pack
+category: knowledge-pack
+lifecycle: preview
+onboarding:
+  - docs/reference/agent-onboarding/publishing.md
+sources:
+  - name: Typst Documentation
+    category: publishing
+    url: https://typst.app/docs/
+    description: Modern document authoring reference.
+  - name: Pandoc Manual
+    category: publishing
+    url: https://pandoc.org/MANUAL.html
+    description: Canonical Pandoc reference.
+  - name: qpdf Documentation
+    category: pdf
+    url: https://qpdf.readthedocs.io/
+    description: PDF validation and transformation tooling.

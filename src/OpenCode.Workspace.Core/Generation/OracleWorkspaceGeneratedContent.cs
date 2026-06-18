@@ -34,9 +34,6 @@ internal static class OracleWorkspaceGeneratedContent
             [Path.Combine("docs", "oracle-tools", "apex-export-import.md")] = withGeneratedHeader(ApexExportImportToolDoc()),
             [Path.Combine("docs", "oracle-tools", "apexlang.md")] = withGeneratedHeader(ApexLangToolDoc()),
             [Path.Combine("docs", "oracle-tools", "sql-developer.md")] = withGeneratedHeader(SqlDeveloperToolDoc()),
-            [Path.Combine("docs", "reference", "oracle-knowledge-map.yaml")] = withGeneratedHeader(OracleKnowledgeMapYaml()),
-            [Path.Combine("docs", "reference", "oracle-plsql-index.md")] = withGeneratedHeader(OraclePlSqlReferenceIndexDoc()),
-            [Path.Combine("docs", "reference", "oracle-database-index.md")] = withGeneratedHeader(OracleDatabaseReferenceIndexDoc()),
             [Path.Combine("skills", "oracle", "plsql.md")] = OraclePlSqlSkillDoc(),
             [Path.Combine("skills", "oracle", "database.md")] = OracleDatabaseSkillDoc(),
             [Path.Combine("scripts", "update-oracle-doc-index.ps1")] = UpdateOracleDocIndexPowerShellScript(),
@@ -48,7 +45,6 @@ internal static class OracleWorkspaceGeneratedContent
         if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
         {
             files[Path.Combine("docs", "oracle-apex-demo.md")] = withGeneratedHeader(OracleApexDemoDoc());
-            files[Path.Combine("docs", "reference", "oracle-apex-index.md")] = withGeneratedHeader(OracleApexReferenceIndexDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-books.md")] = withGeneratedHeader(OracleApexBooksDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-api-reference.md")] = withGeneratedHeader(OracleApexApiReferenceDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-administration.md")] = withGeneratedHeader(OracleApexAdministrationDoc());
@@ -57,7 +53,6 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("docs", "reference", "oracle-apex-version-archives.md")] = withGeneratedHeader(OracleApexVersionArchivesDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-api-map.yaml")] = withGeneratedHeader(OracleApexApiMapYaml());
             files[Path.Combine("docs", "reference", "oracle-apex-api-packages.md")] = withGeneratedHeader(OracleApexApiPackagesDoc());
-            files[Path.Combine("docs", "reference", "oracle-ords-index.md")] = withGeneratedHeader(OracleOrdsReferenceIndexDoc());
             files[Path.Combine("skills", "oracle", "apex.md")] = OracleApexSkillDoc();
             files[Path.Combine("skills", "oracle", "ords.md")] = OracleOrdsSkillDoc();
             files[Path.Combine("scripts", "health-check-database.sh")] = withGeneratedScriptHeader(HealthCheckDatabaseScript());
@@ -77,7 +72,6 @@ internal static class OracleWorkspaceGeneratedContent
         {
             files[Path.Combine("docs", "oracle-apexlang-demo.md")] = withGeneratedHeader(OracleApexLangDemoDoc());
             files[Path.Combine("docs", "apexlang-introduction.md")] = withGeneratedHeader(ApexLangIntroductionDoc());
-            files[Path.Combine("docs", "reference", "oracle-apexlang-index.md")] = withGeneratedHeader(OracleApexLangReferenceIndexDoc());
             files[Path.Combine("docs", "reference", "oracle-apexlang-navigation.md")] = withGeneratedHeader(OracleApexLangNavigationDoc());
             files[Path.Combine("skills", "oracle", "apexlang.md")] = OracleApexLangSkillDoc();
             files[Path.Combine("apex", "application.apx")] = ApexApplicationStub();

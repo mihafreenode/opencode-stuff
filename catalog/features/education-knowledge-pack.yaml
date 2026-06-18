@@ -1,0 +1,11 @@
+# Built-in feature manifest: education-knowledge-pack
+
+id: education-knowledge-pack
+displayName: Education Knowledge Pack
+description: Curated educational references, onboarding guidance, and project ideas for AI-assisted learning.
+category: knowledge-pack
+lifecycle: stable
+knowledgePacks:
+  - education-knowledge-pack
+capabilities:
+  - analytics
