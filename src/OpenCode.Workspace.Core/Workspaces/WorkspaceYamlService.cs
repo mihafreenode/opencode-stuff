@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -32,9 +33,16 @@ public sealed class WorkspaceYamlService
 
     public WorkspaceDefinition Read(string filePath)
     {
-        using var reader = File.OpenText(filePath);
-        var definition = _deserializer.Deserialize<WorkspaceDefinition>(reader);
-        return Normalize(definition);
+        try
+        {
+            using var reader = File.OpenText(filePath);
+            var definition = _deserializer.Deserialize<WorkspaceDefinition>(reader);
+            return Normalize(definition);
+        }
+        catch (Exception exception) when (exception is YamlException or InvalidCastException or FormatException)
+        {
+            throw new InvalidOperationException($"Workspace configuration at '{filePath}' is invalid. {exception.Message}".Trim(), exception);
+        }
     }
 
     public string Write(WorkspaceDefinition definition)

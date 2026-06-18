@@ -11,6 +11,26 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class WorkspaceContentGenerator
 {
+    private static readonly IReadOnlySet<string> PreservedDurableSourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        Path.Combine("examples", "analytics", "analysis.py"),
+        Path.Combine("examples", "analytics", "report.md"),
+        Path.Combine("examples", "analytics", "sample-data", "customers.json"),
+        Path.Combine("examples", "analytics", "sample-data", "orders.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "kpis.xlsx"),
+        Path.Combine("examples", "analytics", "sample-data", "sales.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "inventory.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "manufacturing.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "education.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "survey.csv"),
+        Path.Combine("examples", "analytics", "sample-data", "climate.csv"),
+        Path.Combine("examples", "publishing", "report.md"),
+        Path.Combine("examples", "publishing", "report.typ"),
+        Path.Combine("examples", "publishing", "paper.tex"),
+        Path.Combine("examples", "publishing", "bibliography.bib"),
+        Path.Combine("examples", "publishing", "diagram.svg"),
+    };
+
     private const string GeneratedCapabilityGuidanceBegin = "<!-- BEGIN GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
     private const string GeneratedCapabilityGuidanceEnd = "<!-- END GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
     private const string GeneratedOnboardingLinksBegin = "<!-- BEGIN GENERATED ONBOARDING LINKS -->";
@@ -153,6 +173,9 @@ public sealed class WorkspaceContentGenerator
 
         return files;
     }
+
+    public static bool ShouldPreserveExistingUserFile(string relativePath)
+        => PreservedDurableSourcePaths.Contains(relativePath.Replace('/', Path.DirectorySeparatorChar));
 
     public static string MergeGeneratedCapabilityGuidance(string? existingContent, string generatedBlockBody)
         => MergeGeneratedBlock(existingContent, GeneratedCapabilityGuidanceBegin, GeneratedCapabilityGuidanceEnd, generatedBlockBody);

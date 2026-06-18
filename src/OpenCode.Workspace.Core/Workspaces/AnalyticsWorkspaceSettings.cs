@@ -11,9 +11,15 @@ public sealed class AnalyticsWorkspaceSettings
 
     public static AnalyticsWorkspaceSettings From(WorkspaceDefinition definition)
     {
+        var configuredPort = definition.Analytics.MarimoPort;
+        if (configuredPort is not null && (configuredPort.Value < 1 || configuredPort.Value > 65535))
+        {
+            throw new InvalidOperationException($"Analytics configuration is invalid. analytics.marimoPort must be between 1 and 65535, but was '{configuredPort.Value}'.");
+        }
+
         return new AnalyticsWorkspaceSettings
         {
-            MarimoPort = definition.Analytics.MarimoPort is > 0 ? definition.Analytics.MarimoPort.Value : DefaultMarimoPort,
+            MarimoPort = configuredPort is > 0 ? configuredPort.Value : DefaultMarimoPort,
         };
     }
 }

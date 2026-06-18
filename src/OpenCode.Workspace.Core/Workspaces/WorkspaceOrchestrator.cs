@@ -678,6 +678,11 @@ public sealed class WorkspaceOrchestrator
                 continue;
             }
 
+            if (File.Exists(fullPath) && WorkspaceContentGenerator.ShouldPreserveExistingUserFile(additionalFile.Key))
+            {
+                continue;
+            }
+
             File.WriteAllText(fullPath, additionalFile.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
             EnsureGeneratedScriptPermissions(fullPath);
         }
@@ -689,6 +694,11 @@ public sealed class WorkspaceOrchestrator
             if (!string.IsNullOrWhiteSpace(directory))
             {
                 Directory.CreateDirectory(directory);
+            }
+
+            if (File.Exists(fullPath) && WorkspaceContentGenerator.ShouldPreserveExistingUserFile(binaryFile.Key))
+            {
+                continue;
             }
 
             File.WriteAllBytes(fullPath, binaryFile.Value);

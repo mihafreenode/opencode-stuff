@@ -470,7 +470,7 @@ public sealed class WindowsDockerIntegrationTests
     [SkippableFact]
     public async Task AnalyticsRuntimeAdjacentSmoke_CanBeRunExplicitly_WhenDockerAvailable()
     {
-        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS=1 to run analytics runtime-adjacent Docker tests.");
+        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_FULL_RUNTIME_TESTS=1 to run analytics runtime-adjacent Docker tests.");
 
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var dockerCheck = await capabilities.CheckDockerDesktopAsync();
@@ -570,7 +570,7 @@ public sealed class WindowsDockerIntegrationTests
     [SkippableFact]
     public async Task PublishingRuntimeAdjacentSmoke_CanBeRunExplicitly_WhenDockerAvailable()
     {
-        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS=1 to run publishing runtime-adjacent Docker tests.");
+        Skip.IfNot(ShouldRunRuntimeAdjacentDockerTests(), "Set OCWM_RUN_FULL_RUNTIME_TESTS=1 to run publishing runtime-adjacent Docker tests.");
 
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var dockerCheck = await capabilities.CheckDockerDesktopAsync();
@@ -663,7 +663,8 @@ public sealed class WindowsDockerIntegrationTests
     }
 
     private static bool ShouldRunRuntimeAdjacentDockerTests()
-        => string.Equals(Environment.GetEnvironmentVariable("OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS"), "1", StringComparison.Ordinal);
+        => string.Equals(Environment.GetEnvironmentVariable("OCWM_RUN_FULL_RUNTIME_TESTS"), "1", StringComparison.Ordinal)
+            || string.Equals(Environment.GetEnvironmentVariable("OCWM_RUN_RUNTIME_ADJACENT_DOCKER_TESTS"), "1", StringComparison.Ordinal);
 
     private static WorkspaceOrchestrator CreateWorkspaceOrchestrator(string appDataRoot)
     {

@@ -20,6 +20,16 @@ public sealed class OracleWorkspaceSettings
 
     public static OracleWorkspaceSettings From(WorkspaceDefinition definition)
     {
+        if (definition.Oracle.HostPort is not null && (definition.Oracle.HostPort.Value < 1 || definition.Oracle.HostPort.Value > 65535))
+        {
+            throw new InvalidOperationException($"Oracle configuration is invalid. oracle.hostPort must be between 1 and 65535, but was '{definition.Oracle.HostPort.Value}'.");
+        }
+
+        if (definition.Oracle.OrdsPort is not null && (definition.Oracle.OrdsPort.Value < 1 || definition.Oracle.OrdsPort.Value > 65535))
+        {
+            throw new InvalidOperationException($"Oracle configuration is invalid. oracle.ordsPort must be between 1 and 65535, but was '{definition.Oracle.OrdsPort.Value}'.");
+        }
+
         return new OracleWorkspaceSettings
         {
             HostPort = definition.Oracle.HostPort is > 0 ? definition.Oracle.HostPort.Value : DefaultHostPort,
