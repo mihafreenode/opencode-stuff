@@ -104,6 +104,7 @@ public sealed class CatalogIntegrationTests
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
         var templates = provider.LoadTemplates();
 
+        Assert.Contains(templates, template => template.Id == "education-stem-demo");
         Assert.Contains(templates, template => template.Id == "oracle-plsql-demo");
         Assert.Contains(templates, template => template.Id == "oracle-apex-demo");
         Assert.Contains(templates, template => template.Id == "oracle-apexlang-demo");
@@ -117,6 +118,7 @@ public sealed class CatalogIntegrationTests
         var knowledgePacks = provider.LoadKnowledgePacks();
 
         var analytics = features.Single(feature => feature.Id == "analytics-reporting");
+        var educationDemo = features.Single(feature => feature.Id == "education-stem-demo");
         var publishing = features.Single(feature => feature.Id == "publishing-tex");
         var education = features.Single(feature => feature.Id == "education-knowledge-pack");
         var oracle = features.Single(feature => feature.Id == "oracle-demo");
@@ -124,6 +126,8 @@ public sealed class CatalogIntegrationTests
         Assert.Equal(CatalogConventions.RuntimeFeatureCategory, analytics.Category);
         Assert.Equal(CatalogConventions.StableLifecycle, analytics.Lifecycle);
         Assert.Contains("education-knowledge-pack", analytics.Recommends);
+        Assert.Equal(CatalogConventions.TemplatePackFeatureCategory, educationDemo.Category);
+        Assert.Equal(CatalogConventions.StableLifecycle, educationDemo.Lifecycle);
         Assert.Equal(CatalogConventions.KnowledgePackFeatureCategory, education.Category);
         Assert.Equal(CatalogConventions.PreviewLifecycle, publishing.Lifecycle);
         Assert.Contains("oracle-documentation-pack", oracle.KnowledgePacks);
@@ -131,5 +135,23 @@ public sealed class CatalogIntegrationTests
         Assert.Contains(knowledgePacks, pack => pack.Id == "oracle-documentation-pack");
         Assert.Contains(knowledgePacks, pack => pack.Id == "education-knowledge-pack");
         Assert.Contains(knowledgePacks, pack => pack.Id == "publishing-knowledge-pack");
+    }
+
+    [Fact]
+    public void EducationStemDemoTemplate_ExpandsToFeaturedLearningWorkspace()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+        var expander = new TemplateExpander();
+
+        var definition = expander.Expand("education-demo", template);
+
+        Assert.Contains("core", definition.Features);
+        Assert.Contains("education-stem-demo", definition.Features);
+        Assert.Contains("analytics-reporting", definition.Features);
+        Assert.Contains("education-knowledge-pack", definition.Features);
+        Assert.Contains("analytics-sample-data-pack", definition.Features);
+        Assert.Contains("publishing-tex", definition.Features);
+        Assert.Empty(definition.Services);
     }
 }

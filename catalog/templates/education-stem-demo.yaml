@@ -1,0 +1,18 @@
+# Built-in template manifest: education-stem-demo
+
+id: education-stem-demo
+displayName: Education & STEM Demo
+description: Flagship learning workspace with analytics, STEM projects, reproducible reports, and AI-assisted onboarding.
+category: featured
+lifecycle: stable
+workspaceImage: ubuntu:24.04
+features:
+  - core
+  - education-stem-demo
+  - analytics-reporting
+  - education-knowledge-pack
+  - analytics-sample-data-pack
+  - publishing-tex
+services: []
+skills: []
+mcp: []

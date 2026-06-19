@@ -103,6 +103,44 @@ public sealed class WorkspaceLifecycleRegressionTests
     }
 
     [Fact]
+    public async Task Regenerate_EducationStemDemo_PreservesEditedDurableSourcesAndGuides()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = CreateTempPath("education-demo-regenerate");
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var resolver = CreateCatalogResolver(provider);
+            var orchestrator = CreateOrchestrator(root, resolver);
+            var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+            var definition = new TemplateExpander().Expand("education-demo", template);
+            var snapshot = await orchestrator.CreateWorkspaceAsync(root, definition, includeRuntimeInspection: false);
+
+            var readmePath = Path.Combine(snapshot.Paths.RootPath, "README.md");
+            var learningPath = Path.Combine(snapshot.Paths.RootPath, "docs", "learning-path.md");
+            var surveyScript = Path.Combine(snapshot.Paths.RootPath, "examples", "survey-analysis", "analysis.py");
+            var datasetPath = Path.Combine(snapshot.Paths.RootPath, "examples", "machine-learning-intro", "dataset.csv");
+
+            File.WriteAllText(readmePath, "# user education demo\n");
+            File.WriteAllText(learningPath, "# learner path\n");
+            File.WriteAllText(surveyScript, "print('keep learner changes')\n");
+            File.WriteAllText(datasetPath, "feature,target\n1,2\n");
+
+            await orchestrator.RegenerateAsync(snapshot);
+
+            Assert.Equal("# user education demo\n", File.ReadAllText(readmePath));
+            Assert.Equal("# learner path\n", File.ReadAllText(learningPath));
+            Assert.Equal("print('keep learner changes')\n", File.ReadAllText(surveyScript));
+            Assert.Equal("feature,target\n1,2\n", File.ReadAllText(datasetPath));
+        }
+        finally
+        {
+            DeleteTempPath(root);
+        }
+    }
+
+    [Fact]
     public async Task RecoverWorkspace_PreservesEditedDurableSourcesAcrossFeatureSets()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -539,6 +577,32 @@ x-legacy:
         Assert.Equal(1, firstAgents.Split('\n').Count(line => line.Contains("docs/reference/agent-onboarding/analytics.md", StringComparison.Ordinal)));
         Assert.Equal(1, firstAgents.Split('\n').Count(line => line.Contains("docs/reference/agent-onboarding/education.md", StringComparison.Ordinal)));
         Assert.Equal(1, firstAgents.Split('\n').Count(line => line.Contains("docs/reference/agent-onboarding/publishing.md", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void EducationStemDemoGeneration_IsDeterministic_AndLeavesAnalyticsAndOraclePathsAvailable()
+    {
+        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var resolver = CreateCatalogResolver(provider);
+        var generator = new WorkspaceContentGenerator();
+        var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+        var definition = new TemplateExpander().Expand("education-demo", template);
+        var resolved = resolver.Resolve(definition);
+
+        var first = generator.Generate(resolved);
+        var second = generator.Generate(resolved);
+
+        Assert.Equal(first["README.md"], second["README.md"]);
+        Assert.Equal(first[Path.Combine("docs", "learning-path.md")], second[Path.Combine("docs", "learning-path.md")]);
+        Assert.Equal(first[Path.Combine("examples", "survey-analysis", "analysis.py")], second[Path.Combine("examples", "survey-analysis", "analysis.py")]);
+        Assert.Equal(first[Path.Combine("examples", "machine-learning-intro", "dataset.csv")], second[Path.Combine("examples", "machine-learning-intro", "dataset.csv")]);
+        Assert.True(first.ContainsKey(Path.Combine("examples", "analytics", "analysis.py")));
+        Assert.True(first.ContainsKey(Path.Combine("examples", "publishing", "report.typ")));
+
+        var oracleTemplateIds = provider.LoadTemplates().Select(item => item.Id).ToList();
+        Assert.Contains("oracle-plsql-demo", oracleTemplateIds);
+        Assert.Contains("oracle-apex-demo", oracleTemplateIds);
+        Assert.Contains("oracle-apexlang-demo", oracleTemplateIds);
     }
 
     private static WorkspaceDefinition CreateDefinition(string workspaceName, IReadOnlyList<string> features, int? analyticsPort = null)

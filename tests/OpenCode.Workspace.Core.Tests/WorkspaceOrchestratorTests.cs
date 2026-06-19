@@ -270,6 +270,67 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public void CreateWorkspace_ForEducationStemDemo_WritesFeaturedLearningEnvironment()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+            var definition = new TemplateExpander().Expand("education-demo", template);
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, definition);
+
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "README.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "education-stem-demo.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "learning-path.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "projects.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "educator-guide.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "parent-guide.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "example-prompts.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "survey-analysis", "survey.csv")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "survey-analysis", "analysis.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "survey-analysis", "analysis-notebook.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "climate-dashboard", "dashboard.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "probability-lab", "dice.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "probability-lab", "coin-flips.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "machine-learning-intro", "model.py")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "examples", "science-report", "report.typ")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "analytics", "excel-analysis.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "education", "lesson-plan.md")));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "reports", "README.md")));
+
+            var readme = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "README.md"));
+            var learningPath = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "docs", "learning-path.md"));
+            var educatorGuide = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "docs", "educator-guide.md"));
+            var parentGuide = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "docs", "parent-guide.md"));
+            var examplePrompts = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "docs", "example-prompts.md"));
+            var agents = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "AGENTS.md"));
+
+            Assert.Contains("Curiosity", readme);
+            Assert.Contains("Repository", readme);
+            Assert.Contains("Workspace Discovery", readme);
+            Assert.Contains("Survey Analysis", learningPath);
+            Assert.Contains("Machine Learning Intro", learningPath);
+            Assert.Contains("middle school", educatorGuide, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("high school", educatorGuide, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("introductory university", educatorGuide, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("You do not need to be a programmer", parentGuide);
+            Assert.Contains("Explain this Python script in beginner-friendly language.", examplePrompts);
+            Assert.Contains("What assumptions should I verify before trusting these results?", examplePrompts);
+            Assert.Contains("docs/education-stem-demo.md", agents);
+            Assert.Contains("docs/learning-path.md", agents);
+            Assert.Contains("docs/example-prompts.md", agents);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public void CreateWorkspace_WithoutAnalytics_DoesNotGenerateMarimoArtifacts()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -951,6 +1012,11 @@ public sealed class WorkspaceOrchestratorTests
                 new FeatureManifest
                 {
                     Id = "analytics-sample-data-pack",
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
+                    Id = "education-stem-demo",
                     Dependencies = new DependencySet(),
                 },
             },

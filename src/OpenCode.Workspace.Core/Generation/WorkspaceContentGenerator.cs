@@ -13,6 +13,13 @@ public sealed class WorkspaceContentGenerator
 {
     private static readonly IReadOnlySet<string> PreservedDurableSourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
+        "README.md",
+        Path.Combine("docs", "education-stem-demo.md"),
+        Path.Combine("docs", "learning-path.md"),
+        Path.Combine("docs", "projects.md"),
+        Path.Combine("docs", "educator-guide.md"),
+        Path.Combine("docs", "parent-guide.md"),
+        Path.Combine("docs", "example-prompts.md"),
         Path.Combine("examples", "analytics", "analysis.py"),
         Path.Combine("examples", "analytics", "report.md"),
         Path.Combine("examples", "analytics", "sample-data", "customers.json"),
@@ -24,11 +31,37 @@ public sealed class WorkspaceContentGenerator
         Path.Combine("examples", "analytics", "sample-data", "education.csv"),
         Path.Combine("examples", "analytics", "sample-data", "survey.csv"),
         Path.Combine("examples", "analytics", "sample-data", "climate.csv"),
+        Path.Combine("examples", "survey-analysis", "survey.csv"),
+        Path.Combine("examples", "survey-analysis", "analysis.py"),
+        Path.Combine("examples", "survey-analysis", "analysis-notebook.py"),
+        Path.Combine("examples", "survey-analysis", "report.md"),
+        Path.Combine("examples", "survey-analysis", "README.md"),
+        Path.Combine("examples", "climate-dashboard", "climate.csv"),
+        Path.Combine("examples", "climate-dashboard", "dashboard.py"),
+        Path.Combine("examples", "climate-dashboard", "report.md"),
+        Path.Combine("examples", "climate-dashboard", "README.md"),
+        Path.Combine("examples", "probability-lab", "dice.py"),
+        Path.Combine("examples", "probability-lab", "coin-flips.py"),
+        Path.Combine("examples", "probability-lab", "README.md"),
+        Path.Combine("examples", "machine-learning-intro", "dataset.csv"),
+        Path.Combine("examples", "machine-learning-intro", "model.py"),
+        Path.Combine("examples", "machine-learning-intro", "report.md"),
+        Path.Combine("examples", "machine-learning-intro", "README.md"),
+        Path.Combine("examples", "science-report", "experiment-data.csv"),
+        Path.Combine("examples", "science-report", "report.md"),
+        Path.Combine("examples", "science-report", "report.typ"),
+        Path.Combine("examples", "science-report", "README.md"),
         Path.Combine("examples", "publishing", "report.md"),
         Path.Combine("examples", "publishing", "report.typ"),
         Path.Combine("examples", "publishing", "paper.tex"),
         Path.Combine("examples", "publishing", "bibliography.bib"),
         Path.Combine("examples", "publishing", "diagram.svg"),
+        Path.Combine("skills", "analytics", "chart-reading.md"),
+        Path.Combine("skills", "analytics", "excel-analysis.md"),
+        Path.Combine("skills", "education", "lesson-plan.md"),
+        Path.Combine("skills", "education", "project-based-learning.md"),
+        Path.Combine("skills", "education", "ai-learning.md"),
+        Path.Combine("reports", "README.md"),
     };
 
     private const string GeneratedCapabilityGuidanceBegin = "<!-- BEGIN GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
@@ -118,6 +151,49 @@ public sealed class WorkspaceContentGenerator
             files[Path.Combine("examples", "publishing", "diagram.svg")] = PublishingDiagramSvg();
             files[Path.Combine("scripts", "validate-publishing-tooling.sh")] = PublishingToolingValidationScript();
             files[Path.Combine("scripts", "demo-publishing-workflows.sh")] = PublishingWorkflowDemoScript();
+        }
+
+        if (IsEducationStemDemoWorkspace(definition))
+        {
+            files["README.md"] = WithGeneratedHeader(EducationStemDemoReadme());
+            files[Path.Combine("docs", "education-stem-demo.md")] = WithGeneratedHeader(EducationStemDemoWorkspaceDoc());
+            files[Path.Combine("docs", "learning-path.md")] = WithGeneratedHeader(EducationStemDemoLearningPath());
+            files[Path.Combine("docs", "projects.md")] = WithGeneratedHeader(EducationStemDemoProjectsDoc());
+            files[Path.Combine("docs", "educator-guide.md")] = WithGeneratedHeader(EducationStemDemoEducatorGuide());
+            files[Path.Combine("docs", "parent-guide.md")] = WithGeneratedHeader(EducationStemDemoParentGuide());
+            files[Path.Combine("docs", "example-prompts.md")] = WithGeneratedHeader(EducationStemDemoExamplePrompts());
+
+            files[Path.Combine("examples", "survey-analysis", "survey.csv")] = EducationSurveyCsv();
+            files[Path.Combine("examples", "survey-analysis", "analysis.py")] = EducationSurveyAnalysisScript();
+            files[Path.Combine("examples", "survey-analysis", "analysis-notebook.py")] = EducationSurveyNotebookScript();
+            files[Path.Combine("examples", "survey-analysis", "report.md")] = WithGeneratedHeader(EducationSurveyReport());
+            files[Path.Combine("examples", "survey-analysis", "README.md")] = WithGeneratedHeader(EducationSurveyReadme());
+
+            files[Path.Combine("examples", "climate-dashboard", "climate.csv")] = EducationClimateCsv();
+            files[Path.Combine("examples", "climate-dashboard", "dashboard.py")] = EducationClimateDashboardScript();
+            files[Path.Combine("examples", "climate-dashboard", "report.md")] = WithGeneratedHeader(EducationClimateReport());
+            files[Path.Combine("examples", "climate-dashboard", "README.md")] = WithGeneratedHeader(EducationClimateReadme());
+
+            files[Path.Combine("examples", "probability-lab", "dice.py")] = EducationProbabilityDiceScript();
+            files[Path.Combine("examples", "probability-lab", "coin-flips.py")] = EducationProbabilityCoinFlipScript();
+            files[Path.Combine("examples", "probability-lab", "README.md")] = WithGeneratedHeader(EducationProbabilityReadme());
+
+            files[Path.Combine("examples", "machine-learning-intro", "dataset.csv")] = EducationMachineLearningDatasetCsv();
+            files[Path.Combine("examples", "machine-learning-intro", "model.py")] = EducationMachineLearningModelScript();
+            files[Path.Combine("examples", "machine-learning-intro", "report.md")] = WithGeneratedHeader(EducationMachineLearningReport());
+            files[Path.Combine("examples", "machine-learning-intro", "README.md")] = WithGeneratedHeader(EducationMachineLearningReadme());
+
+            files[Path.Combine("examples", "science-report", "experiment-data.csv")] = EducationScienceExperimentCsv();
+            files[Path.Combine("examples", "science-report", "report.md")] = WithGeneratedHeader(EducationScienceReportMarkdown());
+            files[Path.Combine("examples", "science-report", "report.typ")] = EducationScienceReportTypst();
+            files[Path.Combine("examples", "science-report", "README.md")] = WithGeneratedHeader(EducationScienceReportReadme());
+
+            files[Path.Combine("skills", "analytics", "chart-reading.md")] = WithGeneratedHeader(EducationChartReadingSkill());
+            files[Path.Combine("skills", "analytics", "excel-analysis.md")] = WithGeneratedHeader(EducationExcelAnalysisSkill());
+            files[Path.Combine("skills", "education", "lesson-plan.md")] = WithGeneratedHeader(EducationLessonPlanSkill());
+            files[Path.Combine("skills", "education", "project-based-learning.md")] = WithGeneratedHeader(EducationProjectBasedLearningSkill());
+            files[Path.Combine("skills", "education", "ai-learning.md")] = WithGeneratedHeader(EducationAiLearningSkill());
+            files[Path.Combine("reports", "README.md")] = WithGeneratedHeader(EducationReportsReadme());
         }
 
         if (!IsOracleDemoWorkspace(definition))
@@ -255,6 +331,9 @@ public sealed class WorkspaceContentGenerator
 
     private static bool IsDocumentationWorkspace(WorkspaceDefinition definition)
         => definition.Features.Contains("document-processing", StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsEducationStemDemoWorkspace(WorkspaceDefinition definition)
+        => definition.Features.Contains("education-stem-demo", StringComparer.OrdinalIgnoreCase);
 
     private static bool HasFeature(WorkspaceDefinition definition, string featureId)
         => definition.Features.Contains(featureId, StringComparer.OrdinalIgnoreCase);
@@ -502,6 +581,17 @@ public sealed class WorkspaceContentGenerator
             links.Add("docs/reference/agent-onboarding/publishing.md");
         }
 
+        if (IsEducationStemDemoWorkspace(workspace.Definition))
+        {
+            links.Add("README.md");
+            links.Add("docs/education-stem-demo.md");
+            links.Add("docs/learning-path.md");
+            links.Add("docs/projects.md");
+            links.Add("docs/example-prompts.md");
+            links.Add("docs/educator-guide.md");
+            links.Add("docs/parent-guide.md");
+        }
+
         return links
             .Where(link => !string.IsNullOrWhiteSpace(link) && IsWorkspaceLinkAvailable(workspace, link))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -689,6 +779,34 @@ public sealed class WorkspaceContentGenerator
             lines.Add("## Enabled Onboarding Materials");
             lines.Add(string.Empty);
             lines.AddRange(onboardingLinks.Select(link => $"- `{link}`"));
+        }
+
+        if (IsEducationStemDemoWorkspace(workspace.Definition))
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Education & STEM Demo");
+            lines.Add(string.Empty);
+            lines.Add("Follow this repository-first path:");
+            lines.Add(string.Empty);
+            lines.Add("```text");
+            lines.Add("Repository");
+            lines.Add("    ↓");
+            lines.Add("Workspace Discovery");
+            lines.Add("    ↓");
+            lines.Add("Provision Environment");
+            lines.Add("    ↓");
+            lines.Add("Read Documentation");
+            lines.Add("    ↓");
+            lines.Add("Start Working");
+            lines.Add("```");
+            lines.Add(string.Empty);
+            lines.Add("Suggested first documents:");
+            lines.Add(string.Empty);
+            lines.Add("- `README.md`");
+            lines.Add("- `docs/education-stem-demo.md`");
+            lines.Add("- `docs/learning-path.md`");
+            lines.Add("- `docs/projects.md`");
+            lines.Add("- `docs/example-prompts.md`");
         }
 
         return string.Join("\n", lines);
@@ -1682,6 +1800,927 @@ rsvg-convert -f pdf -o "${output_dir}/diagram.pdf" "${workspace_root}/examples/p
 qpdf --check "${output_dir}/diagram.pdf"
 pdftotext "${output_dir}/diagram.pdf" - >/dev/null || true
 """);
+
+    private static string EducationStemDemoReadme() => """
+# Education & STEM Demo
+
+This workspace is a complete learning environment for analytics, STEM exploration, AI-assisted learning, and reproducible projects.
+
+Learning story:
+
+```text
+Curiosity
+    ↓
+Exploration
+    ↓
+Project
+    ↓
+Understanding
+```
+
+Repository-first onboarding:
+
+```text
+Repository
+    ↓
+Workspace Discovery
+    ↓
+Provision Environment
+    ↓
+Read Documentation
+    ↓
+Start Working
+```
+
+Start here:
+
+- `docs/education-stem-demo.md`
+- `docs/learning-path.md`
+- `docs/projects.md`
+- `docs/example-prompts.md`
+- `docs/educator-guide.md`
+- `docs/parent-guide.md`
+
+Projects:
+
+- `examples/survey-analysis/`
+- `examples/climate-dashboard/`
+- `examples/probability-lab/`
+- `examples/machine-learning-intro/`
+- `examples/science-report/`
+
+Skills:
+
+- `skills/analytics/excel-analysis.md`
+- `skills/analytics/chart-reading.md`
+- `skills/education/lesson-plan.md`
+- `skills/education/project-based-learning.md`
+- `skills/education/ai-learning.md`
+
+Validation and runtime helpers:
+
+- `scripts/validate-analytics-tooling.sh`
+- `scripts/smoke-marimo.sh`
+- `scripts/validate-publishing-tooling.sh`
+- `scripts/demo-publishing-workflows.sh`
+
+Users do not need prior Python experience to begin.
+
+AI is a tutor, assistant, and collaborator here. It is not a replacement for understanding.
+""";
+
+    private static string EducationStemDemoWorkspaceDoc() => """
+# Education & STEM Demo
+
+The Education & STEM Demo is a flagship featured workspace for students, teachers, parents, mentors, workshop organizers, and self-learners.
+
+It combines:
+
+- Analytics & Reporting
+- Education Knowledge Pack
+- Analytics Sample Data Pack
+- Publishing & TeX
+- AI-assisted learning
+- reproducible project work
+
+## Included Projects
+
+- `examples/survey-analysis/`
+- `examples/climate-dashboard/`
+- `examples/probability-lab/`
+- `examples/machine-learning-intro/`
+- `examples/science-report/`
+
+## Intended Audiences
+
+- middle school learners
+- high school learners
+- technical school learners
+- introductory university learners
+- educators and mentors
+- parents exploring projects together
+
+## Philosophy
+
+Use the repository as the durable learning environment.
+
+- code stays reviewable
+- notebooks stay reproducible
+- datasets stay inspectable
+- reports stay durable
+- AI support stays explainable
+
+No prior Python experience is required to begin.
+
+Python knowledge remains valuable.
+
+AI should be treated as a tutor and assistant rather than a replacement for learning.
+""";
+
+    private static string EducationStemDemoLearningPath() => """
+# Learning Path
+
+Suggested path:
+
+```text
+Start Here
+    ↓
+Survey Analysis
+    ↓
+Probability Lab
+    ↓
+Climate Dashboard
+    ↓
+Machine Learning Intro
+    ↓
+Science Report
+```
+
+## Start Here
+
+- Read `README.md`.
+- Read `docs/education-stem-demo.md`.
+- Review `docs/reference/education-knowledge-map.yaml`.
+- Ask OpenCode what tools are available and which project is best for a beginner.
+
+## Survey Analysis
+
+- Project: `examples/survey-analysis/`
+- Dataset: `examples/survey-analysis/survey.csv`
+- Skills: `skills/analytics/excel-analysis.md`, `skills/analytics/chart-reading.md`
+- Knowledge packs: `docs/reference/education-knowledge-map.yaml`
+
+Focus:
+
+- CSV loading
+- percentages
+- basic statistics
+- charts
+- report writing
+
+## Probability Lab
+
+- Project: `examples/probability-lab/`
+- Skills: `skills/education/project-based-learning.md`, `skills/analytics/chart-reading.md`
+- Knowledge packs: `docs/reference/education-knowledge-map.yaml`
+
+Focus:
+
+- randomness
+- simulation
+- experimentation
+- comparing expected and observed results
+
+## Climate Dashboard
+
+- Project: `examples/climate-dashboard/`
+- Dataset: `examples/climate-dashboard/climate.csv`
+- Skills: `skills/analytics/chart-reading.md`
+- Knowledge packs: `docs/reference/education-knowledge-map.yaml`
+
+Focus:
+
+- time series
+- climate literacy
+- trends
+- environmental storytelling with charts
+
+## Machine Learning Intro
+
+- Project: `examples/machine-learning-intro/`
+- Dataset: `examples/machine-learning-intro/dataset.csv`
+- Skills: `skills/education/ai-learning.md`
+- Knowledge packs: `docs/reference/education-knowledge-map.yaml`
+
+Focus:
+
+- train and test split
+- prediction
+- evaluation
+- interpretation over magic
+
+## Science Report
+
+- Project: `examples/science-report/`
+- Dataset: `examples/science-report/experiment-data.csv`
+- Skills: `skills/education/lesson-plan.md`
+- Knowledge packs: `docs/reference/education-knowledge-map.yaml`
+
+Focus:
+
+- observations
+- scientific method
+- findings
+- PDF-friendly publishing
+""";
+
+    private static string EducationStemDemoProjectsDoc() => """
+# Projects
+
+This workspace includes five starter projects.
+
+## Survey Analysis
+
+Path: `examples/survey-analysis/`
+
+Use it to learn CSV loading, percentages, charts, and simple reporting from classroom-style survey data.
+
+## Climate Dashboard
+
+Path: `examples/climate-dashboard/`
+
+Use it to explore time series, environmental metrics, and trend communication.
+
+## Probability Lab
+
+Path: `examples/probability-lab/`
+
+Use it to simulate dice rolls and coin flips, compare expected and observed outcomes, and practice experimentation.
+
+## Machine Learning Intro
+
+Path: `examples/machine-learning-intro/`
+
+Use it to learn train/test split, prediction, evaluation, and interpretation with a small approachable dataset.
+
+## Science Report
+
+Path: `examples/science-report/`
+
+Use it to connect observations, charts, writing, and PDF-friendly report publishing.
+""";
+
+    private static string EducationStemDemoEducatorGuide() => """
+# Educator Guide
+
+This workspace is designed for classroom use, workshops, mentoring, and project-based learning.
+
+## How To Use It
+
+- start with one project, not every tool
+- keep the repository visible so learners see where code, data, and reports live
+- ask AI for explanations, not only answers
+- review results together before accepting them
+
+## Audience Suggestions
+
+### Middle School
+
+- start with `examples/survey-analysis/`
+- continue to `examples/probability-lab/`
+- focus on charts, averages, percentages, and plain-language explanation
+
+### High School
+
+- add `examples/climate-dashboard/`
+- compare trends and ask what assumptions need verification
+- introduce the difference between observation and conclusion
+
+### Technical School
+
+- use survey, climate, and machine-learning projects together
+- discuss automation, reproducibility, and reporting
+- ask learners to explain every step in their own words
+
+### Introductory University
+
+- use all five projects
+- compare notebook work, scripts, and publishing outputs
+- emphasize reproducibility, interpretation, and critical review
+
+## Workshops And Mentoring
+
+- begin with `docs/example-prompts.md`
+- encourage learners to ask for beginner-friendly explanations
+- let teams improve an existing project instead of starting from a blank page
+
+## Project-Based Learning
+
+Recommended structure:
+
+1. choose a question
+2. inspect the dataset
+3. make one chart
+4. explain the chart
+5. refine the project
+6. write findings
+
+AI can accelerate each stage, but understanding should stay with the learner.
+""";
+
+    private static string EducationStemDemoParentGuide() => """
+# Parent Guide
+
+This workspace is meant to make modern analytical and scientific tools more approachable.
+
+You do not need to be a programmer to explore it together.
+
+## Good Ways To Use It Together
+
+- start with one simple project such as the survey example
+- ask what the data says before asking the computer for an answer
+- compare charts and talk about which one is easier to understand
+- ask the learner to explain the result in their own words
+
+## How AI Helps
+
+AI can help by:
+
+- explaining code in simpler language
+- suggesting project ideas
+- creating a first draft of a chart or report
+- pointing out questions worth checking
+
+AI should not replace understanding.
+
+Reviewing and understanding results still matters because a convincing answer is not always a correct one.
+
+## A Good First Session
+
+1. open `docs/learning-path.md`
+2. choose `examples/survey-analysis/`
+3. read the project `README.md`
+4. ask one beginner-friendly question from `docs/example-prompts.md`
+5. talk about what the result means
+""";
+
+    private static string EducationStemDemoExamplePrompts() => """
+# Example Prompts
+
+Use AI as a tutor, assistant, and collaborator.
+
+Do not treat AI as a replacement for understanding.
+
+Good starting prompts:
+
+- Explain this Python script in beginner-friendly language.
+- What experiment could I run with this dataset?
+- Can you create a chart that is easier to understand?
+- Can you help me write a short report from these results?
+- Can you suggest three improvements to this project?
+- What assumptions should I verify before trusting these results?
+
+Useful follow-up prompts:
+
+- Which line of code loads the data?
+- What does this chart hide or fail to explain?
+- Can you compare two possible visualizations and explain the tradeoff?
+- Can you show me how to check this result manually?
+""";
+
+    private static string EducationSurveyCsv() => """
+student_id,favorite_subject,hours_of_sleep,time_spent_reading,favorite_hobby
+1,Math,8,45,Drawing
+2,Science,7,30,Football
+3,History,9,50,Music
+4,Math,6,20,Gaming
+5,Science,8,35,Reading
+6,Art,8,40,Drawing
+7,Math,7,25,Cycling
+8,Science,9,60,Music
+9,History,7,30,Reading
+10,Math,8,55,Robotics
+11,Art,6,15,Dancing
+12,Science,8,45,Football
+""";
+
+    private static string EducationSurveyAnalysisScript() => """
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+
+def main() -> None:
+    root = Path(__file__).parent
+    reports = root / ".." / ".." / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+
+    survey = pd.read_csv(root / "survey.csv")
+    subject_counts = survey["favorite_subject"].value_counts().sort_index()
+    average_sleep = survey["hours_of_sleep"].mean()
+    average_reading = survey["time_spent_reading"].mean()
+
+    percentages = (subject_counts / len(survey) * 100).round(1)
+    summary = pd.DataFrame(
+        {
+            "favorite_subject": subject_counts.index,
+            "students": subject_counts.values,
+            "percentage": percentages.values,
+        }
+    )
+
+    print("Survey summary")
+    print(summary.to_string(index=False))
+    print(f"Average hours of sleep: {average_sleep:.1f}")
+    print(f"Average reading minutes: {average_reading:.1f}")
+
+    ax = subject_counts.plot(kind="bar", color=["#4c78a8", "#f58518", "#54a24b", "#e45756"])
+    ax.set_title("Favorite subjects")
+    ax.set_xlabel("Subject")
+    ax.set_ylabel("Students")
+    ax.figure.tight_layout()
+    ax.figure.savefig(reports / "survey-favorite-subjects.png", dpi=150)
+    plt.close(ax.figure)
+
+
+if __name__ == "__main__":
+    main()
+""";
+
+    private static string EducationSurveyNotebookScript() => """
+from pathlib import Path
+
+import marimo
+import pandas as pd
+
+__generated_with = "0.11.0"
+app = marimo.App(width="medium")
+
+
+@app.cell
+def __():
+    import marimo as mo
+    return mo,
+
+
+@app.cell
+def __():
+    root = Path(__file__).parent
+    survey = pd.read_csv(root / "survey.csv")
+    return survey,
+
+
+@app.cell
+def __(survey):
+    subject_counts = survey["favorite_subject"].value_counts().sort_index()
+    average_sleep = survey["hours_of_sleep"].mean()
+    average_reading = survey["time_spent_reading"].mean()
+    return average_reading, average_sleep, subject_counts
+
+
+@app.cell
+def __(average_reading, average_sleep, mo, subject_counts):
+    summary = mo.md(
+        "# Classroom Survey Analysis\n\n"
+        f"Average sleep: **{average_sleep:.1f}** hours\n\n"
+        f"Average reading: **{average_reading:.1f}** minutes"
+    )
+    mo.vstack([summary, mo.md("## Favorite subjects"), subject_counts])
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+""";
+
+    private static string EducationSurveyReport() => """
+# Classroom Survey Report
+
+This project introduces analytics, visualization, and reporting with a small classroom-style dataset.
+
+## Questions
+
+- Which subject is the most popular?
+- What is the average number of hours of sleep?
+- How much time do students spend reading?
+- Which chart would help a new learner understand the results fastest?
+""";
+
+    private static string EducationSurveyReadme() => """
+# Classroom Survey Analysis
+
+Files:
+
+- `survey.csv`
+- `analysis.py`
+- `analysis-notebook.py`
+- `report.md`
+
+Suggested workflow:
+
+1. Read `report.md`.
+2. Run `python examples/survey-analysis/analysis.py`.
+3. Open `analysis-notebook.py` with Marimo for a more guided view.
+4. Ask AI to explain the code in beginner-friendly language.
+""";
+
+    private static string EducationClimateCsv() => """
+month,temperature_c,rainfall_mm,emissions_index
+2026-01,2.4,48,102
+2026-02,3.1,44,100
+2026-03,6.8,51,98
+2026-04,11.2,63,97
+2026-05,15.9,72,95
+2026-06,20.1,68,93
+2026-07,23.4,54,92
+2026-08,22.7,57,91
+2026-09,18.1,61,90
+2026-10,12.4,70,89
+2026-11,7.3,66,88
+2026-12,3.0,59,87
+""";
+
+    private static string EducationClimateDashboardScript() => """
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+
+def main() -> None:
+    root = Path(__file__).parent
+    reports = root / ".." / ".." / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+
+    climate = pd.read_csv(root / "climate.csv")
+    print(climate.describe(include="all").to_string())
+
+    fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+    axes[0].plot(climate["month"], climate["temperature_c"], marker="o", color="#e45756")
+    axes[0].set_ylabel("Temp C")
+    axes[0].set_title("Climate dashboard")
+
+    axes[1].bar(climate["month"], climate["rainfall_mm"], color="#4c78a8")
+    axes[1].set_ylabel("Rain mm")
+
+    axes[2].plot(climate["month"], climate["emissions_index"], marker="o", color="#54a24b")
+    axes[2].set_ylabel("Emissions")
+    axes[2].set_xlabel("Month")
+
+    fig.autofmt_xdate(rotation=45)
+    fig.tight_layout()
+    fig.savefig(reports / "climate-dashboard.png", dpi=150)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()
+""";
+
+    private static string EducationClimateReport() => """
+# Climate Dashboard Notes
+
+This project demonstrates trends, time series, charts, and environmental storytelling.
+
+## Questions
+
+- Which months are the warmest?
+- Does rainfall move with temperature?
+- What trend do you notice in the emissions index?
+- What would you want to verify before making a climate claim from this dataset?
+""";
+
+    private static string EducationClimateReadme() => """
+# Climate Dashboard
+
+Files:
+
+- `climate.csv`
+- `dashboard.py`
+- `report.md`
+
+Goals:
+
+- science
+- climate literacy
+- data visualization
+""";
+
+    private static string EducationProbabilityDiceScript() => """
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def main() -> None:
+    root = Path(__file__).parent
+    reports = root / ".." / ".." / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(42)
+    rolls = rng.integers(1, 7, size=600)
+    counts = np.bincount(rolls, minlength=7)[1:]
+
+    print("Dice roll counts:")
+    for face, count in enumerate(counts, start=1):
+        print(f"{face}: {count}")
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.bar(range(1, 7), counts, color="#4c78a8")
+    ax.set_title("Dice roll simulation")
+    ax.set_xlabel("Face")
+    ax.set_ylabel("Count")
+    fig.tight_layout()
+    fig.savefig(reports / "probability-dice.png", dpi=150)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()
+""";
+
+    private static string EducationProbabilityCoinFlipScript() => """
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def main() -> None:
+    root = Path(__file__).parent
+    reports = root / ".." / ".." / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(7)
+    flips = rng.choice(["Heads", "Tails"], size=400)
+    heads = int((flips == "Heads").sum())
+    tails = int((flips == "Tails").sum())
+
+    print(f"Heads: {heads}")
+    print(f"Tails: {tails}")
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.bar(["Heads", "Tails"], [heads, tails], color=["#54a24b", "#e45756"])
+    ax.set_title("Coin flip simulation")
+    ax.set_ylabel("Count")
+    fig.tight_layout()
+    fig.savefig(reports / "probability-coin-flips.png", dpi=150)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    main()
+""";
+
+    private static string EducationProbabilityReadme() => """
+# Probability Lab
+
+Files:
+
+- `dice.py`
+- `coin-flips.py`
+
+Goals:
+
+- mathematics
+- statistics
+- experimentation
+
+Run both scripts and compare observed results with what you expected before the experiment.
+""";
+
+    private static string EducationMachineLearningDatasetCsv() => """
+student_id,study_hours,practice_tests,attendance_rate,final_score
+1,2.0,1,0.82,64
+2,2.5,1,0.85,68
+3,3.0,2,0.88,72
+4,3.5,2,0.90,75
+5,4.0,2,0.92,78
+6,4.5,3,0.93,82
+7,5.0,3,0.95,85
+8,5.5,3,0.96,87
+9,6.0,4,0.97,90
+10,6.5,4,0.98,92
+11,7.0,4,0.99,94
+12,7.5,5,0.99,96
+""";
+
+    private static string EducationMachineLearningModelScript() => """
+from pathlib import Path
+
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+
+
+def main() -> None:
+    root = Path(__file__).parent
+    data = pd.read_csv(root / "dataset.csv")
+
+    features = data[["study_hours", "practice_tests", "attendance_rate"]]
+    target = data["final_score"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        features,
+        target,
+        test_size=0.25,
+        random_state=42,
+    )
+
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    predictions = model.predict(X_test)
+
+    print("Model coefficients:")
+    for name, value in zip(features.columns, model.coef_):
+        print(f"- {name}: {value:.2f}")
+
+    print(f"Intercept: {model.intercept_:.2f}")
+    print(f"Mean absolute error: {mean_absolute_error(y_test, predictions):.2f}")
+    print(f"R^2 score: {r2_score(y_test, predictions):.2f}")
+    print()
+    print("Test predictions:")
+    result = X_test.copy()
+    result["expected_score"] = y_test.values
+    result["predicted_score"] = predictions.round(1)
+    print(result.to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()
+""";
+
+    private static string EducationMachineLearningReport() => """
+# Introductory Machine Learning Notes
+
+This project keeps machine learning intentionally simple.
+
+## What It Demonstrates
+
+- train and test split
+- prediction
+- evaluation
+- interpretation
+
+## Questions
+
+- Which inputs matter most in this tiny model?
+- What does the error metric mean in plain language?
+- Why should you be careful with a dataset this small?
+""";
+
+    private static string EducationMachineLearningReadme() => """
+# Machine Learning Intro
+
+Files:
+
+- `dataset.csv`
+- `model.py`
+- `report.md`
+
+Requirements for learners:
+
+- explain every step
+- avoid treating the model like magic
+- focus on interpretation and critical thinking
+""";
+
+    private static string EducationScienceExperimentCsv() => """
+day,light_hours,plant_height_cm,notes
+1,6,10.2,Initial measurement
+2,6,10.8,Healthy leaves
+3,7,11.4,Steady growth
+4,7,12.1,Soil still moist
+5,8,12.9,Strong daylight
+6,8,13.6,No visible stress
+7,8,14.2,Final observation
+""";
+
+    private static string EducationScienceReportMarkdown() => """
+# Science Report Draft
+
+This project demonstrates collecting observations, summarizing findings, and preparing a report.
+
+## Questions
+
+- How did plant height change over time?
+- Did light exposure increase during the experiment?
+- What else would you want to measure next time?
+
+## Suggested Workflow
+
+1. Inspect `experiment-data.csv`.
+2. Ask AI to suggest a chart.
+3. Review the chart before trusting it.
+4. Turn the findings into a short written report.
+""";
+
+    private static string EducationScienceReportTypst() => """
+= Science Report
+
+This Typst example is a durable source file for a printable STEM report.
+
+== Experiment
+
+- Topic: Plant growth and light exposure
+- Source data: `experiment-data.csv`
+
+== Findings
+
+The sample data shows steady growth across the observation period. A learner should still verify whether light exposure alone explains the change.
+
+== Next Steps
+
+- add a chart generated from the CSV data
+- compare this report with the Markdown version
+- export a PDF with `typst compile`
+""";
+
+    private static string EducationScienceReportReadme() => """
+# Science Report
+
+Files:
+
+- `experiment-data.csv`
+- `report.md`
+- `report.typ`
+
+Goals:
+
+- scientific method
+- communication
+- publishing
+""";
+
+    private static string EducationChartReadingSkill() => """
+# Chart Reading
+
+Use this skill when a learner has a chart but is not yet sure how to interpret it.
+
+Checklist:
+
+1. What question is the chart trying to answer?
+2. What do the axes measure?
+3. What pattern stands out first?
+4. What might be hidden or misleading?
+5. What should be verified before trusting the conclusion?
+""";
+
+    private static string EducationExcelAnalysisSkill() => """
+# Excel Analysis
+
+Use this skill when moving from spreadsheet thinking into reproducible Python-based analysis.
+
+Suggested sequence:
+
+1. identify the columns
+2. clean obvious missing or inconsistent values
+3. summarize counts, averages, or percentages
+4. create one simple chart
+5. explain the result in plain language
+""";
+
+    private static string EducationLessonPlanSkill() => """
+# Lesson Plan
+
+Use this guide when turning one project into a short lesson.
+
+Suggested structure:
+
+1. start with one question
+2. inspect the dataset together
+3. make one chart
+4. ask learners to explain it
+5. improve the project or report
+""";
+
+    private static string EducationProjectBasedLearningSkill() => """
+# Project-Based Learning
+
+Use this guide when the learner is ready to extend a starter example.
+
+Project sequence:
+
+1. choose a question
+2. reuse a starter dataset or bring your own
+3. build one experiment or chart
+4. explain what worked and what is uncertain
+5. turn the result into a durable report
+""";
+
+    private static string EducationAiLearningSkill() => """
+# AI Learning Guidance
+
+Treat AI as:
+
+- tutor
+- assistant
+- collaborator
+
+Do not treat AI as a replacement for understanding.
+
+Good prompts:
+
+- explain this code line by line
+- show me how to check this result manually
+- suggest a simpler chart
+- point out assumptions I should verify
+""";
+
+    private static string EducationReportsReadme() => """
+# Reports
+
+Use this folder for durable outputs such as:
+
+- generated charts
+- exported PDFs
+- presentation-ready reports
+
+Keep the source files in `examples/`, `docs/`, and `skills/` understandable so these outputs remain reproducible.
+""";
 
     private static string DocumentSampleMarkdown() => """
 # Analytical Report Draft

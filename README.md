@@ -162,6 +162,204 @@ Learn more:
 - [Oracle APEXlang Demo](docs/oracle-apexlang-demo.md)
 - [Oracle Lifecycle Workflows](docs/oracle-lifecycle-workflows.md)
 
+## Featured Workspace: Analytics & Reporting
+
+The Analytics & Reporting workspace is a complete environment for exploring data, building dashboards, generating reports, and learning modern Python-based analytical workflows.
+
+It is designed for repository-first analytical work:
+
+```text
+Repository
+    ↓
+Workspace Discovery
+    ↓
+Provision Environment
+    ↓
+Read Documentation
+    ↓
+Start Working
+```
+
+Users should be able to provision a workspace and immediately begin working with:
+
+- Marimo
+- Pandas
+- Excel
+- CSV
+- JSON
+- Plotly
+- Matplotlib
+- statistics
+- dashboards
+- reports
+
+This workspace exists so analysis can stay durable, explainable, and easy to revisit later.
+
+Marimo notebooks are stored as normal Python files, analytical workflows stay Git-friendly, reports are reproducible, AI agents can participate naturally, and analytical assets become part of the repository instead of getting trapped in ad-hoc local tools.
+
+Supporting assets include:
+
+- sample datasets
+- guided skills
+- validation scripts
+- knowledge packs
+
+Recommended first experience:
+
+```text
+Create Analytics Workspace
+    ↓
+Provision Runtime
+    ↓
+Open Marimo
+    ↓
+Explore Sample Data
+    ↓
+Generate KPI Dashboard
+    ↓
+Export Report
+```
+
+This workspace is intended for:
+
+- analysts
+- developers
+- consultants
+- engineers
+- students
+- educators
+
+Users do not need prior Python experience to begin.
+
+OpenCode can help:
+
+- generate analytical code
+- explain analytical code
+- create charts
+- build reports
+- troubleshoot workflows
+
+Understanding the generated work remains important.
+
+Learn more:
+
+- [Analytics & Reporting Workspace](docs/analytics-workspace.md)
+- [Analytics Capability](docs/capabilities/analytics.md)
+- [Reporting Capability](docs/capabilities/reporting.md)
+- [Analytics Agent Onboarding](docs/reference/agent-onboarding/analytics.md)
+
+## Featured Workspace: Education & STEM
+
+The Education & STEM workspace is one of the flagship examples of the platform.
+
+Featured demo path:
+
+```text
+Education & STEM Demo
+    ↓
+Survey Analysis
+    ↓
+Probability Lab
+    ↓
+Climate Dashboard
+    ↓
+Machine Learning Intro
+    ↓
+Science Report
+```
+
+Its story is simple:
+
+```text
+Curiosity
+    ↓
+Exploration
+    ↓
+Project
+    ↓
+Understanding
+```
+
+It combines:
+
+- Analytics & Reporting
+- Education Knowledge Pack
+- Sample Data Pack
+- Skills
+- AI-assisted learning
+- Reproducible notebooks
+
+The goal is to give students, teachers, parents, and self-learners an accessible place to ask questions, explore ideas, and turn those ideas into durable projects.
+
+Typical topics include:
+
+- mathematics
+- statistics
+- science
+- engineering
+- climate analysis
+- surveys
+- visualization
+- introductory machine learning
+- research projects
+- technical writing
+
+Students, teachers, parents, and self-learners can use the workspace to:
+
+- ask questions
+- generate experiments
+- build charts
+- explore datasets
+- learn Python
+- learn statistics
+- learn scientific thinking
+
+Example activities:
+
+- Analyze a classroom survey.
+- Create a climate dashboard.
+- Visualize population data.
+- Explore probability experiments.
+- Build a simple machine-learning model.
+- Generate a science report.
+
+No prior Python experience is required to begin.
+
+Python knowledge remains valuable.
+
+AI should be treated as a tutor and assistant rather than a replacement for learning.
+
+The goal is to make modern analytical and scientific tools more accessible while keeping the repository as the durable source of notes, code, reports, prompts, and explanation.
+
+Learn more:
+
+- [Education & STEM Demo](docs/education-stem-demo.md)
+- [Education & STEM Workspace](docs/education-stem-workspace.md)
+- [Education Knowledge Pack](docs/features/education-knowledge-pack.md)
+- [Education Agent Onboarding](docs/reference/agent-onboarding/education.md)
+- [Analytics Agent Onboarding](docs/reference/agent-onboarding/analytics.md)
+
+## Acknowledgements
+
+Several ideas behind the Analytics & Reporting and Education & STEM experiences were inspired by the excellent presentation:
+
+`The Trick That Makes Open LLMs Viable for Python`
+<https://www.youtube.com/watch?v=ZBI7BDUK1Es>
+
+OpenCode Workspace Manager is not affiliated with the author.
+
+The project is grateful for the ideas demonstrated in the presentation and recommends it as one of the clearest introductions to:
+
+- AI-assisted analytics
+- reproducible workflows
+- Git-friendly notebooks
+- Python-first exploration
+- modern educational analytics
+
+The Analytics & Reporting and Education & STEM workspaces were influenced by many of these principles.
+
+Thank you for helping demonstrate what modern AI-assisted analytical workflows can look like.
+
 ## Featured Workspace: Documentation Features
 
 The Documentation Features workspace is a ready-to-run report and publishing environment for teams that need reliable PDF output, diagrams, validation, and broad Windows-compatible font coverage inside Ubuntu workspaces.

@@ -1,0 +1,11 @@
+# Built-in feature manifest: education-stem-demo
+
+id: education-stem-demo
+displayName: Education & STEM Demo Assets
+description: Flagship repository-first learning environment with guided STEM projects, analytics examples, AI-assisted learning prompts, and durable publishing outputs.
+category: template-pack
+lifecycle: stable
+capabilities:
+  - analytics
+  - reporting
+  - documentation

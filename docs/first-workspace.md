@@ -61,6 +61,26 @@ The app will:
 
 Once the terminal opens, you are working inside the runtime attached to the workspace.
 
+The repository should remain the durable source of onboarding knowledge:
+
+```text
+Repository
+    ↓
+Workspace Discovery
+    ↓
+Provision Environment
+    ↓
+Read Documentation
+    ↓
+Start Working
+```
+
+Featured learning paths in this repository include:
+
+- [Oracle Family](../README.md#oracle-family)
+- [Analytics & Reporting Workspace](analytics-workspace.md)
+- [Education & STEM Workspace](education-stem-workspace.md)
+
 Use the workspace details panel to understand:
 
 - current workspace status
