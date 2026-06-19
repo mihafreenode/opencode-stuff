@@ -10,6 +10,14 @@ This Oracle workspace family treats the repository as executable onboarding know
 - onboarding docs explain expected learning and delivery flows
 - safe local workspaces reduce the need for risky shared-environment access
 
+## Recommended First Reading
+
+Many Oracle developers are already experienced in enterprise systems but may be less familiar with Git-based workflows. Before continuing, review the practical Git guidance and the repository safety model:
+
+- [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
+- [Save Point](../concepts/save-point.md)
+- [Repository Workflows](../capabilities/repository.md)
+
 Typical onboarding flow:
 
 ```text
@@ -27,6 +35,10 @@ Run Tutorial
 ```
 
 The repository contains not only source code but also the knowledge required to work with that source code.
+
+Moving from an individual demo environment to team-based development?
+
+Read [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md).
 
 ## Try It Yourself
 

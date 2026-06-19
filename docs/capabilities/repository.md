@@ -8,6 +8,8 @@ This capability covers the durable repository conventions that make a workspace 
 
 Use it first when you need to understand how to work safely in the repository before changing code, publishing work, or investigating generated files.
 
+For Oracle teams moving from SVN-era workflows, [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md) explains the Oracle-specific mindset behind Save Points, repository-first documentation, and low-risk Git adoption.
+
 ## Available Tools
 
 ### Git
@@ -51,6 +53,8 @@ Common use cases: learn local rules without scanning the repository, resume work
 Primary discovery index for enabled capabilities.
 - [AGENTS Guidance](../../AGENTS.md)
 Repository-specific workflow and safety guidance.
+- [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
+Oracle-focused transition guidance that complements the repository mechanics described here.
 
 ## Related Capabilities
 

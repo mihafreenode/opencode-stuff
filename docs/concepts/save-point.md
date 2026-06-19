@@ -41,3 +41,8 @@ Hidden-folder review policy:
 Unknown hidden folders are reviewed before Save Point creation instead of being automatically ignored or automatically included. This protects important workspace content without silently committing machine-local tool state.
 
 Save Point validation inspects changed and untracked content before saving. Nested secrets or unknown hidden folders anywhere in the workspace may require review before the Save Point can be created.
+
+## See Also
+
+- [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
+Oracle-focused background on why Save Points matter, how they protect unfinished work, and how they relate to Git commits.

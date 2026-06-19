@@ -48,6 +48,15 @@ Common use cases: review application changes in Git, validate exported APEX arti
 - Use SQLcl, ORDS, and Oracle docs to validate the local Oracle environment.
 - Review Oracle examples, lifecycle docs, and source-controlled workflows from the generated guides.
 
+## Recommended Learning Path
+
+1. [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
+2. [From Oracle Demo to Oracle Onboarding](../articles/oracle-onboarding.md)
+3. [Repository Workflows](repository.md)
+4. [Testing](testing.md)
+5. [AGENTS.md Guide](../agents-guide.md)
+6. [APEXlang](../oracle-tools/apexlang.md)
+
 ## Examples
 
 - Follow `docs/oracle-plsql-demo.md`, then `docs/oracle-apex-demo.md`, then `docs/oracle-apexlang-demo.md`.

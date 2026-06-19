@@ -55,6 +55,15 @@ For onboarding and tutorial exercises, use the provided demo connection details.
 5. Run the sample query and inspect the sample PL/SQL.
 6. Ask AI to explain the demo procedure and trigger.
 
+## Recommended Learning Path
+
+1. [Practical Git for Oracle Developers](oracle/practical-git-for-oracle-developers.md)
+2. [From Oracle Demo to Oracle Onboarding](articles/oracle-onboarding.md)
+3. [Repository Workflows](capabilities/repository.md)
+4. [Testing](capabilities/testing.md)
+5. [AGENTS.md Guide](agents-guide.md)
+6. [APEXlang](oracle-tools/apexlang.md)
+
 ## Tutorial Walkthrough
 
 The workspace tutorial covers:

@@ -77,11 +77,15 @@ It demonstrates:
 1. `README.md`
 2. `docs/capabilities/README.md`
 3. `docs/capabilities/oracle.md`
-4. `docs/oracle-plsql-demo.md`
-5. `docs/oracle-apex-demo.md` when moving beyond PL/SQL
-6. `docs/oracle-apexlang-demo.md` when the team wants source-controlled APEX workflows
-7. `docs/oracle-lifecycle-workflows.md`
+4. `docs/oracle/practical-git-for-oracle-developers.md`
+5. `docs/articles/oracle-onboarding.md`
+6. `docs/capabilities/repository.md`
+7. `docs/capabilities/testing.md`
 8. `docs/agents-guide.md`
+9. `docs/oracle-plsql-demo.md`
+10. `docs/oracle-apex-demo.md` when moving beyond PL/SQL
+11. `docs/oracle-apexlang-demo.md` when the team wants source-controlled APEX workflows
+12. `docs/oracle-lifecycle-workflows.md`
 
 ## First-Time Oracle Developer Flow
 

@@ -13,6 +13,10 @@ Use it when you want to:
 - make onboarding repositories more self-describing
 - support AI-assisted work with readable application definitions
 
+New to Git-based Oracle development?
+
+See [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md).
+
 ## How It Fits The Demo
 
 - Oracle APEXlang Demo: advanced stage after PL/SQL and APEX basics

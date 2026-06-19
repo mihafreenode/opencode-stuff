@@ -32,10 +32,14 @@ Recommended order:
 
 1. read `README.md`
 2. review `docs/team-onboarding.md`
-3. review `docs/agents-guide.md` when the repository includes `AGENTS.md`
-4. provision the workspace
-5. open the workspace
-6. run the generated Oracle tutorial or verification scripts before moving to shared environments
+3. read [Practical Git for Oracle Developers](oracle/practical-git-for-oracle-developers.md)
+4. review [From Oracle Demo to Oracle Onboarding](articles/oracle-onboarding.md)
+5. review [Repository Workflows](capabilities/repository.md)
+6. review [Testing](capabilities/testing.md)
+7. review `docs/agents-guide.md` when the repository includes `AGENTS.md`
+8. provision the workspace
+9. open the workspace
+10. run the generated Oracle tutorial or verification scripts before moving to shared environments
 
 Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
 

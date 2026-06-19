@@ -28,6 +28,10 @@ Oracle APEX Demo is the middle step in that progression. It keeps PL/SQL foundat
 
 Capability discovery starts with `docs/capabilities/README.md` and `docs/capabilities/oracle.md`.
 
+Moving from an individual demo environment to team-based development?
+
+Read [Practical Git for Oracle Developers](oracle/practical-git-for-oracle-developers.md).
+
 ## Customer Orders Demo
 
 Use the shared sample domain to build a small `Customer Orders Demo` application around:

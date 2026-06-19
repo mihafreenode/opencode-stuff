@@ -17,6 +17,10 @@ APEXlang is not a replacement for APEX Builder.
 
 It complements the Builder workflow by making Oracle APEX application definitions reviewable and automatable while preserving the normal browser-based development experience.
 
+New to Git-based Oracle development?
+
+See [Practical Git for Oracle Developers](oracle/practical-git-for-oracle-developers.md).
+
 ## Progression
 
 ```text
