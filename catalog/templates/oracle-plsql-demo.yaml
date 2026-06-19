@@ -3,6 +3,8 @@
 id: oracle-plsql-demo
 displayName: Oracle PL/SQL Demo
 description: Local Oracle Free workspace with SQLcl, tutorial content, sample schema, and Oracle-focused AI skills.
+category: featured
+lifecycle: stable
 workspaceImage: ubuntu:24.04
 features:
   - core

@@ -171,6 +171,108 @@ public sealed class WorkspaceLifecycleRegressionTests
     }
 
     [Fact]
+    public async Task Regenerate_ProtectsAllFeaturedStarterAssetsAcrossAnalyticsPublishingEducationAndOracle()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = CreateTempPath("starter-assets-regenerate");
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var resolver = CreateCatalogResolver(provider);
+            var orchestrator = CreateOrchestrator(root, resolver);
+            var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+            var definition = new TemplateExpander().Expand("education-demo", template);
+            definition = new WorkspaceDefinition
+            {
+                Workspace = definition.Workspace,
+                Provider = definition.Provider,
+                Runtime = definition.Runtime,
+                Features = [.. definition.Features, "publishing-knowledge-pack"],
+                Services = definition.Services,
+                Skills = definition.Skills,
+                Mcp = definition.Mcp,
+                Terminal = definition.Terminal,
+                Agent = definition.Agent,
+                Oracle = definition.Oracle,
+                Analytics = definition.Analytics,
+            };
+
+            var snapshot = await orchestrator.CreateWorkspaceAsync(root, definition, includeRuntimeInspection: false);
+
+            var editableFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [Path.Combine("examples", "analytics", "analysis.py")] = "# keep analytics script\n",
+                [Path.Combine("examples", "analytics", "report.md")] = "# keep analytics report\n",
+                [Path.Combine("examples", "analytics", "sample-data", "survey.csv")] = "value\n1\n",
+                [Path.Combine("examples", "publishing", "report.typ")] = "= keep typst\n",
+                [Path.Combine("examples", "publishing", "paper.tex")] = "\\documentclass{article}\n\\begin{document}keep\\end{document}\n",
+                [Path.Combine("examples", "publishing", "bibliography.bib")] = "@book{keep,title={Keep}}\n",
+                [Path.Combine("examples", "publishing", "diagram.svg")] = "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n",
+                ["README.md"] = "# keep root readme\n",
+                [Path.Combine("docs", "learning-path.md")] = "# keep learning path\n",
+                [Path.Combine("docs", "educator-guide.md")] = "# keep educator guide\n",
+                [Path.Combine("examples", "survey-analysis", "analysis.py")] = "print('keep survey')\n",
+                [Path.Combine("examples", "science-report", "report.typ")] = "= keep science typst\n",
+            };
+
+            foreach (var pair in editableFiles)
+            {
+                File.WriteAllText(Path.Combine(snapshot.Paths.RootPath, pair.Key), pair.Value);
+            }
+
+            await orchestrator.RegenerateAsync(snapshot);
+
+            foreach (var pair in editableFiles)
+            {
+                Assert.Equal(pair.Value, File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, pair.Key)));
+            }
+        }
+        finally
+        {
+            DeleteTempPath(root);
+        }
+    }
+
+    [Fact]
+    public async Task RecoverWorkspace_RestoresMissingGeneratedDocsAndScripts_WithoutOverwritingDurableStarterAssets()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = CreateTempPath("recover-generated-assets");
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var resolver = CreateCatalogResolver(provider);
+            var orchestrator = CreateOrchestratorWithProviderAndDocker(root, resolver, new FakeWorkspaceProvider(), new DockerService(new ComposeOnlySuccessRunner()));
+            var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
+            var definition = new TemplateExpander().Expand("education-demo", template);
+            var snapshot = await orchestrator.CreateWorkspaceAsync(root, definition, includeRuntimeInspection: false);
+
+            var durablePath = Path.Combine(snapshot.Paths.RootPath, "examples", "survey-analysis", "analysis.py");
+            var missingDocPath = Path.Combine(snapshot.Paths.RootPath, "docs", "projects.md");
+            var missingScriptPath = Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-analytics-tooling.sh");
+            var missingGuidePath = Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md");
+
+            File.WriteAllText(durablePath, "print('keep durable learner file')\n");
+            File.Delete(missingDocPath);
+            File.Delete(missingScriptPath);
+            File.Delete(missingGuidePath);
+
+            await orchestrator.RecoverAsync(snapshot);
+
+            Assert.Equal("print('keep durable learner file')\n", File.ReadAllText(durablePath));
+            Assert.True(File.Exists(missingDocPath));
+            Assert.True(File.Exists(missingScriptPath));
+            Assert.True(File.Exists(missingGuidePath));
+        }
+        finally
+        {
+            DeleteTempPath(root);
+        }
+    }
+
+    [Fact]
     public async Task CreateCheckpointAsync_WhenSecretBearingUntrackedFileExists_BlocksWithoutChangingDurableFiles()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -404,24 +506,49 @@ public sealed class WorkspaceLifecycleRegressionTests
         var validator = new CatalogValidator();
 
         var featureErrors = validator.ValidateFeatures([
-            new FeatureManifest { Id = "bad", DisplayName = "Bad", Category = "invalid-category" }
+            new FeatureManifest { Id = "bad", DisplayName = "Bad", Category = "invalid-category", Lifecycle = "invalid-lifecycle" }
         ]);
         var packErrors = validator.ValidateKnowledgePacks([
             new KnowledgePackManifest
             {
                 Id = "broken-pack",
                 Title = "Broken Pack",
+                Category = "invalid-category",
+                Lifecycle = "invalid-lifecycle",
                 Sources = [new KnowledgePackSourceManifest { Name = "", Url = "", Category = "" }],
             }
         ]);
+        var templateErrors = validator.ValidateTemplates([
+            new TemplateManifest
+            {
+                Id = "broken-template",
+                DisplayName = "Broken Template",
+                Description = "desc",
+                Features = ["missing-feature"],
+                Services = ["missing-service"],
+                Skills = [""] ,
+                Mcp = [""] ,
+            }
+        ], [new FeatureManifest { Id = "core", DisplayName = "Core" }], Array.Empty<ServiceManifest>());
 
         var invalidPort = Assert.Throws<InvalidOperationException>(() => AnalyticsWorkspaceSettings.From(CreateDefinition("invalid-port", ["core", "analytics-reporting"], analyticsPort: -1)));
+        var invalidZeroPort = Assert.Throws<InvalidOperationException>(() => AnalyticsWorkspaceSettings.From(CreateDefinition("invalid-zero-port", ["core", "analytics-reporting"], analyticsPort: 0)));
+        var invalidUpperBoundaryPort = Assert.Throws<InvalidOperationException>(() => AnalyticsWorkspaceSettings.From(CreateDefinition("invalid-upper-boundary-port", ["core", "analytics-reporting"], analyticsPort: 65536)));
         var invalidLargePort = Assert.Throws<InvalidOperationException>(() => AnalyticsWorkspaceSettings.From(CreateDefinition("invalid-large-port", ["core", "analytics-reporting"], analyticsPort: 999999)));
 
         Assert.Contains("unsupported category", string.Join(Environment.NewLine, featureErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unsupported lifecycle", string.Join(Environment.NewLine, featureErrors), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("without 'name'", string.Join(Environment.NewLine, packErrors), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("missing 'url'", string.Join(Environment.NewLine, packErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unsupported category", string.Join(Environment.NewLine, packErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unsupported lifecycle", string.Join(Environment.NewLine, packErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("references unknown feature", string.Join(Environment.NewLine, templateErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("references unknown service", string.Join(Environment.NewLine, templateErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("empty skill id", string.Join(Environment.NewLine, templateErrors), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("empty MCP id", string.Join(Environment.NewLine, templateErrors), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("analytics.marimoPort", invalidPort.Message);
+        Assert.Contains("analytics.marimoPort", invalidZeroPort.Message);
+        Assert.Contains("analytics.marimoPort", invalidUpperBoundaryPort.Message);
         Assert.Contains("analytics.marimoPort", invalidLargePort.Message);
     }
 

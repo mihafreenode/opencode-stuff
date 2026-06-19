@@ -140,6 +140,56 @@ public sealed class WorkspaceDiscoveryIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task MultipleSupportedConfigurations_UseDocumentedDiscoveryPriority()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var repositoryRoot = CreateTempPath("workspace-discovery-priority-repo");
+        var appDataRoot = CreateTempPath("workspace-discovery-priority-appdata");
+
+        try
+        {
+            Directory.CreateDirectory(repositoryRoot);
+            await RunGitAsync(repositoryRoot, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(repositoryRoot, "README.md"), "demo\n");
+            await RunGitAsync(repositoryRoot, "add", "-A");
+            await RunGitAsync(repositoryRoot, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            WriteWorkspaceConfiguration(repositoryRoot, ".opencode/profile.yml", CreateDefinition("profile-yml"));
+            WriteWorkspaceConfiguration(repositoryRoot, ".opencode/profile.yaml", CreateDefinition("profile-yaml"));
+            WriteWorkspaceConfiguration(repositoryRoot, "workspace.yml", CreateDefinition("workspace-yml"));
+            WriteWorkspaceConfiguration(repositoryRoot, "workspace.yaml", CreateDefinition("workspace-yaml"));
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var plan = await orchestrator.InspectExistingGitCheckoutAsync(repositoryRoot, "Ignored Name");
+
+            Assert.Equal(WorkspaceDiscoveryStatus.Found, plan.DiscoveryResult.Status);
+            Assert.Equal("workspace.yaml", plan.DiscoveryResult.ConfigurationPath);
+            Assert.Equal("workspace-yaml", plan.LoadedDefinition!.Workspace.Name);
+        }
+        finally
+        {
+            DeleteTempPath(repositoryRoot);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    private static WorkspaceDefinition CreateDefinition(string workspaceName)
+        => new()
+        {
+            Workspace = new WorkspaceMetadata { Name = workspaceName, Image = "ubuntu:24.04" },
+            Provider = new WorkspaceProviderDefinition { Type = "git" },
+            Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+            Features = ["core"],
+            Services = ["postgres"],
+            Skills = [],
+            Mcp = [],
+        };
+
     private static void WriteWorkspaceConfiguration(string repositoryRoot, string relativePath, WorkspaceDefinition definition)
     {
         var fullPath = Path.Combine(repositoryRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

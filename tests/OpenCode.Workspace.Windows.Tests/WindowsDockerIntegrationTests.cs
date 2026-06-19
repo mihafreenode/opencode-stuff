@@ -356,6 +356,7 @@ public sealed class WindowsDockerIntegrationTests
 
         var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-node22-appdata-{Guid.NewGuid():N}");
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-node22-workspace-{Guid.NewGuid():N}");
+        var workspaceName = $"node22-smoke-{Guid.NewGuid():N}";
         Directory.CreateDirectory(appDataRoot);
         Directory.CreateDirectory(workspaceRoot);
 
@@ -369,7 +370,7 @@ public sealed class WindowsDockerIntegrationTests
             {
                 Workspace = new WorkspaceMetadata
                 {
-                    Name = "node22-smoke",
+                    Name = workspaceName,
                     Image = "ubuntu:24.04",
                 },
                 Provider = new WorkspaceProviderDefinition
@@ -412,9 +413,9 @@ public sealed class WindowsDockerIntegrationTests
             Assert.Contains("node: 22", workspaceYaml);
             Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", composeYaml);
             Assert.Contains("image: ubuntu:24.04", composeYaml);
-            Assert.Contains("container_name: node22-smoke-workspace", composeYaml);
+            Assert.Contains($"container_name: {DockerService.GetWorkspaceContainerName(definition)}", composeYaml);
             Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", environmentFile);
-            Assert.Contains("WORKSPACE_NAME=node22-smoke", environmentFile);
+            Assert.Contains($"WORKSPACE_NAME={workspaceName}", environmentFile);
             Assert.Contains("https://deb.nodesource.com/setup_22.x", provisionScript);
             Assert.Contains("apt-get remove -y nodejs npm || true", provisionScript);
             Assert.Contains("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES", shellInitScript);
@@ -478,6 +479,7 @@ public sealed class WindowsDockerIntegrationTests
 
         var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-analytics-appdata-{Guid.NewGuid():N}");
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-analytics-workspace-{Guid.NewGuid():N}");
+        var workspaceName = $"analytics-smoke-{Guid.NewGuid():N}";
         Directory.CreateDirectory(appDataRoot);
         Directory.CreateDirectory(workspaceRoot);
 
@@ -489,7 +491,7 @@ public sealed class WindowsDockerIntegrationTests
             var orchestrator = CreateWorkspaceOrchestrator(appDataRoot);
             var definition = new WorkspaceDefinition
             {
-                Workspace = new WorkspaceMetadata { Name = "analytics-smoke", Image = "ubuntu:24.04" },
+                Workspace = new WorkspaceMetadata { Name = workspaceName, Image = "ubuntu:24.04" },
                 Provider = new WorkspaceProviderDefinition { Type = "git" },
                 Features = new List<string> { "core", "analytics-reporting", "education-knowledge-pack", "analytics-sample-data-pack" },
                 Analytics = new AnalyticsWorkspacePreferences { MarimoPort = 2718 },
@@ -578,6 +580,7 @@ public sealed class WindowsDockerIntegrationTests
 
         var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-publishing-appdata-{Guid.NewGuid():N}");
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-publishing-workspace-{Guid.NewGuid():N}");
+        var workspaceName = $"publishing-smoke-{Guid.NewGuid():N}";
         Directory.CreateDirectory(appDataRoot);
         Directory.CreateDirectory(workspaceRoot);
 
@@ -589,7 +592,7 @@ public sealed class WindowsDockerIntegrationTests
             var orchestrator = CreateWorkspaceOrchestrator(appDataRoot);
             var definition = new WorkspaceDefinition
             {
-                Workspace = new WorkspaceMetadata { Name = "publishing-smoke", Image = "ubuntu:24.04" },
+                Workspace = new WorkspaceMetadata { Name = workspaceName, Image = "ubuntu:24.04" },
                 Provider = new WorkspaceProviderDefinition { Type = "git" },
                 Features = new List<string> { "core", "publishing-tex", "publishing-knowledge-pack" },
             };

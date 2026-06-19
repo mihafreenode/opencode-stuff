@@ -1,6 +1,8 @@
 id: web-testing
 displayName: Web Testing
 description: Browser testing workspace with Playwright support.
+category: testing
+lifecycle: preview
 features:
   - core
   - playwright

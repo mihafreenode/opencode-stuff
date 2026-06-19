@@ -78,6 +78,8 @@ public sealed class WorkspaceContentGenerator
             files[pair.Key] = pair.Value;
         }
 
+        files["README.md"] = WithGeneratedHeader(WorkspaceRootReadme(workspace));
+
         files[Path.Combine("docs", "capabilities", "README.md")] = WithGeneratedHeader(BuildCapabilityCatalogIndex(workspace));
 
         foreach (var capability in workspace.Capabilities)
@@ -91,7 +93,7 @@ public sealed class WorkspaceContentGenerator
 
         if (HasKnowledgePack(workspace, "oracle-documentation-pack") || IsOracleDemoWorkspace(definition))
         {
-            files[Path.Combine("docs", "reference", "agent-onboarding", "oracle.md")] = WithGeneratedHeader(OracleAgentOnboardingDoc());
+            files[Path.Combine("docs", "reference", "agent-onboarding", "oracle.md")] = WithGeneratedHeader(OracleAgentOnboardingDoc(definition));
         }
 
         if (HasKnowledgePack(workspace, "education-knowledge-pack") || HasFeature(definition, "analytics-reporting"))
@@ -151,6 +153,20 @@ public sealed class WorkspaceContentGenerator
             files[Path.Combine("examples", "publishing", "diagram.svg")] = PublishingDiagramSvg();
             files[Path.Combine("scripts", "validate-publishing-tooling.sh")] = PublishingToolingValidationScript();
             files[Path.Combine("scripts", "demo-publishing-workflows.sh")] = PublishingWorkflowDemoScript();
+        }
+
+        if (HasKnowledgePack(workspace, "education-knowledge-pack"))
+        {
+            files[Path.Combine("skills", "analytics", "excel-analysis.md")] = WithGeneratedHeader(SharedSkillExcelAnalysis());
+            files[Path.Combine("skills", "education", "lesson-plan.md")] = WithGeneratedHeader(SharedSkillLessonPlan());
+            files[Path.Combine("skills", "education", "project-based-learning.md")] = WithGeneratedHeader(SharedSkillProjectBasedLearning());
+        }
+
+        if (HasKnowledgePack(workspace, "publishing-knowledge-pack"))
+        {
+            files[Path.Combine("skills", "publishing", "markdown-report.md")] = WithGeneratedHeader(SharedSkillMarkdownReport());
+            files[Path.Combine("skills", "publishing", "typst-report.md")] = WithGeneratedHeader(SharedSkillTypstReport());
+            files[Path.Combine("skills", "publishing", "latex-paper.md")] = WithGeneratedHeader(SharedSkillLatexPaper());
         }
 
         if (IsEducationStemDemoWorkspace(definition))
@@ -701,9 +717,6 @@ public sealed class WorkspaceContentGenerator
 
         if (path.Contains("oracle-tools", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-samples", StringComparison.OrdinalIgnoreCase)
-            || path.Contains("oracle-plsql-demo", StringComparison.OrdinalIgnoreCase)
-            || path.Contains("oracle-apex-demo", StringComparison.OrdinalIgnoreCase)
-            || path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-documentation-strategy", StringComparison.OrdinalIgnoreCase)
             || path.Contains("oracle-documentation-discovery", StringComparison.OrdinalIgnoreCase)
             || path.Contains("agent-onboarding/oracle", StringComparison.OrdinalIgnoreCase)
@@ -711,6 +724,21 @@ public sealed class WorkspaceContentGenerator
             || path.Contains("skills/oracle/", StringComparison.OrdinalIgnoreCase))
         {
             return IsOracleDemoWorkspace(workspace.Definition);
+        }
+
+        if (path.Contains("oracle-plsql-demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsOracleDemoWorkspace(workspace.Definition);
+        }
+
+        if (path.Contains("oracle-apexlang-demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return HasFeature(workspace.Definition, "oracle-apexlang-demo");
+        }
+
+        if (path.Contains("oracle-apex-demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return HasFeature(workspace.Definition, "oracle-apex-demo") || HasFeature(workspace.Definition, "oracle-apexlang-demo");
         }
 
         return true;
@@ -1259,19 +1287,34 @@ scripts/demo-documentation-workflows.sh
 - `docs/capabilities/spell-checking.md` when spell checking is enabled
 """;
 
-    private static string OracleAgentOnboardingDoc() => """
-# Oracle Agent Onboarding
+    private static string OracleAgentOnboardingDoc(WorkspaceDefinition definition)
+    {
+        var lines = new List<string>
+        {
+            "# Oracle Agent Onboarding",
+            string.Empty,
+            "Use the local Oracle indexes first, then switch to the official Oracle documentation linked from them.",
+            string.Empty,
+            "- start at `docs/reference/oracle-knowledge-map.yaml`",
+            "- use `docs/reference/oracle-plsql-index.md` for PL/SQL and database topics",
+        };
 
-Use the local Oracle indexes first, then switch to the official Oracle documentation linked from them.
+        if (HasFeature(definition, "oracle-apex-demo") || HasFeature(definition, "oracle-apexlang-demo"))
+        {
+            lines.Add("- use `docs/reference/oracle-apex-index.md` and `docs/reference/oracle-ords-index.md` when APEX or ORDS are involved");
+        }
 
-- start at `docs/reference/oracle-knowledge-map.yaml`
-- use `docs/reference/oracle-plsql-index.md` for PL/SQL and database topics
-- use `docs/reference/oracle-apex-index.md` and `docs/reference/oracle-ords-index.md` when APEX or ORDS are involved
-- use `docs/reference/oracle-apexlang-index.md` when the artifact is an `.apx` definition
-- use `skills/oracle/` for task-oriented repository guidance
+        if (HasFeature(definition, "oracle-apexlang-demo"))
+        {
+            lines.Add("- use `docs/reference/oracle-apexlang-index.md` when the artifact is an `.apx` definition");
+        }
 
-This workspace includes references, not mirrored Oracle manuals.
-""";
+        lines.Add("- use `skills/oracle/` for task-oriented repository guidance");
+        lines.Add(string.Empty);
+        lines.Add("This workspace includes references, not mirrored Oracle manuals.");
+
+        return string.Join("\n", lines);
+    }
 
     private static string AnalyticsAgentOnboardingDoc() => """
 # Analytics Agent Onboarding
@@ -1800,6 +1843,121 @@ rsvg-convert -f pdf -o "${output_dir}/diagram.pdf" "${workspace_root}/examples/p
 qpdf --check "${output_dir}/diagram.pdf"
 pdftotext "${output_dir}/diagram.pdf" - >/dev/null || true
 """);
+
+    private static string WorkspaceRootReadme(ResolvedWorkspace workspace)
+    {
+        var lines = new List<string>
+        {
+            $"# {workspace.Definition.Workspace.Name}",
+            string.Empty,
+            "This workspace was generated from `workspace.yaml` and the enabled catalog features.",
+            string.Empty,
+            "Repository-first onboarding:",
+            string.Empty,
+            "```text",
+            "Repository",
+            "    ↓",
+            "Workspace Discovery",
+            "    ↓",
+            "Provision Environment",
+            "    ↓",
+            "Read Documentation",
+            "    ↓",
+            "Start Working",
+            "```",
+            string.Empty,
+            "Start here:",
+            string.Empty,
+            "- `docs/capabilities/README.md`",
+            "- `docs/team-onboarding.md`",
+            "- `docs/troubleshooting/workspace-sessions.md`",
+            string.Empty,
+            "Generated files are replaceable. Durable edits belong in repository files such as docs, examples, notes, and reports.",
+        };
+
+        return string.Join("\n", lines);
+    }
+
+    private static string SharedSkillExcelAnalysis() => """
+# Excel Analysis
+
+Use this skill when moving from spreadsheet work into reproducible analytics.
+
+Suggested sequence:
+
+1. identify the columns
+2. clean obvious missing or inconsistent values
+3. summarize counts, averages, or percentages
+4. create one simple chart
+5. explain the result in plain language
+""";
+
+    private static string SharedSkillLessonPlan() => """
+# Lesson Plan
+
+Use this guide when turning one starter project into a short classroom or mentoring activity.
+
+Suggested structure:
+
+1. start with one question
+2. inspect the dataset together
+3. make one chart
+4. ask learners to explain it
+5. improve the project or report
+""";
+
+    private static string SharedSkillProjectBasedLearning() => """
+# Project-Based Learning
+
+Use this guide when a learner is ready to extend a starter example.
+
+Project sequence:
+
+1. choose a question
+2. reuse a starter dataset or bring your own
+3. build one experiment or chart
+4. explain what worked and what is uncertain
+5. turn the result into a durable report
+""";
+
+    private static string SharedSkillMarkdownReport() => """
+# Markdown Report
+
+Use Markdown when the simplest durable source is enough.
+
+Recommended workflow:
+
+1. write the report in `.md`
+2. build the PDF with `pandoc`
+3. validate with `qpdf --check`
+4. inspect text with `pdftotext`
+""";
+
+    private static string SharedSkillTypstReport() => """
+# Typst Report
+
+Use Typst for concise, modern, review-friendly publishing.
+
+Recommended workflow:
+
+1. keep the source in `.typ`
+2. compile with `typst compile`
+3. validate with `qpdf --check`
+4. inspect output text with `pdftotext`
+""";
+
+    private static string SharedSkillLatexPaper() => """
+# LaTeX Paper
+
+Use LaTeX when academic compatibility or existing templates require it.
+
+Recommended workflow:
+
+1. keep the paper in `.tex`
+2. keep citations in `.bib`
+3. build with `latexmk -pdf`
+4. validate with `qpdf --check`
+""";
 
     private static string EducationStemDemoReadme() => """
 # Education & STEM Demo

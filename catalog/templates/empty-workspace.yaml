@@ -1,6 +1,8 @@
 id: empty-workspace
 displayName: Empty Workspace
 description: Minimal workspace that still includes the always-on core feature.
+category: general
+lifecycle: stable
 features:
   - core
 services: []

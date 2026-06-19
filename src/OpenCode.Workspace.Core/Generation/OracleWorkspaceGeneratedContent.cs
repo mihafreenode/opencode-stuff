@@ -24,7 +24,7 @@ internal static class OracleWorkspaceGeneratedContent
             [Path.Combine("docs", "oracle-samples.md")] = withGeneratedHeader(OracleSamplesDoc()),
             [Path.Combine("docs", "oracle-documentation-strategy.md")] = withGeneratedHeader(OracleDocumentationStrategyDoc()),
             [Path.Combine("docs", "oracle-documentation-discovery.md")] = withGeneratedHeader(OracleDocumentationDiscoveryDoc()),
-            [Path.Combine("docs", "team-onboarding.md")] = withGeneratedHeader(TeamOnboardingDoc()),
+            [Path.Combine("docs", "team-onboarding.md")] = withGeneratedHeader(TeamOnboardingDoc(kind)),
             [Path.Combine("docs", "oracle-lifecycle-workflows.md")] = withGeneratedHeader(OracleLifecycleWorkflowsDoc(kind)),
             [Path.Combine("docs", "sharing-oracle-workspaces.md")] = withGeneratedHeader(SharingOracleWorkspacesDoc(kind)),
             [Path.Combine("docs", "oracle-tools", "README.md")] = withGeneratedHeader(OracleToolsIndexDoc()),
@@ -1305,94 +1305,109 @@ Products
 5. export and validate application changes
 """;
 
-    private static string TeamOnboardingDoc() => """
-## Team Onboarding
+    private static string TeamOnboardingDoc(OracleWorkspaceKind kind)
+    {
+        var lines = new List<string>
+        {
+            "## Team Onboarding",
+            string.Empty,
+            "The repository is the source of truth for Oracle workspace onboarding.",
+            string.Empty,
+            "### Expected Flow",
+            string.Empty,
+            "```text",
+            "Clone Repository",
+            "    ↓",
+            "Open Existing Repository",
+            "    ↓",
+            "Workspace Discovered",
+            "    ↓",
+            "Review Configuration",
+            "    ↓",
+            "Provision Environment",
+            "    ↓",
+            "Read Docs",
+            "    ↓",
+            "Run Tutorial",
+            "    ↓",
+            "Start Learning",
+            "```",
+            string.Empty,
+            "### Connecting to a Workspace Session",
+            string.Empty,
+            "Most onboarding exercises assume the user is connected to an OpenCode session rather than a root shell.",
+            string.Empty,
+            "Typical workflow:",
+            string.Empty,
+            "```bash",
+            "su opencode",
+            "cd /workspace",
+            "opencode -s resume",
+            "```",
+            string.Empty,
+            "Useful commands:",
+            string.Empty,
+            "```bash",
+            "opencode sessions",
+            "opencode -s <session-id>",
+            "```",
+            string.Empty,
+            "Suggested first questions:",
+            string.Empty,
+            "- What capabilities are available?",
+            "- What onboarding docs exist?",
+            "- What tools are installed?",
+            string.Empty,
+            "### Using Docker Desktop Exec",
+            string.Empty,
+            "Docker Desktop Exec is a valid way to access a workspace.",
+            string.Empty,
+            "You may be attached to:",
+            string.Empty,
+            "- root shell",
+            "- opencode user shell",
+            "- OpenCode session",
+            string.Empty,
+            "OpenCode sessions provide the best onboarding experience.",
+            string.Empty,
+            "### Durable Inputs",
+            string.Empty,
+            "- `workspace.yaml`",
+            "- `compose.yaml`",
+            "- `.env.example`",
+            "- `sql/`",
+            "- `apex/`",
+            "- `scripts/`",
+            "- `docs/`",
+            "- `AGENTS.md`",
+            string.Empty,
+            "### Capability Discovery",
+            string.Empty,
+            "Start here:",
+            string.Empty,
+            "- `docs/capabilities/README.md`",
+            "- `docs/capabilities/oracle.md`",
+            "- `docs/oracle-plsql-demo.md`",
+        };
 
-The repository is the source of truth for Oracle workspace onboarding.
+        if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
+        {
+            lines.Add("- `docs/oracle-apex-demo.md`");
+        }
 
-### Expected Flow
+        if (kind == OracleWorkspaceKind.ApexLang)
+        {
+            lines.Add("- `docs/oracle-apexlang-demo.md`");
+        }
 
-```text
-Clone Repository
-    ↓
-Open Existing Repository
-    ↓
-Workspace Discovered
-    ↓
-Review Configuration
-    ↓
-Provision Environment
-    ↓
-Read Docs
-    ↓
-Run Tutorial
-    ↓
-Start Learning
-```
+        lines.Add("- `docs/oracle-tools/README.md`");
+        lines.Add("- `docs/oracle-samples.md`");
+        lines.Add("- `docs/troubleshooting/workspace-sessions.md`");
+        lines.Add(string.Empty);
+        lines.Add("No manual recreation of Oracle settings should be required when the repository already contains those files.");
 
-### Connecting to a Workspace Session
-
-Most onboarding exercises assume the user is connected to an OpenCode session rather than a root shell.
-
-Typical workflow:
-
-```bash
-su opencode
-cd /workspace
-opencode -s resume
-```
-
-Useful commands:
-
-```bash
-opencode sessions
-opencode -s <session-id>
-```
-
-Suggested first questions:
-
-- What capabilities are available?
-- What onboarding docs exist?
-- What tools are installed?
-
-### Using Docker Desktop Exec
-
-Docker Desktop Exec is a valid way to access a workspace.
-
-You may be attached to:
-
-- root shell
-- opencode user shell
-- OpenCode session
-
-OpenCode sessions provide the best onboarding experience.
-
-### Durable Inputs
-
-- `workspace.yaml`
-- `compose.yaml`
-- `.env.example`
-- `sql/`
-- `apex/`
-- `scripts/`
-- `docs/`
-- `AGENTS.md`
-
-### Capability Discovery
-
-Start here:
-
-- `docs/capabilities/README.md`
-- `docs/capabilities/oracle.md`
-- `docs/oracle-plsql-demo.md`
-- `docs/oracle-apex-demo.md`
-- `docs/oracle-apexlang-demo.md`
-- `docs/oracle-tools/README.md`
-- `docs/oracle-samples.md`
-- `docs/troubleshooting/workspace-sessions.md`
-
-No manual recreation of Oracle settings should be required when the repository already contains those files.
-""";
+        return string.Join("\n", lines);
+    }
 
     private static string OracleLifecycleWorkflowsDoc(OracleWorkspaceKind kind) => $"""
 ## Oracle Lifecycle Workflows

@@ -30,3 +30,8 @@ Generated artifacts:
 Standard workflow:
 
 `source -> build -> validate -> inspect`
+
+Validation guidance:
+
+- validate PDFs with `qpdf --check`
+- inspect text with `pdftotext`

@@ -3,6 +3,8 @@
 id: oracle-apexlang-demo
 displayName: Oracle APEXlang Demo
 description: Local Oracle Free workspace with SQLcl, ORDS, real APEX runtime provisioning, source-controlled APEXlang scripts, and full Oracle onboarding workflow docs.
+category: featured
+lifecycle: stable
 workspaceImage: ubuntu:24.04
 features:
   - core

@@ -51,6 +51,22 @@ public sealed class KnowledgePackStaticValidationTests
     {
         var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
         var packs = provider.LoadKnowledgePacks();
+        var allowedSourceCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "analytics",
+            "apex",
+            "apexlang",
+            "citations",
+            "database",
+            "diagrams",
+            "humanities",
+            "ords",
+            "pdf",
+            "plsql",
+            "publishing",
+            "python",
+            "stem",
+        };
 
         Assert.NotEmpty(packs);
         Assert.Equal(packs.Count, packs.Select(pack => pack.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -60,6 +76,8 @@ public sealed class KnowledgePackStaticValidationTests
             Assert.False(string.IsNullOrWhiteSpace(pack.Id));
             Assert.False(string.IsNullOrWhiteSpace(pack.Title));
             Assert.False(string.IsNullOrWhiteSpace(pack.Category));
+            Assert.True(CatalogConventions.ValidFeatureCategories.Contains(pack.Category), $"Expected valid knowledge pack category for {pack.Id}: {pack.Category}");
+            Assert.True(string.IsNullOrWhiteSpace(pack.Lifecycle) || CatalogConventions.ValidLifecycles.Contains(pack.Lifecycle), $"Expected valid lifecycle for knowledge pack: {pack.Id}");
             Assert.NotEmpty(pack.Sources);
 
             foreach (var source in pack.Sources)
@@ -67,6 +85,42 @@ public sealed class KnowledgePackStaticValidationTests
                 Assert.False(string.IsNullOrWhiteSpace(source.Name));
                 Assert.False(string.IsNullOrWhiteSpace(source.Url));
                 Assert.False(string.IsNullOrWhiteSpace(source.Category));
+                Assert.True(Uri.TryCreate(source.Url, UriKind.Absolute, out _), $"Expected absolute URL in knowledge pack '{pack.Id}': {source.Url}");
+                Assert.True(allowedSourceCategories.Contains(source.Category), $"Expected supported source category in knowledge pack '{pack.Id}': {source.Category}");
+            }
+        }
+    }
+
+    [Fact]
+    public void KnowledgePackReferences_OnboardingAndSkills_ResolveAndAreReachable()
+    {
+        var repoRoot = TestPaths.RepositoryRoot;
+        var provider = new BuiltInCatalogProvider(Path.Combine(repoRoot, "catalog"));
+        var packs = provider.LoadKnowledgePacks();
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var generatedFiles = new WorkspaceContentGenerator().Generate(resolver.Resolve(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "knowledge-pack-audit", Image = "ubuntu:24.04" },
+            Features = ["core", "analytics-reporting", "education-knowledge-pack", "publishing-tex", "publishing-knowledge-pack", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+            Skills = [],
+            Mcp = [],
+        }));
+        var generatedAgents = generatedFiles["AGENTS.md"];
+
+        foreach (var pack in packs)
+        {
+            foreach (var onboardingPath in pack.Onboarding)
+            {
+                var fullPath = Path.Combine(repoRoot, onboardingPath.Replace('/', Path.DirectorySeparatorChar));
+                Assert.True(File.Exists(fullPath), $"Expected onboarding path to exist: {pack.Id} -> {onboardingPath}");
+                Assert.Contains(onboardingPath, generatedAgents);
+            }
+
+            foreach (var skillPath in pack.SkillRefs)
+            {
+                var fullPath = Path.Combine(repoRoot, skillPath.Replace('/', Path.DirectorySeparatorChar));
+                Assert.True(File.Exists(fullPath), $"Expected skill ref to exist: {pack.Id} -> {skillPath}");
             }
         }
     }

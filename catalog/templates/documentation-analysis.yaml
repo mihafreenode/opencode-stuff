@@ -1,6 +1,8 @@
 id: documentation-analysis
 displayName: Documentation Features
 description: Complete documentation workspace with PDF, diagrams, report generation, OCR, and validation tooling.
+category: featured
+lifecycle: stable
 features:
   - core
   - document-processing

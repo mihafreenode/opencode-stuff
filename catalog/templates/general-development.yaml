@@ -3,6 +3,8 @@
 id: general-development
 displayName: General Development
 description: General purpose development workspace with the core feature.
+category: general
+lifecycle: stable
 features:
   - core
 services: []
