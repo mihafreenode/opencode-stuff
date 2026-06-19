@@ -23,32 +23,45 @@ public sealed class WorkspaceRuntimeStateService
     }
 
     public WorkspaceRuntimeStateRecord? Read(string path)
+        => ReadWithStatus(path).State;
+
+    public WorkspaceRuntimeStateReadResult ReadWithStatus(string path)
     {
         if (!File.Exists(path))
         {
-            return null;
+            return new WorkspaceRuntimeStateReadResult
+            {
+                Status = WorkspaceRuntimeStateReadStatus.Missing,
+            };
         }
 
         try
         {
             using var reader = File.OpenText(path);
             var model = _deserializer.Deserialize<WorkspaceRuntimeStateYamlModel>(reader);
-            return model is null
-                ? null
-                : new WorkspaceRuntimeStateRecord
-                {
-                    ResolvedEngine = model.ResolvedEngine ?? string.Empty,
-                    ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
-                    CompatibilityMode = model.CompatibilityMode ?? string.Empty,
-                    LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
-                };
+            return new WorkspaceRuntimeStateReadResult
+            {
+                Status = WorkspaceRuntimeStateReadStatus.Loaded,
+                State = model is null
+                    ? null
+                    : new WorkspaceRuntimeStateRecord
+                    {
+                        ResolvedEngine = model.ResolvedEngine ?? string.Empty,
+                        ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
+                        CompatibilityMode = model.CompatibilityMode ?? string.Empty,
+                        LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
+                    },
+            };
         }
         catch (Exception exception) when (exception is YamlException or InvalidCastException or FormatException)
         {
             // Runtime state is machine-local cache data. If it becomes corrupt, the
             // workspace should continue loading and regenerate it after a known-good
             // runtime operation instead of blocking repository access.
-            return null;
+            return new WorkspaceRuntimeStateReadResult
+            {
+                Status = WorkspaceRuntimeStateReadStatus.Corrupted,
+            };
         }
     }
 
