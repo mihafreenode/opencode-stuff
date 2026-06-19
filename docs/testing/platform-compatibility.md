@@ -21,6 +21,16 @@ Native execution is preferred. Compatibility validation is automatic when Docker
 
 Buildx and QEMU validation improve confidence, but they do not replace final validation on real hardware.
 
+`opencode validate-platform` distinguishes between Buildx build support and container execution support. A builder may not advertise `linux/arm64` while `docker run --platform linux/arm64 ...` still works correctly on the current machine.
+
+If `linux/arm64` container execution fails locally with an `exec format error`, treat that as a host-specific validation failure. It means the current machine cannot execute `linux/arm64` containers in its present configuration, not that the workspace is invalid on real ARM64 hardware.
+
+Typical remedies are:
+
+- enable container emulation
+- use a builder or runtime with `linux/arm64` support
+- validate on real ARM64 hardware
+
 ## Multi-Architecture Validation
 
 Run:
@@ -47,6 +57,8 @@ Expected:
 ```text
 aarch64
 ```
+
+This runtime execution probe is related to Buildx support, but it is not the same signal. Buildx helps validate multi-architecture image build paths, while `docker run --platform ...` confirms whether the local runtime can actually execute a container for the requested target.
 
 Before changing provisioning, runtime logic, package installation, container images, or template definitions, validate both:
 

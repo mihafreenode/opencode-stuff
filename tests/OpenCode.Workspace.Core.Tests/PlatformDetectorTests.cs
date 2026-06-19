@@ -38,6 +38,18 @@ public sealed class PlatformDetectorTests
         Assert.Equal(["linux/amd64", "linux/arm64"], platforms);
     }
 
+    [Fact]
+    public void ParseSupportedPlatforms_NormalizesBuilderSummaryTokens()
+    {
+        var platforms = PlatformDetector.ParseSupportedPlatforms(
+        [
+            "default* docker running v0.0.0 linux/amd64 (+3)",
+            "arm-builder docker running v0.0.0 linux/arm64*",
+        ]);
+
+        Assert.Equal(["linux/amd64", "linux/arm64"], platforms);
+    }
+
     private static ProcessResult Success(string stdout) => new()
     {
         Command = "docker",

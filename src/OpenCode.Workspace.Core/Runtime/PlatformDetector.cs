@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Runtime;
@@ -92,7 +93,7 @@ public sealed class PlatformDetector : IPlatformDetector
             EngineReachable = engineReachable,
             BuildxAvailable = buildxAvailable,
             SupportedPlatforms = supportedPlatforms,
-            DiagnosticSummary = string.Join(" ", diagnostics.Where(item => !string.IsNullOrWhiteSpace(item))),
+            DiagnosticSummary = string.Join("\n", diagnostics.Where(item => !string.IsNullOrWhiteSpace(item))),
         };
     }
 
@@ -115,7 +116,13 @@ public sealed class PlatformDetector : IPlatformDetector
                     continue;
                 }
 
-                var normalized = candidate.Trim();
+                var match = Regex.Match(candidate, @"linux/[a-z0-9]+", RegexOptions.IgnoreCase);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var normalized = match.Value.Trim();
                 if (normalized.EndsWith("*", StringComparison.Ordinal))
                 {
                     normalized = normalized[..^1];

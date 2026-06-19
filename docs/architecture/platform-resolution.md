@@ -30,10 +30,15 @@ The first phase checks:
 - workspace configuration loading
 - runtime resolution
 - Buildx platform advertisement when available
+- container execution probe for the requested target when Docker runtime probing is possible
 - compose generation
 - provisioning script generation
 
-This is generation and compatibility validation, not a full runtime smoke test.
+Buildx build support and runtime execution support are related but not identical. A machine may execute `linux/arm64` containers successfully even when the active Buildx builder only advertises `linux/amd64` variants.
+
+The inverse can also happen: generation may succeed while the current host cannot execute `linux/arm64` containers locally. In that case `validate-platform` reports a host validation failure and recommends emulation, a runtime with `linux/arm64` support, or validation on real ARM64 hardware.
+
+This is generation and compatibility validation with a lightweight execution probe, not a full runtime smoke test.
 
 ## Resolution policy
 

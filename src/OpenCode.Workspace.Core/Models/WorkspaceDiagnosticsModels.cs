@@ -54,6 +54,9 @@ public sealed class PlatformValidationReport
     public required string TargetPlatform { get; init; }
     public string? WorkspaceConfigurationPath { get; init; }
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
+    public string? ResolvedPlatform { get; init; }
+    public string? CompatibilityDisplay { get; init; }
+    public bool ValidatedWithFallback { get; init; }
     public IReadOnlyList<PlatformValidationCheckResult> Checks { get; init; } = Array.Empty<PlatformValidationCheckResult>();
     public bool IsSuccess { get; init; }
     public bool HasWarnings { get; init; }

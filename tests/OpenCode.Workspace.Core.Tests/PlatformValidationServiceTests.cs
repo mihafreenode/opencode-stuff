@@ -25,6 +25,7 @@ public sealed class PlatformValidationServiceTests
             });
 
             Assert.True(report.IsSuccess);
+            Assert.Equal(targetPlatform, report.TargetPlatform);
             Assert.Contains(report.Checks, check => check.Name == "Compose generation" && check.Severity == DiagnosticSeverity.Information);
             Assert.Contains(report.Checks, check => check.Name == "Provisioning generation" && check.Severity == DiagnosticSeverity.Information);
         }
@@ -122,7 +123,8 @@ public sealed class PlatformValidationServiceTests
 
             Assert.True(report.IsSuccess);
             Assert.True(report.HasWarnings);
-            Assert.Contains(report.Checks, check => check.Name == "Buildx support" && check.Severity == DiagnosticSeverity.Warning);
+            Assert.Contains(report.Checks, check => check.Name == "Buildx build support" && check.Severity == DiagnosticSeverity.Warning);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Severity == DiagnosticSeverity.Information);
         }
         finally
         {
@@ -158,7 +160,8 @@ public sealed class PlatformValidationServiceTests
 
             Assert.True(report.IsSuccess);
             Assert.True(report.HasWarnings);
-            Assert.Contains(report.Checks, check => check.Name == "Buildx support" && check.Severity == DiagnosticSeverity.Warning);
+            Assert.Contains(report.Checks, check => check.Name == "Buildx build support" && check.Severity == DiagnosticSeverity.Warning);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Severity == DiagnosticSeverity.Information);
         }
         finally
         {
@@ -240,12 +243,207 @@ public sealed class PlatformValidationServiceTests
         }
     }
 
+    [Fact]
+    public async Task ValidateAsync_WhenBuildxMissingTargetAndContainerExecutionFails_ReturnsFailure()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var report = await CreateService(
+                root,
+                hostPlatform: new HostPlatformInfo
+                {
+                    OperatingSystem = HostOperatingSystem.Windows,
+                    Architecture = HostArchitecture.X64,
+                    NativeContainerPlatform = "linux/amd64",
+                    Docker = new ContainerRuntimeAvailability
+                    {
+                        EngineId = "docker",
+                        CliAvailable = true,
+                        EngineReachable = true,
+                        BuildxAvailable = true,
+                        SupportedPlatforms = ["linux/amd64"],
+                    },
+                },
+                containerExecutionProbe: (_, _) => Task.FromResult(Failure("docker run", "exec format error"))).ValidateAsync(new PlatformValidationRequest
+                {
+                    WorkspacePath = root,
+                    TargetPlatform = "linux/arm64",
+                });
+
+            Assert.False(report.IsSuccess);
+            Assert.Contains(report.Checks, check => check.Name == "Buildx build support" && check.Severity == DiagnosticSeverity.Warning);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Severity == DiagnosticSeverity.Error);
+            Assert.Contains(report.Checks, check => check.Name == "Compose generation" && check.Severity == DiagnosticSeverity.Information);
+            Assert.Contains(report.Checks, check => check.Name == "Provisioning generation" && check.Severity == DiagnosticSeverity.Information);
+            Assert.Equal("linux/arm64 validation failed on this host.", report.Summary);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenArm64ExecutionFailsWithExecFormatError_ReportsHostSpecificGuidance()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var report = await CreateService(
+                root,
+                hostPlatform: new HostPlatformInfo
+                {
+                    OperatingSystem = HostOperatingSystem.Linux,
+                    Architecture = HostArchitecture.X64,
+                    NativeContainerPlatform = "linux/amd64",
+                    Docker = new ContainerRuntimeAvailability
+                    {
+                        EngineId = "docker",
+                        CliAvailable = true,
+                        EngineReachable = true,
+                        BuildxAvailable = true,
+                        SupportedPlatforms = ["linux/amd64"],
+                    },
+                },
+                containerExecutionProbe: (_, _) => Task.FromResult(Failure("docker run", "exec /usr/bin/uname: exec format error"))).ValidateAsync(new PlatformValidationRequest
+                {
+                    WorkspacePath = root,
+                    TargetPlatform = "linux/arm64",
+                });
+
+            var executionCheck = Assert.Single(report.Checks, check => check.Name == "Container execution");
+            Assert.Equal(DiagnosticSeverity.Error, executionCheck.Severity);
+            Assert.Contains("This host cannot currently execute linux/arm64 containers.", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("Enable container emulation, use a builder/runtime with linux/arm64 support, or validate on real ARM64 hardware.", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("exec /usr/bin/uname: exec format error", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Equal("linux/arm64 validation failed on this host.", report.Summary);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_RequestedArm64_WithResolvedArm64_ReportsDirectValidation()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var report = await CreateService(
+                root,
+                hostPlatform: new HostPlatformInfo
+                {
+                    OperatingSystem = HostOperatingSystem.Linux,
+                    Architecture = HostArchitecture.Arm64,
+                    NativeContainerPlatform = "linux/arm64",
+                    Docker = new ContainerRuntimeAvailability
+                    {
+                        EngineId = "docker",
+                        CliAvailable = true,
+                        EngineReachable = true,
+                        BuildxAvailable = true,
+                        SupportedPlatforms = ["linux/amd64", "linux/arm64"],
+                    },
+                },
+                runtimeResolver: new FakeRuntimeResolver(new ResolvedRuntimePlan
+                {
+                    Runtime = "docker",
+                    TargetPlatform = "linux/arm64",
+                    CompatibilityMode = RuntimeCompatibilityMode.Native,
+                    SupportLevel = SupportLevel.NativeTested,
+                    IsAvailable = true,
+                    DiagnosticExplanation = "OK",
+                })).ValidateAsync(new PlatformValidationRequest { WorkspacePath = root, TargetPlatform = "linux/arm64" });
+
+            Assert.True(report.IsSuccess);
+            Assert.Equal("linux/arm64", report.TargetPlatform);
+            Assert.Equal("linux/arm64", report.ResolvedPlatform);
+            Assert.Equal("direct", report.CompatibilityDisplay);
+            Assert.False(report.ValidatedWithFallback);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Message.Contains("aarch64", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_RequestedArm64_WithResolvedAmd64_ReportsFallbackValidation()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var report = await CreateService(
+                root,
+                runtimeResolver: new FakeRuntimeResolver(new ResolvedRuntimePlan
+                {
+                    Runtime = "docker",
+                    TargetPlatform = "linux/amd64",
+                    CompatibilityMode = RuntimeCompatibilityMode.Emulated,
+                    SupportLevel = SupportLevel.EmulatedTested,
+                    IsAvailable = true,
+                    DiagnosticExplanation = "OK",
+                })).ValidateAsync(new PlatformValidationRequest { WorkspacePath = root, TargetPlatform = "linux/arm64" });
+
+            Assert.True(report.IsSuccess);
+            Assert.Equal("linux/arm64", report.TargetPlatform);
+            Assert.Equal("linux/amd64", report.ResolvedPlatform);
+            Assert.Equal("emulated fallback", report.CompatibilityDisplay);
+            Assert.True(report.ValidatedWithFallback);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Message.Contains("aarch64", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ValidateAsync_RequestedAmd64_WithResolvedAmd64_ReportsDirectValidation()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var report = await CreateService(
+                root,
+                runtimeResolver: new FakeRuntimeResolver(new ResolvedRuntimePlan
+                {
+                    Runtime = "docker",
+                    TargetPlatform = "linux/amd64",
+                    CompatibilityMode = RuntimeCompatibilityMode.Native,
+                    SupportLevel = SupportLevel.NativeTested,
+                    IsAvailable = true,
+                    DiagnosticExplanation = "OK",
+                })).ValidateAsync(new PlatformValidationRequest { WorkspacePath = root, TargetPlatform = "linux/amd64" });
+
+            Assert.True(report.IsSuccess);
+            Assert.Equal("linux/amd64", report.TargetPlatform);
+            Assert.Equal("linux/amd64", report.ResolvedPlatform);
+            Assert.Equal("direct", report.CompatibilityDisplay);
+            Assert.False(report.ValidatedWithFallback);
+            Assert.Contains(report.Checks, check => check.Name == "Container execution" && check.Message.Contains("x86_64", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
     private static PlatformValidationService CreateService(
         string root,
         HostPlatformInfo? hostPlatform = null,
         IRuntimeResolver? runtimeResolver = null,
         Func<ResolvedWorkspace, WorkspacePaths, string>? composeGeneration = null,
-        Func<ResolvedWorkspace, string>? provisioningGeneration = null)
+        Func<ResolvedWorkspace, string>? provisioningGeneration = null,
+        Func<string, CancellationToken, Task<ProcessResult>>? containerExecutionProbe = null)
     {
         var effectiveHost = hostPlatform ?? new HostPlatformInfo
         {
@@ -282,8 +480,42 @@ public sealed class PlatformValidationServiceTests
             }),
             resolver,
             composeGeneration ?? new ComposeGenerator().Generate,
-            provisioningGeneration ?? new ProvisioningScriptGenerator().Generate);
+            provisioningGeneration ?? new ProvisioningScriptGenerator().Generate,
+            containerExecutionProbe ?? DefaultContainerExecutionProbe);
     }
+
+    private static Task<ProcessResult> DefaultContainerExecutionProbe(string targetPlatform, CancellationToken cancellationToken)
+        => Task.FromResult(Success("docker run", targetPlatform.Equals("linux/arm64", StringComparison.OrdinalIgnoreCase) ? "aarch64" : "x86_64"));
+
+    [Fact]
+    public void IsExpectedExecutionArchitecture_AcceptsArm64Aarch64()
+        => Assert.True(PlatformValidationService.IsExpectedExecutionArchitecture("linux/arm64", "aarch64"));
+
+    [Fact]
+    public void IsExpectedExecutionArchitecture_AcceptsAmd64X8664()
+        => Assert.True(PlatformValidationService.IsExpectedExecutionArchitecture("linux/amd64", "x86_64"));
+
+    private static ProcessResult Success(string command, string stdout) => new()
+    {
+        Command = command,
+        ExitCode = 0,
+        StandardOutput = stdout,
+        StandardError = string.Empty,
+        StandardOutputLines = [stdout],
+        StandardErrorLines = Array.Empty<string>(),
+        Duration = TimeSpan.FromMilliseconds(10),
+    };
+
+    private static ProcessResult Failure(string command, string stderr) => new()
+    {
+        Command = command,
+        ExitCode = 1,
+        StandardOutput = string.Empty,
+        StandardError = stderr,
+        StandardOutputLines = Array.Empty<string>(),
+        StandardErrorLines = [stderr],
+        Duration = TimeSpan.FromMilliseconds(10),
+    };
 
     private static string CreateWorkspaceRoot()
     {

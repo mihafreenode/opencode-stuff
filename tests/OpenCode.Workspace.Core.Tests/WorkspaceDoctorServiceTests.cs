@@ -43,6 +43,45 @@ public sealed class WorkspaceDoctorServiceTests
     }
 
     [Fact]
+    public async Task DiagnoseAsync_OnNativeLinuxAmd64Workspace_ReturnsRunnableNativePlan()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var hostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Linux,
+                Architecture = HostArchitecture.X64,
+                HostDescription = "Linux X64",
+                NativeContainerPlatform = "linux/amd64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = ["linux/amd64", "linux/arm64"],
+                    DiagnosticSummary = "Docker CLI available. Docker engine reachable. Docker Buildx available for linux/amd64, linux/arm64.",
+                },
+            };
+            var service = CreateService(hostPlatform, new RuntimeResolver());
+
+            var result = await service.DiagnoseAsync(root);
+
+            Assert.True(result.CanRun);
+            Assert.Equal("docker", result.ResolvedRuntimePlan?.Runtime);
+            Assert.Equal("linux/amd64", result.ResolvedRuntimePlan?.TargetPlatform);
+            Assert.Equal("linux/amd64", result.ResolvedRuntimePlan?.HostPlatform.NativeContainerPlatform, ignoreCase: true);
+            Assert.Equal("Workspace can run on this machine.", result.Recommendation);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task DiagnoseAsync_WhenDockerCliIsUnavailable_ReturnsActionableRecommendation()
     {
         var root = CreateWorkspaceRoot();

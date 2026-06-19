@@ -22,6 +22,10 @@ public static class CliOutputFormatter
         lines.Add($"  Docker Engine: {FormatAvailability(docker?.EngineReachable)}");
         lines.Add($"  Buildx: {FormatAvailability(docker?.BuildxAvailable)}");
         lines.Add($"  Platforms: {FormatPlatforms(docker?.SupportedPlatforms)}");
+        foreach (var detail in FormatDiagnosticSummary(docker?.DiagnosticSummary))
+        {
+            lines.Add($"  Detail: {detail}");
+        }
         lines.Add(string.Empty);
         lines.Add("Workspace:");
         lines.Add($"  workspace.yaml: {FormatWorkspaceConfigStatus(result)}");
@@ -31,10 +35,10 @@ public static class CliOutputFormatter
         lines.Add("Resolution:");
         lines.Add($"  Runtime: {result.ResolvedRuntimePlan?.Runtime ?? "unresolved"}");
         lines.Add($"  Target platform: {result.ResolvedRuntimePlan?.TargetPlatform ?? "unresolved"}");
-        lines.Add($"  Compatibility: {FormatCompatibility(result.ResolvedRuntimePlan?.CompatibilityMode)}");
+        lines.Add($"  Compatibility: {FormatCompatibility(result.ResolvedRuntimePlan)}");
         lines.Add(string.Empty);
         lines.Add("Result:");
-        lines.Add($"  {result.Recommendation}");
+        lines.Add($"  {FormatConclusion(result)}");
 
         return string.Join(Environment.NewLine, lines);
     }
@@ -45,7 +49,10 @@ public static class CliOutputFormatter
         {
             "OpenCode Platform Validation",
             string.Empty,
-            $"Target: {report.TargetPlatform}",
+            $"Requested target: {report.TargetPlatform}",
+            $"Resolved workspace platform: {report.ResolvedPlatform ?? report.ResolvedRuntimePlan?.TargetPlatform ?? "unresolved"}",
+            $"Compatibility: {report.CompatibilityDisplay ?? FormatCompatibility(report.ResolvedRuntimePlan)}",
+            $"Requested target execution: {FormatRequestedTargetExecution(report)}",
             string.Empty,
             "Checks:",
         };
@@ -61,6 +68,12 @@ public static class CliOutputFormatter
 
         lines.Add(string.Empty);
         lines.Add("Result:");
+        if (report.ResolvedRuntimePlan is not null)
+        {
+            lines.Add(report.ValidatedWithFallback
+                ? $"  Requested target '{report.TargetPlatform}' was validated through fallback behavior using '{report.ResolvedPlatform ?? report.ResolvedRuntimePlan.TargetPlatform}'."
+                : $"  Requested target '{report.TargetPlatform}' was validated directly.");
+        }
         lines.Add($"  {report.Summary}");
         return string.Join(Environment.NewLine, lines);
     }
@@ -92,6 +105,22 @@ public static class CliOutputFormatter
     private static string FormatPlatforms(IReadOnlyList<string>? platforms)
         => platforms is { Count: > 0 } ? string.Join(", ", platforms) : "none reported";
 
+    private static IEnumerable<string> FormatDiagnosticSummary(string? diagnosticSummary)
+    {
+        if (string.IsNullOrWhiteSpace(diagnosticSummary))
+        {
+            yield break;
+        }
+
+        foreach (var segment in diagnosticSummary.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                yield return segment.Trim();
+            }
+        }
+    }
+
     private static string FormatWorkspaceConfigStatus(WorkspaceDoctorResult result)
         => result.WorkspaceConfigurationStatus switch
         {
@@ -108,8 +137,37 @@ public static class CliOutputFormatter
             _ => "missing",
         };
 
-    private static string FormatCompatibility(RuntimeCompatibilityMode? mode)
-        => mode?.ToString().ToLowerInvariant() ?? "unresolved";
+    private static string FormatCompatibility(ResolvedRuntimePlan? plan)
+    {
+        if (plan is null)
+        {
+            return "unresolved";
+        }
+
+        if (plan.IsAvailable && string.Equals(plan.TargetPlatform, plan.HostPlatform.NativeContainerPlatform, StringComparison.OrdinalIgnoreCase))
+        {
+            return "native";
+        }
+
+        return plan.CompatibilityMode switch
+        {
+            RuntimeCompatibilityMode.MultiArchitecture => "compatible multi-architecture",
+            RuntimeCompatibilityMode.Emulated => "emulated",
+            RuntimeCompatibilityMode.Unavailable => "unavailable",
+            RuntimeCompatibilityMode.Native => "native",
+            _ => "unresolved",
+        };
+    }
+
+    private static string FormatConclusion(WorkspaceDoctorResult result)
+    {
+        if (result.CanRun)
+        {
+            return "Workspace can run on this machine.";
+        }
+
+        return result.Recommendation;
+    }
 
     private static string FormatArchitecture(HostArchitecture? architecture)
         => architecture switch
@@ -126,6 +184,25 @@ public static class CliOutputFormatter
             DiagnosticSeverity.Warning => "Warning",
             _ => "OK",
         };
+
+    private static string FormatRequestedTargetExecution(PlatformValidationReport report)
+    {
+        var executionCheck = report.Checks.FirstOrDefault(check => string.Equals(check.Name, "Container execution", StringComparison.Ordinal));
+        if (executionCheck is null)
+        {
+            return "not probed";
+        }
+
+        return executionCheck.Severity switch
+        {
+            DiagnosticSeverity.Information => string.IsNullOrWhiteSpace(executionCheck.Message)
+                ? $"{report.TargetPlatform} OK"
+                : $"{report.TargetPlatform} {executionCheck.Message}",
+            DiagnosticSeverity.Warning => $"{report.TargetPlatform} warning",
+            DiagnosticSeverity.Error => $"{report.TargetPlatform} failed on this host",
+            _ => "unresolved",
+        };
+    }
 
     private static string FormatPath(string workspaceRootPath, string path)
     {
