@@ -1,5 +1,6 @@
 using System.IO;
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.Services;
 
 namespace OpenCode.Workspace.Windows.Tests;
@@ -129,5 +130,15 @@ public sealed class WindowsCapabilityIntegrationTests
         var fragment = File.ReadAllText(manager.GetFragmentFilePath());
         Assert.Contains("OpenCode Stuff - profile-smoke", fragment);
         Assert.Contains("JetBrainsMono Nerd Font", fragment);
+    }
+
+    [Fact]
+    public void WorkspacePathBuilder_PreservesWindowsAttachPathsWhileAddingRuntimeStatePath()
+    {
+        var paths = WorkspacePathBuilder.Build("C:\\Workspaces\\Demo");
+
+        Assert.EndsWith("attach-workspace.ps1", paths.AttachWrapperScriptPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("terminal-diagnostics.ps1", paths.TerminalDiagnosticsScriptPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(".opencode\\local\\runtime-state.yaml", paths.RuntimeStatePath, StringComparison.OrdinalIgnoreCase);
     }
 }

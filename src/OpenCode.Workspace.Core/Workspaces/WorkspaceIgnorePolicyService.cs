@@ -41,6 +41,7 @@ public sealed class WorkspaceIgnorePolicyService
 
     private static readonly string[] IgnoredPrefixes =
     [
+        ".opencode/local/",
         ".cache/",
         ".pytest_cache/",
         ".mypy_cache/",
@@ -60,6 +61,7 @@ public sealed class WorkspaceIgnorePolicyService
     private static readonly string[] RecursiveSkipPrefixes =
     [
         ".git/",
+        ".opencode/local/",
         "node_modules/",
         "bin/",
         "obj/",

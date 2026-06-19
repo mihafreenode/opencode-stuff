@@ -36,6 +36,8 @@ public sealed class WorkspacePaths
 {
     public required string RootPath { get; init; }
     public required string GitIgnorePath { get; init; }
+    public required string OpencodePath { get; init; }
+    public required string OpencodeLocalPath { get; init; }
     public required string WorkspaceYamlRelativePath { get; init; }
     public required string WorkspaceYamlPath { get; init; }
     public required string ComposePath { get; init; }
@@ -54,6 +56,7 @@ public sealed class WorkspacePaths
     public required string AttachWrapperScriptPath { get; init; }
     public required string AttachDiagnosticsLogPath { get; init; }
     public required string TerminalDiagnosticsScriptPath { get; init; }
+    public required string RuntimeStatePath { get; init; }
     public required string AppliedStatePath { get; init; }
     public required string HistoryPath { get; init; }
     public required string CheckpointsPath { get; init; }
@@ -91,6 +94,8 @@ public sealed class WorkspaceSnapshot
     public required WorkspaceSafetySnapshot Safety { get; init; }
     public required WorkspaceSessionSnapshot Session { get; init; }
     public WorkspaceAppliedState? AppliedState { get; init; }
+    public WorkspaceRuntimeStateRecord? LocalRuntimeState { get; init; }
+    public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool UpdateRequired { get; init; }
 }
 

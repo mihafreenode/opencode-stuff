@@ -22,7 +22,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly PoLocalizationService _localization;
     private readonly WindowsHostCapabilities _windowsHostCapabilities;
     private readonly WindowsTerminalProfileManager _profileManager;
-    private readonly DockerService _dockerService;
+    private readonly IContainerRuntime _containerRuntime;
     private readonly NerdFontInstaller _nerdFontInstaller;
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly QuickTutorialService _tutorialService;
@@ -67,7 +67,7 @@ public sealed class MainWindowViewModel : ObservableObject
         PoLocalizationService localization,
         WindowsHostCapabilities windowsHostCapabilities,
         WindowsTerminalProfileManager profileManager,
-        DockerService dockerService,
+        IContainerRuntime containerRuntime,
         NerdFontInstaller nerdFontInstaller,
         WorkspaceSavePointMessageService savePointMessageService,
         QuickTutorialService tutorialService,
@@ -80,7 +80,7 @@ public sealed class MainWindowViewModel : ObservableObject
         _localization = localization;
         _windowsHostCapabilities = windowsHostCapabilities;
         _profileManager = profileManager;
-        _dockerService = dockerService;
+        _containerRuntime = containerRuntime;
         _nerdFontInstaller = nerdFontInstaller;
         _savePointMessageService = savePointMessageService;
         _tutorialService = tutorialService;
@@ -1580,7 +1580,7 @@ public sealed class MainWindowViewModel : ObservableObject
             "View Oracle Logs",
             async snapshot =>
             {
-                var result = await _dockerService.GetServiceLogsAsync(snapshot.Paths, snapshot.Definition, "oracle-demo", CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
+                var result = await _containerRuntime.GetServiceLogsAsync(snapshot.Paths, snapshot.Definition, "oracle-demo", CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
                 if (!result.IsSuccess)
                 {
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError);
@@ -2157,8 +2157,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
         try
         {
-            var containerName = DockerService.GetWorkspaceContainerName(SelectedWorkspace.Snapshot.Definition);
-            var result = await _dockerService.RunSimpleDockerCommandAsync(["exec", containerName, "bash", "-lc", "command -v starship >/dev/null 2>&1 && starship --version"]);
+            var containerName = _containerRuntime.GetWorkspaceContainerName(SelectedWorkspace.Snapshot.Definition);
+            var result = await _containerRuntime.RunSimpleDockerCommandAsync(["exec", containerName, "bash", "-lc", "command -v starship >/dev/null 2>&1 && starship --version"]);
             Diagnostics.Add(new DiagnosticResult
             {
                 Code = "terminal.starship",

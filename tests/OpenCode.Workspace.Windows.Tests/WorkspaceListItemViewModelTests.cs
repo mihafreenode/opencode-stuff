@@ -70,6 +70,8 @@ public sealed class WorkspaceListItemViewModelTests
         {
             RootPath = rootPath,
             GitIgnorePath = Path.Combine(rootPath, ".gitignore"),
+            OpencodePath = Path.Combine(rootPath, ".opencode"),
+            OpencodeLocalPath = Path.Combine(rootPath, ".opencode", "local"),
             WorkspaceYamlRelativePath = "workspace.yaml",
             WorkspaceYamlPath = Path.Combine(rootPath, "workspace.yaml"),
             ComposePath = Path.Combine(rootPath, "compose.yaml"),
@@ -88,6 +90,7 @@ public sealed class WorkspaceListItemViewModelTests
             AttachWrapperScriptPath = Path.Combine(rootPath, "mounts", "config", "attach.ps1"),
             AttachDiagnosticsLogPath = Path.Combine(rootPath, "mounts", "config", "attach-diagnostics.log"),
             TerminalDiagnosticsScriptPath = Path.Combine(rootPath, "mounts", "config", "terminal-diagnostics.ps1"),
+            RuntimeStatePath = Path.Combine(rootPath, ".opencode", "local", "runtime-state.yaml"),
             AppliedStatePath = Path.Combine(rootPath, "mounts", "config", "applied-state.yaml"),
             HistoryPath = Path.Combine(rootPath, "history"),
             CheckpointsPath = Path.Combine(rootPath, "history", "checkpoints"),

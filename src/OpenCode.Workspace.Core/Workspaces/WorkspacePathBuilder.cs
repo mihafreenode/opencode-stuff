@@ -6,6 +6,8 @@ public static class WorkspacePathBuilder
 {
     public static WorkspacePaths Build(string workspaceRootPath, string configurationRelativePath = "workspace.yaml")
     {
+        var opencodePath = Path.Combine(workspaceRootPath, ".opencode");
+        var opencodeLocalPath = Path.Combine(opencodePath, "local");
         var mountsRoot = Path.Combine(workspaceRootPath, "mounts");
         var configPath = Path.Combine(mountsRoot, "config");
         var historyPath = Path.Combine(workspaceRootPath, "history");
@@ -18,6 +20,8 @@ public static class WorkspacePathBuilder
         {
             RootPath = workspaceRootPath,
             GitIgnorePath = Path.Combine(workspaceRootPath, ".gitignore"),
+            OpencodePath = opencodePath,
+            OpencodeLocalPath = opencodeLocalPath,
             WorkspaceYamlRelativePath = normalizedConfigurationPath,
             WorkspaceYamlPath = Path.Combine(workspaceRootPath, normalizedConfigurationPath.Replace('/', Path.DirectorySeparatorChar)),
             ComposePath = Path.Combine(workspaceRootPath, "compose.yaml"),
@@ -36,6 +40,7 @@ public static class WorkspacePathBuilder
             AttachWrapperScriptPath = Path.Combine(workspaceRootPath, "attach-workspace.ps1"),
             AttachDiagnosticsLogPath = Path.Combine(workspaceRootPath, "attach-diagnostics.log"),
             TerminalDiagnosticsScriptPath = Path.Combine(workspaceRootPath, "terminal-diagnostics.ps1"),
+            RuntimeStatePath = Path.Combine(opencodeLocalPath, "runtime-state.yaml"),
             AppliedStatePath = Path.Combine(configPath, "applied-state.yaml"),
             HistoryPath = historyPath,
             CheckpointsPath = checkpointsPath,

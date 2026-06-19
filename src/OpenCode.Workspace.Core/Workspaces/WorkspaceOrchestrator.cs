@@ -27,10 +27,59 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceTimelineService _workspaceTimelineService;
     private readonly WorkspaceSafetyService _workspaceSafetyService;
     private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
+    private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
     private readonly IWorkspaceProvider _workspaceProvider;
-    private readonly DockerService _dockerService;
+    private readonly IContainerRuntime _containerRuntime;
+    private readonly IPlatformDetector _platformDetector;
+    private readonly IRuntimeResolver _runtimeResolver;
     private readonly ITerminalLauncher _terminalLauncher;
     private readonly OpenCodeSessionService _openCodeSessionService = new();
+
+    public WorkspaceOrchestrator(
+        WorkspaceYamlService workspaceYamlService,
+        WorkspaceDiscoveryService workspaceDiscoveryService,
+        WorkspaceRepository workspaceRepository,
+        WorkspaceResolver workspaceResolver,
+        ComposeGenerator composeGenerator,
+        EnvironmentFileGenerator environmentFileGenerator,
+        ProvisioningScriptGenerator provisioningScriptGenerator,
+        TerminalArtifactsGenerator terminalArtifactsGenerator,
+        AttachArtifactsGenerator attachArtifactsGenerator,
+        WorkspaceContentGenerator workspaceContentGenerator,
+        WorkspaceAppliedStateService workspaceAppliedStateService,
+        WorkspaceCheckpointService workspaceCheckpointService,
+        WorkspaceTimelineService workspaceTimelineService,
+        WorkspaceSafetyService workspaceSafetyService,
+        WorkspaceIgnorePolicyService workspaceIgnorePolicyService,
+        WorkspaceRuntimeStateService workspaceRuntimeStateService,
+        IWorkspaceProvider workspaceProvider,
+        IContainerRuntime containerRuntime,
+        IPlatformDetector platformDetector,
+        IRuntimeResolver runtimeResolver,
+        ITerminalLauncher terminalLauncher)
+    {
+        _workspaceYamlService = workspaceYamlService;
+        _workspaceDiscoveryService = workspaceDiscoveryService;
+        _workspaceRepository = workspaceRepository;
+        _workspaceResolver = workspaceResolver;
+        _composeGenerator = composeGenerator;
+        _environmentFileGenerator = environmentFileGenerator;
+        _provisioningScriptGenerator = provisioningScriptGenerator;
+        _terminalArtifactsGenerator = terminalArtifactsGenerator;
+        _attachArtifactsGenerator = attachArtifactsGenerator;
+        _workspaceContentGenerator = workspaceContentGenerator;
+        _workspaceAppliedStateService = workspaceAppliedStateService;
+        _workspaceCheckpointService = workspaceCheckpointService;
+        _workspaceTimelineService = workspaceTimelineService;
+        _workspaceSafetyService = workspaceSafetyService;
+        _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
+        _workspaceRuntimeStateService = workspaceRuntimeStateService;
+        _workspaceProvider = workspaceProvider;
+        _containerRuntime = containerRuntime;
+        _platformDetector = platformDetector;
+        _runtimeResolver = runtimeResolver;
+        _terminalLauncher = terminalLauncher;
+    }
 
     public WorkspaceOrchestrator(
         WorkspaceYamlService workspaceYamlService,
@@ -51,25 +100,29 @@ public sealed class WorkspaceOrchestrator
         IWorkspaceProvider workspaceProvider,
         DockerService dockerService,
         ITerminalLauncher terminalLauncher)
+        : this(
+            workspaceYamlService,
+            workspaceDiscoveryService,
+            workspaceRepository,
+            workspaceResolver,
+            composeGenerator,
+            environmentFileGenerator,
+            provisioningScriptGenerator,
+            terminalArtifactsGenerator,
+            attachArtifactsGenerator,
+            workspaceContentGenerator,
+            workspaceAppliedStateService,
+            workspaceCheckpointService,
+            workspaceTimelineService,
+            workspaceSafetyService,
+            workspaceIgnorePolicyService,
+            new WorkspaceRuntimeStateService(),
+            workspaceProvider,
+            new DockerContainerRuntime(dockerService),
+            new PlatformDetector(new ProcessRunner()),
+            new RuntimeResolver(),
+            terminalLauncher)
     {
-        _workspaceYamlService = workspaceYamlService;
-        _workspaceDiscoveryService = workspaceDiscoveryService;
-        _workspaceRepository = workspaceRepository;
-        _workspaceResolver = workspaceResolver;
-        _composeGenerator = composeGenerator;
-        _environmentFileGenerator = environmentFileGenerator;
-        _provisioningScriptGenerator = provisioningScriptGenerator;
-        _terminalArtifactsGenerator = terminalArtifactsGenerator;
-        _attachArtifactsGenerator = attachArtifactsGenerator;
-        _workspaceContentGenerator = workspaceContentGenerator;
-        _workspaceAppliedStateService = workspaceAppliedStateService;
-        _workspaceCheckpointService = workspaceCheckpointService;
-        _workspaceTimelineService = workspaceTimelineService;
-        _workspaceSafetyService = workspaceSafetyService;
-        _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
-        _workspaceProvider = workspaceProvider;
-        _dockerService = dockerService;
-        _terminalLauncher = terminalLauncher;
     }
 
     public IReadOnlyList<WorkspaceRecord> LoadWorkspaceRecords() => _workspaceRepository.LoadAll();
@@ -95,12 +148,14 @@ public sealed class WorkspaceOrchestrator
 
         var generatedArtifacts = GenerateArtifacts(definition, paths);
         var appliedState = _workspaceAppliedStateService.Read(paths.AppliedStatePath);
+        var localRuntimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var updateRequired = IsUpdateRequired(paths, generatedArtifacts, appliedState);
         var latestCheckpoint = _workspaceCheckpointService.GetLatest(paths.CheckpointIndexPath);
         var lastSuccessfulPublishUtc = _workspaceTimelineService.GetLastPublishUtc(paths.TimelinePath);
         var gitState = await _workspaceProvider.GetGitStateAsync(paths, definition, cancellationToken);
         var ignorePolicyReview = _workspaceIgnorePolicyService.ReviewWorkspace(paths.RootPath);
         var safety = _workspaceSafetyService.Build(gitState, latestCheckpoint, lastSuccessfulPublishUtc, ignorePolicyReview);
+        var resolvedRuntimePlan = await TryResolveRuntimePlanAsync(definition, cancellationToken);
 
         var snapshot = new WorkspaceSnapshot
         {
@@ -118,6 +173,8 @@ public sealed class WorkspaceOrchestrator
                 State = WorkspaceSessionState.Unknown,
             },
             AppliedState = appliedState,
+            LocalRuntimeState = localRuntimeState,
+            ResolvedRuntimePlan = resolvedRuntimePlan,
             UpdateRequired = updateRequired,
         };
 
@@ -137,6 +194,8 @@ public sealed class WorkspaceOrchestrator
                     State = WorkspaceSessionState.Unknown,
                 },
                 AppliedState = snapshot.AppliedState,
+                LocalRuntimeState = snapshot.LocalRuntimeState,
+                ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
                 UpdateRequired = snapshot.UpdateRequired,
             };
         }
@@ -159,6 +218,8 @@ public sealed class WorkspaceOrchestrator
                 State = sessionState,
             },
             AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
         };
     }
@@ -436,7 +497,7 @@ public sealed class WorkspaceOrchestrator
     {
         await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Validating regenerated compose.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var result = await _containerRuntime.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace recovery failed.");
     }
 
@@ -444,7 +505,7 @@ public sealed class WorkspaceOrchestrator
     {
         await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Starting workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var result = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace start failed.");
         await ValidateWorkspaceRunningAsync(snapshot, log, cancellationToken);
     }
@@ -452,7 +513,7 @@ public sealed class WorkspaceOrchestrator
     public async Task StopAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         Log(log, "app", $"Stopping workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.StopAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var result = await _containerRuntime.StopAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         EnsureSuccess(result, "Workspace stop failed.");
     }
 
@@ -460,7 +521,7 @@ public sealed class WorkspaceOrchestrator
     {
         await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Removing Docker resources for workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.RemoveAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var result = await _containerRuntime.RemoveAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace removal failed while cleaning up Docker resources.");
     }
 
@@ -468,7 +529,7 @@ public sealed class WorkspaceOrchestrator
     {
         await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Resetting runtime resources for workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.ResetAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var result = await _containerRuntime.ResetAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace reset failed while removing runtime resources.");
     }
 
@@ -476,12 +537,13 @@ public sealed class WorkspaceOrchestrator
     {
         var generatedArtifacts = await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Preparing workspace '{snapshot.Definition.Workspace.Name}'.");
-        var startResult = await _dockerService.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before provisioning.");
         await ValidateWorkspaceRunningAsync(snapshot, log, cancellationToken);
 
         await ProvisionRunningWorkspaceAsync(snapshot, log, cancellationToken);
         _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts.Artifacts));
+        await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
     }
 
     public async Task AttachAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -489,7 +551,7 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", $"Ensuring workspace '{snapshot.Definition.Workspace.Name}' is running before attach.");
         LogAttach(log, snapshot, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
         await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
-        var startResult = await _dockerService.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+        var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before attach.");
         await ValidateWorkspaceRunningAsync(snapshot, log, cancellationToken);
         LogAttach(log, snapshot, "Container status: running.");
@@ -654,7 +716,7 @@ public sealed class WorkspaceOrchestrator
     public async Task RepairWorkspaceFilePermissionsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         Log(log, "app", $"Repairing Docker-owned file permissions for '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _dockerService.NormalizeWorkspaceFilePermissionsAsync(snapshot.Paths.RootPath, log, cancellationToken);
+        var result = await _containerRuntime.NormalizeWorkspaceFilePermissionsAsync(snapshot.Paths.RootPath, log, cancellationToken);
         EnsureSuccess(result, "Workspace file permission repair failed.");
     }
 
@@ -850,6 +912,8 @@ public sealed class WorkspaceOrchestrator
     private static void CreateFolderStructure(WorkspacePaths paths)
     {
         Directory.CreateDirectory(paths.RootPath);
+        Directory.CreateDirectory(paths.OpencodePath);
+        Directory.CreateDirectory(paths.OpencodeLocalPath);
         Directory.CreateDirectory(paths.MountsRootPath);
         Directory.CreateDirectory(paths.InboxPath);
         Directory.CreateDirectory(paths.WorkspacePath);
@@ -881,6 +945,7 @@ public sealed class WorkspaceOrchestrator
                 "mounts/inbox/",
                 "history/checkpoints/",
                 "artifacts/runs/",
+                ".opencode/local/",
                 string.Empty);
             File.WriteAllText(paths.GitIgnorePath, gitIgnore.Replace("\r\n", "\n", StringComparison.Ordinal));
         }
@@ -901,7 +966,7 @@ public sealed class WorkspaceOrchestrator
     private async Task ValidateWorkspaceRunningAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
         Log(log, "app", "Validating Docker Compose service status.");
-        var composePsResult = await _dockerService.GetPsAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var composePsResult = await _containerRuntime.GetPsAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         EnsureSuccess(composePsResult, "Docker Compose status check failed.");
 
         var expectedServiceNames = new[] { "workspace" }.Concat(snapshot.Definition.Services).ToList();
@@ -914,8 +979,8 @@ public sealed class WorkspaceOrchestrator
         }
 
         Log(log, "app", "Checking for the expected workspace container in docker ps output.");
-        var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
-        var dockerPsResult = await _dockerService.RunSimpleDockerCommandAsync(
+        var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
+        var dockerPsResult = await _containerRuntime.RunSimpleDockerCommandAsync(
             new[] { "ps", "--filter", $"name={containerName}", "--format", "{{.Names}}" },
             log,
             cancellationToken);
@@ -932,14 +997,14 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", "Validating provisioned workspace tools.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
-        var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
-        var toolCheck = await _dockerService.RunSimpleDockerCommandAsync(
+        var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
+        var toolCheck = await _containerRuntime.RunSimpleDockerCommandAsync(
             new[] { "exec", containerName, "bash", "-lc", "command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode" },
             log,
             cancellationToken);
         EnsureSuccess(toolCheck, "Workspace tool validation failed after provisioning.");
 
-        var nodeCheck = await _dockerService.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
+        var nodeCheck = await _containerRuntime.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
         EnsureSuccess(nodeCheck, "Workspace Node.js validation failed after provisioning.");
 
         var actualNodeVersion = nodeCheck.StandardOutputLines.FirstOrDefault(line => line.TrimStart().StartsWith("v", StringComparison.Ordinal));
@@ -955,13 +1020,13 @@ public sealed class WorkspaceOrchestrator
     {
         Log(log, "app", "Checking OpenCode user directories.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
-        var result = await _dockerService.EnsureOpencodeUserDirectoriesAsync(snapshot.Definition, log, cancellationToken);
+        var result = await _containerRuntime.EnsureOpencodeUserDirectoriesAsync(snapshot.Definition, log, cancellationToken);
         EnsureSuccess(result, "OpenCode user directory initialization failed.");
     }
 
     private async Task EnsureProvisionedForAttachAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
-        var userCheck = await _dockerService.CheckOpencodeUserAsync(snapshot.Definition, log, cancellationToken);
+        var userCheck = await _containerRuntime.CheckOpencodeUserAsync(snapshot.Definition, log, cancellationToken);
         var requiresProvisioning = snapshot.AppliedState is null || snapshot.UpdateRequired || !userCheck.IsSuccess;
 
         if (requiresProvisioning)
@@ -982,23 +1047,24 @@ public sealed class WorkspaceOrchestrator
     {
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
         Log(log, "app", "Running provisioning script inside the workspace container.");
-        var provisionResult = await _dockerService.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
+        var provisionResult = await _containerRuntime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
         EnsureSuccess(provisionResult, "Workspace provisioning failed.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
+        await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
     }
 
     private async Task LogWorkspaceRuntimeDiagnosticsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
-        var imageResult = await _dockerService.InspectContainerImageAsync(snapshot.Definition, log, cancellationToken);
+        var imageResult = await _containerRuntime.InspectContainerImageAsync(snapshot.Definition, log, cancellationToken);
         if (imageResult.IsSuccess)
         {
             var imageId = imageResult.StandardOutputLines.FirstOrDefault()?.Trim();
             if (!string.IsNullOrWhiteSpace(imageId))
             {
                 Log(log, "runtime", $"Container image id: {imageId}");
-                var repoTagsResult = await _dockerService.InspectImageRepoTagsAsync(imageId, log, cancellationToken);
+                var repoTagsResult = await _containerRuntime.InspectImageRepoTagsAsync(imageId, log, cancellationToken);
                 if (repoTagsResult.IsSuccess)
                 {
                     Log(log, "runtime", $"Container image tags: {repoTagsResult.StandardOutput.Trim()}");
@@ -1006,7 +1072,7 @@ public sealed class WorkspaceOrchestrator
             }
         }
 
-        var nodeToolResult = await _dockerService.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
+        var nodeToolResult = await _containerRuntime.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
         if (nodeToolResult.IsSuccess)
         {
             foreach (var line in nodeToolResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
@@ -1015,7 +1081,7 @@ public sealed class WorkspaceOrchestrator
             }
         }
 
-        var aptPolicyResult = await _dockerService.GetNodeAptPolicyAsync(snapshot.Definition, log, cancellationToken);
+        var aptPolicyResult = await _containerRuntime.GetNodeAptPolicyAsync(snapshot.Definition, log, cancellationToken);
         if (aptPolicyResult.IsSuccess)
         {
             foreach (var line in aptPolicyResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
@@ -1024,7 +1090,7 @@ public sealed class WorkspaceOrchestrator
             }
         }
 
-        var osReleaseResult = await _dockerService.GetOsReleaseAsync(snapshot.Definition, log, cancellationToken);
+        var osReleaseResult = await _containerRuntime.GetOsReleaseAsync(snapshot.Definition, log, cancellationToken);
         if (osReleaseResult.IsSuccess)
         {
             foreach (var line in osReleaseResult.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)))
@@ -1053,7 +1119,7 @@ public sealed class WorkspaceOrchestrator
 
     private async Task ValidateOpencodeUserExistsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
-        var userCheck = await _dockerService.CheckOpencodeUserAsync(snapshot.Definition, log, cancellationToken);
+        var userCheck = await _containerRuntime.CheckOpencodeUserAsync(snapshot.Definition, log, cancellationToken);
         if (userCheck.IsSuccess)
         {
             return;
@@ -1079,10 +1145,10 @@ public sealed class WorkspaceOrchestrator
             return WorkspaceRuntimeState.Stopped;
         }
 
-        var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
+        var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
         try
         {
-            var result = await _dockerService.RunSimpleDockerCommandAsync(
+            var result = await _containerRuntime.RunSimpleDockerCommandAsync(
                 ["ps", "--filter", $"name={containerName}", "--format", "{{.Names}}"],
                 cancellationToken: cancellationToken);
 
@@ -1100,7 +1166,7 @@ public sealed class WorkspaceOrchestrator
     {
         try
         {
-            var result = await _dockerService.ListOpenCodeSessionsAsync(definition, cancellationToken: cancellationToken);
+            var result = await _containerRuntime.ListOpenCodeSessionsAsync(definition, cancellationToken: cancellationToken);
             if (!result.IsSuccess)
             {
                 return WorkspaceSessionState.Unknown;
@@ -1112,7 +1178,7 @@ public sealed class WorkspaceOrchestrator
                 {
                     try
                     {
-                        var export = await _dockerService.ExportOpenCodeSessionAsync(definition, session, cancellationToken: cancellationToken);
+                        var export = await _containerRuntime.ExportOpenCodeSessionAsync(definition, session, cancellationToken: cancellationToken);
                         return _openCodeSessionService.TryGetSessionDirectory(export.StandardOutput);
                     }
                     catch
@@ -1130,6 +1196,32 @@ public sealed class WorkspaceOrchestrator
         {
             return WorkspaceSessionState.Unknown;
         }
+    }
+
+    private async Task<ResolvedRuntimePlan?> TryResolveRuntimePlanAsync(WorkspaceDefinition definition, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var hostPlatform = await _platformDetector.DetectAsync(cancellationToken);
+            return await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task WriteRuntimeStateAsync(WorkspaceDefinition definition, WorkspacePaths paths, CancellationToken cancellationToken)
+    {
+        var hostPlatform = await _platformDetector.DetectAsync(cancellationToken);
+        var resolvedRuntimePlan = await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
+        if (!resolvedRuntimePlan.IsAvailable)
+        {
+            return;
+        }
+
+        var runtimeState = _workspaceRuntimeStateService.CreateState(resolvedRuntimePlan, DateTimeOffset.UtcNow);
+        _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
     }
 
     private static void EnsureSuccess(ProcessResult result, string failureMessage)

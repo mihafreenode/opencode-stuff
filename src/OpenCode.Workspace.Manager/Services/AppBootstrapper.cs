@@ -36,6 +36,9 @@ public sealed class AppBootstrapper
         var ignorePolicyService = new WorkspaceIgnorePolicyService();
         var workspaceProvider = new GitWorkspaceProvider(processRunner, ignorePolicyService);
         var dockerService = new DockerService(processRunner);
+        var containerRuntime = new DockerContainerRuntime(dockerService);
+        var platformDetector = new PlatformDetector(processRunner);
+        var runtimeResolver = new RuntimeResolver();
         var terminalLauncher = new WindowsTerminalLauncher(new AttachCommandBuilder());
         var profileManager = new WindowsTerminalProfileManager();
         var hostCapabilities = new WindowsHostCapabilities(processRunner);
@@ -60,12 +63,15 @@ public sealed class AppBootstrapper
             timelineService,
             safetyService,
             ignorePolicyService,
+            new WorkspaceRuntimeStateService(),
             workspaceProvider,
-            dockerService,
+            containerRuntime,
+            platformDetector,
+            runtimeResolver,
             terminalLauncher);
 
         var localization = new PoLocalizationService(localizationRoot, languageCode);
         var diagnostics = new EnvironmentDiagnostics(processRunner);
-        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, dockerService, nerdFontInstaller, savePointMessageService, tutorialService, tmpReprovisionWorkflowService, appBuildInfoService);
+        return new MainWindowViewModel(orchestrator, catalogProvider, diagnostics, localization, hostCapabilities, profileManager, containerRuntime, nerdFontInstaller, savePointMessageService, tutorialService, tmpReprovisionWorkflowService, appBuildInfoService);
     }
 }
