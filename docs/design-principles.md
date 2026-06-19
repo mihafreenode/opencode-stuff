@@ -101,6 +101,14 @@ In practice, that means important capabilities should expose visible representat
 
 Repository-owned materials should help understanding survive team changes, machine changes, tool changes, vendor changes, and AI model changes.
 
+## Preserve The Path To Understanding
+
+Simplified workflows should not sever access to the underlying system.
+
+Important capabilities should leave a visible path to where behavior is defined, changed, validated, and recovered.
+
+That path should remain available through repository-owned assets such as `workspace.yaml`, capability docs, generated headers, onboarding guides, tests, validation scripts, and recovery documentation.
+
 ## Knowledge Transfer As A Design Requirement
 
 Important workflows should become easier to understand and repeat over time.

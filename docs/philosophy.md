@@ -401,6 +401,25 @@ The goal is helping people learn, understand, improve, and eventually teach othe
 
 > Knowledge becomes durable when it can be taught.
 
+## Preserve The Ladder
+
+OpenCode should make systems easier to use without removing the path to understanding them.
+
+Not every user needs to become an expert, but the system should preserve the ability to move from use to inspect to modify to contribute to teach.
+
+That path should remain visible through repository ownership, documentation-first onboarding, inspectable artifacts, validation, and recovery workflows.
+
+A strong workspace should still answer:
+
+- How does this work?
+- Where is it defined?
+- How do I modify it?
+- How do I validate it?
+- How do I recover it?
+- How do I teach it to someone else?
+
+The goal is to keep the ladder available through [Maps Over Mazes](#maps-over-mazes), [Portable Understanding](#portable-understanding), [Visible Systems](#visible-systems), [From Apprentice To Teacher](#from-apprentice-to-teacher), [Repository as source of truth](workspace-yaml.md), [Documentation-first onboarding](first-workspace.md), [Agent Transparency](agents-guide.md#agent-transparency), and [Recovery workflows](architecture/recovery-model.md).
+
 ## Visible Systems
 
 Invisible systems depend on trust.

@@ -98,6 +98,7 @@ public sealed class ReadmeDocumentationTests
         Assert.Contains("## Knowledge Gravity", philosophy);
         Assert.Contains("## Portable Understanding", philosophy);
         Assert.Contains("## From Apprentice To Teacher", philosophy);
+        Assert.Contains("## Preserve The Ladder", philosophy);
         Assert.Contains("## Visible Systems", philosophy);
         Assert.Contains("## Relationship To Existing Philosophy", philosophy);
         Assert.Contains("## Educational Perspective", philosophy);
@@ -124,6 +125,8 @@ public sealed class ReadmeDocumentationTests
         Assert.Contains("The best proof of understanding is explanation.", philosophy);
         Assert.Contains("The highest form of learning is teaching.", philosophy);
         Assert.Contains("Knowledge becomes durable when it can be taught.", philosophy);
+        Assert.Contains("OpenCode should make systems easier to use without removing the path to understanding them.", philosophy);
+        Assert.Contains("Not every user needs to become an expert, but the system should preserve the ability to move from use to inspect to modify to contribute to teach.", philosophy);
         Assert.Contains("Invisible knowledge is fragile knowledge.", philosophy);
         Assert.Contains("What cannot be seen cannot easily be taught.", philosophy);
         Assert.Contains("Visibility is a prerequisite for understanding.", philosophy);
@@ -151,13 +154,17 @@ public sealed class ReadmeDocumentationTests
         Assert.Contains("## Recovery Is A Core Design Constraint", designPrinciples);
         Assert.Contains("## Documentation Is Product Surface", designPrinciples);
         Assert.Contains("## Maps, Visibility, and Portable Understanding", designPrinciples);
+        Assert.Contains("## Preserve The Path To Understanding", designPrinciples);
         Assert.Contains("## Knowledge Transfer As A Design Requirement", designPrinciples);
+        Assert.Contains("Important capabilities should leave a visible path to where behavior is defined, changed, validated, and recovered.", designPrinciples);
         Assert.Contains("[Philosophy](philosophy.md)", designPrinciples);
         Assert.Contains("[AGENTS.md Guide](agents-guide.md)", designPrinciples);
         Assert.Contains("[Team Onboarding](team-onboarding.md)", designPrinciples);
 
         Assert.Contains("## Agent Transparency", agentsGuide);
         Assert.Contains("AI is an accelerator, not a source of truth.", agentsGuide);
+        Assert.Contains("[Portable Understanding](philosophy.md#portable-understanding)", agentsGuide);
+        Assert.Contains("[Recovery Model](architecture/recovery-model.md)", agentsGuide);
         Assert.Contains("[Philosophy](philosophy.md)", agentsGuide);
         Assert.Contains("[Design Principles](design-principles.md)", agentsGuide);
 

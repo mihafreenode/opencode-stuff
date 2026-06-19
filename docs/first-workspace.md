@@ -85,6 +85,8 @@ Featured learning paths in this repository include:
 
 Those philosophy and design guides explain why onboarding, specifications, examples, tests, and recovery guidance should act as visible maps of the workspace rather than hidden setup knowledge.
 
+They also point from first use toward deeper understanding through the [Capability Catalog](capabilities/README.md), [Save Points](concepts/save-point.md), and [AGENTS.md Guide](agents-guide.md).
+
 Use the workspace details panel to understand:
 
 - current workspace status

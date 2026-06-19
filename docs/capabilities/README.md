@@ -27,6 +27,8 @@ Read more:
 
 The capability catalog is intended to answer questions such as `Can I process Excel files?`, `What PDF tools are available?`, `What OCR tools are available?`, `What Oracle tooling exists?`, and `What onboarding materials are available?` without repository-wide searching.
 
+It also helps users move from use toward understanding by showing what the workspace can do, where to read next, and how to validate available workflows.
+
 Tool guidance:
 
 - capability docs describe supported workflows
