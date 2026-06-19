@@ -52,7 +52,10 @@ This separation exists so the durable workspace logic stays portable while the W
 
 - Docker container IDs
 - current container process state
+- machine-local runtime cache under `.opencode/local/`
 - Windows-specific UI state
+
+`.opencode/local/runtime-state.yaml` records the last known-good local runtime choice for the current machine. It is ignored by Git, safe to delete, regenerated automatically, and never used as the durable source of workspace identity or discovery.
 
 ### Durable persistence details
 

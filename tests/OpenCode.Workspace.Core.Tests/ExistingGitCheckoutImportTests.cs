@@ -229,6 +229,54 @@ public sealed class ExistingGitCheckoutImportTests
         }
     }
 
+    [Fact]
+    public async Task ImportExistingGitCheckoutAsync_PredatingRuntimeStateSupport_OpensWithoutMigration()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "README.md"), "demo\n");
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            File.WriteAllText(Path.Combine(rootPath, "workspace.yaml"), new WorkspaceYamlService().Write(new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "Existing Workspace", Image = "ubuntu:24.04" },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Runtime = new WorkspaceRuntimeDefinition { Default = "default" },
+                Features = ["core"],
+            }));
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var imported = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
+            {
+                RepositoryPath = rootPath,
+                WorkspaceName = "Ignored Name",
+                BranchMode = ExistingGitCheckoutBranchMode.UseCurrentBranch,
+            });
+
+            var loaded = await orchestrator.LoadSnapshotAsync(rootPath);
+
+            Assert.Equal("Existing Workspace", imported.Definition.Workspace.Name);
+            Assert.Null(loaded.LocalRuntimeState);
+            Assert.False(File.Exists(loaded.Paths.RuntimeStatePath));
+            Assert.Equal("workspace.yaml", loaded.ConfigurationPath);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
     [Theory]
     [InlineData("workspace.yml")]
     [InlineData(".opencode/profile.yaml")]

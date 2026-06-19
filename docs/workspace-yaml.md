@@ -42,6 +42,7 @@ Together these form a reusable project knowledge base.
 - edit `workspace.yaml` to change lasting workspace behavior
 - do not edit generated `compose.yaml` for durable changes
 - do not rely on container IDs or Windows-specific paths as portable configuration
+- do not store machine-local runtime choices in `workspace.yaml`; `.opencode/local/` is regenerated per machine
 
 In practice:
 

@@ -85,6 +85,8 @@ Durable workspace artifacts such as `workspace.yaml`, repository content, `AGENT
 
 Generated runtime files such as `compose.yaml`, `.env`, attach wrappers, and provisioning scripts are replaceable infrastructure. Ephemeral runtime state such as containers, sessions, caches, and diagnostics is disposable.
 
+Machine-local runtime resolution is stored under `.opencode/local/`, including `.opencode/local/runtime-state.yaml`. This folder is ignored by Git, regenerated automatically after successful runtime operations, not required for workspace discovery, and not intended for manual editing.
+
 `Repair Runtime` repairs generated or runtime state. It does not restore durable user work. Full backup exports now include `backup-manifest.yaml` so users can see which content is durable, generated, or ephemeral.
 
 <img src="docs/walkthrough/images/opencode-terminal-working.png" alt="OpenCode actively working inside a workspace" width="900" />

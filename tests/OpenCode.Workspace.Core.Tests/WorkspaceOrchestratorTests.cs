@@ -855,6 +855,163 @@ public sealed class WorkspaceOrchestratorTests
         }
     }
 
+    [Fact]
+    public async Task LoadSnapshotAsync_WhenRuntimeStateIsCorrupted_IgnoresMachineLocalState()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var created = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            Directory.CreateDirectory(Path.GetDirectoryName(created.Paths.RuntimeStatePath)!);
+            File.WriteAllText(created.Paths.RuntimeStatePath, "resolvedEngine: [broken\n");
+
+            var loaded = await orchestrator.LoadSnapshotAsync(tempRoot);
+
+            Assert.Null(loaded.LocalRuntimeState);
+            Assert.Equal(created.Definition.Workspace.Name, loaded.Definition.Workspace.Name);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WritesRuntimeStateWithoutRewritingWorkspaceConfigurationIntent()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+            var yamlBefore = new WorkspaceYamlService().Read(snapshot.Paths.WorkspaceYamlPath);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            var yamlAfter = new WorkspaceYamlService().Read(snapshot.Paths.WorkspaceYamlPath);
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+
+            Assert.Equal(yamlBefore.Workspace.Name, yamlAfter.Workspace.Name);
+            Assert.Equal(yamlBefore.Runtime.Default, yamlAfter.Runtime.Default);
+            Assert.Equal(yamlBefore.Runtime.GetEffectiveNodeMajorVersion(), yamlAfter.Runtime.GetEffectiveNodeMajorVersion());
+            Assert.DoesNotContain("resolvedEngine", File.ReadAllText(snapshot.Paths.WorkspaceYamlPath), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("resolvedPlatform", File.ReadAllText(snapshot.Paths.WorkspaceYamlPath), StringComparison.OrdinalIgnoreCase);
+            Assert.NotNull(runtimeState);
+            Assert.Equal("docker", runtimeState.ResolvedEngine);
+            Assert.Equal("linux/amd64", runtimeState.ResolvedPlatform);
+            Assert.Equal("Native", runtimeState.CompatibilityMode);
+            Assert.NotNull(runtimeState.LastSuccessfulProvision);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenRuntimeStateFileIsDeleted_RegeneratesIt()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            await orchestrator.ProvisionAsync(snapshot);
+            File.Delete(snapshot.Paths.RuntimeStatePath);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            Assert.True(File.Exists(snapshot.Paths.RuntimeStatePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenProvisioningFails_DoesNotWriteRuntimeState()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime
+            {
+                ProvisionScriptResultFactory = () => Failure("docker exec provision", "provision failed"),
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.False(File.Exists(snapshot.Paths.RuntimeStatePath));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenPostProvisionValidationFails_DoesNotWriteRuntimeState()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime
+            {
+                ToolValidationResultFactory = () => Failure("docker exec tool-check", "opencode missing"),
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.False(File.Exists(snapshot.Paths.RuntimeStatePath));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task LaunchAttachForRunningWorkspaceAsync_WhenProvisioningSucceeds_WritesRuntimeState()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime { UserExistsInitially = false };
+            var terminalLauncher = new RecordingTerminalLauncher();
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime, terminalLauncher: terminalLauncher);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            await orchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot);
+
+            Assert.Equal(1, terminalLauncher.LaunchCount);
+            Assert.True(File.Exists(snapshot.Paths.RuntimeStatePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState);
+            Assert.Equal("docker", runtimeState.ResolvedEngine);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
     private static WorkspaceDefinition CreateDefinition(params string[] features)
     {
         return new WorkspaceDefinition
@@ -1135,6 +1292,32 @@ public sealed class WorkspaceOrchestratorTests
             provider,
             new DockerService(new ProcessRunner()),
             new NoOpTerminalLauncher());
+    }
+
+    private static WorkspaceOrchestrator CreateOrchestratorWithRuntimeAbstractions(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime, WorkspaceTimelineService? timelineService = null, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null)
+    {
+        return new WorkspaceOrchestrator(
+            new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
+            new WorkspaceRepository(GetAppDataRoot(tempRoot)),
+            resolver,
+            new ComposeGenerator(),
+            new EnvironmentFileGenerator(),
+            new ProvisioningScriptGenerator(),
+            new TerminalArtifactsGenerator(),
+            new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
+            new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            timelineService ?? new WorkspaceTimelineService(),
+            new WorkspaceSafetyService(),
+            ignorePolicyService ?? new WorkspaceIgnorePolicyService(),
+            new WorkspaceRuntimeStateService(),
+            provider,
+            containerRuntime,
+            new FixedPlatformDetector(),
+            new FixedRuntimeResolver(),
+            terminalLauncher ?? new NoOpTerminalLauncher());
     }
 
     private static string CreateTempRoot() => Path.Combine(Path.GetTempPath(), $"opencode-workspace-manager-{Guid.NewGuid():N}");
@@ -1438,6 +1621,181 @@ public sealed class WorkspaceOrchestratorTests
             return Task.FromResult(CreateResult(command, 0));
         }
     }
+
+    private sealed class FixedPlatformDetector : IPlatformDetector
+    {
+        public Task<HostPlatformInfo> DetectAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Windows,
+                Architecture = HostArchitecture.X64,
+                HostDescription = "Windows X64",
+                NativeContainerPlatform = "linux/amd64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = ["linux/amd64", "linux/arm64"],
+                },
+            });
+        }
+    }
+
+    private sealed class FixedRuntimeResolver : IRuntimeResolver
+    {
+        public Task<ResolvedRuntimePlan> ResolveAsync(WorkspaceDefinition definition, HostPlatformInfo hostPlatform, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new ResolvedRuntimePlan
+            {
+                Runtime = "docker",
+                TargetPlatform = "linux/amd64",
+                CompatibilityMode = RuntimeCompatibilityMode.Native,
+                SupportLevel = SupportLevel.NativeTested,
+                IsAvailable = true,
+                DiagnosticExplanation = "Test runtime plan.",
+                HostPlatform = hostPlatform,
+            });
+        }
+    }
+
+    private sealed class StubContainerRuntime : IContainerRuntime
+    {
+        private bool _provisioned;
+
+        public string RuntimeId => "docker";
+
+        public bool UserExistsInitially { get; init; } = true;
+
+        public Func<ProcessResult>? ProvisionScriptResultFactory { get; init; }
+
+        public Func<ProcessResult>? ToolValidationResultFactory { get; init; }
+
+        public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
+
+        public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => DockerService.CreatePermissionRepairArguments(workspaceRootPath);
+
+        public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+            => Task.FromResult(Success("docker compose up"));
+
+        public Task<ProcessResult> ValidateAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+            => Task.FromResult(Success("docker compose config"));
+
+        public Task<ProcessResult> StopAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker compose down"));
+
+        public Task<ProcessResult> RemoveAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+            => Task.FromResult(Success("docker compose rm"));
+
+        public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
+            => Task.FromResult(Success("docker compose reset"));
+
+        public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker compose ps", "workspace"));
+
+        public Task<ProcessResult> GetComposePsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker compose ps"));
+
+        public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker compose logs"));
+
+        public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var result = ProvisionScriptResultFactory?.Invoke() ?? Success("docker exec provision");
+            if (result.IsSuccess)
+            {
+                _provisioned = true;
+            }
+
+            return Task.FromResult(result);
+        }
+
+        public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker inspect image", "sha256:test-image"));
+
+        public Task<ProcessResult> InspectImageRepoTagsAsync(string imageId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker inspect tags", "[\"ubuntu:24.04\"]"));
+
+        public Task<ProcessResult> GetNodeToolDiagnosticsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec node", "/usr/bin/node\nv22.15.0\n/usr/bin/npm\n10.9.2"));
+
+        public Task<ProcessResult> GetNodeAptPolicyAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec apt-cache", "nodejs:\n  Installed: 22.15.0-1nodesource1"));
+
+        public Task<ProcessResult> GetOsReleaseAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec os-release", "PRETTY_NAME=Ubuntu 24.04 LTS"));
+
+        public Task<ProcessResult> CheckOpencodeUserAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var userExists = _provisioned || UserExistsInitially;
+            return Task.FromResult(userExists
+                ? Success("docker exec id", "uid=1001(opencode)")
+                : Failure("docker exec id", "id: 'opencode': no such user"));
+        }
+
+        public Task<ProcessResult> EnsureOpencodeUserDirectoriesAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec ensure-directories"));
+
+        public Task<ProcessResult> NormalizeWorkspaceFilePermissionsAsync(string workspaceRootPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker run chmod-helper"));
+
+        public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var argumentList = arguments.ToList();
+            if (argumentList.Count > 0 && argumentList[0] == "ps")
+            {
+                return Task.FromResult(Success("docker ps", "odip-analiza-workspace"));
+            }
+
+            if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[3] == "-lc")
+            {
+                var shellCommand = argumentList[4];
+                if (shellCommand.Contains("command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(ToolValidationResultFactory?.Invoke() ?? Success("docker exec tool-check", "/usr/local/bin/opencode\n/usr/bin/screen\n/usr/bin/node\n/usr/bin/npm\nopencode:x:1001:1001::/home/opencode:/bin/bash"));
+                }
+
+                if (shellCommand.Contains("command -v starship", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(Success("docker exec starship", "starship 1.0.0"));
+                }
+            }
+
+            return Task.FromResult(Success("docker command"));
+        }
+
+        public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec opencode session list"));
+
+        public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec opencode session export"));
+    }
+
+    private static ProcessResult Success(string command, string standardOutput = "")
+        => new()
+        {
+            Command = command,
+            ExitCode = 0,
+            StandardOutput = standardOutput,
+            StandardError = string.Empty,
+            StandardOutputLines = string.IsNullOrWhiteSpace(standardOutput) ? Array.Empty<string>() : standardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StandardErrorLines = Array.Empty<string>(),
+            Duration = TimeSpan.FromMilliseconds(10),
+        };
+
+    private static ProcessResult Failure(string command, string standardError)
+        => new()
+        {
+            Command = command,
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = standardError,
+            StandardOutputLines = Array.Empty<string>(),
+            StandardErrorLines = [standardError],
+            Duration = TimeSpan.FromMilliseconds(10),
+        };
 
     private static ProcessResult CreateResult(string command, int exitCode, string standardOutput = "", string standardError = "")
     {

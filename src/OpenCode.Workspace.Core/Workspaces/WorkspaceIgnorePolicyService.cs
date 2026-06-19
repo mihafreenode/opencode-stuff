@@ -82,6 +82,17 @@ public sealed class WorkspaceIgnorePolicyService
     {
         var normalizedPath = Normalize(relativePath, isDirectory);
 
+        if (IsMachineLocalRuntimePath(normalizedPath))
+        {
+            return new WorkspaceContentClassification
+            {
+                RelativePath = normalizedPath,
+                IsDirectory = isDirectory,
+                Disposition = WorkspaceContentDisposition.Ignored,
+                Reason = "Machine-local runtime cache content is ignored and regenerated per host.",
+            };
+        }
+
         if (IsSecretCandidate(normalizedPath))
         {
             return new WorkspaceContentClassification
@@ -408,6 +419,9 @@ public sealed class WorkspaceIgnorePolicyService
         var segments = normalizedPath[..^1].Split('/', StringSplitOptions.RemoveEmptyEntries);
         return segments.Any(segment => segment.StartsWith(".", StringComparison.Ordinal));
     }
+
+    private static bool IsMachineLocalRuntimePath(string normalizedPath)
+        => normalizedPath.StartsWith(".opencode/local/", StringComparison.OrdinalIgnoreCase);
 
     private static bool MatchesIgnoreRule(string ignoreRule, string durablePath)
     {

@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -28,17 +29,27 @@ public sealed class WorkspaceRuntimeStateService
             return null;
         }
 
-        using var reader = File.OpenText(path);
-        var model = _deserializer.Deserialize<WorkspaceRuntimeStateYamlModel>(reader);
-        return model is null
-            ? null
-            : new WorkspaceRuntimeStateRecord
-            {
-                ResolvedEngine = model.ResolvedEngine ?? string.Empty,
-                ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
-                CompatibilityMode = model.CompatibilityMode ?? string.Empty,
-                LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
-            };
+        try
+        {
+            using var reader = File.OpenText(path);
+            var model = _deserializer.Deserialize<WorkspaceRuntimeStateYamlModel>(reader);
+            return model is null
+                ? null
+                : new WorkspaceRuntimeStateRecord
+                {
+                    ResolvedEngine = model.ResolvedEngine ?? string.Empty,
+                    ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
+                    CompatibilityMode = model.CompatibilityMode ?? string.Empty,
+                    LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
+                };
+        }
+        catch (Exception exception) when (exception is YamlException or InvalidCastException or FormatException)
+        {
+            // Runtime state is machine-local cache data. If it becomes corrupt, the
+            // workspace should continue loading and regenerate it after a known-good
+            // runtime operation instead of blocking repository access.
+            return null;
+        }
     }
 
     public void Write(string path, WorkspaceRuntimeStateRecord state)

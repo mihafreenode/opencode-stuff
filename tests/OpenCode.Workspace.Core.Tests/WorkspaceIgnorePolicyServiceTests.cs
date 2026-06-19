@@ -122,6 +122,7 @@ public sealed class WorkspaceIgnorePolicyServiceTests
     [InlineData(".mypy_cache/")]
     [InlineData(".npm/")]
     [InlineData(".pnpm-store/")]
+    [InlineData(".opencode/local/")]
     public void Classify_DefaultIgnoredHiddenCaches_AreIgnored(string path)
     {
         var classification = _service.Classify(path, isDirectory: true);
@@ -269,5 +270,38 @@ public sealed class WorkspaceIgnorePolicyServiceTests
 
         Assert.True(review.HasDurableIgnoreConflicts);
         Assert.Contains(review.Findings, item => item.RelativePath == ".opencode/");
+    }
+
+    [Fact]
+    public void Classify_RuntimeStateFile_IsIgnoredMachineLocalContent()
+    {
+        var classification = _service.Classify(".opencode/local/runtime-state.yaml", isDirectory: false);
+
+        Assert.Equal(WorkspaceContentDisposition.Ignored, classification.Disposition);
+        Assert.Contains("machine-local", classification.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReviewChangedPathsForProtection_RuntimeStatePath_DoesNotRequireReview()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), $"ignore-policy-runtime-state-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(rootPath, ".opencode", "local"));
+            File.WriteAllText(Path.Combine(rootPath, ".opencode", "local", "runtime-state.yaml"), "resolvedEngine: docker\n");
+
+            var review = _service.ReviewChangedPathsForProtection(rootPath, [".opencode/local/runtime-state.yaml"]);
+
+            Assert.False(review.HasReviewRequired);
+            Assert.DoesNotContain(review.Classifications, item => item.RelativePath == ".opencode/local/runtime-state.yaml" && item.Disposition == WorkspaceContentDisposition.Tracked);
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                TestFileSystem.DeleteDirectoryIfExists(rootPath);
+            }
+        }
     }
 }

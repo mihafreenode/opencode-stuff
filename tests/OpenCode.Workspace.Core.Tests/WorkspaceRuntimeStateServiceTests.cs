@@ -6,6 +6,17 @@ namespace OpenCode.Workspace.Core.Tests;
 public sealed class WorkspaceRuntimeStateServiceTests
 {
     [Fact]
+    public void Read_WhenFileIsMissing_ReturnsNull()
+    {
+        var service = new WorkspaceRuntimeStateService();
+        var filePath = Path.Combine(Path.GetTempPath(), $"missing-runtime-state-{Guid.NewGuid():N}.yaml");
+
+        var loaded = service.Read(filePath);
+
+        Assert.Null(loaded);
+    }
+
+    [Fact]
     public void WriteAndRead_RoundTripsMachineLocalRuntimeState()
     {
         var service = new WorkspaceRuntimeStateService();
@@ -30,6 +41,31 @@ public sealed class WorkspaceRuntimeStateServiceTests
             Assert.Equal("linux/arm64", loaded.ResolvedPlatform);
             Assert.Equal("Native", loaded.CompatibilityMode);
             Assert.Equal(DateTimeOffset.Parse("2026-06-19T08:00:00Z"), loaded.LastSuccessfulProvision);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                TestFileSystem.DeleteDirectoryIfExists(tempRoot);
+            }
+        }
+    }
+
+    [Fact]
+    public void Read_WhenFileIsCorrupted_ReturnsNull()
+    {
+        var service = new WorkspaceRuntimeStateService();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"runtime-state-corrupt-{Guid.NewGuid():N}");
+        var filePath = Path.Combine(tempRoot, ".opencode", "local", "runtime-state.yaml");
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+            File.WriteAllText(filePath, "resolvedEngine: [broken\n");
+
+            var loaded = service.Read(filePath);
+
+            Assert.Null(loaded);
         }
         finally
         {

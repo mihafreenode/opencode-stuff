@@ -12,6 +12,7 @@ public sealed class WorkspaceAssetClassificationServiceTests
     [InlineData("docs/notes.md", false, WorkspaceAssetClass.Durable)]
     [InlineData("AGENTS.md", false, WorkspaceAssetClass.Durable)]
     [InlineData("compose.yaml", false, WorkspaceAssetClass.Generated)]
+    [InlineData(".opencode/local/runtime-state.yaml", false, WorkspaceAssetClass.Ephemeral)]
     [InlineData("mounts/config/provision.sh", false, WorkspaceAssetClass.Generated)]
     [InlineData(".git/HEAD", false, WorkspaceAssetClass.Ephemeral)]
     [InlineData("mounts/user/session.log", false, WorkspaceAssetClass.Ephemeral)]

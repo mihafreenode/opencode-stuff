@@ -41,7 +41,6 @@ public sealed class WorkspaceAssetClassificationService
         ".env",
         "attach-workspace.ps1",
         "terminal-diagnostics.ps1",
-        ".opencode/local/runtime-state.yaml",
         "mounts/config/applied-state.yaml",
         "history/checkpoints/index.yaml",
         "artifacts/index.json",
