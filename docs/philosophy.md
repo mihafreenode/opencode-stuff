@@ -148,6 +148,348 @@ The goal is to package complexity into reusable, inspectable, portable units.
 
 That means keeping the implementation readable enough that contributors can understand how a workspace works, while keeping the day-to-day user experience focused on opening, saving, publishing, and recovering work.
 
+## Open Sorcery
+
+Software should feel approachable and powerful.
+
+Users should be able to accomplish things that once required specialist expertise. Automation, templates, AI, tooling, and reusable workflows can make that experience feel magical, and the goal is not to remove that feeling.
+
+In OpenCode terms, that means a repository can help a user move from a blank machine to a working environment, from a prompt to a specification, or from a question to a validated change faster than older workflows allowed.
+
+That is useful. It is also intentional.
+
+> Software may feel magical. Its operation should never be mysterious.
+
+## There Is No Magic
+
+The apparent magic must always have an engineering explanation behind it.
+
+Every outcome must be explainable.
+
+Every generated artifact must be inspectable.
+
+Every workflow must be reproducible.
+
+Every important asset must be recoverable.
+
+The mechanisms behind the apparent magic are ordinary engineering assets:
+
+- specifications
+- source code
+- documentation
+- configuration
+- tests
+- version history
+
+Those assets are why the repository is the source of truth, why durable workspaces matter more than any one runtime, and why Save Points, recovery workflows, and documentation-first onboarding are treated as product features instead of secondary details.
+
+> The goal is not to eliminate magic. The goal is to make the magic inspectable.
+
+## Open Sorcery, Not Wizardry
+
+Useful expertise should become transferable assets instead of private rituals.
+
+Knowledge should not be trapped in individuals.
+
+Knowledge should not depend on a specific AI model.
+
+Knowledge should not depend on a vendor platform.
+
+Knowledge should not depend on undocumented tribal knowledge.
+
+Repositories, documentation, specifications, tests, and onboarding materials should make expertise transferable across people, tools, and time.
+
+This is why OpenCode favors repository-owned guidance such as `workspace.yaml`, `AGENTS.md`, onboarding docs, validation scripts, and durable history over instructions that exist only in a chat transcript or in one person's memory.
+
+> Knowledge should live in repositories, specifications, documentation, and tests—not in individuals.
+
+## Spells, Spellbooks, and Evidence
+
+In this philosophy, a spell is a repeatable piece of knowledge that produces a useful outcome.
+
+That could be:
+
+- a specification
+- a workflow
+- a validation procedure
+- a recovery process
+- a provisioning script
+- a report-generation pipeline
+- a reusable onboarding sequence
+
+A spell should be:
+
+- understandable
+- inspectable
+- repeatable
+- teachable
+
+> A spell is reusable knowledge.
+
+A repository is a spellbook.
+
+Not because it contains magic, but because it contains accumulated knowledge that can be reused by others.
+
+Useful spellbook contents include:
+
+- specifications
+- source code
+- documentation
+- tests
+- validation rules
+- onboarding guides
+- architecture decisions
+- recovery procedures
+- automation
+
+Knowledge becomes more valuable when it is preserved, organized, and transferable.
+
+> A repository is a spellbook.
+
+Every important spell should leave evidence.
+
+That evidence may include:
+
+- specifications
+- commits
+- tests
+- reports
+- validation output
+- documentation
+- Save Points
+- change history
+
+If a result matters, there should be evidence explaining how it was produced.
+
+> Every important spell should leave evidence.
+
+From an educational perspective, learning should not stop at invoking a spell.
+
+Students should be encouraged to inspect the spell, understand the spell, modify the spell, and create new spells.
+
+The goal is not consumption of knowledge.
+
+The goal is creation and transfer of knowledge.
+
+> The best spells can be taught.
+
+From a business perspective, organizations should not depend on undocumented spells known only by a few experts. Critical workflows should be documented and reproducible. Institutional knowledge should live in repositories rather than individuals.
+
+> Knowledge becomes durable when it can survive the loss of its creator.
+
+This framing is only useful when it stays grounded in engineering practice. In OpenCode, that means important spells should be preserved in [Philosophy](philosophy.md), [Design Principles](design-principles.md), the [AGENTS.md Guide](agents-guide.md), [Team Onboarding](team-onboarding.md), [Save Points](concepts/save-point.md), and [Repository Workflows](capabilities/repository.md).
+
+## Maps Over Mazes
+
+Complexity is sometimes unavoidable.
+
+Confusion is not.
+
+The purpose of specifications, diagrams, onboarding guides, architecture documents, tests, validation rules, and recovery workflows is to create maps.
+
+A map does not remove complexity.
+
+A map makes complexity navigable.
+
+Examples of useful maps include:
+
+- architecture diagrams
+- process flows
+- dependency maps
+- state diagrams
+- specifications
+- onboarding guides
+
+> Do not remove complexity. Make it navigable.
+
+> A good diagram is a map.
+
+> A good specification is a map of intent.
+
+> A good test is a map of expectations.
+
+## Knowledge Gravity
+
+Useful knowledge should attract related knowledge.
+
+Repositories should become easier to understand over time.
+
+Solved problems should become reusable assets.
+
+The desired progression looks like this:
+
+```text
+Lesson
+    ↓
+Documentation
+    ↓
+Validation
+    ↓
+Automation
+    ↓
+Capability
+```
+
+That means repeated discoveries should be preserved, repeated mistakes should become validation, repeated workflows should become automation, and repeated success should become reusable capability.
+
+> Useful knowledge should attract more knowledge.
+
+> A solved problem should become easier to solve again.
+
+> Repositories should become easier to understand as they grow.
+
+## Portable Understanding
+
+Knowledge should survive:
+
+- team changes
+- machine changes
+- tool changes
+- vendor changes
+- AI model changes
+
+A repository should contain enough context to rebuild understanding.
+
+That includes:
+
+- onboarding
+- documentation
+- specifications
+- architecture
+- examples
+- tests
+
+> Knowledge is portable when understanding is portable.
+
+> The best onboarding is already in the repository.
+
+> A repository should explain itself.
+
+## From Apprentice To Teacher
+
+Learning is not complete when information is consumed.
+
+Learning becomes durable when it can be explained, adapted, and shared.
+
+The progression should look like this:
+
+```text
+Apprentice
+    ↓
+Practitioner
+    ↓
+Contributor
+    ↓
+Teacher
+```
+
+Understanding is more valuable than memorization.
+
+Contribution demonstrates understanding.
+
+Teaching demonstrates mastery.
+
+Durable knowledge is transferable knowledge.
+
+The goal is not simply producing outputs.
+
+The goal is helping people learn, understand, improve, and eventually teach others.
+
+> The best proof of understanding is explanation.
+
+> The highest form of learning is teaching.
+
+> Knowledge becomes durable when it can be taught.
+
+## Visible Systems
+
+Invisible systems depend on trust.
+
+Visible systems enable understanding.
+
+OpenCode favors visibility through:
+
+- diagrams
+- specifications
+- tests
+- reports
+- validation
+- timelines
+- documentation
+- version history
+
+Useful visibility mappings include:
+
+- Intent -> Specification
+- Behavior -> Test
+- Structure -> Diagram
+- Evolution -> Timeline
+- Evidence -> Report
+
+Every important capability should have at least one visible representation.
+
+> Invisible knowledge is fragile knowledge.
+
+> What cannot be seen cannot easily be taught.
+
+> Visibility is a prerequisite for understanding.
+
+> If knowledge matters, make it visible.
+
+## Relationship To Existing Philosophy
+
+These ideas extend the same core direction as [Open Sorcery](#open-sorcery), [There Is No Magic](#there-is-no-magic), [Durable Workspaces](#durable-workspaces), repository ownership through [workspace.yaml](workspace-yaml.md), [Save Points](concepts/save-point.md), [Documentation-first onboarding](first-workspace.md), [Specification-driven development](workspace-yaml.md), [Recoverability](architecture/recovery-model.md), and [Agent Transparency](agents-guide.md#agent-transparency).
+
+The purpose of all of these concepts is the same:
+
+- make knowledge visible
+- make understanding transferable
+- make work durable
+
+## Educational Perspective
+
+AI can make software creation feel magical.
+
+OpenCode should help users inspect how things work.
+
+Students should be able to move from prompt to specification, from specification to code, from code to tests, and from tests to understanding.
+
+The objective is not merely generating software.
+
+The objective is learning, understanding, and ownership.
+
+That is one reason documentation is treated as a first-class asset and why AI is positioned as an accelerator rather than a source of truth.
+
+## Business Perspective
+
+Good tooling should feel magical.
+
+Good engineering should make the magic auditable.
+
+Organizations must be able to understand, maintain, and evolve what they build.
+
+Operational resilience requires transparency.
+
+That is why OpenCode emphasizes recoverability, inspectable generated files, specification-driven development, durable workspaces, and explicit recovery workflows instead of opaque automation that only works when a particular service, vendor, agent, or model behaves as expected.
+
+> Good tooling feels magical. Good engineering makes the magic auditable.
+
+## Principle Links
+
+These ideas are already reflected in the rest of the platform:
+
+- [Repository as source of truth](workspace-yaml.md)
+- [Durable workspaces](concepts/workspace.md)
+- [Save Points](concepts/save-point.md)
+- [Recovery workflows](architecture/recovery-model.md)
+- [Documentation-first onboarding](first-workspace.md)
+- [Specification-driven development](workspace-yaml.md)
+- [Ownership and trust](capabilities/repository.md)
+
+The system should make advanced work more accessible without making its behavior opaque.
+
+> Users should never lose their work because a tool, service, agent, or model failed.
+
 ## Preserve Discoveries
 
 Useful discoveries should not remain accidental.

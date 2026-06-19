@@ -489,6 +489,7 @@ Read more:
 
 - [Architecture](docs/architecture.md)
 - [Philosophy](docs/philosophy.md)
+- [Design Principles](docs/design-principles.md)
 - [Workspace Guide](docs/workspace-yaml.md)
 - [Runtime Guide](docs/concepts/runtime.md)
 
@@ -510,6 +511,8 @@ Read more:
 
 ### Reference
 
+- [Philosophy](docs/philosophy.md)
+- [Design Principles](docs/design-principles.md)
 - [Architecture](docs/architecture.md)
 - [Workspace YAML](docs/workspace-yaml.md)
 - [Troubleshooting](docs/troubleshooting.md)
@@ -524,6 +527,8 @@ Read more:
 ### Onboarding Guidance
 
 - [Existing Workspace Discovery](#existing-workspace-discovery)
+- [Philosophy](docs/philosophy.md)
+- [Design Principles](docs/design-principles.md)
 - [Workspace YAML](docs/workspace-yaml.md)
 - [AGENTS.md Guide](docs/agents-guide.md)
 - [AGENTS.md](AGENTS.md)
@@ -533,6 +538,7 @@ Read more:
 For the reasoning behind the project and the Durable Workspace model, see [docs/philosophy.md](docs/philosophy.md).
 
 - Philosophy: [docs/philosophy.md](docs/philosophy.md)
+- Design Principles: [docs/design-principles.md](docs/design-principles.md)
 - Workspace Concepts: [docs/concepts/workspace.md](docs/concepts/workspace.md)
 - Runtime Concepts: [docs/concepts/runtime.md](docs/concepts/runtime.md)
 - Session Concepts: [docs/concepts/session.md](docs/concepts/session.md)

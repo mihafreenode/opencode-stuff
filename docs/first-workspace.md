@@ -80,6 +80,10 @@ Featured learning paths in this repository include:
 - [Oracle Family](../README.md#oracle-family)
 - [Analytics & Reporting Workspace](analytics-workspace.md)
 - [Education & STEM Workspace](education-stem-workspace.md)
+- [Philosophy](philosophy.md)
+- [Design Principles](design-principles.md)
+
+Those philosophy and design guides explain why onboarding, specifications, examples, tests, and recovery guidance should act as visible maps of the workspace rather than hidden setup knowledge.
 
 Use the workspace details panel to understand:
 

@@ -21,3 +21,5 @@ The session is temporary.
 It is a running interaction with a runtime attached to a workspace.
 
 Git is used as the default persistence engine so workspaces gain local history, Save Points, Working Copies, Publish, Backup, and Recovery without inventing a proprietary source-control system.
+
+The platform should make advanced work feel approachable without making it mysterious. Good tooling can feel magical, but organizations still need repositories, specifications, documentation, tests, and recovery workflows that make the result understandable, maintainable, and transferable.

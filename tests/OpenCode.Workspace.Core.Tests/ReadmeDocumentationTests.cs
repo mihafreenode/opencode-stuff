@@ -45,6 +45,8 @@ public sealed class ReadmeDocumentationTests
 
         var expectedLinks = new[]
         {
+            "docs/philosophy.md",
+            "docs/design-principles.md",
             "docs/analytics-workspace.md",
             "docs/education-stem-demo.md",
             "docs/education-stem-workspace.md",
@@ -70,6 +72,98 @@ public sealed class ReadmeDocumentationTests
         }
 
         AssertAllMarkdownFileLinksExist(repositoryRoot, readmePath);
+    }
+
+    [Fact]
+    public void Philosophy_AndDesignPrinciples_Docs_Expose_OpenSorcery_Principles()
+    {
+        var repositoryRoot = TestPaths.RepositoryRoot;
+        var philosophyPath = Path.Combine(repositoryRoot, "docs", "philosophy.md");
+        var designPrinciplesPath = Path.Combine(repositoryRoot, "docs", "design-principles.md");
+        var agentsGuidePath = Path.Combine(repositoryRoot, "docs", "agents-guide.md");
+
+        Assert.True(File.Exists(philosophyPath), "Expected philosophy doc to exist.");
+        Assert.True(File.Exists(designPrinciplesPath), "Expected design principles doc to exist.");
+        Assert.True(File.Exists(agentsGuidePath), "Expected agents guide doc to exist.");
+
+        var philosophy = File.ReadAllText(philosophyPath);
+        var designPrinciples = File.ReadAllText(designPrinciplesPath);
+        var agentsGuide = File.ReadAllText(agentsGuidePath);
+
+        Assert.Contains("## Open Sorcery", philosophy);
+        Assert.Contains("## There Is No Magic", philosophy);
+        Assert.Contains("## Open Sorcery, Not Wizardry", philosophy);
+        Assert.Contains("## Spells, Spellbooks, and Evidence", philosophy);
+        Assert.Contains("## Maps Over Mazes", philosophy);
+        Assert.Contains("## Knowledge Gravity", philosophy);
+        Assert.Contains("## Portable Understanding", philosophy);
+        Assert.Contains("## From Apprentice To Teacher", philosophy);
+        Assert.Contains("## Visible Systems", philosophy);
+        Assert.Contains("## Relationship To Existing Philosophy", philosophy);
+        Assert.Contains("## Educational Perspective", philosophy);
+        Assert.Contains("## Business Perspective", philosophy);
+        Assert.Contains("Software may feel magical. Its operation should never be mysterious.", philosophy);
+        Assert.Contains("The goal is not to eliminate magic. The goal is to make the magic inspectable.", philosophy);
+        Assert.Contains("Knowledge should live in repositories, specifications, documentation, and tests—not in individuals.", philosophy);
+        Assert.Contains("A spell is reusable knowledge.", philosophy);
+        Assert.Contains("A repository is a spellbook.", philosophy);
+        Assert.Contains("Every important spell should leave evidence.", philosophy);
+        Assert.Contains("The best spells can be taught.", philosophy);
+        Assert.Contains("Knowledge becomes durable when it can survive the loss of its creator.", philosophy);
+        Assert.Contains("If a result matters, there should be evidence explaining how it was produced.", philosophy);
+        Assert.Contains("Do not remove complexity. Make it navigable.", philosophy);
+        Assert.Contains("A good diagram is a map.", philosophy);
+        Assert.Contains("A good specification is a map of intent.", philosophy);
+        Assert.Contains("A good test is a map of expectations.", philosophy);
+        Assert.Contains("Useful knowledge should attract more knowledge.", philosophy);
+        Assert.Contains("A solved problem should become easier to solve again.", philosophy);
+        Assert.Contains("Repositories should become easier to understand as they grow.", philosophy);
+        Assert.Contains("Knowledge is portable when understanding is portable.", philosophy);
+        Assert.Contains("The best onboarding is already in the repository.", philosophy);
+        Assert.Contains("A repository should explain itself.", philosophy);
+        Assert.Contains("The best proof of understanding is explanation.", philosophy);
+        Assert.Contains("The highest form of learning is teaching.", philosophy);
+        Assert.Contains("Knowledge becomes durable when it can be taught.", philosophy);
+        Assert.Contains("Invisible knowledge is fragile knowledge.", philosophy);
+        Assert.Contains("What cannot be seen cannot easily be taught.", philosophy);
+        Assert.Contains("Visibility is a prerequisite for understanding.", philosophy);
+        Assert.Contains("If knowledge matters, make it visible.", philosophy);
+        Assert.Contains("Good tooling feels magical. Good engineering makes the magic auditable.", philosophy);
+        Assert.Contains("Users should never lose their work because a tool, service, agent, or model failed.", philosophy);
+        Assert.Contains("[Philosophy](philosophy.md)", philosophy);
+        Assert.Contains("[Design Principles](design-principles.md)", philosophy);
+        Assert.Contains("[AGENTS.md Guide](agents-guide.md)", philosophy);
+        Assert.Contains("[Team Onboarding](team-onboarding.md)", philosophy);
+        Assert.Contains("[Agent Transparency](agents-guide.md#agent-transparency)", philosophy);
+        Assert.Contains("[Repository as source of truth](workspace-yaml.md)", philosophy);
+        Assert.Contains("[Durable workspaces](concepts/workspace.md)", philosophy);
+        Assert.Contains("[Save Points](concepts/save-point.md)", philosophy);
+        Assert.Contains("[Recovery workflows](architecture/recovery-model.md)", philosophy);
+        Assert.Contains("[Documentation-first onboarding](first-workspace.md)", philosophy);
+        Assert.Contains("[Ownership and trust](capabilities/repository.md)", philosophy);
+        Assert.Contains("[Repository Workflows](capabilities/repository.md)", philosophy);
+
+        Assert.Contains("# Design Principles", designPrinciples);
+        Assert.Contains("## Open Sorcery, With Receipts", designPrinciples);
+        Assert.Contains("## Repository Before Runtime", designPrinciples);
+        Assert.Contains("## Generated Artifacts Must Stay Inspectable", designPrinciples);
+        Assert.Contains("## AI Assists, But Does Not Own", designPrinciples);
+        Assert.Contains("## Recovery Is A Core Design Constraint", designPrinciples);
+        Assert.Contains("## Documentation Is Product Surface", designPrinciples);
+        Assert.Contains("## Maps, Visibility, and Portable Understanding", designPrinciples);
+        Assert.Contains("## Knowledge Transfer As A Design Requirement", designPrinciples);
+        Assert.Contains("[Philosophy](philosophy.md)", designPrinciples);
+        Assert.Contains("[AGENTS.md Guide](agents-guide.md)", designPrinciples);
+        Assert.Contains("[Team Onboarding](team-onboarding.md)", designPrinciples);
+
+        Assert.Contains("## Agent Transparency", agentsGuide);
+        Assert.Contains("AI is an accelerator, not a source of truth.", agentsGuide);
+        Assert.Contains("[Philosophy](philosophy.md)", agentsGuide);
+        Assert.Contains("[Design Principles](design-principles.md)", agentsGuide);
+
+        AssertAllMarkdownFileLinksExist(repositoryRoot, philosophyPath);
+        AssertAllMarkdownFileLinksExist(repositoryRoot, designPrinciplesPath);
+        AssertAllMarkdownFileLinksExist(repositoryRoot, agentsGuidePath);
     }
 
     [Fact]

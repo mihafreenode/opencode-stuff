@@ -136,6 +136,10 @@ And its broader theme remains:
 
 > There is no magic. Only stuff.
 
+The practical extension of that theme is documented in [Philosophy](philosophy.md) and [Design Principles](design-principles.md): software may feel magical, but the repository, specifications, documentation, tests, Save Points, and recovery workflows must keep that magic inspectable and auditable.
+
+The same philosophy also treats diagrams, onboarding guides, tests, and validation as visible maps that make complexity navigable and understanding portable.
+
 ## Usage
 
 This fact sheet is intended for:

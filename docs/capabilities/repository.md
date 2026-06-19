@@ -49,6 +49,10 @@ Common use cases: learn local rules without scanning the repository, resume work
 
 ## Related Documentation
 
+- [Philosophy](../philosophy.md)
+Why durable, inspectable repository assets matter.
+- [Design Principles](../design-principles.md)
+How transparency, recoverability, and AI-assisted work map to engineering decisions.
 - [Capability Catalog](README.md)
 Primary discovery index for enabled capabilities.
 - [AGENTS Guidance](../../AGENTS.md)

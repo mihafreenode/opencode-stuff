@@ -75,17 +75,19 @@ It demonstrates:
 ## Recommended Reading Order
 
 1. `README.md`
-2. `docs/capabilities/README.md`
-3. `docs/capabilities/oracle.md`
-4. `docs/oracle/practical-git-for-oracle-developers.md`
-5. `docs/articles/oracle-onboarding.md`
-6. `docs/capabilities/repository.md`
-7. `docs/capabilities/testing.md`
-8. `docs/agents-guide.md`
-9. `docs/oracle-plsql-demo.md`
-10. `docs/oracle-apex-demo.md` when moving beyond PL/SQL
-11. `docs/oracle-apexlang-demo.md` when the team wants source-controlled APEX workflows
-12. `docs/oracle-lifecycle-workflows.md`
+2. `docs/philosophy.md`
+3. `docs/design-principles.md`
+4. `docs/capabilities/README.md`
+5. `docs/capabilities/oracle.md`
+6. `docs/oracle/practical-git-for-oracle-developers.md`
+7. `docs/articles/oracle-onboarding.md`
+8. `docs/capabilities/repository.md`
+9. `docs/capabilities/testing.md`
+10. `docs/agents-guide.md`
+11. `docs/oracle-plsql-demo.md`
+12. `docs/oracle-apex-demo.md` when moving beyond PL/SQL
+13. `docs/oracle-apexlang-demo.md` when the team wants source-controlled APEX workflows
+14. `docs/oracle-lifecycle-workflows.md`
 
 ## First-Time Oracle Developer Flow
 
@@ -112,3 +114,5 @@ Start here before searching the repository:
 - `docs/oracle-tools/README.md`
 - `docs/oracle-samples.md`
 - `docs/troubleshooting/workspace-sessions.md`
+
+OpenCode's broader philosophy for onboarding and knowledge transfer is documented in [Philosophy](philosophy.md), [Design Principles](design-principles.md), and the [AGENTS.md Guide](agents-guide.md). Those docs explain why the repository should function as a visible map of the work rather than a maze of hidden assumptions.

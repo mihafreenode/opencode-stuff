@@ -58,6 +58,21 @@ That usually includes:
 
 Good `AGENTS.md` guidance reduces repeated explanation and helps agents make smaller, safer changes.
 
+## Agent Transparency
+
+AI is an accelerator, not a source of truth.
+
+Agents may accelerate work, but their output should remain inspectable, reproducible, and recoverable through repository-owned assets such as `workspace.yaml`, `AGENTS.md`, specifications, documentation, tests, and validation scripts.
+
+Generated work should be explainable through those repository assets. Important behavior should be documented, tested, or encoded in specifications. Agent guidance should avoid hidden rituals, undocumented assumptions, and chat-only knowledge.
+
+Read more:
+
+- [Philosophy](philosophy.md)
+- [Design Principles](design-principles.md)
+
+Repository-owned guidance is part of the system's visible map. Good agent onboarding should make important behavior inspectable and transferable instead of leaving it hidden in chat-only context.
+
 ## What Belongs In AGENTS.md
 
 Keep it practical.
