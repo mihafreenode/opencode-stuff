@@ -13,7 +13,7 @@ public sealed class ProvisioningScriptGenerator
     private const string BashRcManagedStart = "# >>> OpenCode Workspace Manager managed block >>>";
     private const string BashRcManagedEnd = "# <<< OpenCode Workspace Manager managed block <<<";
 
-    public string Generate(ResolvedWorkspace workspace)
+    public string Generate(ResolvedWorkspace workspace, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var builder = new StringBuilder();
         // Ubuntu 24.04 renamed the old libaio1 package to libaio1t64, so Oracle-related
@@ -26,9 +26,10 @@ public sealed class ProvisioningScriptGenerator
             .ToList();
 
         builder.AppendLine("#!/usr/bin/env bash");
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml and catalog manifests under catalog/.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or catalog manifests instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "User edits are not preserved. Edit workspace.yaml or catalog manifests instead."));
         builder.AppendLine("set -euo pipefail");
         builder.AppendLine();
         builder.AppendLine("export DEBIAN_FRONTEND=noninteractive");

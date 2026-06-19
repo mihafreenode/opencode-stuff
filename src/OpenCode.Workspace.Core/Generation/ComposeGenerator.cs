@@ -11,7 +11,7 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class ComposeGenerator
 {
-    public string Generate(ResolvedWorkspace workspace, WorkspacePaths paths)
+    public string Generate(ResolvedWorkspace workspace, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var slug = WorkspacePathBuilder.Slugify(workspace.Definition.Workspace.Name);
         var workspaceDependencies = workspace.Services
@@ -19,9 +19,10 @@ public sealed class ComposeGenerator
             .ToList();
         var builder = new StringBuilder();
 
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml and catalog manifests under catalog/.");
-        builder.AppendLine("# User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml and catalog manifests under catalog/.",
+            "User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead."));
         builder.AppendLine("services:");
         builder.AppendLine("  workspace:");
         builder.AppendLine($"    image: {workspace.Definition.Workspace.Image}");

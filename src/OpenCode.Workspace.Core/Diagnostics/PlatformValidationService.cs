@@ -39,8 +39,8 @@ public sealed class PlatformValidationService
             platformDetector,
             runtimeResolver,
             workspaceResolver,
-            composeGenerator.Generate,
-            provisioningScriptGenerator.Generate,
+            (workspace, paths) => composeGenerator.Generate(workspace, paths),
+            workspace => provisioningScriptGenerator.Generate(workspace),
             (targetPlatform, cancellationToken) => RunContainerExecutionProbeAsync(new ProcessRunner(), targetPlatform, cancellationToken))
     {
     }

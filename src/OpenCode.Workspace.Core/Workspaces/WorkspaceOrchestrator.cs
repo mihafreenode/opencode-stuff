@@ -848,16 +848,20 @@ public sealed class WorkspaceOrchestrator
     private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths)
     {
         var resolved = _workspaceResolver.Resolve(definition);
+        var runtimeState = _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath);
+        var runtimeMetadata = runtimeState.Status == WorkspaceRuntimeStateReadStatus.Loaded
+            ? GeneratedArtifactRuntimeMetadataBuilder.Create(runtimeState.State)
+            : GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
         var workspaceYaml = _workspaceYamlService.Write(definition);
-        var composeYaml = _composeGenerator.Generate(resolved, paths);
-        var environmentFile = _environmentFileGenerator.Generate(definition);
-        var provisionScript = _provisioningScriptGenerator.Generate(resolved);
-        var starshipConfig = _terminalArtifactsGenerator.GenerateStarshipConfig(definition);
-        var shellInitScript = _terminalArtifactsGenerator.GenerateShellInitScript(definition);
-        var opencodeWorkspaceShellScript = _terminalArtifactsGenerator.GenerateOpencodeWorkspaceShellScript(definition);
-        var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration();
-        var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths);
-        var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition);
+        var composeYaml = _composeGenerator.Generate(resolved, paths, runtimeMetadata);
+        var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata);
+        var provisionScript = _provisioningScriptGenerator.Generate(resolved, runtimeMetadata);
+        var starshipConfig = _terminalArtifactsGenerator.GenerateStarshipConfig(definition, runtimeMetadata);
+        var shellInitScript = _terminalArtifactsGenerator.GenerateShellInitScript(definition, runtimeMetadata);
+        var opencodeWorkspaceShellScript = _terminalArtifactsGenerator.GenerateOpencodeWorkspaceShellScript(definition, runtimeMetadata);
+        var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration(runtimeMetadata);
+        var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths, runtimeMetadata);
+        var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition, runtimeMetadata);
         var additionalFiles = _workspaceContentGenerator.Generate(resolved);
         var additionalBinaryFiles = _workspaceContentGenerator.GenerateBinaryFiles(resolved);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);

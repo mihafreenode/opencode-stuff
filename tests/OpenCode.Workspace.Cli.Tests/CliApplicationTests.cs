@@ -80,6 +80,8 @@ public sealed class CliApplicationTests
             {
                 WorkspaceRootPath = Environment.CurrentDirectory,
                 TargetPlatform = "linux/amd64",
+                ResolvedPlatform = "linux/amd64",
+                CompatibilityDisplay = "direct",
                 Checks = [new PlatformValidationCheckResult { Name = "Workspace config", Severity = DiagnosticSeverity.Information, Message = "OK" }],
                 IsSuccess = true,
                 HasWarnings = false,
@@ -102,6 +104,7 @@ public sealed class CliApplicationTests
             {
                 WorkspaceRootPath = Environment.CurrentDirectory,
                 TargetPlatform = "invalid",
+                CompatibilityDisplay = "unresolved",
                 Checks = [new PlatformValidationCheckResult { Name = "Target", Severity = DiagnosticSeverity.Error, Message = "Unsupported target." }],
                 IsSuccess = false,
                 HasWarnings = false,
@@ -125,5 +128,132 @@ public sealed class CliApplicationTests
 
         Assert.Equal(1, exitCode);
         Assert.Contains("Missing required option --target", error.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ValidatePlatform_WithOutput_WritesMarkdownReport()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"cli-output-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var output = new StringWriter();
+            var reportPath = Path.Combine(root, "report.md");
+            var app = new CliApplication(output, new StringWriter(),
+                (_, _) => throw new NotSupportedException(),
+                (_, _) => Task.FromResult(new PlatformValidationReport
+                {
+                    WorkspaceRootPath = root,
+                    TargetPlatform = "linux/amd64",
+                    ResolvedPlatform = "linux/amd64",
+                    CompatibilityDisplay = "direct",
+                    Checks =
+                    [
+                        new PlatformValidationCheckResult { Name = "Workspace Config", Severity = DiagnosticSeverity.Information, Message = "OK" },
+                        new PlatformValidationCheckResult { Name = "Container Execution", Severity = DiagnosticSeverity.Information, Message = "OK (x86_64)" },
+                    ],
+                    IsSuccess = true,
+                    HasWarnings = false,
+                    Summary = "linux/amd64 validation passed.",
+                }));
+
+            var exitCode = await app.RunAsync(["validate-platform", "--target", "linux/amd64", "--output", reportPath]);
+
+            Assert.Equal(0, exitCode);
+            Assert.True(File.Exists(reportPath));
+            var markdown = await File.ReadAllTextAsync(reportPath);
+            Assert.Contains("# Platform Validation Report", markdown, StringComparison.Ordinal);
+            Assert.Contains("linux/amd64 validation passed.", markdown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ValidatePlatform_WithDirectoryOutputPath_ExitsNonZero()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"cli-output-invalid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var error = new StringWriter();
+            var app = new CliApplication(new StringWriter(), error,
+                (_, _) => throw new NotSupportedException(),
+                (_, _) => Task.FromResult(new PlatformValidationReport
+                {
+                    WorkspaceRootPath = root,
+                    TargetPlatform = "linux/amd64",
+                    ResolvedPlatform = "linux/amd64",
+                    CompatibilityDisplay = "direct",
+                    Checks = [new PlatformValidationCheckResult { Name = "Workspace Config", Severity = DiagnosticSeverity.Information, Message = "OK" }],
+                    IsSuccess = true,
+                    HasWarnings = false,
+                    Summary = "linux/amd64 validation passed.",
+                }));
+
+            var exitCode = await app.RunAsync(["validate-platform", "--target", "linux/amd64", "--output", root]);
+
+            Assert.Equal(1, exitCode);
+            Assert.Contains("Access to the path", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ValidatePlatform_WithOutput_WritesFailureReport_AndReturnsNonZero()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"cli-output-failure-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var reportPath = Path.Combine(root, "failure.md");
+            var app = new CliApplication(new StringWriter(), new StringWriter(),
+                (_, _) => throw new NotSupportedException(),
+                (_, _) => Task.FromResult(new PlatformValidationReport
+                {
+                    WorkspaceRootPath = root,
+                    TargetPlatform = "linux/arm64",
+                    ResolvedPlatform = "linux/amd64",
+                    CompatibilityDisplay = "fallback",
+                    ValidatedWithFallback = true,
+                    Checks =
+                    [
+                        new PlatformValidationCheckResult { Name = "Buildx Build Support", Severity = DiagnosticSeverity.Warning, Message = "Buildx is not available." },
+                        new PlatformValidationCheckResult { Name = "Container Execution", Severity = DiagnosticSeverity.Error, Message = "This host cannot currently execute linux/arm64 containers." },
+                    ],
+                    IsSuccess = false,
+                    HasWarnings = true,
+                    Summary = "linux/arm64 validation failed on this host.",
+                }));
+
+            var exitCode = await app.RunAsync(["validate-platform", "--target", "linux/arm64", "--output", reportPath]);
+
+            Assert.Equal(1, exitCode);
+            Assert.True(File.Exists(reportPath));
+            var markdown = await File.ReadAllTextAsync(reportPath);
+            Assert.Contains("linux/arm64 validation failed on this host.", markdown, StringComparison.Ordinal);
+            Assert.Contains("Container execution details:", markdown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 }

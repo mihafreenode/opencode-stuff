@@ -11,16 +11,17 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class AttachArtifactsGenerator
 {
-    public string GenerateWindowsTerminalWrapper(WorkspaceDefinition definition, WorkspacePaths paths)
+    public string GenerateWindowsTerminalWrapper(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var containerName = DockerServiceName(definition);
         var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
         var attachPrefix = $"[attach:{definition.Workspace.Name}]";
         var builder = new StringBuilder();
 
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml attach settings and workspace naming.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or code generation instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml attach settings and workspace naming.",
+            "User edits are not preserved. Edit workspace.yaml or code generation instead."));
         builder.AppendLine("$ErrorActionPreference = 'Stop'");
         builder.AppendLine($"$attachPrefix = '{EscapePowerShell(attachPrefix)}'");
         builder.AppendLine($"$containerName = '{EscapePowerShell(containerName)}'");
@@ -116,14 +117,15 @@ public sealed class AttachArtifactsGenerator
         return builder.ToString();
     }
 
-    public string GenerateTerminalDiagnosticsWrapper(WorkspaceDefinition definition)
+    public string GenerateTerminalDiagnosticsWrapper(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var containerName = DockerServiceName(definition);
         var builder = new StringBuilder();
 
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml terminal diagnostics generation.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or code generation instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml terminal diagnostics generation.",
+            "User edits are not preserved. Edit workspace.yaml or code generation instead."));
         builder.AppendLine("$ErrorActionPreference = 'Stop'");
         builder.AppendLine($"$workspaceName = '{EscapePowerShell(definition.Workspace.Name)}'");
         builder.AppendLine($"$containerName = '{EscapePowerShell(containerName)}'");

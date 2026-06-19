@@ -17,7 +17,57 @@ opencode validate-platform --target linux/amd64
 opencode validate-platform --target linux/arm64
 ```
 
+Write a durable Markdown report:
+
+```bash
+opencode validate-platform --target linux/amd64 --output report.md
+opencode validate-platform --target linux/arm64 --output report.md
+```
+
+Future tooling can place reports under the default artifact convention:
+
+```text
+artifacts/platform-validation/linux-amd64.md
+artifacts/platform-validation/linux-arm64.md
+```
+
 Native execution is preferred. Compatibility validation is automatic when Docker and Buildx can provide it.
+
+Generated runtime artifacts such as `compose.yaml`, `.env`, provisioning scripts, shell init scripts, and attach wrappers also carry a concise runtime metadata header. The header shows the resolved runtime, target platform, compatibility mode, and generation time without exposing absolute paths, usernames, secrets, or machine identifiers.
+
+Example report:
+
+```markdown
+# Platform Validation Report
+
+Requested Target: linux/arm64
+Resolved Platform: linux/amd64
+Compatibility: fallback
+
+## Checks
+
+| Check | Status |
+| --- | --- |
+| Workspace Config | OK |
+| Runtime Resolution | OK |
+| Buildx Build Support | Warning |
+| Container Execution | OK |
+| Compose Generation | OK |
+| Provisioning Generation | OK |
+
+## Notes
+
+Requested target was validated through fallback behavior using linux/amd64.
+
+Container execution succeeded:
+aarch64
+
+Buildx Build Support: Active builder does not advertise linux/arm64.
+
+## Result
+
+linux/arm64 validation completed with warnings.
+```
 
 Buildx and QEMU validation improve confidence, but they do not replace final validation on real hardware.
 

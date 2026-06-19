@@ -482,8 +482,8 @@ public sealed class PlatformValidationServiceTests
                 HostPlatform = effectiveHost,
             }),
             resolver,
-            composeGeneration ?? new ComposeGenerator().Generate,
-            provisioningGeneration ?? new ProvisioningScriptGenerator().Generate,
+            composeGeneration ?? ((workspace, paths) => new ComposeGenerator().Generate(workspace, paths)),
+            provisioningGeneration ?? (workspace => new ProvisioningScriptGenerator().Generate(workspace)),
             containerExecutionProbe ?? DefaultContainerExecutionProbe);
     }
 

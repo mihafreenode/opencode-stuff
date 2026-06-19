@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using OpenCode.Workspace.Core.Models;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -8,6 +9,8 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class WorkspaceAppliedStateService
 {
+    private static readonly Regex GeneratedTimestampLine = new(@"(?m)^# Generated: .+$", RegexOptions.Compiled);
+
     private readonly ISerializer _serializer;
     private readonly IDeserializer _deserializer;
 
@@ -54,8 +57,11 @@ public sealed class WorkspaceAppliedStateService
     public static string ComputeHash(params string[] parts)
     {
         using var sha256 = SHA256.Create();
-        var payload = string.Join("\n---\n", parts);
+        var payload = string.Join("\n---\n", parts.Select(NormalizeGeneratedMetadata));
         var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexString(bytes);
     }
+
+    private static string NormalizeGeneratedMetadata(string content)
+        => GeneratedTimestampLine.Replace(content, "# Generated: <normalized>");
 }

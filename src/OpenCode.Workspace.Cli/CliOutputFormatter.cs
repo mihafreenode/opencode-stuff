@@ -100,6 +100,7 @@ public static class CliOutputFormatter
             "  opencode validate-platform --target linux/amd64",
             "  opencode validate-platform --target linux/arm64",
             "  opencode validate-platform --workspace <path> --target linux/arm64",
+            "  opencode validate-platform --target linux/arm64 --output report.md",
             "  opencode --help",
         });
     }

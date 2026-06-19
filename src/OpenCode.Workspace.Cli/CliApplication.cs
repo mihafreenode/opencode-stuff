@@ -73,12 +73,19 @@ public sealed class CliApplication
     {
         var workspacePath = ParseWorkspaceOption(args);
         var target = ParseRequiredTargetOption(args);
+        var outputPath = ParseOutputOption(args);
         var report = await _platformValidationRunner(new PlatformValidationRequest
         {
             WorkspacePath = workspacePath,
             TargetPlatform = target,
         }, cancellationToken);
         await _output.WriteLineAsync(CliOutputFormatter.FormatPlatformValidation(report));
+
+        if (!string.IsNullOrWhiteSpace(outputPath))
+        {
+            await WritePlatformValidationReportAsync(report, outputPath, cancellationToken);
+        }
+
         return report.IsSuccess ? 0 : 1;
     }
 
@@ -95,6 +102,9 @@ public sealed class CliApplication
     private static string ParseRequiredTargetOption(string[] args)
         => ParseOptionValue(args, "--target") ?? throw new ArgumentException("Missing required option --target.");
 
+    private static string? ParseOutputOption(string[] args)
+        => ParseOptionValue(args, "--output");
+
     private static string? ParseOptionValue(string[] args, string optionName)
     {
         for (var index = 0; index < args.Length; index++)
@@ -102,7 +112,10 @@ public sealed class CliApplication
             var argument = args[index];
             if (!string.Equals(argument, optionName, StringComparison.OrdinalIgnoreCase))
             {
-                if (argument.StartsWith("--", StringComparison.Ordinal) && !string.Equals(argument, "--workspace", StringComparison.OrdinalIgnoreCase) && !string.Equals(argument, "--target", StringComparison.OrdinalIgnoreCase))
+                if (argument.StartsWith("--", StringComparison.Ordinal)
+                    && !string.Equals(argument, "--workspace", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--target", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--output", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ArgumentException($"Unknown option '{argument}'.");
                 }
@@ -119,6 +132,20 @@ public sealed class CliApplication
         }
 
         return null;
+    }
+
+    private static async Task WritePlatformValidationReportAsync(PlatformValidationReport report, string outputPath, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var fullOutputPath = Path.GetFullPath(outputPath);
+        var directory = Path.GetDirectoryName(fullOutputPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var markdown = PlatformValidationMarkdownReportFormatter.Format(report);
+        await File.WriteAllTextAsync(fullOutputPath, markdown, cancellationToken);
     }
 
     private static async Task<WorkspaceDoctorResult> RunDoctorAsync(string workspacePath, CancellationToken cancellationToken)

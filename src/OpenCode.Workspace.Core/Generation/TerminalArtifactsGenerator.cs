@@ -10,12 +10,13 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class TerminalArtifactsGenerator
 {
-    public string GenerateStarshipConfig(WorkspaceDefinition definition)
+    public string GenerateStarshipConfig(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml terminal settings.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml terminal settings.",
+            "User edits are not preserved. Edit workspace.yaml instead."));
         builder.AppendLine("format = '$directory$git_branch$git_status$docker_context$dotnet$nodejs$python$character'");
         builder.AppendLine("add_newline = false");
         builder.AppendLine();
@@ -52,13 +53,14 @@ public sealed class TerminalArtifactsGenerator
         return builder.ToString();
     }
 
-    public string GenerateShellInitScript(WorkspaceDefinition definition)
+    public string GenerateShellInitScript(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine("#!/usr/bin/env bash");
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml terminal settings.");
-        builder.AppendLine("# This file is sourced from a clearly marked managed block in ~/.bashrc.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml terminal settings.",
+            "This file is sourced from a clearly marked managed block in ~/.bashrc."));
         builder.AppendLine();
         builder.AppendLine("export STARSHIP_CONFIG=/opt/opencode-workspace/config/starship.toml");
         builder.AppendLine("export TERM=${TERM:-xterm-256color}");
@@ -109,13 +111,14 @@ public sealed class TerminalArtifactsGenerator
         return builder.ToString();
     }
 
-    public string GenerateOpencodeWorkspaceShellScript(WorkspaceDefinition definition)
+    public string GenerateOpencodeWorkspaceShellScript(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine("#!/usr/bin/env bash");
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml attach/session behavior and launcher generation.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or code generation instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml attach/session behavior and launcher generation.",
+            "User edits are not preserved. Edit workspace.yaml or code generation instead."));
         builder.AppendLine("set -euo pipefail");
         builder.AppendLine();
         builder.AppendLine("# This helper resumes the latest matching OpenCode session for the workspace.");
@@ -197,12 +200,13 @@ public sealed class TerminalArtifactsGenerator
         return builder.ToString();
     }
 
-    public string GenerateScreenConfiguration()
+    public string GenerateScreenConfiguration(GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES");
-        builder.AppendLine("# Source inputs: workspace.yaml terminal/session settings.");
-        builder.AppendLine("# User edits are not preserved. Edit workspace.yaml or code generation instead.");
+        builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
+            runtimeMetadata,
+            "Source inputs: workspace.yaml terminal/session settings.",
+            "User edits are not preserved. Edit workspace.yaml or code generation instead."));
         builder.AppendLine("defutf8 on");
         builder.AppendLine("encoding utf8 utf8");
         builder.AppendLine("term screen-256color");
