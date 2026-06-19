@@ -1,0 +1,20 @@
+OpenCode Platform Validation
+
+Requested target: linux/arm64
+Resolved workspace platform: linux/amd64
+Compatibility: emulated fallback
+Requested target execution: linux/arm64 OK (aarch64)
+
+Checks:
+  Runtime resolution: OK
+    OK (docker resolved linux/arm64 through fallback to linux/amd64)
+  Buildx build support: Warning
+    Active builder does not advertise linux/arm64. Native validation may still be possible on target hardware.
+  Compose generation: OK
+  Provisioning generation: OK
+  Container execution: OK
+    OK (aarch64)
+
+Result:
+  Requested target 'linux/arm64' was validated through fallback behavior using 'linux/amd64'.
+  linux/arm64 validation completed with warnings.

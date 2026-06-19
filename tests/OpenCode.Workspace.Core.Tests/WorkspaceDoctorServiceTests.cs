@@ -43,6 +43,153 @@ public sealed class WorkspaceDoctorServiceTests
     }
 
     [Fact]
+    public async Task DiagnoseAsync_Arm64SupportAvailable_WhenExecutionProbeSucceeds()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var result = await CreateService(
+                CreateReadyHostPlatform(),
+                arm64ExecutionProbe: _ => Task.FromResult(Success("docker run", "aarch64")))
+                .DiagnoseAsync(root);
+
+            Assert.Equal(Arm64ExecutionSupportStatus.Available, result.Arm64ExecutionSupportStatus);
+            Assert.Contains("aarch64", result.Arm64ExecutionSupportDetails, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task DiagnoseAsync_Arm64SupportInferredFromExecutionProbe_WhenBuildxDoesNotAdvertiseArm64()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var hostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Linux,
+                Architecture = HostArchitecture.X64,
+                NativeContainerPlatform = "linux/amd64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = ["linux/amd64"],
+                },
+            };
+            var result = await CreateService(
+                hostPlatform,
+                arm64ExecutionProbe: _ => Task.FromResult(Success("docker run", "aarch64")))
+                .DiagnoseAsync(root);
+
+            Assert.Equal(Arm64ExecutionSupportStatus.Available, result.Arm64ExecutionSupportStatus);
+            Assert.Contains("Execution probe OK", result.Arm64ExecutionSupportDetails, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task DiagnoseAsync_Arm64SupportUnavailable_WhenExecutionProbeFails()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var result = await CreateService(
+                CreateReadyHostPlatform(),
+                arm64ExecutionProbe: _ => Task.FromResult(Failure("docker run", "exec format error")))
+                .DiagnoseAsync(root);
+
+            Assert.Equal(Arm64ExecutionSupportStatus.Unavailable, result.Arm64ExecutionSupportStatus);
+            Assert.Contains("exec format error", result.Arm64ExecutionSupportDetails, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task DiagnoseAsync_Arm64SupportInferredFromBuildx_WhenProbeUnavailableAndAdvertised()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var hostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Linux,
+                Architecture = HostArchitecture.X64,
+                NativeContainerPlatform = "linux/amd64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = ["linux/amd64", "linux/arm64"],
+                },
+            };
+            var result = await CreateService(
+                hostPlatform,
+                arm64ExecutionProbe: _ => throw new TimeoutException("probe skipped"))
+                .DiagnoseAsync(root);
+
+            Assert.Equal(Arm64ExecutionSupportStatus.Available, result.Arm64ExecutionSupportStatus);
+            Assert.Contains("Buildx advertises linux/arm64", result.Arm64ExecutionSupportDetails, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task DiagnoseAsync_Arm64SupportInferredFromBuildx_WhenProbeUnavailableAndNotAdvertised()
+    {
+        var root = CreateWorkspaceRoot();
+
+        try
+        {
+            var hostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Linux,
+                Architecture = HostArchitecture.X64,
+                NativeContainerPlatform = "linux/amd64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = ["linux/amd64"],
+                },
+            };
+            var result = await CreateService(
+                hostPlatform,
+                arm64ExecutionProbe: _ => throw new TimeoutException("probe skipped"))
+                .DiagnoseAsync(root);
+
+            Assert.Equal(Arm64ExecutionSupportStatus.Unavailable, result.Arm64ExecutionSupportStatus);
+            Assert.Contains("Buildx does not advertise linux/arm64", result.Arm64ExecutionSupportDetails, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task DiagnoseAsync_OnNativeLinuxAmd64Workspace_ReturnsRunnableNativePlan()
     {
         var root = CreateWorkspaceRoot();
@@ -276,7 +423,7 @@ public sealed class WorkspaceDoctorServiceTests
         }
     }
 
-    private static WorkspaceDoctorService CreateService(HostPlatformInfo hostPlatform, IRuntimeResolver? runtimeResolver = null)
+    private static WorkspaceDoctorService CreateService(HostPlatformInfo hostPlatform, IRuntimeResolver? runtimeResolver = null, Func<CancellationToken, Task<ProcessResult>>? arm64ExecutionProbe = null)
         => new(
             new FakePlatformDetector(hostPlatform),
             runtimeResolver ?? new FakeRuntimeResolver(new ResolvedRuntimePlan
@@ -291,7 +438,8 @@ public sealed class WorkspaceDoctorServiceTests
             }),
             new WorkspaceDiscoveryService(),
             new WorkspaceYamlService(),
-            new WorkspaceRuntimeStateService());
+            new WorkspaceRuntimeStateService(),
+            arm64ExecutionProbe ?? (_ => Task.FromResult(Success("docker run", "aarch64"))));
 
     private static HostPlatformInfo CreateReadyHostPlatform()
         => new()
@@ -351,4 +499,26 @@ public sealed class WorkspaceDoctorServiceTests
                 HostPlatform = hostPlatform,
             });
     }
+
+    private static ProcessResult Success(string command, string stdout) => new()
+    {
+        Command = command,
+        ExitCode = 0,
+        StandardOutput = stdout,
+        StandardError = string.Empty,
+        StandardOutputLines = [stdout],
+        StandardErrorLines = Array.Empty<string>(),
+        Duration = TimeSpan.FromMilliseconds(10),
+    };
+
+    private static ProcessResult Failure(string command, string stderr) => new()
+    {
+        Command = command,
+        ExitCode = 1,
+        StandardOutput = string.Empty,
+        StandardError = stderr,
+        StandardOutputLines = Array.Empty<string>(),
+        StandardErrorLines = [stderr],
+        Duration = TimeSpan.FromMilliseconds(10),
+    };
 }

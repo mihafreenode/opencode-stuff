@@ -6,11 +6,14 @@ namespace OpenCode.Workspace.Core.Diagnostics;
 
 public sealed class WorkspaceDoctorService
 {
+    private static readonly TimeSpan Arm64ExecutionProbeTimeout = TimeSpan.FromSeconds(60);
+
     private readonly IPlatformDetector _platformDetector;
     private readonly IRuntimeResolver _runtimeResolver;
     private readonly WorkspaceDiscoveryService _workspaceDiscoveryService;
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
+    private readonly Func<CancellationToken, Task<ProcessResult>> _arm64ExecutionProbe;
 
     public WorkspaceDoctorService(
         IPlatformDetector platformDetector,
@@ -18,12 +21,30 @@ public sealed class WorkspaceDoctorService
         WorkspaceDiscoveryService workspaceDiscoveryService,
         WorkspaceYamlService workspaceYamlService,
         WorkspaceRuntimeStateService workspaceRuntimeStateService)
+        : this(
+            platformDetector,
+            runtimeResolver,
+            workspaceDiscoveryService,
+            workspaceYamlService,
+            workspaceRuntimeStateService,
+            cancellationToken => RunArm64ExecutionProbeAsync(new ProcessRunner(), cancellationToken))
+    {
+    }
+
+    public WorkspaceDoctorService(
+        IPlatformDetector platformDetector,
+        IRuntimeResolver runtimeResolver,
+        WorkspaceDiscoveryService workspaceDiscoveryService,
+        WorkspaceYamlService workspaceYamlService,
+        WorkspaceRuntimeStateService workspaceRuntimeStateService,
+        Func<CancellationToken, Task<ProcessResult>> arm64ExecutionProbe)
     {
         _platformDetector = platformDetector;
         _runtimeResolver = runtimeResolver;
         _workspaceDiscoveryService = workspaceDiscoveryService;
         _workspaceYamlService = workspaceYamlService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
+        _arm64ExecutionProbe = arm64ExecutionProbe;
     }
 
     public async Task<WorkspaceDoctorResult> DiagnoseAsync(string workspacePath, CancellationToken cancellationToken = default)
@@ -47,10 +68,16 @@ public sealed class WorkspaceDoctorService
         string? configurationError = null;
         var canRun = false;
         var recommendation = string.Empty;
+        var arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Unknown;
+        string? arm64ExecutionSupportDetails = null;
 
         try
         {
             hostPlatform = await _platformDetector.DetectAsync(cancellationToken);
+            if (hostPlatform is not null)
+            {
+                (arm64ExecutionSupportStatus, arm64ExecutionSupportDetails) = await DetermineArm64ExecutionSupportAsync(hostPlatform, cancellationToken);
+            }
         }
         catch (Exception exception)
         {
@@ -115,10 +142,46 @@ public sealed class WorkspaceDoctorService
             WorkspaceConfigurationError = configurationError,
             RuntimeStateStatus = runtimeStateRead.Status,
             RuntimeState = runtimeStateRead.State,
+            Arm64ExecutionSupportStatus = arm64ExecutionSupportStatus,
+            Arm64ExecutionSupportDetails = arm64ExecutionSupportDetails,
             ResolvedRuntimePlan = resolvedRuntimePlan,
             CanRun = canRun,
             Recommendation = recommendation,
         };
+    }
+
+    private async Task<(Arm64ExecutionSupportStatus Status, string? Details)> DetermineArm64ExecutionSupportAsync(HostPlatformInfo hostPlatform, CancellationToken cancellationToken)
+    {
+        if (!hostPlatform.Docker.CliAvailable || !hostPlatform.Docker.EngineReachable)
+        {
+            return (Arm64ExecutionSupportStatus.Unknown, null);
+        }
+
+        try
+        {
+            var probe = await _arm64ExecutionProbe(cancellationToken);
+            if (probe.IsSuccess)
+            {
+                var reportedArchitecture = probe.StandardOutputLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim()
+                    ?? probe.StandardOutput.Trim();
+                if (PlatformValidationService.IsExpectedExecutionArchitecture("linux/arm64", reportedArchitecture))
+                {
+                    return (Arm64ExecutionSupportStatus.Available, $"Execution probe OK ({reportedArchitecture})");
+                }
+
+                return (Arm64ExecutionSupportStatus.Unavailable, $"Execution probe returned unexpected architecture '{reportedArchitecture}'.");
+            }
+
+            return (Arm64ExecutionSupportStatus.Unavailable, probe.StandardError.Trim());
+        }
+        catch
+        {
+            // Fall back to advertised builder support when runtime probing is unavailable.
+        }
+
+        return hostPlatform.Docker.SupportedPlatforms.Contains("linux/arm64", StringComparer.OrdinalIgnoreCase)
+            ? (Arm64ExecutionSupportStatus.Available, "Buildx advertises linux/arm64.")
+            : (Arm64ExecutionSupportStatus.Unavailable, "Buildx does not advertise linux/arm64.");
     }
 
     private static string BuildDockerRecommendation(HostPlatformInfo hostPlatform, string existingRecommendation)
@@ -150,4 +213,13 @@ public sealed class WorkspaceDoctorService
     }
 
     internal sealed record WorkspaceLocation(string WorkspaceRootPath, string? ExplicitConfigurationPath);
+
+    private static Task<ProcessResult> RunArm64ExecutionProbeAsync(IProcessRunner processRunner, CancellationToken cancellationToken)
+    {
+        return processRunner.RunAsync(
+            "docker",
+            ["run", "--rm", "--platform", "linux/arm64", "ubuntu:24.04", "uname", "-m"],
+            cancellationToken: cancellationToken,
+            timeout: Arm64ExecutionProbeTimeout);
+    }
 }

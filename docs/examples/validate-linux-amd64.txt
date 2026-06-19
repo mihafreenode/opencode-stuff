@@ -1,0 +1,19 @@
+OpenCode Platform Validation
+
+Requested target: linux/amd64
+Resolved workspace platform: linux/amd64
+Compatibility: direct
+Requested target execution: linux/amd64 OK (x86_64)
+
+Checks:
+  Runtime resolution: OK
+    OK (docker resolved linux/amd64 directly)
+  Buildx build support: OK
+  Compose generation: OK
+  Provisioning generation: OK
+  Container execution: OK
+    OK (x86_64)
+
+Result:
+  Requested target 'linux/amd64' was validated directly.
+  linux/amd64 validation passed.

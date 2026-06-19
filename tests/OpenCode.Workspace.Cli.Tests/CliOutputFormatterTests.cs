@@ -28,6 +28,8 @@ public sealed class CliOutputFormatterTests
             WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
             WorkspaceConfigurationPath = "workspace.yaml",
             RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Loaded,
+            Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Available,
+            Arm64ExecutionSupportDetails = "Execution probe OK (aarch64)",
             ResolvedRuntimePlan = new ResolvedRuntimePlan
             {
                 Runtime = "docker",
@@ -44,6 +46,7 @@ public sealed class CliOutputFormatterTests
         Assert.Contains("OpenCode Doctor", text, StringComparison.Ordinal);
         Assert.Contains("Local runtime state path: .opencode/local/runtime-state.yaml", text, StringComparison.Ordinal);
         Assert.Contains("Compatibility: native", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ARM64 execution support: available", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Result:", text, StringComparison.Ordinal);
         Assert.Contains("Workspace can run on this machine.", text, StringComparison.Ordinal);
     }
@@ -73,6 +76,8 @@ public sealed class CliOutputFormatterTests
             WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
             WorkspaceConfigurationPath = "workspace.yaml",
             RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Missing,
+            Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Available,
+            Arm64ExecutionSupportDetails = "Execution probe OK (aarch64)",
             ResolvedRuntimePlan = new ResolvedRuntimePlan
             {
                 Runtime = "docker",
@@ -122,6 +127,8 @@ public sealed class CliOutputFormatterTests
             WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
             WorkspaceConfigurationPath = "workspace.yaml",
             RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Missing,
+            Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Available,
+            Arm64ExecutionSupportDetails = "Execution probe OK (aarch64)",
             ResolvedRuntimePlan = new ResolvedRuntimePlan
             {
                 Runtime = "docker",
@@ -207,7 +214,7 @@ public sealed class CliOutputFormatterTests
                 new PlatformValidationCheckResult { Name = "Buildx build support", Severity = DiagnosticSeverity.Warning, Message = "Active builder does not advertise linux/arm64." },
                 new PlatformValidationCheckResult { Name = "Compose generation", Severity = DiagnosticSeverity.Information, Message = "OK" },
                 new PlatformValidationCheckResult { Name = "Provisioning generation", Severity = DiagnosticSeverity.Information, Message = "OK" },
-                new PlatformValidationCheckResult { Name = "Container execution", Severity = DiagnosticSeverity.Error, Message = "This host cannot currently execute linux/arm64 containers. Enable container emulation, use a builder/runtime with linux/arm64 support, or validate on real ARM64 hardware. Technical details: exec /usr/bin/uname: exec format error" },
+                new PlatformValidationCheckResult { Name = "Container execution", Severity = DiagnosticSeverity.Error, Message = "This host cannot currently execute linux/arm64 containers.\n\nPossible fixes:\n- Install ARM64 emulation support\n- Configure a Buildx builder with linux/arm64 support\n- Validate on real ARM64 hardware\nTechnical details: exec /usr/bin/uname: exec format error" },
             ],
             IsSuccess = false,
             HasWarnings = true,
@@ -217,6 +224,49 @@ public sealed class CliOutputFormatterTests
         Assert.Contains("Container execution: Failed", text, StringComparison.Ordinal);
         Assert.Contains("Requested target execution: linux/arm64 failed on this host", text, StringComparison.Ordinal);
         Assert.Contains("This host cannot currently execute linux/arm64 containers.", text, StringComparison.Ordinal);
+        Assert.Contains("Possible fixes:", text, StringComparison.Ordinal);
+        Assert.Contains("- Install ARM64 emulation support", text, StringComparison.Ordinal);
         Assert.Contains("linux/arm64 validation failed on this host.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatDoctor_Arm64SupportUnavailable_IsReadable()
+    {
+        var text = CliOutputFormatter.FormatDoctor(new WorkspaceDoctorResult
+        {
+            WorkspaceRootPath = "/workspace",
+            RuntimeStatePath = "/workspace/.opencode/local/runtime-state.yaml",
+            HostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.Linux,
+                Architecture = HostArchitecture.X64,
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = false,
+                    SupportedPlatforms = ["linux/amd64"],
+                },
+            },
+            WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
+            WorkspaceConfigurationPath = "workspace.yaml",
+            RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Missing,
+            Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Unavailable,
+            Arm64ExecutionSupportDetails = "Buildx does not advertise linux/arm64.",
+            ResolvedRuntimePlan = new ResolvedRuntimePlan
+            {
+                Runtime = "docker",
+                TargetPlatform = "linux/amd64",
+                CompatibilityMode = RuntimeCompatibilityMode.Native,
+                SupportLevel = SupportLevel.NativeTested,
+                IsAvailable = true,
+            },
+            CanRun = true,
+            Recommendation = "Workspace can run on this machine.",
+        });
+
+        Assert.Contains("ARM64 execution support: unavailable", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ARM64 detail: Buildx does not advertise linux/arm64.", text, StringComparison.Ordinal);
     }
 }

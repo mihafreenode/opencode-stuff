@@ -38,6 +38,8 @@ Buildx build support and runtime execution support are related but not identical
 
 The inverse can also happen: generation may succeed while the current host cannot execute `linux/arm64` containers locally. In that case `validate-platform` reports a host validation failure and recommends emulation, a runtime with `linux/arm64` support, or validation on real ARM64 hardware.
 
+Contributors debugging that case should first validate whether the current host can actually execute `linux/arm64` containers. If not, enable ARM64 emulation, bootstrap a Buildx builder that advertises `linux/arm64`, and rerun the execution probe before treating the result as a product portability problem.
+
 This is generation and compatibility validation with a lightweight execution probe, not a full runtime smoke test.
 
 ## Resolution policy

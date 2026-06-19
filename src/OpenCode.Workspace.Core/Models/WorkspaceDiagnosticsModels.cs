@@ -14,6 +14,13 @@ public enum WorkspaceRuntimeStateReadStatus
     Corrupted,
 }
 
+public enum Arm64ExecutionSupportStatus
+{
+    Unknown,
+    Available,
+    Unavailable,
+}
+
 public sealed class WorkspaceRuntimeStateReadResult
 {
     public WorkspaceRuntimeStateReadStatus Status { get; init; }
@@ -30,6 +37,8 @@ public sealed class WorkspaceDoctorResult
     public string? WorkspaceConfigurationError { get; init; }
     public WorkspaceRuntimeStateReadStatus RuntimeStateStatus { get; init; }
     public WorkspaceRuntimeStateRecord? RuntimeState { get; init; }
+    public Arm64ExecutionSupportStatus Arm64ExecutionSupportStatus { get; init; }
+    public string? Arm64ExecutionSupportDetails { get; init; }
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool CanRun { get; init; }
     public required string Recommendation { get; init; }

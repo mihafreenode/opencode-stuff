@@ -31,6 +31,54 @@ Typical remedies are:
 - use a builder or runtime with `linux/arm64` support
 - validate on real ARM64 hardware
 
+### ARM64 Validation Fails With exec format error
+
+Symptoms:
+
+```text
+Container execution: Failed
+exec /usr/bin/uname: exec format error
+```
+
+Explanation:
+
+The local Docker environment cannot currently execute ARM64 containers.
+
+Possible causes:
+
+- ARM64 emulation not installed
+- Buildx builder missing ARM64 support
+- QEMU/binfmt registration missing
+
+Remediation:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx create --use --name multiarch
+docker buildx inspect --bootstrap
+docker buildx ls
+```
+
+Expected result:
+
+```text
+linux/arm64
+```
+
+appears in Buildx platform support.
+
+Validation check:
+
+```bash
+docker run --rm --platform linux/arm64 ubuntu:24.04 uname -m
+```
+
+Expected:
+
+```text
+aarch64
+```
+
 ## Multi-Architecture Validation
 
 Run:

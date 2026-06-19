@@ -317,7 +317,10 @@ public sealed class PlatformValidationServiceTests
             var executionCheck = Assert.Single(report.Checks, check => check.Name == "Container execution");
             Assert.Equal(DiagnosticSeverity.Error, executionCheck.Severity);
             Assert.Contains("This host cannot currently execute linux/arm64 containers.", executionCheck.Message, StringComparison.Ordinal);
-            Assert.Contains("Enable container emulation, use a builder/runtime with linux/arm64 support, or validate on real ARM64 hardware.", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("Possible fixes:", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("- Install ARM64 emulation support", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("- Configure a Buildx builder with linux/arm64 support", executionCheck.Message, StringComparison.Ordinal);
+            Assert.Contains("- Validate on real ARM64 hardware", executionCheck.Message, StringComparison.Ordinal);
             Assert.Contains("exec /usr/bin/uname: exec format error", executionCheck.Message, StringComparison.Ordinal);
             Assert.Equal("linux/arm64 validation failed on this host.", report.Summary);
         }

@@ -1,0 +1,26 @@
+OpenCode Platform Validation
+
+Requested target: linux/arm64
+Resolved workspace platform: linux/amd64
+Compatibility: emulated fallback
+Requested target execution: linux/arm64 failed on this host
+
+Checks:
+  Runtime resolution: OK
+    OK (docker resolved linux/arm64 through fallback to linux/amd64)
+  Buildx build support: Warning
+    Active builder does not advertise linux/arm64. Native validation may still be possible on target hardware.
+  Compose generation: OK
+  Provisioning generation: OK
+  Container execution: Failed
+    This host cannot currently execute linux/arm64 containers.
+
+    Possible fixes:
+    - Install ARM64 emulation support
+    - Configure a Buildx builder with linux/arm64 support
+    - Validate on real ARM64 hardware
+    Technical details: exec /usr/bin/uname: exec format error
+
+Result:
+  Requested target 'linux/arm64' was validated through fallback behavior using 'linux/amd64'.
+  linux/arm64 validation failed on this host.

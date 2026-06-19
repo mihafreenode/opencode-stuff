@@ -321,8 +321,16 @@ public sealed class PlatformValidationService
     {
         if (string.Equals(targetPlatform, "linux/arm64", StringComparison.OrdinalIgnoreCase))
         {
-            var suffix = string.IsNullOrWhiteSpace(technicalDetails) ? string.Empty : $" Technical details: {technicalDetails.Trim()}";
-            return "This host cannot currently execute linux/arm64 containers. Enable container emulation, use a builder/runtime with linux/arm64 support, or validate on real ARM64 hardware." + suffix;
+            return string.Join("\n", new[]
+            {
+                "This host cannot currently execute linux/arm64 containers.",
+                string.Empty,
+                "Possible fixes:",
+                "- Install ARM64 emulation support",
+                "- Configure a Buildx builder with linux/arm64 support",
+                "- Validate on real ARM64 hardware",
+                string.IsNullOrWhiteSpace(technicalDetails) ? string.Empty : $"Technical details: {technicalDetails.Trim()}",
+            }.Where(line => line is not null));
         }
 
         return string.IsNullOrWhiteSpace(technicalDetails)

@@ -87,6 +87,44 @@ Generated runtime files such as `compose.yaml`, `.env`, attach wrappers, and pro
 
 Machine-local runtime resolution is stored under `.opencode/local/`, including `.opencode/local/runtime-state.yaml`. This folder is ignored by Git, regenerated automatically after successful runtime operations, not required for workspace discovery, and not intended for manual editing.
 
+## ARM64 Validation Troubleshooting
+
+If platform validation reports:
+
+```text
+Container execution: Failed
+exec /usr/bin/uname: exec format error
+```
+
+the local Docker environment cannot currently execute ARM64 containers.
+
+Common causes:
+
+- ARM64 emulation is not installed
+- the active Buildx builder does not include `linux/arm64`
+- QEMU or `binfmt` registration is missing
+
+Try:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx create --use --name multiarch
+docker buildx inspect --bootstrap
+docker buildx ls
+```
+
+Then verify runtime execution directly:
+
+```bash
+docker run --rm --platform linux/arm64 ubuntu:24.04 uname -m
+```
+
+Expected:
+
+```text
+aarch64
+```
+
 `Repair Runtime` repairs generated or runtime state. It does not restore durable user work. Full backup exports now include `backup-manifest.yaml` so users can see which content is durable, generated, or ephemeral.
 
 <img src="docs/walkthrough/images/opencode-terminal-working.png" alt="OpenCode actively working inside a workspace" width="900" />

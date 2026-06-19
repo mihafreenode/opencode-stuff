@@ -22,6 +22,11 @@ public static class CliOutputFormatter
         lines.Add($"  Docker Engine: {FormatAvailability(docker?.EngineReachable)}");
         lines.Add($"  Buildx: {FormatAvailability(docker?.BuildxAvailable)}");
         lines.Add($"  Platforms: {FormatPlatforms(docker?.SupportedPlatforms)}");
+        lines.Add($"  ARM64 execution support: {FormatArm64ExecutionSupport(result.Arm64ExecutionSupportStatus)}");
+        if (!string.IsNullOrWhiteSpace(result.Arm64ExecutionSupportDetails))
+        {
+            lines.Add($"  ARM64 detail: {result.Arm64ExecutionSupportDetails}");
+        }
         foreach (var detail in FormatDiagnosticSummary(docker?.DiagnosticSummary))
         {
             lines.Add($"  Detail: {detail}");
@@ -62,7 +67,12 @@ public static class CliOutputFormatter
             lines.Add($"  {check.Name}: {FormatCheckSeverity(check.Severity)}");
             if (!string.IsNullOrWhiteSpace(check.Message) && !string.Equals(check.Message, "OK", StringComparison.Ordinal))
             {
-                lines.Add($"    {check.Message}");
+                foreach (var messageLine in SplitMessageLines(check.Message))
+                {
+                    lines.Add(string.IsNullOrWhiteSpace(messageLine)
+                        ? string.Empty
+                        : $"    {messageLine}");
+                }
             }
         }
 
@@ -102,6 +112,14 @@ public static class CliOutputFormatter
             null => "unknown",
         };
 
+    private static string FormatArm64ExecutionSupport(Arm64ExecutionSupportStatus status)
+        => status switch
+        {
+            Arm64ExecutionSupportStatus.Available => "available",
+            Arm64ExecutionSupportStatus.Unavailable => "unavailable",
+            _ => "unknown",
+        };
+
     private static string FormatPlatforms(IReadOnlyList<string>? platforms)
         => platforms is { Count: > 0 } ? string.Join(", ", platforms) : "none reported";
 
@@ -118,6 +136,19 @@ public static class CliOutputFormatter
             {
                 yield return segment.Trim();
             }
+        }
+    }
+
+    private static IEnumerable<string> SplitMessageLines(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            yield break;
+        }
+
+        foreach (var line in message.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            yield return line;
         }
     }
 
