@@ -132,6 +132,64 @@ public sealed class WorkspaceLifecycleRegressionTests
         }
     }
 
+    [Fact]
+    public async Task CreateCheckpointAsync_WhenSecretBearingUntrackedFileExists_BlocksWithoutChangingDurableFiles()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = CreateTempPath("checkpoint-secret");
+
+        try
+        {
+            var orchestrator = CreateGitOrchestrator(root, CreateCatalogResolver());
+            var snapshot = await orchestrator.CreateWorkspaceAsync(root, CreateDefinition("checkpoint-secret", ["core", "analytics-reporting"]), includeRuntimeInspection: false);
+            var durableDocPath = Path.Combine(snapshot.Paths.RootPath, "docs", "user-notes.md");
+            var secretPath = Path.Combine(snapshot.Paths.RootPath, ".env");
+            File.WriteAllText(durableDocPath, "keep me\n");
+            File.WriteAllText(secretPath, "API_KEY=secret\n");
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.CreateCheckpointAsync(snapshot));
+
+            Assert.Contains("Workspace Review required before creating a checkpoint", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(".env", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("keep me\n", File.ReadAllText(durableDocPath));
+            Assert.Empty(Directory.Exists(snapshot.Paths.CheckpointsPath) ? Directory.GetDirectories(snapshot.Paths.CheckpointsPath) : Array.Empty<string>());
+        }
+        finally
+        {
+            DeleteTempPath(root);
+            DeleteTempPath(GetAppDataRoot(root));
+        }
+    }
+
+    [Fact]
+    public async Task CreateCheckpointAsync_WhenUntrackedDurableFileExists_CapturesCheckpoint()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = CreateTempPath("checkpoint-durable");
+
+        try
+        {
+            var orchestrator = CreateGitOrchestrator(root, CreateCatalogResolver());
+            var snapshot = await orchestrator.CreateWorkspaceAsync(root, CreateDefinition("checkpoint-durable", ["core", "analytics-reporting"]), includeRuntimeInspection: false);
+            await RunGitAsync(root, "add", "-A");
+            await RunGitAsync(root, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Track generated workspace files");
+            var reportPath = Path.Combine(snapshot.Paths.RootPath, "docs", "draft-report.md");
+            Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
+            File.WriteAllText(reportPath, "# draft\n");
+
+            var checkpoint = await orchestrator.CreateCheckpointAsync(snapshot);
+            var checkpointPath = Path.Combine(snapshot.Paths.CheckpointsPath, checkpoint.Id, "untracked", "docs", "draft-report.md");
+
+            Assert.True(File.Exists(checkpointPath));
+            Assert.Equal("# draft\n", File.ReadAllText(checkpointPath));
+        }
+        finally
+        {
+            DeleteTempPath(root);
+            DeleteTempPath(GetAppDataRoot(root));
+        }
+    }
+
     [Theory]
     [InlineData("analytics", true, false, false)]
     [InlineData("analytics+education", true, false, false)]

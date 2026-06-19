@@ -786,7 +786,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(dockerRunner.DirectoryInitializationRanAfterProvisioning);
             Assert.Equal(1, terminalLauncher.LaunchCount);
             Assert.Contains(logEntries, entry => entry.Message.Contains("Workspace container is running but not provisioned. Running provisioning before attach.", StringComparison.Ordinal));
-            Assert.DoesNotContain(logEntries, entry => entry.Message.Contains("Run provisioning/recover workspace", StringComparison.Ordinal));
+            Assert.DoesNotContain(logEntries, entry => entry.Message.Contains("Run Prepare Workspace or Repair Runtime", StringComparison.Ordinal));
         }
         finally
         {
@@ -1354,13 +1354,13 @@ public sealed class WorkspaceOrchestratorTests
                     {
                         return Task.FromResult(ProvisioningRan
                             ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/opencode", "/usr/bin/screen", "/usr/bin/node", "/usr/bin/npm", "opencode:x:1001:1001::/home/opencode:/bin/bash"))
-                            : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run provisioning/recover workspace."));
+                            : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run Prepare Workspace or Repair Runtime."));
                     }
 
                     DirectoryInitializationRanAfterProvisioning = ProvisioningRan;
                     return Task.FromResult(ProvisioningRan
                         ? CreateResult(command, 0)
-                        : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run provisioning/recover workspace."));
+                        : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run Prepare Workspace or Repair Runtime."));
                 }
 
                 if (argumentList.Contains("config", StringComparer.Ordinal) || argumentList.Contains("up", StringComparer.Ordinal))

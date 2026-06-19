@@ -8,7 +8,7 @@ public sealed class WorkspaceIgnorePolicyServiceTests
     private readonly WorkspaceIgnorePolicyService _service = new();
 
     [Fact]
-    public void ReviewWorkspace_GeneratedRootEnvironmentFile_DoesNotRequireReview()
+    public void ReviewWorkspace_GeneratedRootEnvironmentFile_StillRequiresSecretReview()
     {
         var rootPath = Path.Combine(Path.GetTempPath(), $"ignore-policy-{Guid.NewGuid():N}");
 
@@ -25,10 +25,73 @@ public sealed class WorkspaceIgnorePolicyServiceTests
                         "WORKSPACE_NAME=demo",
                     ]));
 
-            var review = _service.ReviewWorkspace(rootPath);
+            var review = _service.ReviewChangedPathsForProtection(rootPath, [".env"]);
 
-            Assert.False(review.HasSecretCandidates);
-            Assert.False(review.HasReviewRequired);
+            Assert.True(review.HasSecretCandidates);
+            Assert.True(review.HasReviewRequired);
+            Assert.Contains(review.Findings, item => item.RelativePath == ".env");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                TestFileSystem.DeleteDirectoryIfExists(rootPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReviewWorkspace_GeneratedSecretBearingConfig_UnderSecretsFolder_RequiresReview()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), $"ignore-policy-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(rootPath, "secrets"));
+            File.WriteAllText(
+                Path.Combine(rootPath, "secrets", "api-key.txt"),
+                string.Join(
+                    Environment.NewLine,
+                    [
+                        "# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+                        "TOKEN=secret-value",
+                    ]));
+
+            var review = _service.ReviewChangedPathsForProtection(rootPath, ["secrets/api-key.txt"]);
+
+            Assert.True(review.HasSecretCandidates);
+            Assert.Contains(review.Findings, item => item.RelativePath == "secrets/api-key.txt");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                TestFileSystem.DeleteDirectoryIfExists(rootPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReviewWorkspace_GeneratedPrivateKey_StillRequiresReview()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), $"ignore-policy-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(rootPath, "config"));
+            File.WriteAllText(
+                Path.Combine(rootPath, "config", "private.key"),
+                string.Join(
+                    Environment.NewLine,
+                    [
+                        "# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+                        "secret-key-material",
+                    ]));
+
+            var review = _service.ReviewChangedPathsForProtection(rootPath, ["config/private.key"]);
+
+            Assert.True(review.HasSecretCandidates);
+            Assert.Contains(review.Findings, item => item.RelativePath == "config/private.key");
         }
         finally
         {

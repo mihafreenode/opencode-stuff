@@ -225,6 +225,42 @@ public sealed class GitWorkspaceProviderTests
     }
 
     [Fact]
+    public async Task CreateSavePointAsync_WhenGeneratedEnvironmentFileExists_StillThrowsBeforeCommit()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var rootPath = CreateTempPath();
+
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            File.WriteAllText(Path.Combine(rootPath, "notes.txt"), "draft\n");
+            File.WriteAllText(
+                Path.Combine(rootPath, ".env"),
+                string.Join(
+                    Environment.NewLine,
+                    [
+                        "# GENERATED FILE - DO NOT EDIT FOR DURABLE CHANGES",
+                        "# Source inputs: workspace.yaml and catalog manifests under catalog/.",
+                        "API_KEY=secret",
+                    ]));
+
+            var provider = new GitWorkspaceProvider(new ProcessRunner(), new WorkspaceIgnorePolicyService());
+            var definition = CreateDefinition();
+            var paths = WorkspacePathBuilder.Build(rootPath);
+
+            await provider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.CreateSavePointAsync(paths, definition, "Save current work"));
+            Assert.Contains("Workspace Review required", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(".env", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+        }
+    }
+
+    [Fact]
     public async Task CreateSavePointAsync_WhenUnknownHiddenFolderExists_ThrowsBeforeCommit()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");

@@ -100,7 +100,7 @@ Python note:
 - `python` is intentionally mapped to Python 3 for compatibility.
 - Both `python` and `python3` should work in fresh workspaces.
 
-If a script fails with `python: command not found`, reprovision or regenerate the workspace so the latest base package plan is applied.
+If a script fails with `python: command not found`, run `Prepare Workspace` or `Repair Runtime` so the latest generated package plan is applied.
 
 ## The Runtime Stopped Unexpectedly
 
@@ -115,6 +115,8 @@ Recommended recovery path:
 3. re-run any validation that depends on the runtime still being alive
 
 This usually means the tool environment stopped. It does not automatically mean your workspace was lost.
+
+Durable workspace artifacts remain the assets that matter. Generated runtime files can be recreated, and ephemeral container state can be discarded.
 
 ## The Session Does Not Restore
 
@@ -140,6 +142,8 @@ That means:
 3. start a new OpenCode session when none exist
 
 If attach still fails, confirm the workspace was provisioned successfully and that `opencode` exists inside the container.
+
+Use `Repair Runtime` when generated runtime files or runtime wiring need to be repaired. Use Save Points, checkpoints, patches, or backup restore workflows when you need to restore durable work.
 
 ## Attach Validation Note
 

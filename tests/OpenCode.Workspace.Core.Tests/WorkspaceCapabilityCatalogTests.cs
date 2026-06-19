@@ -56,6 +56,8 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("END GENERATED ONBOARDING LINKS", agents);
         Assert.Contains("## Enabled Onboarding Materials", agents);
         Assert.Contains("Do not scan the repository first.", agents);
+        Assert.Contains("durable source of truth", agents, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replaceable", agents, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("docs/documentation-features.md", agents);
         Assert.Contains("docs/capabilities/document-processing.md", agents);
         Assert.Contains("docs/capabilities/ocr.md", agents);
@@ -73,6 +75,8 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("No sessions available", troubleshooting);
         Assert.Contains("Capability catalog missing", troubleshooting);
         Assert.Contains("weasyprint: command not found", troubleshooting);
+        Assert.Contains("Repair Runtime", troubleshooting);
+        Assert.DoesNotContain("reprovision", troubleshooting, StringComparison.OrdinalIgnoreCase);
 
         AssertCapabilityLinksResolve(snapshot.Paths.RootPath);
     }
@@ -280,6 +284,96 @@ public sealed class WorkspaceCapabilityCatalogTests
         Assert.Contains("docs/capabilities/analytics.md", merged);
     }
 
+    [Fact]
+    public void AgentsMerge_BeginOnlyMarker_RepairsToSingleCanonicalBlock()
+    {
+        var original = string.Join("\n",
+        [
+            "# Notes",
+            string.Empty,
+            "User-authored content before.",
+            GeneratedCapabilityGuidanceBeginForTest,
+            "STALE GENERATED CONTENT",
+            string.Empty,
+            "User-authored content after.",
+            string.Empty,
+        ]);
+
+        var merged = WorkspaceContentGenerator.MergeGeneratedCapabilityGuidance(original, "## Workspace Capability Discovery\n\n- docs/capabilities/README.md");
+
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceBeginForTest)).Cast<Match>());
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceEndForTest)).Cast<Match>());
+        Assert.Contains("User-authored content before.", merged);
+        Assert.Contains("User-authored content after.", merged);
+        Assert.DoesNotContain("STALE GENERATED CONTENT", merged);
+    }
+
+    [Fact]
+    public void AgentsMerge_DuplicatedMarkers_RepairsToSingleCanonicalBlock()
+    {
+        var original = string.Join("\n",
+        [
+            "# Notes",
+            GeneratedCapabilityGuidanceBeginForTest,
+            "OLD ONE",
+            GeneratedCapabilityGuidanceEndForTest,
+            GeneratedCapabilityGuidanceBeginForTest,
+            "OLD TWO",
+            GeneratedCapabilityGuidanceEndForTest,
+            "User-authored content.",
+            string.Empty,
+        ]);
+
+        var merged = WorkspaceContentGenerator.MergeGeneratedCapabilityGuidance(original, "## Workspace Capability Discovery\n\n- docs/capabilities/README.md");
+
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceBeginForTest)).Cast<Match>());
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceEndForTest)).Cast<Match>());
+        Assert.Contains("User-authored content.", merged);
+        Assert.DoesNotContain("OLD ONE", merged);
+        Assert.DoesNotContain("OLD TWO", merged);
+    }
+
+    [Fact]
+    public void AgentsMerge_EndOnlyMarker_RepairsIdempotently()
+    {
+        var original = string.Join("\n",
+        [
+            "# Notes",
+            "User-authored content.",
+            GeneratedCapabilityGuidanceEndForTest,
+            string.Empty,
+        ]);
+
+        var first = WorkspaceContentGenerator.MergeGeneratedCapabilityGuidance(original, "## Workspace Capability Discovery\n\n- docs/capabilities/README.md");
+        var second = WorkspaceContentGenerator.MergeGeneratedCapabilityGuidance(first, "## Workspace Capability Discovery\n\n- docs/capabilities/README.md");
+
+        Assert.Single(Regex.Matches(first, Regex.Escape(GeneratedCapabilityGuidanceBeginForTest)).Cast<Match>());
+        Assert.Single(Regex.Matches(first, Regex.Escape(GeneratedCapabilityGuidanceEndForTest)).Cast<Match>());
+        Assert.Equal(first, second);
+        Assert.Contains("User-authored content.", first);
+    }
+
+    [Fact]
+    public void AgentsMerge_ReversedMarkers_RepairsToSingleCanonicalBlock()
+    {
+        var original = string.Join("\n",
+        [
+            "# Notes",
+            GeneratedCapabilityGuidanceEndForTest,
+            "STALE GENERATED CONTENT",
+            GeneratedCapabilityGuidanceBeginForTest,
+            "User-authored content.",
+            string.Empty,
+        ]);
+
+        var merged = WorkspaceContentGenerator.MergeGeneratedCapabilityGuidance(original, "## Workspace Capability Discovery\n\n- docs/capabilities/README.md");
+
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceBeginForTest)).Cast<Match>());
+        Assert.Single(Regex.Matches(merged, Regex.Escape(GeneratedCapabilityGuidanceEndForTest)).Cast<Match>());
+        Assert.Contains("User-authored content.", merged);
+        Assert.DoesNotContain("STALE GENERATED CONTENT", merged);
+    }
+
     private static void AssertCapabilityLinksResolve(string workspaceRoot)
     {
         var capabilityRoot = Path.Combine(workspaceRoot, "docs", "capabilities");
@@ -301,6 +395,9 @@ public sealed class WorkspaceCapabilityCatalogTests
             }
         }
     }
+
+    private const string GeneratedCapabilityGuidanceBeginForTest = "<!-- BEGIN GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
+    private const string GeneratedCapabilityGuidanceEndForTest = "<!-- END GENERATED WORKSPACE CAPABILITY GUIDANCE -->";
 
     private static string ExtractBlock(string content, string beginMarker, string endMarker)
     {

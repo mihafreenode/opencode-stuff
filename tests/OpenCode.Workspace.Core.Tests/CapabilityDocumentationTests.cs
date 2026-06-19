@@ -84,6 +84,8 @@ public sealed class CapabilityDocumentationTests
         Assert.Contains("weasyprint: command not found", sessionTroubleshooting);
         Assert.Contains("Docker Desktop Exec", sessionTroubleshooting);
         Assert.Contains("![Workspace session troubleshooting example](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", sessionTroubleshooting);
+        Assert.Contains("Repair Runtime", sessionTroubleshooting);
+        Assert.DoesNotContain("reprovision", sessionTroubleshooting, StringComparison.OrdinalIgnoreCase);
 
         foreach (var fileName in capabilityFiles)
         {

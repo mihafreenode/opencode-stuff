@@ -109,7 +109,7 @@ msgid "actions.viewError"
 msgstr "Prikaži napako"
 
 msgid "actions.recoverWorkspace"
-msgstr "Obnovi delovni prostor"
+msgstr "Popravi izvajalno okolje"
 
 msgid "create.name"
 msgstr "Ime delovnega prostora"

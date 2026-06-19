@@ -32,7 +32,7 @@ Purpose: Repository-specific guidance for humans and AI agents.
 
 Supported workflows: onboarding, safety guidance, capability discovery entry point.
 
-Common use cases: learn local rules without scanning the repository, resume work after attach or reprovision.
+Common use cases: learn local rules without scanning the repository, resume work after attach, or continue after a `Repair Runtime` action.
 
 ## Typical Tasks
 

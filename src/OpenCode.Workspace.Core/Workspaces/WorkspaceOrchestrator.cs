@@ -514,6 +514,8 @@ public sealed class WorkspaceOrchestrator
     {
         var gitProvider = _workspaceProvider as GitWorkspaceProvider ?? throw new InvalidOperationException("Checkpoint creation currently requires the Git workspace provider.");
         var gitState = await _workspaceProvider.GetGitStateAsync(snapshot.Paths, snapshot.Definition, cancellationToken);
+        var untrackedFiles = await gitProvider.GetUntrackedFilesAsync(snapshot.Paths.RootPath, cancellationToken);
+        ValidateCheckpointContent(snapshot.Paths.RootPath, untrackedFiles);
         var checkpointId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
         var checkpointPath = Path.Combine(snapshot.Paths.CheckpointsPath, checkpointId);
         Directory.CreateDirectory(checkpointPath);
@@ -523,7 +525,6 @@ public sealed class WorkspaceOrchestrator
 
         // Checkpoints complement Save Points by preserving local state that Git may
         // not yet describe safely enough for recovery, especially untracked files.
-        var untrackedFiles = await gitProvider.GetUntrackedFilesAsync(snapshot.Paths.RootPath, cancellationToken);
         var copiedFiles = new List<string>();
         if (untrackedFiles.Count > 0)
         {
@@ -569,6 +570,26 @@ public sealed class WorkspaceOrchestrator
         _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "checkpoint", "Created checkpoint", $"Checkpoint {checkpointId} captured {copiedFiles.Count} untracked file(s).");
         log?.Invoke(new CommandLogEntry { Source = "app", Message = $"Created checkpoint '{checkpointId}'." });
         return record;
+    }
+
+    private void ValidateCheckpointContent(string workspaceRootPath, IReadOnlyList<string> untrackedFiles)
+    {
+        if (untrackedFiles.Count == 0)
+        {
+            return;
+        }
+
+        var review = _workspaceIgnorePolicyService.ReviewChangedPathsForProtection(workspaceRootPath, untrackedFiles);
+        if (!review.HasReviewRequired)
+        {
+            return;
+        }
+
+        var message = string.Join(
+            Environment.NewLine,
+            new[] { "Workspace Review required before creating a checkpoint." }
+                .Concat(review.Findings.Select(item => $"- {item.RelativePath}: {item.Message}")));
+        throw new InvalidOperationException(message);
     }
 
     public async Task<WorkspacePublishReview> PublishAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -1039,7 +1060,7 @@ public sealed class WorkspaceOrchestrator
         }
 
         var details = string.IsNullOrWhiteSpace(userCheck.StandardError) ? userCheck.StandardOutput : userCheck.StandardError;
-        throw new InvalidOperationException($"Workspace container is running but not provisioned. Run provisioning/recover workspace.{Environment.NewLine}{details}".Trim());
+        throw new InvalidOperationException($"Workspace container is running but not provisioned. Run Prepare Workspace or Repair Runtime.{Environment.NewLine}{details}".Trim());
     }
 
     private static void LogAttach(Action<CommandLogEntry>? log, WorkspaceSnapshot snapshot, string message)

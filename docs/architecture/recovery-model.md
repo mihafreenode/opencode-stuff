@@ -2,6 +2,12 @@
 
 The recovery model prefers preservation over convenience.
 
+## Runtime Repair
+
+Runtime repair recreates generated or ephemeral state such as compose files, provisioning scripts, attach helpers, and disposable runtime infrastructure.
+
+The user-facing `Repair Runtime` action repairs generated/runtime state. It does not restore durable user-authored work.
+
 ## Local Recovery
 
 Local recovery comes from:
@@ -12,6 +18,12 @@ Local recovery comes from:
 - exported patches
 
 Save Points protect committed workspace state. Checkpoints can preserve additional local state, including captured untracked files.
+
+## Work Restoration
+
+Work restoration is different from runtime repair.
+
+It refers to restoring durable assets through Save Points, checkpoints, patches, Git history, or backup restore workflows.
 
 ## Off-Machine Backup
 

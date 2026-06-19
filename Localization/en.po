@@ -109,7 +109,7 @@ msgid "actions.viewError"
 msgstr "View Error"
 
 msgid "actions.recoverWorkspace"
-msgstr "Recover Workspace"
+msgstr "Repair Runtime"
 
 msgid "create.name"
 msgstr "Workspace Name"

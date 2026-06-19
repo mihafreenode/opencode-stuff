@@ -81,6 +81,12 @@ Once a workspace is opened, work happens inside an attached OpenCode session.
 
 The runtime is disposable. The work is durable.
 
+Durable workspace artifacts such as `workspace.yaml`, repository content, `AGENTS.md`, notes, docs, specs, tests, and reports remain the assets that matter most.
+
+Generated runtime files such as `compose.yaml`, `.env`, attach wrappers, and provisioning scripts are replaceable infrastructure. Ephemeral runtime state such as containers, sessions, caches, and diagnostics is disposable.
+
+`Repair Runtime` repairs generated or runtime state. It does not restore durable user work. Full backup exports now include `backup-manifest.yaml` so users can see which content is durable, generated, or ephemeral.
+
 <img src="docs/walkthrough/images/opencode-terminal-working.png" alt="OpenCode actively working inside a workspace" width="900" />
 
 **New here?**

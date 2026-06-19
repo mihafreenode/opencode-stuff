@@ -293,8 +293,8 @@ Use this presenter flow:
 ## Troubleshooting
 
 - If Oracle startup is slow, inspect `View Logs` and wait for the health check to settle.
-- If SQLcl is missing, reprovision the workspace so the generated install plan runs again.
+- If SQLcl is missing, run `Prepare Workspace` so the generated install plan runs again.
 - If SQLcl is unstable, use SQL*Plus from the workspace terminal for demo verification.
-- If SQLcl reports a Java error, reprovision the workspace so the generated install plan can install a supported Java runtime automatically.
+- If SQLcl reports a Java error, run `Prepare Workspace` so the generated install plan can install a supported Java runtime automatically.
 - If the demo schema is missing, use the reset action to recreate the Oracle data volume and rerun initialization scripts.
 - If SQL Developer cannot connect, verify the service name is `FREEPDB1` and the host port `1521` is free on Windows.

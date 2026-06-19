@@ -48,7 +48,7 @@ Recovery steps:
 
 1. switch to `opencode` with `su opencode`
 2. verify provisioning completed
-3. reprovision or recover the workspace if `opencode` is still unavailable
+3. use `Prepare Workspace` or `Repair Runtime` if `opencode` is still unavailable
 
 ## No sessions available
 
@@ -62,7 +62,7 @@ Recovery steps:
 
 1. run `opencode sessions`
 2. verify the workspace was provisioned successfully
-3. recover or reprovision the workspace
+3. use `Repair Runtime`, then `Prepare Workspace` if provisioning was incomplete
 
 ## Cannot attach to session
 
@@ -86,7 +86,7 @@ Investigation steps:
 1. verify the workspace is provisioned
 2. verify `opencode sessions` shows a restorable session
 3. reopen the session with `opencode -s resume`
-4. reprovision if the runtime or agent bootstrap was incomplete
+4. run `Prepare Workspace` if the runtime or agent bootstrap was incomplete
 
 ## Capability catalog missing
 
@@ -98,14 +98,14 @@ docs/capabilities/README.md
 
 Recovery:
 
-- reprovision workspace
+- run `Repair Runtime`
 - regenerate documentation
 
 ## AGENTS.md missing or outdated
 
 Recovery:
 
-- reprovision workspace
+- run `Repair Runtime`
 - verify generated blocks
 
 ## Tool mentioned in docs but not installed
@@ -121,8 +121,10 @@ Resolution:
 1. verify capability catalog
 2. verify installed tooling
 3. review workspace feature configuration
-4. reprovision if required
+4. run `Prepare Workspace` if the generated install plan needs to run again
 
 The capability catalog is intended to answer questions such as `Can I process Excel files?`, `What PDF tools are available?`, `What OCR tools are available?`, `What Oracle tooling exists?`, and `What onboarding materials are available?` without repository-wide searching.
 
 Agents should not claim a tool exists merely because documentation mentions it.
+
+Full snapshot exports now include `backup-manifest.yaml` so durable, generated, and ephemeral content can be understood outside the running tool.

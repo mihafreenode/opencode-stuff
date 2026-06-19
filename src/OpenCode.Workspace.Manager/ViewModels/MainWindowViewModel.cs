@@ -28,6 +28,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly QuickTutorialService _tutorialService;
     private readonly TmpReprovisionWorkflowService _tmpReprovisionWorkflowService;
     private readonly AppBuildInfo _appBuildInfo;
+    private readonly WorkspaceAssetClassificationService _assetClassificationService = new();
     private readonly AgentProfileResolver _agentProfileResolver = new();
     private readonly Dictionary<string, List<WorkspaceLogLineViewModel>> _workspaceLogsByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _oracleNoticeAcknowledgedWorkspacePaths = new(StringComparer.OrdinalIgnoreCase);
@@ -1067,6 +1068,7 @@ public sealed class MainWindowViewModel : ObservableObject
             async () =>
             {
                 using var createTimeout = new CancellationTokenSource(CreateWorkspaceTimeout);
+                WorkspaceSnapshot? snapshot = null;
 
                 currentStep = "template application verification";
                 diagnosticsLog?.Invoke($"Create Workspace template application verified via {buttonSource}. template='{SelectedTemplate?.Id ?? "none"}'.");
@@ -1079,39 +1081,47 @@ public sealed class MainWindowViewModel : ObservableObject
 
                 currentStep = "workspace file generation and repository initialization";
                 diagnosticsLog?.Invoke($"Create Workspace file generation started via {buttonSource}.");
-                var snapshot = await _workspaceOrchestrator.CreateWorkspaceAsync(requestedWorkspacePath, definition, CreateWorkspaceLogAppender(requestedWorkspacePath), createTimeout.Token, includeRuntimeInspection: false);
+                snapshot = await _workspaceOrchestrator.CreateWorkspaceAsync(requestedWorkspacePath, definition, CreateWorkspaceLogAppender(requestedWorkspacePath), createTimeout.Token, includeRuntimeInspection: false);
                 diagnosticsLog?.Invoke($"Create Workspace files generated via {buttonSource}.");
 
-                currentStep = "terminal profile setup";
-                var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
-                _profileManager.EnsureManagedProfile(snapshot.Definition, snapshot.Definition.Terminal.Font, resolvedFace);
+                try
+                {
+                    currentStep = "terminal profile setup";
+                    var resolvedFace = _windowsHostCapabilities.ResolvePreferredTerminalFace(snapshot.Definition.Terminal.Font.Family);
+                    _profileManager.EnsureManagedProfile(snapshot.Definition, snapshot.Definition.Terminal.Font, resolvedFace);
 
-                currentStep = "workspace registration metadata update";
-                diagnosticsLog?.Invoke($"Create Workspace workspace registered via {buttonSource}.");
-                await PersistWorkspaceRecordAsync(snapshot, CreateLabel, _localization.Get("workspace.result.created"), succeeded: true);
-                diagnosticsLog?.Invoke($"Create Workspace workspaces.json saved via {buttonSource}.");
+                    currentStep = "workspace registration metadata update";
+                    diagnosticsLog?.Invoke($"Create Workspace workspace registered via {buttonSource}.");
+                    await PersistWorkspaceRecordAsync(snapshot, CreateLabel, _localization.Get("workspace.result.created"), succeeded: true);
+                    diagnosticsLog?.Invoke($"Create Workspace workspaces.json saved via {buttonSource}.");
 
-                currentStep = "workspace log initialization";
-                EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Created workspace files and generated runtime artifacts.");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Resolved default agent profile '{AgentProfileResolver.BuiltInDefault.ProfileId}'.");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Managed Windows Terminal profile ensured for font '{snapshot.Definition.Terminal.Font.Family}'.");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile: {_profileManager.GetProfileName(snapshot.Definition)}");
-                AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Configured font: {resolvedFace}");
+                    currentStep = "workspace log initialization";
+                    EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Created workspace files and generated runtime artifacts.");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Resolved default agent profile '{AgentProfileResolver.BuiltInDefault.ProfileId}'.");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Managed Windows Terminal profile ensured for font '{snapshot.Definition.Terminal.Font.Family}'.");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile: {_profileManager.GetProfileName(snapshot.Definition)}");
+                    AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Configured font: {resolvedFace}");
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Terminal profile file: {_profileManager.GetFragmentFilePath()}");
                     AppendWorkspaceLog(snapshot.Paths.RootPath, "terminal", $"Profile id: {_profileManager.GetProfileGuid(snapshot.Definition)}");
                     if (IsOracleDemoWorkspace(snapshot.Definition))
                     {
-                    AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Oracle PL/SQL Demo workspace created. Start Oracle first from the Oracle Demo Database panel. OpenCode verification should wait until the panel shows Running and Ready.");
+                        AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Oracle PL/SQL Demo workspace created. Start Oracle first from the Oracle Demo Database panel. OpenCode verification should wait until the panel shows Running and Ready.");
                     }
 
-                currentStep = "workspace list refresh";
-                diagnosticsLog?.Invoke($"Create Workspace workspace list refresh started via {buttonSource}.");
-                await ReloadWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: createTimeout.Token);
-                diagnosticsLog?.Invoke($"Create Workspace workspace list refreshed via {buttonSource}.");
+                    currentStep = "workspace list refresh";
+                    diagnosticsLog?.Invoke($"Create Workspace workspace list refresh started via {buttonSource}.");
+                    await ReloadWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: createTimeout.Token);
+                    diagnosticsLog?.Invoke($"Create Workspace workspace list refreshed via {buttonSource}.");
 
-                currentStep = "status update";
-                StatusMessage = string.Format(_localization.Get("status.workspaceCreated"), snapshot.Definition.Workspace.Name);
+                    currentStep = "status update";
+                    StatusMessage = string.Format(_localization.Get("status.workspaceCreated"), snapshot.Definition.Workspace.Name);
+                }
+                catch (Exception exception)
+                {
+                    diagnosticsLog?.Invoke($"Create Workspace warning via {buttonSource} during '{currentStep}': {exception.Message}");
+                    await HandleCreateWorkspaceWarningAsync(snapshot, currentStep, exception, createTimeout.Token);
+                }
             },
             exception =>
             {
@@ -1196,16 +1206,24 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 var exportDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "OpenCode Workspace Backups");
                 Directory.CreateDirectory(exportDirectory);
-                var archivePath = Path.Combine(exportDirectory, $"{WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip");
+                var exportTimestamp = DateTimeOffset.UtcNow;
+                var exportBaseName = $"{WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)}-{exportTimestamp:yyyyMMdd-HHmmss}";
+                var archivePath = Path.Combine(exportDirectory, exportBaseName + ".zip");
                 if (File.Exists(archivePath))
                 {
                     File.Delete(archivePath);
                 }
 
+                var manifestPath = WriteBackupManifest(snapshot, exportDirectory, exportBaseName, exportTimestamp);
+                var manifestYaml = File.ReadAllText(manifestPath);
+
                 ZipFile.CreateFromDirectory(snapshot.Paths.RootPath, archivePath, CompressionLevel.Fastest, includeBaseDirectory: false);
+                AddBackupManifestToArchive(archivePath, manifestYaml);
+
+                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Exported full workspace snapshot to '{archivePath}'.");
+                AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Wrote backup asset classification manifest to '{manifestPath}' and added 'backup-manifest.yaml' to the archive.");
                 PersistWorkspaceRecord(snapshot, _localization.Get("operation.exportBackup"), string.Format(_localization.Get("workspace.result.backupExported"), archivePath), succeeded: true);
                 StatusMessage = string.Format(_localization.Get("status.backupExported"), archivePath);
-                await Task.CompletedTask;
             });
     }
 
@@ -1262,9 +1280,53 @@ public sealed class MainWindowViewModel : ObservableObject
             async snapshot =>
             {
                 await _workspaceOrchestrator.RecoverAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
-                PersistWorkspaceRecord(snapshot, RecoverWorkspaceLabel, "Recovered workspace and validated generated files.", succeeded: true);
-                StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' was recovered. Start is available again.";
+                PersistWorkspaceRecord(snapshot, RecoverWorkspaceLabel, "Repaired workspace runtime and validated generated files.", succeeded: true);
+                StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' runtime was repaired. Start is available again.";
             });
+    }
+
+    internal async Task HandleCreateWorkspaceWarningAsync(WorkspaceSnapshot snapshot, string failedStep, Exception exception, CancellationToken cancellationToken)
+    {
+        PersistWorkspaceRecord(snapshot, CreateLabel, $"Workspace created with warnings during '{failedStep}': {exception.Message}", succeeded: true);
+        EnsureWorkspaceLogStore(snapshot.Paths.RootPath);
+        AppendWorkspaceLog(snapshot.Paths.RootPath, "app", "Created workspace files and generated runtime artifacts.");
+        AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Workspace created with warnings during '{failedStep}': {exception.Message}");
+        AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Resolved default agent profile '{AgentProfileResolver.BuiltInDefault.ProfileId}'.");
+        try
+        {
+            await ReloadWorkspaceListAsync(snapshot.Paths.RootPath, includeRuntimeInspection: false, cancellationToken: cancellationToken);
+        }
+        catch (Exception reloadException)
+        {
+            AppendWorkspaceLog(snapshot.Paths.RootPath, "app", $"Workspace list refresh after warning failed: {reloadException.Message}");
+        }
+
+        StatusMessage = $"Workspace '{snapshot.Definition.Workspace.Name}' was created with warnings.";
+
+        AppDialogService.ShowOk(
+            TryGetDialogOwner(),
+            _localization,
+            "Workspace Created With Warnings",
+            $"What succeeded: the workspace files, repository state, and durable assets were created successfully.{Environment.NewLine}{Environment.NewLine}What failed: '{failedStep}' could not complete. {exception.Message}{Environment.NewLine}{Environment.NewLine}Where the workspace lives:{Environment.NewLine}{snapshot.Paths.RootPath}{Environment.NewLine}{Environment.NewLine}How to continue: open the workspace from the list, then retry the failed convenience setup after reviewing the log output.");
+    }
+
+    internal string WriteBackupManifest(WorkspaceSnapshot snapshot, string exportDirectory, string exportBaseName, DateTimeOffset exportTimestamp)
+    {
+        var manifestPath = Path.Combine(exportDirectory, exportBaseName + "-backup-manifest.yaml");
+        var manifest = _assetClassificationService.BuildBackupManifest(snapshot, exportTimestamp);
+        var manifestYaml = _assetClassificationService.SerializeBackupManifest(manifest);
+        File.WriteAllText(manifestPath, manifestYaml);
+        return manifestPath;
+    }
+
+    internal static void AddBackupManifestToArchive(string archivePath, string manifestYaml)
+    {
+        using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Update);
+        var manifestEntry = archive.GetEntry("backup-manifest.yaml");
+        manifestEntry?.Delete();
+        manifestEntry = archive.CreateEntry("backup-manifest.yaml", CompressionLevel.Fastest);
+        using var writer = new StreamWriter(manifestEntry.Open());
+        writer.Write(manifestYaml);
     }
 
     private void ConfigureRemoteBackup()
@@ -1506,7 +1568,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(snapshot.Paths.RootPath);
                 SetOracleStartupStage("Provisioning SQLcl");
                 await _workspaceOrchestrator.ProvisionAsync(snapshot, CreateWorkspaceLogAppender(snapshot.Paths.RootPath));
-                PersistWorkspaceRecord(snapshot, "Reset Oracle Demo", "Reset Oracle demo database volume and reprovisioned the workspace.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
+                PersistWorkspaceRecord(snapshot, "Reset Oracle Demo", "Reset Oracle demo database volume and prepared the workspace again.", succeeded: true, lastPreparedUtc: DateTimeOffset.UtcNow);
                 StatusMessage = $"Oracle demo database was reset for '{snapshot.Definition.Workspace.Name}'.";
                 SetOracleStartupStage("Ready");
             });

@@ -28,7 +28,7 @@ Common use cases: validate installed tools, confirm workspace readiness.
 
 ## Typical Tasks
 
-- Run regression testing or smoke testing after reprovision or update.
+- Run regression testing or smoke testing after `Prepare Workspace`, `Repair Runtime`, or update actions.
 - Use Playwright when browser automation is required.
 - Validate documentation and rendering toolchains before relying on generated outputs.
 

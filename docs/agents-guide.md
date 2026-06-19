@@ -103,4 +103,12 @@ Examples of useful `AGENTS.md` rules:
 - do not hide important onboarding behavior in generated files only
 - prefer official Oracle commands and formats over custom wrappers
 
+Treat repository and workspace artifacts as durable assets.
+
+Treat generated runtime files and generated `AGENTS.md` blocks as replaceable assets.
+
+Treat containers, terminal sessions, caches, and diagnostics as ephemeral runtime state.
+
+`Repair Runtime` repairs generated/runtime state only. It is not a work-restore operation.
+
 That kind of guidance helps both humans and AI agents work consistently after repository discovery.

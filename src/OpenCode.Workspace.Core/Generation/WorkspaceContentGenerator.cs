@@ -199,8 +199,10 @@ public sealed class WorkspaceContentGenerator
 
         var beginIndex = existingContent.IndexOf(beginMarker, StringComparison.Ordinal);
         var endIndex = existingContent.IndexOf(endMarker, StringComparison.Ordinal);
+        var hasDuplicateBegin = existingContent.IndexOf(beginMarker, beginIndex >= 0 ? beginIndex + beginMarker.Length : 0, StringComparison.Ordinal) >= 0;
+        var hasDuplicateEnd = existingContent.IndexOf(endMarker, endIndex >= 0 ? endIndex + endMarker.Length : 0, StringComparison.Ordinal) >= 0;
 
-        if (beginIndex >= 0 && endIndex >= beginIndex)
+        if (beginIndex >= 0 && endIndex >= beginIndex && !hasDuplicateBegin && !hasDuplicateEnd)
         {
             var replacementEnd = endIndex + endMarker.Length;
             return existingContent.Substring(0, beginIndex)
@@ -208,8 +210,44 @@ public sealed class WorkspaceContentGenerator
                 + existingContent.Substring(replacementEnd);
         }
 
-        var trimmed = existingContent.TrimEnd();
+        var repairedContent = RemoveMalformedGeneratedBlock(existingContent, beginMarker, endMarker);
+        var trimmed = repairedContent.TrimEnd();
         return trimmed + "\n\n" + generatedBlock + "\n";
+    }
+
+    private static string RemoveMalformedGeneratedBlock(string existingContent, string beginMarker, string endMarker)
+    {
+        var beginIndex = existingContent.IndexOf(beginMarker, StringComparison.Ordinal);
+        var endIndex = existingContent.IndexOf(endMarker, StringComparison.Ordinal);
+        var lastBeginIndex = existingContent.LastIndexOf(beginMarker, StringComparison.Ordinal);
+        var lastEndIndex = existingContent.LastIndexOf(endMarker, StringComparison.Ordinal);
+
+        if (beginIndex < 0 && endIndex < 0)
+        {
+            return existingContent;
+        }
+
+        if (beginIndex >= 0 && endIndex >= 0)
+        {
+            var rangeStart = Math.Min(beginIndex, endIndex);
+            var rangeEnd = Math.Max(lastBeginIndex + beginMarker.Length, lastEndIndex + endMarker.Length);
+            return existingContent.Remove(rangeStart, rangeEnd - rangeStart);
+        }
+
+        if (beginIndex >= 0)
+        {
+            var nextBlockSeparator = existingContent.IndexOf("\n\n", beginIndex, StringComparison.Ordinal);
+            if (nextBlockSeparator >= 0)
+            {
+                return existingContent.Remove(beginIndex, nextBlockSeparator + 2 - beginIndex);
+            }
+
+            return existingContent[..beginIndex];
+        }
+
+        return existingContent
+            .Replace(beginMarker, string.Empty, StringComparison.Ordinal)
+            .Replace(endMarker, string.Empty, StringComparison.Ordinal);
     }
 
     private static bool IsOracleDemoWorkspace(WorkspaceDefinition definition)
@@ -389,6 +427,12 @@ public sealed class WorkspaceContentGenerator
             "Do not scan the repository first.",
             string.Empty,
             "Use the capability catalog before searching the workspace.",
+            string.Empty,
+            "Repository and workspace files are the durable source of truth.",
+            string.Empty,
+            "Treat generated runtime files as replaceable and treat sessions, caches, and diagnostics as disposable runtime state.",
+            string.Empty,
+            "Leave important outputs in durable files, not only in conversations or terminal state.",
             string.Empty,
             "If attached to a container shell rather than an OpenCode session, see:",
             string.Empty,
@@ -696,7 +740,7 @@ Recovery steps:
 
 1. switch to `opencode` with `su opencode`
 2. verify provisioning completed
-3. reprovision or recover the workspace if `opencode` is still unavailable
+3. use `Prepare Workspace` or `Repair Runtime` if `opencode` is still unavailable
 
 ## No sessions available
 
@@ -710,7 +754,7 @@ Recovery steps:
 
 1. run `opencode sessions`
 2. verify the workspace was provisioned successfully
-3. recover or reprovision the workspace
+3. use `Repair Runtime`, then `Prepare Workspace` if provisioning was incomplete
 
 ## Cannot attach to session
 
@@ -734,7 +778,7 @@ Investigation steps:
 1. verify the workspace is provisioned
 2. verify `opencode sessions` shows a restorable session
 3. reopen the session with `opencode -s resume`
-4. reprovision if the runtime or agent bootstrap was incomplete
+4. run `Prepare Workspace` if the runtime or agent bootstrap was incomplete
 
 ## Capability catalog missing
 
@@ -746,14 +790,14 @@ docs/capabilities/README.md
 
 Recovery:
 
-- reprovision workspace
+- run `Repair Runtime`
 - regenerate documentation
 
 ## AGENTS.md missing or outdated
 
 Recovery:
 
-- reprovision workspace
+- run `Repair Runtime`
 - verify generated blocks
 
 ## Tool mentioned in docs but not installed
@@ -769,7 +813,7 @@ Resolution:
 1. verify the capability catalog
 2. verify installed tooling
 3. review workspace feature configuration
-4. reprovision if required
+4. run `Prepare Workspace` if the generated install plan needs to run again
 
 Agents should not claim a tool exists merely because documentation mentions it.
 """;

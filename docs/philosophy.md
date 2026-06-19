@@ -107,6 +107,14 @@ Workspaces should avoid preserving:
 
 - caches
 - temporary files
+
+Durable assets are the things users expect to keep: repository content, documentation, notes, tests, datasets, reports, and workspace definitions.
+
+Generated assets are replaceable files derived from those durable inputs, such as `compose.yaml`, `.env`, generated onboarding, and generated agent guidance blocks.
+
+Ephemeral assets are disposable runtime state such as containers, terminal sessions, caches, and diagnostics logs.
+
+`Repair Runtime` is for generated or runtime state. Work restoration belongs to Save Points, checkpoints, patches, and backup restore flows.
 - rebuildable dependencies
 - machine-specific state
 

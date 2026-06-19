@@ -487,7 +487,7 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
                     // Save Point validation should inspect what is about to enter the
                     // Save Point, not only top-level workspace entries. Git status is
                     // the most precise V1 source for changed and untracked content.
-                    return _ignorePolicyService.ReviewPaths(workspaceRoot, _ignorePolicyService.ExpandPathsForReview(workspaceRoot, changedPaths));
+                    return _ignorePolicyService.ReviewChangedPathsForProtection(workspaceRoot, changedPaths);
                 }
             }
         }
@@ -498,6 +498,6 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
 
         // If Git status is unavailable, preserve safety by scanning the workspace
         // recursively while skipping known disposable locations.
-        return _ignorePolicyService.ReviewWorkspace(workspaceRoot);
+        return _ignorePolicyService.ReviewWorkspaceForProtection(workspaceRoot);
     }
 }

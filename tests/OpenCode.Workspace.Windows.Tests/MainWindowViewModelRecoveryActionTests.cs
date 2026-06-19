@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.Services;
@@ -13,6 +15,7 @@ public sealed class MainWindowViewModelRecoveryActionTests
     public void ErrorWorkspace_ShowsRecoverAndStartActions()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-recover-ui-{Guid.NewGuid():N}");
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-recover-ui-appdata-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
 
         try
@@ -20,7 +23,7 @@ public sealed class MainWindowViewModelRecoveryActionTests
             var bootstrapper = new AppBootstrapper();
             var viewModel = bootstrapper.CreateMainWindowViewModel(
                 TestPaths.RepositoryRoot,
-                Path.Combine(Path.GetTempPath(), $"ocwm-recover-ui-appdata-{Guid.NewGuid():N}"),
+                appDataRoot,
                 "en");
 
             var localization = new PoLocalizationService(Path.Combine(TestPaths.RepositoryRoot, "Localization"), "en");
@@ -29,7 +32,7 @@ public sealed class MainWindowViewModelRecoveryActionTests
             Assert.True(viewModel.ShowRecoverWorkspaceAction);
             Assert.True(viewModel.ShowViewWorkspaceErrorAction);
             Assert.True(viewModel.ShowStartWorkspaceAction);
-            Assert.Equal("Recover Workspace", viewModel.RecoverWorkspaceLabel);
+            Assert.Equal("Repair Runtime", viewModel.RecoverWorkspaceLabel);
             Assert.Equal("Open Workspace", viewModel.SelectedPrimaryActionLabel);
             Assert.Equal("Start", viewModel.StartWorkspaceLabel);
         }
@@ -38,6 +41,47 @@ public sealed class MainWindowViewModelRecoveryActionTests
             if (Directory.Exists(workspaceRoot))
             {
                 Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandleCreateWorkspaceWarningAsync_PersistsWorkspaceAndSetsWarningStatus()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"ocwm-create-warning-{Guid.NewGuid():N}");
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"ocwm-create-warning-appdata-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var bootstrapper = new AppBootstrapper();
+            var viewModel = bootstrapper.CreateMainWindowViewModel(TestPaths.RepositoryRoot, appDataRoot, "en");
+            var snapshot = CreateErrorSnapshot(workspaceRoot);
+
+            await viewModel.HandleCreateWorkspaceWarningAsync(snapshot, "terminal profile setup", new InvalidOperationException("Windows Terminal fragments folder is unavailable."), CancellationToken.None);
+
+            var repository = new WorkspaceRepository(appDataRoot);
+            var saved = Assert.Single(repository.LoadAll());
+            Assert.Equal(workspaceRoot, saved.RootPath);
+            Assert.True(saved.LastOperationSucceeded);
+            Assert.Contains("Workspace created with warnings", saved.LastOperationResult, StringComparison.Ordinal);
+            Assert.Contains("created with warnings", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
             }
         }
     }

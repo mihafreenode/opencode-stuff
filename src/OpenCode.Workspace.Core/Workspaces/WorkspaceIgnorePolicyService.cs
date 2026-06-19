@@ -230,9 +230,31 @@ public sealed class WorkspaceIgnorePolicyService
         return ReviewPaths(workspaceRootPath, DiscoverWorkspacePathsRecursively(workspaceRootPath));
     }
 
-    public WorkspaceIgnorePolicyReview ReviewPaths(string workspaceRootPath, IEnumerable<string> relativePaths)
+    public WorkspaceIgnorePolicyReview ReviewWorkspaceForProtection(string workspaceRootPath)
     {
-        var classifications = BuildClassifications(workspaceRootPath, relativePaths).ToList();
+        if (!Directory.Exists(workspaceRootPath))
+        {
+            return new WorkspaceIgnorePolicyReview();
+        }
+
+        return ReviewPathsInternal(workspaceRootPath, DiscoverWorkspacePathsRecursively(workspaceRootPath), enforceSecretPrecedenceForGeneratedFiles: true);
+    }
+
+    public WorkspaceIgnorePolicyReview ReviewPaths(string workspaceRootPath, IEnumerable<string> relativePaths)
+        => ReviewPathsInternal(workspaceRootPath, relativePaths, enforceSecretPrecedenceForGeneratedFiles: false);
+
+    public WorkspaceIgnorePolicyReview ReviewPathsForProtection(string workspaceRootPath, IEnumerable<string> relativePaths)
+        => ReviewPathsInternal(workspaceRootPath, relativePaths, enforceSecretPrecedenceForGeneratedFiles: true);
+
+    public WorkspaceIgnorePolicyReview ReviewChangedPaths(string workspaceRootPath, IEnumerable<string> changedPaths)
+        => ReviewPaths(workspaceRootPath, ExpandPathsForReview(workspaceRootPath, changedPaths));
+
+    public WorkspaceIgnorePolicyReview ReviewChangedPathsForProtection(string workspaceRootPath, IEnumerable<string> changedPaths)
+        => ReviewPathsForProtection(workspaceRootPath, ExpandPathsForReview(workspaceRootPath, changedPaths));
+
+    private WorkspaceIgnorePolicyReview ReviewPathsInternal(string workspaceRootPath, IEnumerable<string> relativePaths, bool enforceSecretPrecedenceForGeneratedFiles)
+    {
+        var classifications = BuildClassifications(workspaceRootPath, relativePaths, enforceSecretPrecedenceForGeneratedFiles).ToList();
         var gitIgnorePath = Path.Combine(workspaceRootPath, ".gitignore");
         var gitIgnoreLines = File.Exists(gitIgnorePath) ? File.ReadAllLines(gitIgnorePath) : Array.Empty<string>();
         return Review(classifications, gitIgnoreLines);
@@ -257,7 +279,7 @@ public sealed class WorkspaceIgnorePolicyService
         return expandedPaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private IEnumerable<WorkspaceContentClassification> BuildClassifications(string workspaceRootPath, IEnumerable<string> relativePaths)
+    private IEnumerable<WorkspaceContentClassification> BuildClassifications(string workspaceRootPath, IEnumerable<string> relativePaths, bool enforceSecretPrecedenceForGeneratedFiles)
     {
         var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var relativePath in relativePaths.Where(path => !string.IsNullOrWhiteSpace(path)))
@@ -270,14 +292,14 @@ public sealed class WorkspaceIgnorePolicyService
 
             var fullPath = Path.Combine(workspaceRootPath, normalized.Replace('/', Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar));
             var isDirectory = Directory.Exists(fullPath) || normalized.EndsWith("/", StringComparison.Ordinal);
-            if (IsGeneratedEnvironmentFile(normalized, isDirectory, fullPath))
+            if (!enforceSecretPrecedenceForGeneratedFiles && IsGeneratedEnvironmentFile(normalized, isDirectory, fullPath))
             {
                 yield return new WorkspaceContentClassification
                 {
                     RelativePath = normalized,
                     IsDirectory = false,
                     Disposition = WorkspaceContentDisposition.Tracked,
-                    Reason = "Managed generated runtime content is tracked without secret review when its generated header is intact.",
+                    Reason = "Managed generated runtime content is tracked without workspace-level secret review when its generated header is intact.",
                 };
                 continue;
             }
