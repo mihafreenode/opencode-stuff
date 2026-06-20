@@ -88,7 +88,6 @@ public sealed class ShellViewModel : ObservableObject
         string languageCode)
     {
         var workspacesPage = new WorkspacesPageViewModel(desktopShellService);
-        workspacesPage.LoadAsync().GetAwaiter().GetResult();
         var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopShellService.LoadWorkspaceReferences());
         var shell = new ShellViewModel(
             workspacesPage,
@@ -102,6 +101,12 @@ public sealed class ShellViewModel : ObservableObject
             appBuildInfo);
 
         return shell;
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        await _workspacesPage.LoadAsync(cancellationToken);
+        RefreshStatusBar();
     }
 
     private NavigationItemViewModel CreateNavigationItem(PageViewModel page)

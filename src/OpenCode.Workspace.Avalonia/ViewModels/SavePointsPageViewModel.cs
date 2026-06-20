@@ -10,7 +10,8 @@ public sealed class SavePointsPageViewModel : PageViewModel
     public SavePointsPageViewModel(IDesktopShellService desktopShellService)
         : base("Save Points", "Read-only preview of recent save points, checkpoints, and protection metadata.")
     {
-        Load(desktopShellService);
+        DetailTitle = "Save Points";
+        DetailSummary = "Read-only preview is loaded when this page is expanded in a later phase.";
     }
 
     public ObservableCollection<SavePointEntryViewModel> Entries { get; } = [];
@@ -40,24 +41,4 @@ public sealed class SavePointsPageViewModel : PageViewModel
         }
     }
 
-    private void Load(IDesktopShellService desktopShellService)
-    {
-        foreach (var workspaceItem in desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: false).GetAwaiter().GetResult().Items.Where(item => item.HasSnapshot))
-        {
-            var snapshot = workspaceItem.Snapshot!;
-            var checkpoints = desktopShellService.LoadCheckpointIndex(snapshot.Paths.CheckpointIndexPath);
-            foreach (var checkpoint in checkpoints.Items.OrderByDescending(item => item.CreatedUtc).Take(5))
-            {
-                Entries.Add(new SavePointEntryViewModel("Checkpoint", $"{checkpoint.Id} on {checkpoint.CurrentBranch}", checkpoint.CreatedUtc, snapshot.Definition.Workspace.Name));
-            }
-
-            var timeline = desktopShellService.LoadTimeline(snapshot.Paths.TimelinePath);
-            foreach (var timelineEvent in timeline.Events.Where(item => string.Equals(item.Type, "save-point", StringComparison.OrdinalIgnoreCase)).OrderByDescending(item => item.OccurredUtc).Take(5))
-            {
-                Entries.Add(new SavePointEntryViewModel(timelineEvent.Summary, timelineEvent.Details, timelineEvent.OccurredUtc, snapshot.Definition.Workspace.Name));
-            }
-        }
-
-        SelectedEntry = Entries.OrderByDescending(item => item.Timestamp).FirstOrDefault();
-    }
 }

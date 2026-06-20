@@ -23,6 +23,14 @@
         <Border Grid.Row="1" Classes="panel">
           <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
             <TextBlock Text="Workspace overview" Classes="section-title" />
+            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowLoadingState}">
+              <TextBlock Text="Loading workspaces..." TextWrapping="Wrap" />
+              <TextBlock Text="Reading the shared workspace index and snapshot state." TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowErrorState}">
+              <TextBlock Text="Workspace discovery failed." TextWrapping="Wrap" />
+              <TextBlock Text="{Binding LoadErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
             <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowEmptyState}">
               <TextBlock Text="{Binding EmptyStateTitle}" TextWrapping="Wrap" />
               <TextBlock Text="{Binding EmptyStateMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
