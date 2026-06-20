@@ -121,6 +121,7 @@ public sealed class TmpReprovisionWorkflowService
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/OpenCode.Workspace.AppSupport/OpenCode.Workspace.AppSupport.csproj" />
     <ProjectReference Include="../../src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj" />
   </ItemGroup>
 

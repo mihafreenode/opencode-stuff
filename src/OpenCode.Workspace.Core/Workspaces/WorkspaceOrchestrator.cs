@@ -731,8 +731,8 @@ public sealed class WorkspaceOrchestrator
         var generatedArtifacts = GenerateArtifacts(definition, paths);
 
         _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
-        File.WriteAllText(paths.ComposePath, generatedArtifacts.ComposeYaml);
-        File.WriteAllText(paths.EnvironmentFilePath, generatedArtifacts.EnvironmentFile);
+        File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
+        File.WriteAllText(paths.EnvironmentFilePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.EnvironmentFile));
         File.WriteAllText(paths.StarshipConfigPath, generatedArtifacts.StarshipConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.ShellInitScriptPath, generatedArtifacts.ShellInitScript.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.OpencodeWorkspaceShellPath, generatedArtifacts.OpencodeWorkspaceShellScript.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -789,10 +789,13 @@ public sealed class WorkspaceOrchestrator
 
         // The provisioning script runs inside Linux containers, so it must use LF
         // line endings even when the desktop app generated it on Windows.
-        File.WriteAllText(paths.ProvisionScriptPath, generatedArtifacts.ProvisionScript.Replace("\r\n", "\n", StringComparison.Ordinal));
+        File.WriteAllText(paths.ProvisionScriptPath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ProvisionScript));
         EnsureGeneratedScriptPermissions(paths.ProvisionScriptPath);
         return generatedArtifacts;
     }
+
+    private static string NormalizeGeneratedTextForLinuxInteroperability(string content)
+        => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
     private async Task<bool> EnsureManagedComposeCurrentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {

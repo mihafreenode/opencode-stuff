@@ -5,6 +5,8 @@ namespace OpenCode.Workspace.Core.Generation;
 
 public sealed class EnvironmentFileGenerator
 {
+    private const string GeneratedFileLineEnding = "\n";
+
     public string Generate(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var slug = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
@@ -42,6 +44,6 @@ public sealed class EnvironmentFileGenerator
         }
 
         lines.Add(string.Empty);
-        return string.Join(Environment.NewLine, lines);
+        return string.Join(GeneratedFileLineEnding, lines);
     }
 }

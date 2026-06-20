@@ -15,6 +15,8 @@ public sealed class GeneratedArtifactRuntimeMetadata
 
 public static class GeneratedArtifactRuntimeMetadataBuilder
 {
+    private const string GeneratedFileLineEnding = "\n";
+
     public static GeneratedArtifactRuntimeMetadata Create(ResolvedRuntimePlan? plan, DateTimeOffset? generatedUtc = null)
     {
         var hostOperatingSystem = FormatHostOperatingSystem(plan?.HostPlatform.OperatingSystem ?? DetectOperatingSystem());
@@ -81,7 +83,7 @@ public static class GeneratedArtifactRuntimeMetadataBuilder
         lines.Add("Do not edit manually.");
         lines.Add("Re-run reprovision to regenerate.");
 
-        return string.Join(Environment.NewLine, lines.Select(line => string.IsNullOrEmpty(line) ? "#" : $"# {line}"));
+        return string.Join(GeneratedFileLineEnding, lines.Select(line => string.IsNullOrEmpty(line) ? "#" : $"# {line}"));
     }
 
     private static string FormatCompatibility(RuntimeCompatibilityMode? compatibilityMode, string? targetPlatform, string nativePlatform)

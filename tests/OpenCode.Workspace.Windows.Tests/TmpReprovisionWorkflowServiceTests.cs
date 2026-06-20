@@ -34,6 +34,7 @@ public sealed class TmpReprovisionWorkflowServiceTests
             var projectText = File.ReadAllText(projectPath);
             var programText = File.ReadAllText(programPath);
 
+            Assert.Contains("../../src/OpenCode.Workspace.AppSupport/OpenCode.Workspace.AppSupport.csproj", projectText);
             Assert.Contains("../../src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj", projectText);
             Assert.Contains("provider.LoadCapabilities()", programText);
             Assert.Contains("provider.LoadKnowledgePacks()", programText);

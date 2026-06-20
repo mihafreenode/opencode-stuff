@@ -356,6 +356,74 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public void CreateWorkspace_GeneratedRuntimeFilesUseLfAndKeepWorkspaceNamesWithSpaces()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            var environmentFile = File.ReadAllText(snapshot.Paths.EnvironmentFilePath);
+            var compose = File.ReadAllText(snapshot.Paths.ComposePath);
+            var provisionScript = File.ReadAllText(snapshot.Paths.ProvisionScriptPath);
+
+            Assert.DoesNotContain('\r', environmentFile);
+            Assert.DoesNotContain('\r', compose);
+            Assert.DoesNotContain('\r', provisionScript);
+            Assert.Contains("WORKSPACE_NAME=Odip Analiza", environmentFile, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public void ProvisioningEnvParser_LoadsWorkspaceNamesWithSpacesUnicodeAndCrLf()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            Directory.CreateDirectory(tempRoot);
+            var envPath = Path.Combine(tempRoot, ".env");
+            File.WriteAllText(envPath, "WORKSPACE_NAME=Odip Analiza Čar\r\nWORKSPACE_SLUG=odip-analiza\r\n");
+
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "bash",
+                ArgumentList =
+                {
+                    "-lc",
+                    "while IFS= read -r env_line || [ -n \"${env_line}\" ]; do env_line=${env_line%$'\\r'}; case \"${env_line}\" in ''|'#'*) continue ;; esac; if [[ \"${env_line}\" != *=* ]]; then continue; fi; env_key=${env_line%%=*}; env_value=${env_line#*=}; export \"${env_key}=${env_value}\"; done < \"$1\"; printf '%s\\n%s' \"$WORKSPACE_NAME\" \"$WORKSPACE_SLUG\"",
+                    "bash",
+                    envPath,
+                },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            Assert.NotNull(process);
+            Assert.True(process!.WaitForExit(5000), "Bash parser test timed out.");
+            var standardOutput = process.StandardOutput.ReadToEnd();
+            var standardError = process.StandardError.ReadToEnd();
+
+            Assert.Equal(0, process.ExitCode);
+            Assert.Equal("Odip Analiza Čar\nodip-analiza", standardOutput.Replace("\r\n", "\n", StringComparison.Ordinal));
+            Assert.DoesNotContain("command not found", standardError, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Regenerate_ForAnalyticsWorkspace_DoesNotDuplicateMarimoPortMappings()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");

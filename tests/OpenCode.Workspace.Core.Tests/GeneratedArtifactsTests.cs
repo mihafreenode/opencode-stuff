@@ -222,6 +222,19 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void EnvironmentFileGenerator_UsesLfLineEndingsWithoutCarriageReturns()
+    {
+        var generator = new EnvironmentFileGenerator();
+        var content = generator.Generate(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "Odip Analiza" },
+        });
+
+        Assert.DoesNotContain('\r', content);
+        Assert.Contains("\nWORKSPACE_NAME=Odip Analiza\n", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ComposeGenerator_ForAnalyticsWorkspace_UsesLoopbackOnlyMarimoPortMapping()
     {
         var generator = new ComposeGenerator();
@@ -314,6 +327,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("curl -sS https://starship.rs/install.sh | sh -s -- -y", script);
         Assert.Contains("source /opt/opencode-workspace/config/opencode-shell-init.sh", script);
         Assert.Contains("opencode --version", script);
+        Assert.DoesNotContain(". /workspace/.env", script, StringComparison.Ordinal);
+        Assert.Contains("env_line=${env_line%$'\\r'}", script, StringComparison.Ordinal);
+        Assert.Contains("export \"${env_key}=${env_value}\"", script, StringComparison.Ordinal);
     }
 
     [Fact]
