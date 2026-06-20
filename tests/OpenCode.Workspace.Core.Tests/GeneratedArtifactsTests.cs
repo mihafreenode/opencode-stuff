@@ -451,7 +451,12 @@ public sealed class GeneratedArtifactsTests
             PostInstallCommands = new[]
             {
                 "command -v typst >/dev/null 2>&1 || install /tmp/typst-install/typst-*/typst /usr/local/bin/typst",
-                "playwright install chromium",
+                "playwright_browsers_path=/ms-playwright",
+                "su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; playwright install chromium' opencode",
+                "playwright_global_root=$(npm root -g)",
+                "export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+                "playwright_chromium_path=$(su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; export NODE_PATH=$(npm root -g); node -e \"const { chromium } = require(process.env.NODE_PATH + \\\"/playwright\\\"); process.stdout.write(chromium.executablePath());\"' opencode)",
+                "echo \"[document-processing] Resolved Playwright Chromium executable: ${playwright_chromium_path}\"",
                 "fc-cache -fv",
             },
         });
@@ -463,6 +468,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("pip3 install --break-system-packages weasyprint pypdf pymupdf reportlab", script);
         Assert.Contains("command -v typst", script);
         Assert.Contains("playwright install chromium", script);
+        Assert.Contains("playwright_browsers_path=/ms-playwright", script);
+        Assert.Contains("export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright", script);
+        Assert.Contains("export NODE_PATH=$(npm root -g)", script);
+        Assert.Contains("Resolved Playwright Chromium executable", script);
         Assert.Contains("fc-cache -fv", script);
     }
 

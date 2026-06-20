@@ -67,12 +67,18 @@ postInstall:
       echo "[document-processing] ttf-mscorefonts-installer is unavailable for this Ubuntu image. Skipping Microsoft-compatible core fonts."
     fi
   - |
-    mkdir -p /home/opencode/.cache/ms-playwright
-    chown -R opencode:opencode /home/opencode/.cache
-    su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/home/opencode/.cache/ms-playwright; playwright install chromium' opencode
+    playwright_browsers_path=/ms-playwright
+    mkdir -p "${playwright_browsers_path}"
+    chown -R opencode:opencode "${playwright_browsers_path}"
+    echo "[document-processing] Playwright browser cache: ${playwright_browsers_path}"
+    su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; playwright install chromium' opencode
   - |
-    playwright_chromium_path=$(node -e "const npmRoot=require('child_process').execSync('npm root -g',{encoding:'utf8'}).trim(); const { chromium } = require(npmRoot + '/playwright'); process.stdout.write(chromium.executablePath());")
+    playwright_global_root=$(npm root -g)
+    export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    echo "[document-processing] Global Playwright module root: ${playwright_global_root}"
+    playwright_chromium_path=$(su -s /bin/bash -c 'export HOME=/home/opencode; export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; export NODE_PATH=$(npm root -g); node -e "const { chromium } = require(process.env.NODE_PATH + \"/playwright\"); process.stdout.write(chromium.executablePath());"' opencode)
     if [ -n "${playwright_chromium_path}" ] && [ -x "${playwright_chromium_path}" ]; then
+      echo "[document-processing] Resolved Playwright Chromium executable: ${playwright_chromium_path}"
       ln -sf "${playwright_chromium_path}" /usr/local/bin/chromium
     else
       echo "[document-processing] Playwright Chromium executable could not be resolved after installation." >&2
