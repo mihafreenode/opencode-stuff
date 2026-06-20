@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;

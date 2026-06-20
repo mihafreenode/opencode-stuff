@@ -3,7 +3,7 @@ using System.IO;
 using System.Reflection;
 using OpenCode.Workspace.Core.Workspaces;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.AppSupport;
 
 public sealed class AppBuildInfoService
 {
@@ -29,7 +29,7 @@ public sealed class AppBuildInfoService
         string? commitSha = null;
         try
         {
-            var repositoryRoot = TmpReprovisionWorkflowService.ResolveRepositoryRoot(_applicationBasePath);
+            var repositoryRoot = ResolveRepositoryRoot(_applicationBasePath);
             commitSha = TryReadGitCommitSha(repositoryRoot);
         }
         catch
@@ -47,6 +47,22 @@ public sealed class AppBuildInfoService
                 ?? coreAssembly.GetName().Version?.ToString()
                 ?? "unknown",
             WorkspaceYamlService.SchemaVersion);
+    }
+
+    private static string ResolveRepositoryRoot(string applicationBasePath)
+    {
+        var current = new DirectoryInfo(applicationBasePath);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.Manager.slnx")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root could not be resolved from the current application path.");
     }
 
     private static string GetBuildConfiguration(string executablePath)

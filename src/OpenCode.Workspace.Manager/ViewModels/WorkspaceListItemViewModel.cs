@@ -1,8 +1,8 @@
 using System.IO;
 using System.Linq;
 using System.Windows.Media;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
-using OpenCode.Workspace.Manager.Services;
 
 namespace OpenCode.Workspace.Manager.ViewModels;
 

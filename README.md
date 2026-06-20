@@ -1,4 +1,42 @@
-# OpenCode Workspace Manager
+# opencode stuff
+
+There is no magic. Only stuff.
+
+`opencode stuff` currently ships two desktop shells:
+
+- `OpenCode Workspace Manager`: the stable Windows WPF shell
+- `OpenCode Workspace Avalonia`: the new cross-platform preview shell for Windows, macOS, and Linux
+
+Both shells share the durable workspace and diagnostics core.
+
+## Desktop Shells
+
+Current desktop split:
+
+- `src/OpenCode.Workspace.Core/`: shared workspace/runtime/domain logic
+- `src/OpenCode.Workspace.AppSupport/`: minimal shell-neutral app support
+- `src/OpenCode.Workspace.Manager/`: Windows WPF shell
+- `src/OpenCode.Workspace.Avalonia/`: cross-platform Avalonia shell preview
+
+The Avalonia shell currently focuses on:
+
+- workspaces overview
+- diagnostics
+- templates
+- transcripts preview
+- save points preview
+- documentation links
+- settings and theme selection
+
+Known preview limitations:
+
+- no full attach parity yet
+- no full save point write UI yet
+- no remote SSH-backed target flows yet
+
+Unavailable actions are shown with explicit reason text instead of being hidden or faked.
+
+## OpenCode Workspace Manager
 
 OpenCode Workspace Manager is a Windows WPF application for durable workspaces, repository onboarding, and reusable development environments with disposable runtimes, local recovery, and safe Git-based working flows.
 

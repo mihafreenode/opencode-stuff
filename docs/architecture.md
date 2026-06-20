@@ -26,12 +26,18 @@ The design optimizes for:
 
 ## High-Level Design
 
-The MVP is split into two projects:
+The product is now split into four projects:
 
 - `OpenCode.Workspace.Core`: portable domain and generation logic
+- `OpenCode.Workspace.AppSupport`: minimal framework-neutral shell support
 - `OpenCode.Workspace.Manager`: WPF shell plus Windows-only runtime behavior
+- `OpenCode.Workspace.Avalonia`: cross-platform desktop shell preview
 
-This separation exists so the durable workspace logic stays portable while the Windows app handles host-specific runtime behavior.
+This separation exists so the durable workspace logic stays portable while the shells remain free to evolve independently.
+
+The WPF shell remains the stable Windows implementation.
+
+The Avalonia shell is a preview cross-platform shell focused on workspace inspection, diagnostics, templates, and read-only activity flows.
 
 ## Canonical Vs Generated Artifacts
 

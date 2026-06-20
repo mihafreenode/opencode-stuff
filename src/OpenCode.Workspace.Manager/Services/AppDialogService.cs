@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Manager.ViewModels;
 
 namespace OpenCode.Workspace.Manager.Services;

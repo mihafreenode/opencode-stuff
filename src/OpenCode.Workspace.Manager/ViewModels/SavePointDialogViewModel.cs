@@ -1,4 +1,4 @@
-using OpenCode.Workspace.Manager.Services;
+using OpenCode.Workspace.AppSupport;
 
 namespace OpenCode.Workspace.Manager.ViewModels;
 

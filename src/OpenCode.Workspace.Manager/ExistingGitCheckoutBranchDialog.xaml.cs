@@ -1,4 +1,5 @@
 using System.Windows;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.Services;
 using OpenCode.Workspace.Manager.ViewModels;

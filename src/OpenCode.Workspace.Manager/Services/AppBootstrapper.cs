@@ -1,4 +1,5 @@
 using System.IO;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;

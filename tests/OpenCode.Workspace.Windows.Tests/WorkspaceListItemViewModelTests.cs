@@ -1,7 +1,7 @@
 using System;
 using System.IO;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
-using OpenCode.Workspace.Manager.Services;
 using OpenCode.Workspace.Manager.ViewModels;
 
 namespace OpenCode.Workspace.Windows.Tests;

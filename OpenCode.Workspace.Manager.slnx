@@ -1,10 +1,13 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/OpenCode.Workspace.AppSupport/OpenCode.Workspace.AppSupport.csproj" />
+    <Project Path="src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj" />
     <Project Path="src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj" />
     <Project Path="src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj" />
     <Project Path="src/OpenCode.Workspace.Manager/OpenCode.Workspace.Manager.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Cli.Tests/OpenCode.Workspace.Cli.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Windows.Tests/OpenCode.Workspace.Windows.Tests.csproj" />

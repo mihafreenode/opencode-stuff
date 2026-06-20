@@ -1,0 +1,327 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpenCode.Workspace.Avalonia.ViewModels"
+        x:Class="OpenCode.Workspace.Avalonia.MainWindow"
+        Title="opencode stuff"
+        Width="1480"
+        Height="920"
+        MinWidth="1200"
+        MinHeight="760"
+        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-app.png"
+        Background="{DynamicResource AppBackgroundBrush}">
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:WorkspacesPageViewModel">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Local workspaces" Classes="section-title" />
+            <TextBlock Text="Repository-first durable workspaces discovered from the local index and workspace configuration files."
+                       Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel">
+          <Grid RowDefinitions="Auto,*" RowSpacing="12">
+            <TextBlock Text="Workspace overview" Classes="section-title" />
+            <ListBox Grid.Row="1"
+                     ItemsSource="{Binding Workspaces}"
+                     SelectedItem="{Binding SelectedWorkspace}"
+                     BorderThickness="0"
+                     Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="list-row" Margin="0,0,0,10">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                      <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                      <Border Grid.Column="1" Classes="status-chip">
+                        <TextBlock Text="{Binding StatusLabel}" />
+                      </Border>
+                      <TextBlock Grid.Row="1" Text="{Binding RepositoryPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="2" Text="{Binding RuntimeSummary}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:DiagnosticsPageViewModel">
+      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Diagnostics" Classes="section-title" />
+            <TextBlock Text="Readable host and workspace checks powered by shared core services."
+                       Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <ComboBox Width="340" ItemsSource="{Binding WorkspaceTargets}" SelectedItem="{Binding SelectedWorkspaceTarget}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Classes="accent" Content="Run Doctor" Command="{Binding RunDoctorCommand}" />
+            <Button Content="Validate linux/amd64" Command="{Binding ValidateAmd64Command}" />
+            <Button Content="Validate linux/arm64" Command="{Binding ValidateArm64Command}" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+
+        <ScrollViewer Grid.Row="3">
+          <StackPanel Spacing="12">
+            <ItemsControl ItemsSource="{Binding DoctorItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="6">
+                      <DockPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding StatusLabel}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding NextStep}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasNextStep}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ItemsControl ItemsSource="{Binding ValidationItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="6">
+                      <DockPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding StatusLabel}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding NextStep}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasNextStep}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:TemplatesPageViewModel">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Templates" Classes="section-title" />
+            <TextBlock Text="Built-in starting points from the repository catalog." Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" BorderThickness="0" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="list-row" Margin="0,0,0,10">
+                <StackPanel Spacing="5">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding CapabilitiesSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:SavePointsPageViewModel">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Save Points" Classes="section-title" />
+            <TextBlock Text="Read-only preview of recent recovery and checkpoint history." Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" BorderThickness="0" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="list-row" Margin="0,0,0,10">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding TimestampLabel}" Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:TranscriptsPageViewModel">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Transcripts" Classes="section-title" />
+            <TextBlock Text="Structured activity history from workspace timelines." Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" BorderThickness="0" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="list-row" Margin="0,0,0,10">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                  <TextBlock Text="{Binding Action}" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1" Text="{Binding TimestampLabel}" Foreground="{DynamicResource TextMutedBrush}" />
+                  <TextBlock Grid.Row="1" Text="{Binding Workspace}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Result}" TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:RemoteTargetsPageViewModel">
+      <Border Classes="panel">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Remote Targets" Classes="section-title" />
+          <TextBlock Text="Remote targets are planned for portable SSH-backed workspaces. This preview shell focuses on local workspace inspection first."
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:DocumentationPageViewModel">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Documentation" Classes="section-title" />
+            <TextBlock Text="Local repository docs opened with the host default handler." Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" BorderThickness="0" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="list-row" Margin="0,0,0,10">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <Button Grid.Column="1" Classes="accent" Content="Open" Command="{Binding OpenCommand}" />
+                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Description}" TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:SettingsPageViewModel">
+      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Settings" Classes="section-title" />
+            <TextBlock Text="Cross-platform preview shell settings and app information." Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel">
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="Theme" VerticalAlignment="Center" />
+            <ComboBox Width="180" ItemsSource="{Binding ThemeModes}" SelectedItem="{Binding SelectedThemeMode}" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="App info" Classes="section-title" />
+            <TextBlock Text="{Binding AppVersionLine}" />
+            <TextBlock Text="{Binding AppBuildLine}" />
+            <TextBlock Text="{Binding GeneratorLine}" />
+            <TextBlock Text="{Binding RuntimeStateExplanation}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="220,*,340">
+    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,16">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel.png" Width="44" Height="44" Stretch="Uniform" />
+        <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Text="opencode stuff" FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="There is no magic. Only stuff." Foreground="{DynamicResource TextMutedBrush}" />
+        </StackPanel>
+        <Border Grid.Column="2" Classes="status-chip" VerticalAlignment="Center">
+          <TextBlock Text="Avalonia Preview" />
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1" Margin="16" Classes="panel">
+      <StackPanel Spacing="8">
+        <ItemsControl ItemsSource="{Binding NavigationItems}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Classes="nav-item" Content="{Binding Title}" Command="{Binding SelectCommand}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Grid.Column="1" Margin="0,16,16,16" Classes="panel-root">
+      <ContentControl Content="{Binding CurrentPage}" />
+    </Border>
+
+    <Border Grid.Row="1" Grid.Column="2" Margin="0,16,16,16" Classes="panel">
+      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+        <TextBlock Text="{Binding CurrentPage.DetailTitle}" Classes="section-title" />
+        <TextBlock Grid.Row="1" Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding CurrentPage.DetailItems}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="0,0,0,10" Spacing="3">
+                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Value}" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding CurrentPage.DetailActions}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Classes="panel-subtle" Margin="0,0,0,8">
+                <StackPanel Spacing="6">
+                  <Button Content="{Binding Label}" Command="{Binding Command}" IsEnabled="{Binding IsEnabled}" />
+                  <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                  <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding ShowDisabledReason}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{DynamicResource ShellFooterBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="18">
+        <TextBlock Text="{Binding StatusBarState}" />
+        <TextBlock Grid.Column="1" Text="{Binding StatusBarWorkspace}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock Grid.Column="2" Text="{Binding StatusBarRuntime}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock Grid.Column="3" Text="{Binding StatusBarBuild}" Foreground="{DynamicResource TextMutedBrush}" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

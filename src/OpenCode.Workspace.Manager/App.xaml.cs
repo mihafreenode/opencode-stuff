@@ -2,6 +2,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Markup;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Manager.Services;
 
 namespace OpenCode.Workspace.Manager;

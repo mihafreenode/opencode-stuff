@@ -2,6 +2,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Manager;
 using OpenCode.Workspace.Manager.Services;
 

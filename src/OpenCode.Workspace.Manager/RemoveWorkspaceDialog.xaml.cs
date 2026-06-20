@@ -1,4 +1,5 @@
 using System.Windows;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Manager.Services;
 
 namespace OpenCode.Workspace.Manager;

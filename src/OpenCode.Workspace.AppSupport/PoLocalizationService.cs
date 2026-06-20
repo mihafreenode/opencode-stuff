@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.IO;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.AppSupport;
 
 /// <summary>
-/// Minimal gettext-style PO reader for the MVP. The goal is to keep visible UI
-/// strings out of code while keeping the implementation small and understandable.
+/// Minimal gettext-style PO reader shared by the desktop shells so visible UI
+/// strings stay out of code without pulling a larger localization framework.
 /// </summary>
 public sealed class PoLocalizationService
 {

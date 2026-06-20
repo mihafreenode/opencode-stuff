@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using Microsoft.Win32;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.Services;
