@@ -11,7 +11,7 @@
         Background="{DynamicResource AppBackgroundBrush}">
   <Window.DataTemplates>
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
-      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+      <Grid RowDefinitions="Auto,*" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="6">
             <TextBlock Text="Local workspaces" Classes="section-title" />
@@ -20,73 +20,87 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Row="1" Classes="panel">
-          <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
-            <TextBlock Text="Workspace overview" Classes="section-title" />
-            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowLoadingState}">
-              <TextBlock Text="Loading workspaces..." TextWrapping="Wrap" />
-              <TextBlock Text="Reading the shared workspace index and snapshot state." TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-            </StackPanel>
-            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowErrorState}">
-              <TextBlock Text="Workspace discovery failed." TextWrapping="Wrap" />
-              <TextBlock Text="{Binding LoadErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-            </StackPanel>
-            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowEmptyState}">
-              <TextBlock Text="{Binding EmptyStateTitle}" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding EmptyStateMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-            </StackPanel>
-            <ListBox Grid.Row="2"
-                      ItemsSource="{Binding Workspaces}"
-                      SelectedItem="{Binding SelectedWorkspace}"
-                      BorderThickness="0"
-                      Background="Transparent"
-                      IsVisible="{Binding HasWorkspaces}">
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="list-row" Margin="0,0,0,10">
-                    <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
-                      <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                      <Border Grid.Column="1" Classes="status-chip">
-                        <TextBlock Text="{Binding ProtectionLabel}" />
-                      </Border>
-                      <Border Grid.Column="2" Classes="status-chip">
-                        <TextBlock Text="{Binding RuntimeStatusLabel}" />
-                      </Border>
-                      <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding RootPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-                      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding RepositoryStatus}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                      <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding LastActivity}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="2" Classes="panel">
-          <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
-              <TextBlock Text="Operation Log" Classes="section-title" />
-              <CheckBox Grid.Column="1" Content="Follow latest output" IsChecked="{Binding FollowLatestOutput}" VerticalAlignment="Center" />
-              <Button Grid.Column="2" Content="Copy all" Command="{Binding CopyOperationLogCommand}" />
-              <Button Grid.Column="3" Content="Clear view" Command="{Binding ClearOperationLogCommand}" />
+        <DockPanel Grid.Row="1" LastChildFill="True">
+          <Border DockPanel.Dock="Bottom"
+                  Classes="panel"
+                  Height="200"
+                  Margin="0,12,0,0"
+                  IsVisible="{Binding ShowOperationLogPanel}">
+            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
+                <TextBlock Text="Operation Log" Classes="section-title" />
+                <CheckBox Grid.Column="1" Content="Follow latest output" IsChecked="{Binding FollowLatestOutput}" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Content="Copy all" Command="{Binding CopyOperationLogCommand}" />
+                <Button Grid.Column="3" Content="Clear view" Command="{Binding ClearOperationLogCommand}" />
+              </Grid>
+              <TextBlock Grid.Row="1"
+                         Text="Live streamed workspace output. Commands, stdout, stderr, and result lines remain selectable and copyable."
+                         Foreground="{DynamicResource TextMutedBrush}"
+                         TextWrapping="Wrap" />
+              <TextBox Grid.Row="2"
+                       Text="{Binding OperationLogText}"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Consolas"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       VerticalAlignment="Stretch"
+                       TextChanged="WorkspaceOperationLogTextChanged" />
             </Grid>
-            <TextBlock Grid.Row="1"
-                       Text="Live streamed workspace output. Commands, stdout, stderr, and result lines remain selectable and copyable."
-                       Foreground="{DynamicResource TextMutedBrush}"
-                       TextWrapping="Wrap" />
-            <TextBox Grid.Row="2"
-                     Text="{Binding OperationLogText}"
-                     IsReadOnly="True"
-                     AcceptsReturn="True"
-                     TextWrapping="NoWrap"
-                     FontFamily="Consolas"
-                     MinHeight="220"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     TextChanged="WorkspaceOperationLogTextChanged" />
-          </Grid>
-        </Border>
+          </Border>
+
+          <Border Classes="panel">
+            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock Text="Workspace overview" Classes="section-title" />
+                <Button Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Content="{Binding OperationLogToggleLabel}"
+                        Command="{Binding ToggleOperationLogVisibilityCommand}"
+                        IsVisible="{Binding ShowOperationLogToggleButton}" />
+              </Grid>
+              <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowLoadingState}">
+                <TextBlock Text="Loading workspaces..." TextWrapping="Wrap" />
+                <TextBlock Text="Reading the shared workspace index and snapshot state." TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowErrorState}">
+                <TextBlock Text="Workspace discovery failed." TextWrapping="Wrap" />
+                <TextBlock Text="{Binding LoadErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" MaxHeight="54" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowEmptyState}">
+                <TextBlock Text="{Binding EmptyStateTitle}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding EmptyStateMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+              </StackPanel>
+              <ListBox Grid.Row="2"
+                        ItemsSource="{Binding Workspaces}"
+                        SelectedItem="{Binding SelectedWorkspace}"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        IsVisible="{Binding HasWorkspaces}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="list-row" Margin="0,0,0,10">
+                      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                        <Border Grid.Column="1" Classes="status-chip">
+                          <TextBlock Text="{Binding ProtectionLabel}" />
+                        </Border>
+                        <Border Grid.Column="2" Classes="status-chip">
+                          <TextBlock Text="{Binding RuntimeStatusLabel}" />
+                        </Border>
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding RootPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding RepositoryStatus}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding LastActivity}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Border>
+        </DockPanel>
       </Grid>
     </DataTemplate>
 
@@ -368,30 +382,36 @@
     <Border Grid.Row="1" Grid.Column="2" Margin="0,16,16,16" Classes="panel">
       <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
         <TextBlock Text="{Binding CurrentPage.DetailTitle}" Classes="section-title" />
-        <TextBlock Grid.Row="1" Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding CurrentPage.DetailItems}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <StackPanel Margin="0,0,0,10" Spacing="3">
-                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding Value}" TextWrapping="Wrap" />
-              </StackPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <ItemsControl Grid.Row="3" ItemsSource="{Binding CurrentPage.DetailActions}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border Classes="panel-subtle" Margin="0,0,0,8">
-                <StackPanel Spacing="6">
-                  <Button Content="{Binding Label}" Command="{Binding Command}" IsEnabled="{Binding IsEnabled}" />
-                  <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
-                  <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding ShowDisabledReason}" />
+        <Border Grid.Row="1" Classes="panel-subtle" MinHeight="74" MaxHeight="96">
+          <TextBlock Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" />
+        </Border>
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding CurrentPage.DetailItems}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="0,0,0,10" Spacing="3">
+                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxHeight="54" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="320">
+          <ItemsControl ItemsSource="{Binding CurrentPage.DetailActions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="panel-subtle" Margin="0,0,0,8" MinHeight="86">
+                  <StackPanel Spacing="6">
+                    <Button Content="{Binding Label}" Command="{Binding Command}" IsEnabled="{Binding IsEnabled}" />
+                    <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDescription}" />
+                    <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowDisabledReason}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
       </Grid>
     </Border>
 

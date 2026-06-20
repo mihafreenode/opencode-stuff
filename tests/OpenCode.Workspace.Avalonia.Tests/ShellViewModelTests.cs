@@ -377,11 +377,78 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await page.ReprovisionWorkspaceCommand.ExecuteAsync();
 
-        Assert.Contains("reprovision failed", page.ReprovisionStatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Workspace reprovision failed. Exit code: 127. See Operation Log panel.", page.ReprovisionStatusMessage);
         Assert.Contains(page.DetailItems, item => item.Label == "Failure");
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FailureSummary_IsConciseAndExcludesFullCommand()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.DoesNotContain("docker exec odip-analiza-workspace", page.DetailSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("/workspace/.env: line 17", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains("See Operation Log panel.", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OperationLogVisibility_TogglesAndDefaultsVisibleAfterOperation()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+
+        await page.LoadAsync();
+        Assert.False(page.IsOperationLogVisible);
+        Assert.False(page.ShowOperationLogPanel);
+
+        page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "line" });
+        Assert.True(page.IsOperationLogVisible);
+        Assert.True(page.ShowOperationLogPanel);
+        Assert.Equal("Hide Operation Log", page.OperationLogToggleLabel);
+        Assert.True(page.ShowOperationLogToggleButton);
+
+        page.ToggleOperationLogVisibilityCommand.Execute(null);
+        Assert.False(page.IsOperationLogVisible);
+        Assert.False(page.ShowOperationLogPanel);
+        Assert.Equal("Show Operation Log", page.OperationLogToggleLabel);
+        Assert.True(page.ShowOperationLogToggleButton);
+    }
+
+    [Fact]
+    public async Task WorkspaceListAndOperationLog_AreSeparateStates()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
+
+        await page.LoadAsync();
+        page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "log line" });
+
+        Assert.Equal(2, page.Workspaces.Count);
+        Assert.Contains("log line", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FullFailureText_RemainsInOperationLog()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.GetCopyAllOperationLogText(), StringComparison.Ordinal);
+        Assert.Contains("/workspace/.env: line 17: $'Analiza\\r': command not found", page.GetCopyAllOperationLogText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -406,6 +473,37 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("docker exec workspace bash /opt/opencode-workspace/config/provision.sh", clipboard.Text!, StringComparison.Ordinal);
         Assert.Contains("failure text", clipboard.Text!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ClearingOperationLog_RemovesVisiblePanelState()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+
+        await page.LoadAsync();
+        page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Command, Text = "docker exec workspace bash /opt/opencode-workspace/config/provision.sh" });
+
+        Assert.True(page.ShowOperationLogPanel);
+
+        page.ClearOperationLogCommand.Execute(null);
+
+        Assert.False(page.HasOperationLog);
+        Assert.False(page.IsOperationLogVisible);
+        Assert.False(page.ShowOperationLogPanel);
+        Assert.Equal(string.Empty, page.GetCopyAllOperationLogText());
+    }
+
+    [Fact]
+    public void MainWindow_OperationLogView_UsesWrappedLayoutWithoutHorizontalScroll()
+    {
+        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
+
+        Assert.Contains("DockPanel Grid.Row=\"1\" LastChildFill=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("TextWrapping=\"Wrap\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("ScrollViewer.HorizontalScrollBarVisibility=\"Disabled\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsVisible=\"{Binding ShowOperationLogPanel}\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RowDefinitions=\"*,8,220\"", axaml, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -21,6 +21,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private bool _followLatestOutput = true;
     private string _operationLogText = string.Empty;
     private OperationTranscript? _lastOperationTranscript;
+    private bool _isOperationLogVisible;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -31,6 +32,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
         CopyOperationLogCommand = new AsyncRelayCommand(CopyOperationLogAsync, () => HasOperationLog && _clipboardService is not null);
         ClearOperationLogCommand = new RelayCommand(ClearOperationLog, () => HasOperationLog);
+        ToggleOperationLogVisibilityCommand = new RelayCommand(ToggleOperationLogVisibility);
         DisabledActionCommand = new RelayCommand(() => { });
         SetLoadingState();
     }
@@ -41,6 +43,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
     public AsyncRelayCommand CopyOperationLogCommand { get; }
     public RelayCommand ClearOperationLogCommand { get; }
+    public RelayCommand ToggleOperationLogVisibilityCommand { get; }
     public RelayCommand DisabledActionCommand { get; }
     public Func<string, Task>? ValidateWorkspaceAsync { get; set; }
     public bool IsLoading
@@ -87,13 +90,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             if (SetProperty(ref _operationLogText, value))
             {
                 RaisePropertyChanged(nameof(HasOperationLog));
+                RaisePropertyChanged(nameof(ShowOperationLogToggleButton));
                 CopyOperationLogCommand.RaiseCanExecuteChanged();
                 ClearOperationLogCommand.RaiseCanExecuteChanged();
+                if (HasOperationLog)
+                {
+                    IsOperationLogVisible = true;
+                }
             }
         }
     }
 
     public bool HasOperationLog => !string.IsNullOrWhiteSpace(OperationLogText);
+    public bool ShowOperationLogToggleButton => HasOperationLog;
 
     public OperationTranscript? LastOperationTranscript
     {
@@ -101,10 +110,27 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         private set => SetProperty(ref _lastOperationTranscript, value);
     }
 
+    public bool IsOperationLogVisible
+    {
+        get => _isOperationLogVisible;
+        private set
+        {
+            if (SetProperty(ref _isOperationLogVisible, value))
+            {
+                RaisePropertyChanged(nameof(OperationLogToggleLabel));
+                RaisePropertyChanged(nameof(ShowOperationLogPanel));
+                RaisePropertyChanged(nameof(ShowOperationLogToggleButton));
+            }
+        }
+    }
+
+    public string OperationLogToggleLabel => IsOperationLogVisible ? "Hide Operation Log" : "Show Operation Log";
+
     public bool HasWorkspaces => Workspaces.Count > 0;
     public bool ShowEmptyState => !IsLoading && !HasLoadError && !HasWorkspaces;
     public bool ShowLoadingState => IsLoading;
     public bool ShowErrorState => HasLoadError && !HasWorkspaces;
+    public bool ShowOperationLogPanel => HasOperationLog && IsOperationLogVisible;
     public WorkspaceLoadReport WorkspaceLoadReport
     {
         get => _workspaceLoadReport;
@@ -265,7 +291,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             ReplaceSelectedWorkspace(result.Snapshot);
             ReprovisionStatusMessage = result.Message;
-            LastOperationTranscript = result.Transcript;
+            CompleteOperationTranscript(result.Transcript);
             DetailSummary = result.Message;
         }
         catch (Exception exception)
@@ -293,6 +319,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         CopyOperationLogCommand.RaiseCanExecuteChanged();
     }
 
+    private void ToggleOperationLogVisibility()
+    {
+        IsOperationLogVisible = !IsOperationLogVisible;
+    }
+
     public void AppendOperationTranscriptLine(OperationTranscriptLine line)
     {
         if (LastOperationTranscript is null)
@@ -306,9 +337,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         LastOperationTranscript.Lines.Add(line);
-        OperationLogText = string.IsNullOrEmpty(OperationLogText)
-            ? FormatOperationTranscriptLine(line)
-            : $"{OperationLogText}{Environment.NewLine}{FormatOperationTranscriptLine(line)}";
+        RefreshOperationLogText();
     }
 
     private void StartOperationTranscript(string operationName, string workspaceName)
@@ -319,12 +348,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             WorkspaceName = workspaceName,
             StartedUtc = DateTimeOffset.UtcNow,
         };
-        OperationLogText = string.Empty;
-        AppendOperationTranscriptLine(new OperationTranscriptLine
-        {
-            Kind = OperationTranscriptLineKind.Comment,
-            Text = $"Started {operationName} for {workspaceName}.",
-        });
+        RefreshOperationLogText();
     }
 
     private async Task CopyOperationLogAsync()
@@ -334,17 +358,47 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        await _clipboardService.SetTextAsync(OperationLogText);
+        await _clipboardService.SetTextAsync(GetCopyAllOperationLogText());
     }
 
     private void ClearOperationLog()
     {
+        LastOperationTranscript = null;
         OperationLogText = string.Empty;
+        IsOperationLogVisible = false;
         CopyOperationLogCommand.RaiseCanExecuteChanged();
         ClearOperationLogCommand.RaiseCanExecuteChanged();
     }
 
-    public string GetCopyAllOperationLogText() => OperationLogText;
+    public string GetCopyAllOperationLogText() => BuildOperationTranscriptText();
+
+    private void RefreshOperationLogText()
+    {
+        OperationLogText = BuildOperationTranscriptText();
+    }
+
+    private string BuildOperationTranscriptText()
+    {
+        if (LastOperationTranscript is null || LastOperationTranscript.Lines.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine, LastOperationTranscript.Lines.Select(FormatOperationTranscriptLine));
+    }
+
+    private void CompleteOperationTranscript(OperationTranscript transcript)
+    {
+        if (LastOperationTranscript is null)
+        {
+            LastOperationTranscript = transcript;
+            RefreshOperationLogText();
+            return;
+        }
+
+        LastOperationTranscript.CompletedUtc = transcript.CompletedUtc;
+        LastOperationTranscript.Succeeded = transcript.Succeeded;
+    }
 
     private void UpdateDetailPanel()
     {
@@ -457,9 +511,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private static string GetActionableReprovisionFailure(string error)
-        => string.IsNullOrWhiteSpace(error)
-            ? "Workspace reprovision failed. Check the workspace activity and try again."
-            : $"Workspace reprovision failed. {error}{Environment.NewLine}See operation log below.";
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return "Workspace reprovision failed. See Operation Log panel.";
+        }
+
+        var lines = error.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var exitCode = lines.FirstOrDefault(line => line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase));
+        return exitCode is null
+            ? "Workspace reprovision failed. See Operation Log panel."
+            : $"Workspace reprovision failed. {exitCode}. See Operation Log panel.";
+    }
 
     private static string FormatOperationTranscriptLine(OperationTranscriptLine line)
     {
