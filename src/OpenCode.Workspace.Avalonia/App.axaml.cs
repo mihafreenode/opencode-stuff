@@ -51,6 +51,7 @@ public partial class App : Application
             {
                 DataContext = shell,
             };
+            shell.SetClipboardService(new AvaloniaClipboardService(mainWindow));
             mainWindow.Opened += async (_, _) =>
             {
                 _startupLog?.Write("MainWindow opened.");

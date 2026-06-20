@@ -38,26 +38,40 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => _checkpointService.LoadIndex(checkpointIndexPath);
 
-    public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, Action<string>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
         var wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
-        Action<CommandLogEntry>? log = entry => progress?.Invoke(entry.Message);
+        var transcript = new OperationTranscript
+        {
+            OperationName = "Reprovision",
+            WorkspaceName = snapshot.Definition.Workspace.Name,
+            StartedUtc = DateTimeOffset.UtcNow,
+        };
+        Action<OperationTranscriptLineKind, string> append = (kind, text) =>
+        {
+            var line = new OperationTranscriptLine { Kind = kind, Text = text };
+            transcript.Lines.Add(line);
+            logSink?.Append(line);
+        };
+        Action<CommandLogEntry>? log = entry => append(MapLineKind(entry), entry.Message);
 
         try
         {
-            progress?.Invoke("Preparing workspace");
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Comment, BuildReprovisionReason(snapshot));
+            append(OperationTranscriptLineKind.Status, "Preparing workspace");
             if (wasRunning)
             {
                 await _workspaceOrchestrator.StopAsync(snapshot, log, cancellationToken);
                 snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false);
             }
 
-            progress?.Invoke("Generating files");
-            progress?.Invoke("Provisioning runtime");
+            append(OperationTranscriptLineKind.Status, "Generating files");
+            append(OperationTranscriptLineKind.Status, "Provisioning runtime");
             await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
 
-            progress?.Invoke("Validating compose");
+            append(OperationTranscriptLineKind.Status, "Validating compose");
             var validationSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false);
             await _workspaceOrchestrator.RecoverAsync(validationSnapshot, log, cancellationToken);
 
@@ -70,20 +84,25 @@ public sealed class DesktopShellService : IDesktopShellService
 
             await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow);
             _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", "Regenerated runtime files and refreshed workspace state.");
-            progress?.Invoke("Completed");
+            append(OperationTranscriptLineKind.Result, "Completed");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
 
             return new WorkspaceReprovisionResult
             {
                 Snapshot = refreshed,
                 Succeeded = true,
                 Message = "Workspace reprovisioned successfully.",
+                Transcript = transcript,
             };
         }
         catch (Exception exception)
         {
             await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken);
             _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", exception.Message);
-            progress?.Invoke("Failed");
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
             throw;
         }
     }
@@ -153,6 +172,61 @@ public sealed class DesktopShellService : IDesktopShellService
         };
 
         return _workspaceRepository.SaveAsync(failureRecord, cancellationToken);
+    }
+
+    private static OperationTranscriptLineKind MapLineKind(CommandLogEntry entry)
+    {
+        if (entry.Source.EndsWith(":cmd", StringComparison.OrdinalIgnoreCase))
+        {
+            return OperationTranscriptLineKind.Command;
+        }
+
+        if (entry.Source.EndsWith(":err", StringComparison.OrdinalIgnoreCase))
+        {
+            return OperationTranscriptLineKind.StandardError;
+        }
+
+        return entry.Source switch
+        {
+            "docker" or "git" => OperationTranscriptLineKind.StandardOutput,
+            "app" or "attach" or "runtime" or "terminal" or "dev" => OperationTranscriptLineKind.Comment,
+            _ => OperationTranscriptLineKind.StandardOutput,
+        };
+    }
+
+    private static string BuildReprovisionReason(WorkspaceSnapshot snapshot)
+    {
+        if (snapshot.LocalRuntimeState is null)
+        {
+            return "Runtime state is missing. Reprovision will regenerate local runtime state.";
+        }
+
+        if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+        {
+            return "Workspace files are out of date. Reprovision to regenerate runtime files.";
+        }
+
+        return "Manual reprovision requested.";
+    }
+
+    private static void AppendFailureTranscript(Exception exception, Action<OperationTranscriptLineKind, string> append)
+    {
+        append(OperationTranscriptLineKind.Result, "Failed");
+        foreach (var line in exception.Message.Split([Environment.NewLine], StringSplitOptions.None))
+        {
+            if (line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase))
+            {
+                append(OperationTranscriptLineKind.Command, line[8..].Trim());
+            }
+            else if (line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase))
+            {
+                append(OperationTranscriptLineKind.Result, line.Trim());
+            }
+            else if (!string.IsNullOrWhiteSpace(line))
+            {
+                append(OperationTranscriptLineKind.StandardError, line);
+            }
+        }
     }
 
 }

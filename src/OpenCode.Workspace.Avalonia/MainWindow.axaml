@@ -11,7 +11,7 @@
         Background="{DynamicResource AppBackgroundBrush}">
   <Window.DataTemplates>
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
-      <Grid RowDefinitions="Auto,*" RowSpacing="12">
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="6">
             <TextBlock Text="Local workspaces" Classes="section-title" />
@@ -60,6 +60,31 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+          </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Classes="panel">
+          <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
+              <TextBlock Text="Operation Log" Classes="section-title" />
+              <CheckBox Grid.Column="1" Content="Follow latest output" IsChecked="{Binding FollowLatestOutput}" VerticalAlignment="Center" />
+              <Button Grid.Column="2" Content="Copy all" Command="{Binding CopyOperationLogCommand}" />
+              <Button Grid.Column="3" Content="Clear view" Command="{Binding ClearOperationLogCommand}" />
+            </Grid>
+            <TextBlock Grid.Row="1"
+                       Text="Live streamed workspace output. Commands, stdout, stderr, and result lines remain selectable and copyable."
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       TextWrapping="Wrap" />
+            <TextBox Grid.Row="2"
+                     Text="{Binding OperationLogText}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     FontFamily="Consolas"
+                     MinHeight="220"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     TextChanged="WorkspaceOperationLogTextChanged" />
           </Grid>
         </Border>
       </Grid>

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 
@@ -16,6 +17,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string _loadErrorMessage = string.Empty;
     private bool _isReprovisioning;
     private string _reprovisionStatusMessage = string.Empty;
+    private IClipboardService? _clipboardService;
+    private bool _followLatestOutput = true;
+    private string _operationLogText = string.Empty;
+    private OperationTranscript? _lastOperationTranscript;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -24,6 +29,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
+        CopyOperationLogCommand = new AsyncRelayCommand(CopyOperationLogAsync, () => HasOperationLog && _clipboardService is not null);
+        ClearOperationLogCommand = new RelayCommand(ClearOperationLog, () => HasOperationLog);
         DisabledActionCommand = new RelayCommand(() => { });
         SetLoadingState();
     }
@@ -32,6 +39,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
+    public AsyncRelayCommand CopyOperationLogCommand { get; }
+    public RelayCommand ClearOperationLogCommand { get; }
     public RelayCommand DisabledActionCommand { get; }
     public Func<string, Task>? ValidateWorkspaceAsync { get; set; }
     public bool IsLoading
@@ -62,6 +71,34 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         get => _reprovisionStatusMessage;
         private set => SetProperty(ref _reprovisionStatusMessage, value);
+    }
+
+    public bool FollowLatestOutput
+    {
+        get => _followLatestOutput;
+        set => SetProperty(ref _followLatestOutput, value);
+    }
+
+    public string OperationLogText
+    {
+        get => _operationLogText;
+        private set
+        {
+            if (SetProperty(ref _operationLogText, value))
+            {
+                RaisePropertyChanged(nameof(HasOperationLog));
+                CopyOperationLogCommand.RaiseCanExecuteChanged();
+                ClearOperationLogCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasOperationLog => !string.IsNullOrWhiteSpace(OperationLogText);
+
+    public OperationTranscript? LastOperationTranscript
+    {
+        get => _lastOperationTranscript;
+        private set => SetProperty(ref _lastOperationTranscript, value);
     }
 
     public bool HasWorkspaces => Workspaces.Count > 0;
@@ -219,18 +256,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             IsReprovisioning = true;
             ReprovisionStatusMessage = "Preparing workspace";
+            StartOperationTranscript("Reprovision", SelectedWorkspace.Name);
             UpdateDetailPanel();
 
             var result = await _desktopShellService.ReprovisionWorkspaceAsync(
                 SelectedWorkspace.RootPath,
-                message =>
-                {
-                    ReprovisionStatusMessage = message;
-                    DetailSummary = message;
-                });
+                new OperationTranscriptSink(this));
 
             ReplaceSelectedWorkspace(result.Snapshot);
             ReprovisionStatusMessage = result.Message;
+            LastOperationTranscript = result.Transcript;
             DetailSummary = result.Message;
         }
         catch (Exception exception)
@@ -251,6 +286,65 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
         }
     }
+
+    public void SetClipboardService(IClipboardService clipboardService)
+    {
+        _clipboardService = clipboardService;
+        CopyOperationLogCommand.RaiseCanExecuteChanged();
+    }
+
+    public void AppendOperationTranscriptLine(OperationTranscriptLine line)
+    {
+        if (LastOperationTranscript is null)
+        {
+            LastOperationTranscript = new OperationTranscript
+            {
+                OperationName = "Workspace operation",
+                WorkspaceName = SelectedWorkspace?.Name ?? string.Empty,
+                StartedUtc = line.Timestamp,
+            };
+        }
+
+        LastOperationTranscript.Lines.Add(line);
+        OperationLogText = string.IsNullOrEmpty(OperationLogText)
+            ? FormatOperationTranscriptLine(line)
+            : $"{OperationLogText}{Environment.NewLine}{FormatOperationTranscriptLine(line)}";
+    }
+
+    private void StartOperationTranscript(string operationName, string workspaceName)
+    {
+        LastOperationTranscript = new OperationTranscript
+        {
+            OperationName = operationName,
+            WorkspaceName = workspaceName,
+            StartedUtc = DateTimeOffset.UtcNow,
+        };
+        OperationLogText = string.Empty;
+        AppendOperationTranscriptLine(new OperationTranscriptLine
+        {
+            Kind = OperationTranscriptLineKind.Comment,
+            Text = $"Started {operationName} for {workspaceName}.",
+        });
+    }
+
+    private async Task CopyOperationLogAsync()
+    {
+        if (_clipboardService is null || !HasOperationLog)
+        {
+            return;
+        }
+
+        await _clipboardService.SetTextAsync(OperationLogText);
+    }
+
+    private void ClearOperationLog()
+    {
+        OperationLogText = string.Empty;
+        CopyOperationLogCommand.RaiseCanExecuteChanged();
+        ClearOperationLogCommand.RaiseCanExecuteChanged();
+    }
+
+    public string GetCopyAllOperationLogText() => OperationLogText;
 
     private void UpdateDetailPanel()
     {
@@ -365,5 +459,48 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private static string GetActionableReprovisionFailure(string error)
         => string.IsNullOrWhiteSpace(error)
             ? "Workspace reprovision failed. Check the workspace activity and try again."
-            : $"Workspace reprovision failed. {error}";
+            : $"Workspace reprovision failed. {error}{Environment.NewLine}See operation log below.";
+
+    private static string FormatOperationTranscriptLine(OperationTranscriptLine line)
+    {
+        var kind = line.Kind switch
+        {
+            OperationTranscriptLineKind.Command => "cmd ",
+            OperationTranscriptLineKind.StandardOutput => "out ",
+            OperationTranscriptLineKind.StandardError => "err ",
+            OperationTranscriptLineKind.Status => "stat",
+            OperationTranscriptLineKind.Result => "res ",
+            _ => "info",
+        };
+
+        return $"[{line.Timestamp:HH:mm:ss}] {kind} {line.Text}";
+    }
+
+    private sealed class OperationTranscriptSink : IOperationLogSink
+    {
+        private readonly WorkspacesPageViewModel _owner;
+
+        public OperationTranscriptSink(WorkspacesPageViewModel owner)
+        {
+            _owner = owner;
+        }
+
+        public void Append(OperationTranscriptLine line)
+        {
+            void Apply()
+            {
+                _owner.ReprovisionStatusMessage = line.Text;
+                _owner.DetailSummary = line.Text;
+                _owner.AppendOperationTranscriptLine(line);
+            }
+
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                Apply();
+                return;
+            }
+
+            Dispatcher.UIThread.InvokeAsync(Apply).GetAwaiter().GetResult();
+        }
+    }
 }

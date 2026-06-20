@@ -155,9 +155,16 @@ public sealed class DockerService
     {
         try
         {
+            var argumentList = arguments.ToList();
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "docker:cmd",
+                Message = $"docker {string.Join(' ', argumentList.Select(argument => argument.Contains(' ') ? $"\"{argument}\"" : argument))}",
+            });
+
             return await _processRunner.RunAsync(
                 "docker",
-                arguments,
+                argumentList,
                 workingDirectory,
                 (isError, line) => log?.Invoke(new CommandLogEntry
                 {

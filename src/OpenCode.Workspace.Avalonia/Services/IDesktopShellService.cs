@@ -9,6 +9,6 @@ public interface IDesktopShellService
     IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences();
     WorkspaceTimeline LoadTimeline(string timelinePath);
     WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath);
-    Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, Action<string>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
     Task OpenPathAsync(string path, CancellationToken cancellationToken = default);
 }

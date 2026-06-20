@@ -309,7 +309,7 @@ public sealed class ShellViewModelTests
         var refreshed = CreateSnapshot("alpha", includeRuntimeState: true, updateRequired: false, lastOperationResult: "Workspace reprovisioned successfully.");
         var desktop = new FakeDesktopShellService([original])
         {
-            ReprovisionResultFactory = _ => new WorkspaceReprovisionResult { Snapshot = refreshed, Succeeded = true, Message = "Workspace reprovisioned successfully." },
+            ReprovisionResultFactory = (_, _) => new WorkspaceReprovisionResult { Snapshot = refreshed, Succeeded = true, Message = "Workspace reprovisioned successfully." },
         };
         var page = new WorkspacesPageViewModel(desktop);
 
@@ -321,11 +321,56 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Reprovision_CreatesOperationTranscript()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactory = (_, sink) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "Preparing workspace" });
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "Workspace reprovisioned successfully." };
+            },
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.NotNull(page.LastOperationTranscript);
+        Assert.Contains("Preparing workspace", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reprovision_ProgressAndCommandOutput_AreAppended()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactory = (_, sink) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "Preparing workspace" });
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Command, Text = "docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh" });
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardOutput, Text = "Provisioning packages" });
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = "/workspace/.env: line 17: $'Analiza\\r': command not found" });
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "Workspace reprovisioned successfully." };
+            },
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.Contains("Preparing workspace", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Provisioning packages", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FailedReprovision_ShowsFailureState()
     {
         var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
         {
-            ReprovisionException = new InvalidOperationException("Docker engine is not reachable."),
+            ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
         };
         var page = new WorkspacesPageViewModel(desktop);
 
@@ -334,6 +379,46 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("reprovision failed", page.ReprovisionStatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(page.DetailItems, item => item.Label == "Failure");
+        Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CopyAllText_ContainsFullCommandAndError()
+    {
+        var clipboard = new FakeClipboardService();
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactory = (_, sink) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Command, Text = "docker exec workspace bash /opt/opencode-workspace/config/provision.sh" });
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = "failure text" });
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "done" };
+            },
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+        page.SetClipboardService(clipboard);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+        await page.CopyOperationLogCommand.ExecuteAsync();
+
+        Assert.Contains("docker exec workspace bash /opt/opencode-workspace/config/provision.sh", clipboard.Text!, StringComparison.Ordinal);
+        Assert.Contains("failure text", clipboard.Text!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StartingNewOperation_ClearsPreviousVisibleLog()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "old line" });
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.DoesNotContain("old line", page.OperationLogText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -494,7 +579,7 @@ public sealed class ShellViewModelTests
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
         private readonly IReadOnlyList<WorkspaceShellItem> _extraItems;
-        public Func<string, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
+        public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Exception? ReprovisionException { get; init; }
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
@@ -524,15 +609,30 @@ public sealed class ShellViewModelTests
                 .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
                 .ToList();
 
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, Action<string>? progress = null, CancellationToken cancellationToken = default)
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
-            progress?.Invoke("Preparing workspace");
+            logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "Preparing workspace" });
             if (ReprovisionException is not null)
             {
+                foreach (var line in ReprovisionException.Message.Split([Environment.NewLine], StringSplitOptions.None))
+                {
+                    if (line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Command, Text = line[8..].Trim() });
+                    }
+                    else if (line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = line.Trim() });
+                    }
+                    else if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = line });
+                    }
+                }
                 throw ReprovisionException;
             }
 
-            var result = ReprovisionResultFactory?.Invoke(rootPath)
+            var result = ReprovisionResultFactory?.Invoke(rootPath, logSink)
                 ?? new WorkspaceReprovisionResult
                 {
                     Snapshot = _snapshots.First(item => string.Equals(item.Paths.RootPath, rootPath, StringComparison.OrdinalIgnoreCase)),
@@ -540,7 +640,7 @@ public sealed class ShellViewModelTests
                     Message = "Workspace reprovisioned successfully.",
                 };
 
-            progress?.Invoke("Completed");
+            logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Completed" });
             return Task.FromResult(result);
         }
 
@@ -590,7 +690,7 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, Action<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
@@ -602,8 +702,19 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, Action<string>? progress = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeClipboardService : IClipboardService
+    {
+        public string? Text { get; private set; }
+
+        public Task SetTextAsync(string text, CancellationToken cancellationToken = default)
+        {
+            Text = text;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeDiagnosticsShellService : IDiagnosticsShellService

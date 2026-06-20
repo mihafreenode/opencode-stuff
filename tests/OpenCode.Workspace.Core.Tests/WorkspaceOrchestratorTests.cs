@@ -847,7 +847,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(dockerRunner.DirectoryInitializationRanAfterProvisioning);
             Assert.Equal(1, terminalLauncher.LaunchCount);
             Assert.Contains(logEntries, entry => entry.Message.Contains("Workspace container is running but not provisioned. Running provisioning before attach.", StringComparison.Ordinal));
-            Assert.DoesNotContain(logEntries, entry => entry.Message.Contains("Run Prepare Workspace or Repair Runtime", StringComparison.Ordinal));
+            Assert.DoesNotContain(logEntries.Where(entry => string.Equals(entry.Source, "app", StringComparison.Ordinal)), entry => entry.Message.Contains("Run Prepare Workspace or Repair Runtime", StringComparison.Ordinal));
         }
         finally
         {

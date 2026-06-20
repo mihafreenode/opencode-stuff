@@ -109,6 +109,11 @@ public sealed class ShellViewModel : ObservableObject
         RefreshStatusBar();
     }
 
+    public void SetClipboardService(IClipboardService clipboardService)
+    {
+        _workspacesPage.SetClipboardService(clipboardService);
+    }
+
     private NavigationItemViewModel CreateNavigationItem(PageViewModel page)
         => new(page.Title, page, new RelayCommand(() => CurrentPage = page));
 
