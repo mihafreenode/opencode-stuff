@@ -7,6 +7,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 {
     private readonly IDesktopShellService _desktopShellService;
     private WorkspaceSummaryViewModel? _selectedWorkspace;
+    private string _emptyStateTitle = string.Empty;
+    private string _emptyStateMessage = string.Empty;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -22,6 +24,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
     public RelayCommand DisabledActionCommand { get; }
     public Func<string, Task>? ValidateWorkspaceAsync { get; set; }
+    public bool HasWorkspaces => Workspaces.Count > 0;
+    public bool ShowEmptyState => !HasWorkspaces;
+
+    public string EmptyStateTitle
+    {
+        get => _emptyStateTitle;
+        private set => SetProperty(ref _emptyStateTitle, value);
+    }
+
+    public string EmptyStateMessage
+    {
+        get => _emptyStateMessage;
+        private set => SetProperty(ref _emptyStateMessage, value);
+    }
 
     public WorkspaceSummaryViewModel? SelectedWorkspace
     {
@@ -40,19 +56,34 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         Workspaces.Clear();
-        foreach (var snapshot in await _desktopShellService.LoadWorkspaceSnapshotsAsync(includeRuntimeInspection: true, cancellationToken))
+        foreach (var snapshot in (await _desktopShellService.LoadWorkspaceSnapshotsAsync(includeRuntimeInspection: true, cancellationToken))
+            .OrderBy(item => item.Definition.Workspace.Name, StringComparer.OrdinalIgnoreCase))
         {
             Workspaces.Add(new WorkspaceSummaryViewModel(snapshot));
         }
 
+        RaisePropertyChanged(nameof(HasWorkspaces));
+        RaisePropertyChanged(nameof(ShowEmptyState));
+
         SelectedWorkspace = Workspaces.FirstOrDefault();
         if (SelectedWorkspace is null)
         {
-            DetailTitle = "No workspaces";
-            DetailSummary = "No local workspaces were discovered in the current index.";
+            EmptyStateTitle = "No workspaces discovered.";
+            EmptyStateMessage = "OpenCode looks for workspace.yaml,\nworkspace.yml,\n.opencode/profile.yaml,\n.opencode/profile.yml\n\nUse Create Workspace or Open Existing Repository.";
+            DetailTitle = EmptyStateTitle;
+            DetailSummary = EmptyStateMessage;
             DetailItems.Clear();
             DetailActions.Clear();
+            DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+            return;
         }
+
+        EmptyStateTitle = string.Empty;
+        EmptyStateMessage = string.Empty;
     }
 
     private async Task OpenSelectedWorkspaceAsync()
@@ -88,17 +119,24 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         DetailTitle = SelectedWorkspace.Name;
-        DetailSummary = SelectedWorkspace.LastActivity;
+        DetailSummary = SelectedWorkspace.SafetyState;
+        DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
         DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
+        DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
+        DetailItems.Add(new DetailItemViewModel("Repository status", SelectedWorkspace.RepositoryStatus));
+        DetailItems.Add(new DetailItemViewModel("Runtime-state status", SelectedWorkspace.LocalRuntimeStateStatus));
+        DetailItems.Add(new DetailItemViewModel("Last activity", SelectedWorkspace.LastActivity));
         DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
+        DetailItems.Add(new DetailItemViewModel("Features", SelectedWorkspace.Features));
         DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.Snapshot.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown"));
-        DetailItems.Add(new DetailItemViewModel("Safety state", SelectedWorkspace.SafetyState));
 
         DetailActions.Add(new ActionItemViewModel("Open", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", "Run portable doctor and platform validation from the Diagnostics page.", true, string.Empty, ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "Recovery actions are not ported yet. Use WPF or CLI for now.", DisabledActionCommand));
         DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "Save Point creation is not implemented in Avalonia preview yet.", DisabledActionCommand));
+
+        RaisePropertyChanged(nameof(SelectedWorkspace));
     }
 }

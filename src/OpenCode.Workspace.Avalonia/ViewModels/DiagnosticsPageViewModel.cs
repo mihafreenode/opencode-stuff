@@ -9,6 +9,11 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     private readonly IDiagnosticsShellService _diagnosticsShellService;
     private WorkspaceReference? _selectedWorkspaceTarget;
     private string _statusMessage;
+    private DiagnosticItemViewModel? _selectedDoctorItem;
+    private DiagnosticItemViewModel? _selectedValidationItem;
+    private string _latestDoctorSummary = "Doctor has not been run yet.";
+    private string _latestValidationSummary = "No platform validation has been run yet.";
+    private string _latestValidationContext = string.Empty;
 
     public DiagnosticsPageViewModel(IDiagnosticsShellService diagnosticsShellService, IEnumerable<WorkspaceReference> workspaceTargets)
         : base("Diagnostics", "Checklist-style host and workspace diagnostics.")
@@ -29,6 +34,26 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     public AsyncRelayCommand RunDoctorCommand { get; }
     public AsyncRelayCommand ValidateAmd64Command { get; }
     public AsyncRelayCommand ValidateArm64Command { get; }
+    public bool HasDoctorResults => DoctorItems.Count > 0;
+    public bool HasValidationResults => ValidationItems.Count > 0;
+
+    public string LatestDoctorSummary
+    {
+        get => _latestDoctorSummary;
+        private set => SetProperty(ref _latestDoctorSummary, value);
+    }
+
+    public string LatestValidationSummary
+    {
+        get => _latestValidationSummary;
+        private set => SetProperty(ref _latestValidationSummary, value);
+    }
+
+    public string LatestValidationContext
+    {
+        get => _latestValidationContext;
+        private set => SetProperty(ref _latestValidationContext, value);
+    }
 
     public WorkspaceReference? SelectedWorkspaceTarget
     {
@@ -40,6 +65,10 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
                 RunDoctorCommand.RaiseCanExecuteChanged();
                 ValidateAmd64Command.RaiseCanExecuteChanged();
                 ValidateArm64Command.RaiseCanExecuteChanged();
+                if (SelectedDoctorItem is null && SelectedValidationItem is null)
+                {
+                    UpdateDetail("Diagnostics", _statusMessage);
+                }
             }
         }
     }
@@ -48,6 +77,30 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     {
         get => _statusMessage;
         private set => SetProperty(ref _statusMessage, value);
+    }
+
+    public DiagnosticItemViewModel? SelectedDoctorItem
+    {
+        get => _selectedDoctorItem;
+        set
+        {
+            if (SetProperty(ref _selectedDoctorItem, value) && value is not null)
+            {
+                ShowDiagnosticDetail(value, "Doctor check", LatestDoctorSummary);
+            }
+        }
+    }
+
+    public DiagnosticItemViewModel? SelectedValidationItem
+    {
+        get => _selectedValidationItem;
+        set
+        {
+            if (SetProperty(ref _selectedValidationItem, value) && value is not null)
+            {
+                ShowDiagnosticDetail(value, "Validation check", LatestValidationSummary);
+            }
+        }
     }
 
     public async Task RunDoctorAsync()
@@ -59,13 +112,20 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
         var result = await _diagnosticsShellService.RunDoctorAsync(SelectedWorkspaceTarget.RootPath);
         DoctorItems.Clear();
-        DoctorItems.Add(new DiagnosticItemViewModel("Host OS", "Pass", result.HostPlatform?.HostDescription ?? "Unknown", string.Empty));
-        DoctorItems.Add(new DiagnosticItemViewModel("Workspace config", ToStatus(result.WorkspaceConfigurationStatus == WorkspaceConfigurationStatus.Found), result.WorkspaceConfigurationPath ?? "workspace.yaml missing", ResultGuidance(result.WorkspaceConfigurationStatus == WorkspaceConfigurationStatus.Found, "Open or create a valid workspace.yaml.")));
-        DoctorItems.Add(new DiagnosticItemViewModel("Runtime-state status", ToStatus(result.RuntimeStateStatus == WorkspaceRuntimeStateReadStatus.Loaded || result.RuntimeStateStatus == WorkspaceRuntimeStateReadStatus.Missing), result.RuntimeStateStatus.ToString(), ResultGuidance(result.RuntimeStateStatus != WorkspaceRuntimeStateReadStatus.Corrupted, "Delete or regenerate .opencode/local/runtime-state.yaml.")));
-        DoctorItems.Add(new DiagnosticItemViewModel("Resolved platform", ToStatus(result.CanRun), result.ResolvedRuntimePlan?.TargetPlatform ?? "Unavailable", ResultGuidance(result.CanRun, result.Recommendation)));
-        DoctorItems.Add(new DiagnosticItemViewModel("ARM64 execution support", ToStatus(result.Arm64ExecutionSupportStatus != Arm64ExecutionSupportStatus.Unavailable), result.Arm64ExecutionSupportDetails ?? result.Arm64ExecutionSupportStatus.ToString(), ResultGuidance(result.Arm64ExecutionSupportStatus != Arm64ExecutionSupportStatus.Unavailable, "Enable buildx or ARM64 execution support before validating linux/arm64.")));
+        var host = result.HostPlatform;
+        var docker = host?.Docker;
+        DoctorItems.Add(new DiagnosticItemViewModel("Host OS", "Pass", host?.OperatingSystem.ToString() ?? "Unknown", string.Empty, host?.HostDescription));
+        DoctorItems.Add(new DiagnosticItemViewModel("Architecture", "Pass", host?.Architecture.ToString() ?? "Unknown", string.Empty, $"Native target {host?.NativeContainerPlatform ?? "unknown"}"));
+        DoctorItems.Add(new DiagnosticItemViewModel("Docker CLI", ToStatus(docker?.CliAvailable == true), docker?.CliAvailable == true ? "Docker CLI is available." : "Docker CLI is not available.", ResultGuidance(docker?.CliAvailable == true, "Install Docker Desktop or Docker Engine and ensure docker is on PATH."), docker?.DiagnosticSummary));
+        DoctorItems.Add(new DiagnosticItemViewModel("Docker Engine", ToStatus(docker?.EngineReachable == true), docker?.EngineReachable == true ? "Docker engine is reachable." : "Docker engine is not reachable.", ResultGuidance(docker?.EngineReachable == true, "Start Docker Desktop or the Docker daemon."), docker?.DiagnosticSummary));
+        DoctorItems.Add(new DiagnosticItemViewModel("Buildx support", ToStatus(docker?.BuildxAvailable == true), docker?.BuildxAvailable == true ? BuildSupportedPlatformsSummary(docker!.SupportedPlatforms) : "Docker Buildx support is unavailable.", ResultGuidance(docker?.BuildxAvailable == true, "Enable Docker Buildx before validating multi-platform runtime targets."), docker?.DiagnosticSummary));
+        DoctorItems.Add(new DiagnosticItemViewModel("ARM64 execution support", ToStatus(result.Arm64ExecutionSupportStatus != Arm64ExecutionSupportStatus.Unavailable, result.Arm64ExecutionSupportStatus == Arm64ExecutionSupportStatus.Unknown), result.Arm64ExecutionSupportDetails ?? result.Arm64ExecutionSupportStatus.ToString(), ResultGuidance(result.Arm64ExecutionSupportStatus != Arm64ExecutionSupportStatus.Unavailable, "Enable buildx or ARM64 execution support before validating linux/arm64.")));
+        DoctorItems.Add(new DiagnosticItemViewModel("Workspace configuration", ToStatus(result.WorkspaceConfigurationStatus == WorkspaceConfigurationStatus.Found), result.WorkspaceConfigurationPath ?? "workspace configuration missing.", ResultGuidance(result.WorkspaceConfigurationStatus == WorkspaceConfigurationStatus.Found, "Open or create a valid workspace configuration file."), result.WorkspaceConfigurationError));
+        DoctorItems.Add(new DiagnosticItemViewModel("Runtime-state status", ToStatus(result.RuntimeStateStatus == WorkspaceRuntimeStateReadStatus.Loaded, result.RuntimeStateStatus == WorkspaceRuntimeStateReadStatus.Missing), result.RuntimeStateStatus switch { WorkspaceRuntimeStateReadStatus.Loaded => "Runtime state loaded.", WorkspaceRuntimeStateReadStatus.Missing => "Runtime state file is missing.", WorkspaceRuntimeStateReadStatus.Corrupted => "Runtime state file is corrupted.", _ => result.RuntimeStateStatus.ToString() }, ResultGuidance(result.RuntimeStateStatus != WorkspaceRuntimeStateReadStatus.Corrupted, "Delete or regenerate .opencode/local/runtime-state.yaml."), result.RuntimeState?.ResolvedPlatform));
+        RaisePropertyChanged(nameof(HasDoctorResults));
+        LatestDoctorSummary = result.Recommendation;
         StatusMessage = result.Recommendation;
-        UpdateDetail("Doctor results", result.Recommendation);
+        SelectedDoctorItem = DoctorItems.FirstOrDefault(item => item.StatusLabel != "Pass") ?? DoctorItems.FirstOrDefault();
     }
 
     public async Task ValidateAsync(string targetPlatform)
@@ -77,13 +137,16 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
         var report = await _diagnosticsShellService.ValidateAsync(SelectedWorkspaceTarget.RootPath, targetPlatform);
         ValidationItems.Clear();
+        LatestValidationContext = $"Requested Target: {report.TargetPlatform}\nResolved Platform: {report.ResolvedPlatform ?? "Unavailable"}\nCompatibility: {report.CompatibilityDisplay ?? (report.ValidatedWithFallback ? "fallback" : "native")}";
         foreach (var check in report.Checks)
         {
-            ValidationItems.Add(new DiagnosticItemViewModel(check.Name, ToStatus(check.Severity != DiagnosticSeverity.Error, check.Severity == DiagnosticSeverity.Warning), check.Message, check.Severity == DiagnosticSeverity.Error ? "Resolve this check and run validation again." : string.Empty));
+            ValidationItems.Add(new DiagnosticItemViewModel(check.Name, ToStatus(check.Severity != DiagnosticSeverity.Error, check.Severity == DiagnosticSeverity.Warning), check.Message, check.Severity == DiagnosticSeverity.Error ? "Resolve this check and run validation again." : string.Empty, LatestValidationContext));
         }
 
+        RaisePropertyChanged(nameof(HasValidationResults));
+        LatestValidationSummary = report.Summary;
         StatusMessage = report.Summary;
-        UpdateDetail($"Validation {targetPlatform}", report.Summary);
+        SelectedValidationItem = ValidationItems.FirstOrDefault(item => item.StatusLabel != "Pass") ?? ValidationItems.FirstOrDefault();
     }
 
     private void UpdateDetail(string title, string summary)
@@ -97,6 +160,37 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspaceTarget.RootPath));
         }
 
+        UpdateActionPanel();
+    }
+
+    private void ShowDiagnosticDetail(DiagnosticItemViewModel item, string category, string summary)
+    {
+        DetailTitle = item.Title;
+        DetailSummary = summary;
+        DetailItems.Clear();
+        if (SelectedWorkspaceTarget is not null)
+        {
+            DetailItems.Add(new DetailItemViewModel("Workspace", SelectedWorkspaceTarget.DisplayName));
+        }
+
+        DetailItems.Add(new DetailItemViewModel("Category", category));
+        DetailItems.Add(new DetailItemViewModel("Status", item.StatusLabel));
+        DetailItems.Add(new DetailItemViewModel("Explanation", item.Description));
+        if (item.HasContext)
+        {
+            DetailItems.Add(new DetailItemViewModel("Context", item.Context));
+        }
+
+        if (item.HasSuggestedAction)
+        {
+            DetailItems.Add(new DetailItemViewModel("Suggested action", item.SuggestedAction));
+        }
+
+        UpdateActionPanel();
+    }
+
+    private void UpdateActionPanel()
+    {
         DetailActions.Clear();
         DetailActions.Add(new ActionItemViewModel("Run Doctor", "Refresh the current workspace doctor summary.", SelectedWorkspaceTarget is not null, string.Empty, RunDoctorCommand));
         DetailActions.Add(new ActionItemViewModel("Validate linux/amd64", "Validate direct or fallback amd64 runtime readiness.", SelectedWorkspaceTarget is not null, string.Empty, ValidateAmd64Command));
@@ -108,4 +202,9 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
     private static string ResultGuidance(bool success, string nextStep)
         => success ? string.Empty : nextStep;
+
+    private static string BuildSupportedPlatformsSummary(IReadOnlyList<string> supportedPlatforms)
+        => supportedPlatforms.Count == 0
+            ? "Docker Buildx is available."
+            : $"Docker Buildx supports {string.Join(", ", supportedPlatforms)}.";
 }

@@ -21,23 +21,32 @@
         </Border>
 
         <Border Grid.Row="1" Classes="panel">
-          <Grid RowDefinitions="Auto,*" RowSpacing="12">
+          <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
             <TextBlock Text="Workspace overview" Classes="section-title" />
-            <ListBox Grid.Row="1"
-                     ItemsSource="{Binding Workspaces}"
-                     SelectedItem="{Binding SelectedWorkspace}"
-                     BorderThickness="0"
-                     Background="Transparent">
+            <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowEmptyState}">
+              <TextBlock Text="{Binding EmptyStateTitle}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding EmptyStateMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
+            <ListBox Grid.Row="2"
+                      ItemsSource="{Binding Workspaces}"
+                      SelectedItem="{Binding SelectedWorkspace}"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      IsVisible="{Binding HasWorkspaces}">
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Border Classes="list-row" Margin="0,0,0,10">
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                    <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
                       <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
                       <Border Grid.Column="1" Classes="status-chip">
-                        <TextBlock Text="{Binding StatusLabel}" />
+                        <TextBlock Text="{Binding ProtectionLabel}" />
                       </Border>
-                      <TextBlock Grid.Row="1" Text="{Binding RepositoryPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-                      <TextBlock Grid.Row="2" Text="{Binding RuntimeSummary}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                      <Border Grid.Column="2" Classes="status-chip">
+                        <TextBlock Text="{Binding RuntimeStatusLabel}" />
+                      </Border>
+                      <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding RootPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding RepositoryStatus}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding LastActivity}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -49,7 +58,7 @@
     </DataTemplate>
 
     <DataTemplate DataType="vm:DiagnosticsPageViewModel">
-      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="8">
             <TextBlock Text="Diagnostics" Classes="section-title" />
@@ -75,29 +84,19 @@
 
         <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
 
-        <ScrollViewer Grid.Row="3">
-          <StackPanel Spacing="12">
-            <ItemsControl ItemsSource="{Binding DoctorItems}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="panel-subtle" Margin="0,0,0,8">
-                    <StackPanel Spacing="6">
-                      <DockPanel>
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" DockPanel.Dock="Left" />
-                        <Border DockPanel.Dock="Right" Classes="status-chip">
-                          <TextBlock Text="{Binding StatusLabel}" />
-                        </Border>
-                      </DockPanel>
-                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding NextStep}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasNextStep}" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+        <Border Grid.Row="3" Classes="panel-subtle">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Latest validation context" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding LatestValidationContext}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding HasValidationResults}" />
+            <TextBlock Text="{Binding LatestDoctorSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding HasDoctorResults}" />
+          </StackPanel>
+        </Border>
 
-            <ItemsControl ItemsSource="{Binding ValidationItems}">
-              <ItemsControl.ItemTemplate>
+        <ScrollViewer Grid.Row="4">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Doctor" Classes="section-title" />
+            <ListBox ItemsSource="{Binding DoctorItems}" SelectedItem="{Binding SelectedDoctorItem}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Border Classes="panel-subtle" Margin="0,0,0,8">
                     <StackPanel Spacing="6">
@@ -107,13 +106,34 @@
                           <TextBlock Text="{Binding StatusLabel}" />
                         </Border>
                       </DockPanel>
-                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
-                      <TextBlock Text="{Binding NextStep}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasNextStep}" />
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding SuggestedAction}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasSuggestedAction}" />
                     </StackPanel>
                   </Border>
                 </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Platform Validation" Classes="section-title" />
+            <TextBlock Text="{Binding LatestValidationSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+            <ListBox ItemsSource="{Binding ValidationItems}" SelectedItem="{Binding SelectedValidationItem}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="6">
+                      <DockPanel>
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding StatusLabel}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding SuggestedAction}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasSuggestedAction}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
           </StackPanel>
         </ScrollViewer>
       </Grid>
@@ -134,7 +154,34 @@
                 <StackPanel Spacing="5">
                   <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
                   <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding CapabilitiesSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding Features}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Classes="mini-chip" Margin="0,0,6,6">
+                          <TextBlock Text="{Binding}" />
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <ItemsControl ItemsSource="{Binding Services}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Classes="mini-chip" Margin="0,0,6,6">
+                          <TextBlock Text="{Binding}" />
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </StackPanel>
               </Border>
             </DataTemplate>
@@ -256,11 +303,11 @@
   </Window.DataTemplates>
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="220,*,340">
-    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,16">
+    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel.png" Width="44" Height="44" Stretch="Uniform" />
+        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel.png" Width="34" Height="34" Stretch="Uniform" />
         <StackPanel Grid.Column="1" Spacing="2">
-          <TextBlock Text="opencode stuff" FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="opencode stuff" FontSize="22" FontWeight="SemiBold" />
           <TextBlock Text="There is no magic. Only stuff." Foreground="{DynamicResource TextMutedBrush}" />
         </StackPanel>
         <Border Grid.Column="2" Classes="status-chip" VerticalAlignment="Center">
@@ -316,11 +363,13 @@
     </Border>
 
     <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{DynamicResource ShellFooterBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="18">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="18">
         <TextBlock Text="{Binding StatusBarState}" />
         <TextBlock Grid.Column="1" Text="{Binding StatusBarWorkspace}" Foreground="{DynamicResource TextSecondaryBrush}" />
-        <TextBlock Grid.Column="2" Text="{Binding StatusBarRuntime}" Foreground="{DynamicResource TextSecondaryBrush}" />
-        <TextBlock Grid.Column="3" Text="{Binding StatusBarBuild}" Foreground="{DynamicResource TextMutedBrush}" />
+        <TextBlock Grid.Column="2" Text="{Binding StatusBarBranch}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock Grid.Column="3" Text="{Binding StatusBarRuntime}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock Grid.Column="4" Text="{Binding StatusBarProtection}" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock Grid.Column="5" Text="{Binding StatusBarBuild}" Foreground="{DynamicResource TextMutedBrush}" />
       </Grid>
     </Border>
   </Grid>

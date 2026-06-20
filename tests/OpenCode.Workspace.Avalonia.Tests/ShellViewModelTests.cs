@@ -85,25 +85,60 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task DiagnosticsCommand_UpdatesDiagnosticState()
+    public async Task EmptyState_ShownWhenNoWorkspacesExist()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+
+        await page.LoadAsync();
+
+        Assert.True(page.ShowEmptyState);
+        Assert.Equal("No workspaces discovered.", page.EmptyStateTitle);
+    }
+
+    [Fact]
+    public async Task DoctorResults_PopulateChecklist()
     {
         var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
 
         await page.RunDoctorCommand.ExecuteAsync();
 
         Assert.NotEmpty(page.DoctorItems);
-        Assert.Equal("Doctor results", page.DetailTitle);
+        Assert.Contains(page.DoctorItems, item => item.Title == "Docker Engine");
+        Assert.Equal("Workspace can run on this machine.", page.StatusMessage);
     }
 
     [Fact]
-    public async Task ValidatePlatformCommand_RecordsResult()
+    public async Task ValidationResults_PopulatePage()
     {
         var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
 
         await page.ValidateAmd64Command.ExecuteAsync();
 
         Assert.NotEmpty(page.ValidationItems);
-        Assert.Equal("Validation linux/amd64", page.DetailTitle);
+        Assert.Equal("linux/amd64 validation passed.", page.LatestValidationSummary);
+        Assert.Contains("Requested Target: linux/amd64", page.LatestValidationContext, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ValidationWarnings_DisplayCorrectly()
+    {
+        var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
+
+        await page.ValidateArm64Command.ExecuteAsync();
+
+        Assert.Contains(page.ValidationItems, item => item.StatusLabel == "Warning");
+    }
+
+    [Fact]
+    public async Task SelectedDiagnostic_UpdatesDetailPanel()
+    {
+        var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
+
+        await page.RunDoctorCommand.ExecuteAsync();
+        page.SelectedDoctorItem = page.DoctorItems.Single(item => item.Title == "Docker CLI");
+
+        Assert.Equal("Docker CLI", page.DetailTitle);
+        Assert.Contains(page.DetailItems, item => item.Label == "Status");
     }
 
     [Fact]
@@ -119,6 +154,32 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void StatusBar_UpdatesWhenWorkspaceSelectionChanges()
+    {
+        var shell = CreateShell([CreateSnapshot("alpha"), CreateSnapshot("beta")]);
+
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        workspacesPage.SelectedWorkspace = workspacesPage.Workspaces.Last();
+
+        Assert.Equal("Workspace: beta", shell.StatusBarWorkspace);
+        Assert.Contains("Branch:", shell.StatusBarBranch, StringComparison.Ordinal);
+        Assert.Contains("Protection:", shell.StatusBarProtection, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StatusBar_UpdatesWhenDiagnosticsChange()
+    {
+        var shell = CreateShell();
+
+        var diagnostics = shell.NavigationItems.Single(item => item.Title == "Diagnostics");
+        diagnostics.SelectCommand.Execute(null);
+        var diagnosticsPage = (DiagnosticsPageViewModel)diagnostics.Page;
+        await diagnosticsPage.RunDoctorCommand.ExecuteAsync();
+
+        Assert.Contains("Diagnostics:", shell.StatusBarState, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AvaloniaAssembly_DoesNotReferenceWpfAssemblies()
     {
         var references = typeof(ShellViewModel).Assembly.GetReferencedAssemblies().Select(item => item.Name).ToArray();
@@ -129,9 +190,9 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("OpenCode.Workspace.Manager", references);
     }
 
-    private static ShellViewModel CreateShell()
+    private static ShellViewModel CreateShell(IReadOnlyList<WorkspaceSnapshot>? snapshots = null)
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var desktop = new FakeDesktopShellService(snapshots ?? [CreateSnapshot("alpha")]);
         return ShellViewModel.Create(
             desktop,
             new FakeDiagnosticsShellService(),
@@ -282,10 +343,25 @@ public sealed class ShellViewModelTests
             {
                 WorkspaceRootPath = workspacePath,
                 RuntimeStatePath = Path.Combine(workspacePath, ".opencode", "local", "runtime-state.yaml"),
-                HostPlatform = new HostPlatformInfo { HostDescription = "Linux X64" },
+                HostPlatform = new HostPlatformInfo
+                {
+                    OperatingSystem = HostOperatingSystem.Linux,
+                    Architecture = HostArchitecture.X64,
+                    HostDescription = "Linux X64",
+                    NativeContainerPlatform = "linux/amd64",
+                    Docker = new ContainerRuntimeAvailability
+                    {
+                        CliAvailable = true,
+                        EngineReachable = true,
+                        BuildxAvailable = true,
+                        SupportedPlatforms = ["linux/amd64", "linux/arm64"],
+                        DiagnosticSummary = "Docker CLI and engine OK.",
+                    },
+                },
                 WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
                 WorkspaceConfigurationPath = "workspace.yaml",
                 RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Loaded,
+                RuntimeState = new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" },
                 Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Available,
                 Arm64ExecutionSupportDetails = "Execution probe OK (aarch64)",
                 ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
@@ -294,18 +370,37 @@ public sealed class ShellViewModelTests
             });
 
         public Task<PlatformValidationReport> ValidateAsync(string workspacePath, string targetPlatform, CancellationToken cancellationToken = default)
-            => Task.FromResult(new PlatformValidationReport
-            {
-                WorkspaceRootPath = workspacePath,
-                TargetPlatform = targetPlatform,
-                Checks =
-                [
-                    new PlatformValidationCheckResult { Name = "Docker CLI", Severity = DiagnosticSeverity.Information, Message = "OK" },
-                    new PlatformValidationCheckResult { Name = "Container execution", Severity = DiagnosticSeverity.Information, Message = "OK" },
-                ],
-                IsSuccess = true,
-                Summary = $"{targetPlatform} validation passed.",
-            });
+            => Task.FromResult(targetPlatform == "linux/arm64"
+                ? new PlatformValidationReport
+                {
+                    WorkspaceRootPath = workspacePath,
+                    TargetPlatform = targetPlatform,
+                    ResolvedPlatform = "linux/amd64",
+                    CompatibilityDisplay = "fallback",
+                    ValidatedWithFallback = true,
+                    Checks =
+                    [
+                        new PlatformValidationCheckResult { Name = "Docker CLI", Severity = DiagnosticSeverity.Information, Message = "OK" },
+                        new PlatformValidationCheckResult { Name = "Container execution", Severity = DiagnosticSeverity.Warning, Message = "Validated through fallback behavior." },
+                    ],
+                    IsSuccess = true,
+                    HasWarnings = true,
+                    Summary = "linux/arm64 validation completed through fallback behavior.",
+                }
+                : new PlatformValidationReport
+                {
+                    WorkspaceRootPath = workspacePath,
+                    TargetPlatform = targetPlatform,
+                    ResolvedPlatform = "linux/amd64",
+                    CompatibilityDisplay = "native",
+                    Checks =
+                    [
+                        new PlatformValidationCheckResult { Name = "Docker CLI", Severity = DiagnosticSeverity.Information, Message = "OK" },
+                        new PlatformValidationCheckResult { Name = "Container execution", Severity = DiagnosticSeverity.Information, Message = "OK" },
+                    ],
+                    IsSuccess = true,
+                    Summary = $"{targetPlatform} validation passed.",
+                });
     }
 
     private sealed class FakeTemplateCatalogShellService : ITemplateCatalogShellService

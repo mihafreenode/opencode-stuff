@@ -29,6 +29,17 @@ public sealed class ShellViewModel : ObservableObject
         StatusBarBuild = $"{appBuildInfo.BuildConfiguration} {appBuildInfo.AssemblyVersion}";
 
         workspacesPage.ValidateWorkspaceAsync = ValidateWorkspaceFromOverviewAsync;
+        workspacesPage.PropertyChanged += (_, _) => RefreshStatusBar();
+        diagnosticsPage.PropertyChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.PropertyName is nameof(DiagnosticsPageViewModel.StatusMessage)
+                or nameof(DiagnosticsPageViewModel.SelectedWorkspaceTarget)
+                or nameof(DiagnosticsPageViewModel.SelectedDoctorItem)
+                or nameof(DiagnosticsPageViewModel.SelectedValidationItem))
+            {
+                RefreshStatusBar();
+            }
+        };
 
         NavigationItems =
         [
@@ -52,17 +63,19 @@ public sealed class ShellViewModel : ObservableObject
         {
             if (SetProperty(ref _currentPage, value))
             {
-                RaisePropertyChanged(nameof(StatusBarState));
-                RaisePropertyChanged(nameof(StatusBarWorkspace));
-                RaisePropertyChanged(nameof(StatusBarRuntime));
+                RefreshStatusBar();
             }
         }
     }
 
     public string StatusBarBuild { get; }
-    public string StatusBarState => $"Current page: {CurrentPage.Title}";
-    public string StatusBarWorkspace => _workspacesPage.SelectedWorkspace is null ? "No workspace selected" : $"Workspace: {_workspacesPage.SelectedWorkspace.Name} ({_workspacesPage.SelectedWorkspace.StatusLabel})";
+    public string StatusBarState => CurrentPage == _diagnosticsPage && !string.IsNullOrWhiteSpace(_diagnosticsPage.StatusMessage)
+        ? $"Diagnostics: {_diagnosticsPage.StatusMessage}"
+        : $"Current page: {CurrentPage.Title}";
+    public string StatusBarWorkspace => _workspacesPage.SelectedWorkspace is null ? "No workspace selected" : $"Workspace: {_workspacesPage.SelectedWorkspace.Name}";
+    public string StatusBarBranch => _workspacesPage.SelectedWorkspace is null ? "Branch unknown" : $"Branch: {_workspacesPage.SelectedWorkspace.CurrentBranch}";
     public string StatusBarRuntime => _workspacesPage.SelectedWorkspace?.Snapshot.ResolvedRuntimePlan?.TargetPlatform is null ? "Runtime target unknown" : $"Runtime: {_workspacesPage.SelectedWorkspace.Snapshot.ResolvedRuntimePlan.TargetPlatform}";
+    public string StatusBarProtection => _workspacesPage.SelectedWorkspace is null ? "Protection unknown" : $"Protection: {_workspacesPage.SelectedWorkspace.ProtectionLabel}";
 
     public static ShellViewModel Create(
         IDesktopShellService desktopShellService,
@@ -99,5 +112,15 @@ public sealed class ShellViewModel : ObservableObject
         _diagnosticsPage.SelectedWorkspaceTarget = _diagnosticsPage.WorkspaceTargets.FirstOrDefault(item => string.Equals(item.RootPath, workspacePath, StringComparison.OrdinalIgnoreCase))
             ?? _diagnosticsPage.SelectedWorkspaceTarget;
         await _diagnosticsPage.RunDoctorAsync();
+        RefreshStatusBar();
+    }
+
+    private void RefreshStatusBar()
+    {
+        RaisePropertyChanged(nameof(StatusBarState));
+        RaisePropertyChanged(nameof(StatusBarWorkspace));
+        RaisePropertyChanged(nameof(StatusBarBranch));
+        RaisePropertyChanged(nameof(StatusBarRuntime));
+        RaisePropertyChanged(nameof(StatusBarProtection));
     }
 }

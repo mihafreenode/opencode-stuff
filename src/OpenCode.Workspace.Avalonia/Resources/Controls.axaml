@@ -40,6 +40,14 @@
     <Setter Property="Padding" Value="10,4" />
   </Style>
 
+  <Style Selector="Border.mini-chip">
+    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="8,3" />
+  </Style>
+
   <Style Selector="Button">
     <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
