@@ -19,6 +19,8 @@ public sealed class WorkspaceRepository
         _indexFilePath = Path.Combine(applicationDataRoot, "workspaces.json");
     }
 
+    public string IndexFilePath => _indexFilePath;
+
     public IReadOnlyList<WorkspaceRecord> LoadAll()
     {
         if (!File.Exists(_indexFilePath))

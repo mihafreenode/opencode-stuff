@@ -20,10 +20,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var appDataRoot = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "OpenCode",
-                "WorkspaceAvalonia");
+            var appDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
 
             var themeCoordinator = new ThemeCoordinator(ThemeMode.System, ApplyThemeMode);
             var bootstrapper = new AvaloniaAppBootstrapper();
@@ -51,4 +48,5 @@ public partial class App : Application
             _ => ThemeVariant.Default,
         };
     }
+
 }

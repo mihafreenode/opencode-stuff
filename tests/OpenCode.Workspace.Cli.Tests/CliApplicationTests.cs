@@ -1,4 +1,5 @@
 using System.Text;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Cli;
 using OpenCode.Workspace.Core.Models;
 
@@ -68,6 +69,34 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Contains("Docker Engine: unavailable", output.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DebugWorkspaceDiscovery_PrintsReport()
+    {
+        var output = new StringWriter();
+        var app = new CliApplication(
+            output,
+            new StringWriter(),
+            (_, _) => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException(),
+            _ => Task.FromResult(new WorkspaceLoadReport
+            {
+                AppDataRoot = "C:/Users/test/AppData/Local/OpenCode.Workspace.Manager",
+                IndexFilePath = "C:/Users/test/AppData/Local/OpenCode.Workspace.Manager/workspaces.json",
+                IndexFileExists = true,
+                RawRecordCount = 9,
+                SnapshotAttemptCount = 9,
+                SnapshotCount = 4,
+                ItemsReturnedCount = 9,
+                Failures = [new WorkspaceLoadFailure("broken", "C:/broken", "workspace.yaml missing")],
+            }));
+
+        var exitCode = await app.RunAsync(["debug-workspace-discovery"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Raw workspace record count: 9", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Returned workspace item count: 9", output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Cli;
@@ -97,12 +98,43 @@ public static class CliOutputFormatter
             "Usage:",
             "  opencode doctor",
             "  opencode doctor --workspace <path>",
+            "  opencode debug-workspace-discovery",
             "  opencode validate-platform --target linux/amd64",
             "  opencode validate-platform --target linux/arm64",
             "  opencode validate-platform --workspace <path> --target linux/arm64",
             "  opencode validate-platform --target linux/arm64 --output report.md",
             "  opencode --help",
         });
+    }
+
+    public static string FormatWorkspaceDiscovery(WorkspaceLoadReport report)
+    {
+        var lines = new List<string>
+        {
+            "OpenCode Workspace Discovery",
+            string.Empty,
+            $"App data directory: {report.AppDataRoot}",
+            $"Workspace index path: {report.IndexFilePath}",
+            $"Index file exists: {report.IndexFileExists}",
+            $"Raw workspace record count: {report.RawRecordCount}",
+            $"Snapshot attempts: {report.SnapshotAttemptCount}",
+            $"Snapshot successes: {report.SnapshotCount}",
+            $"Snapshot failures: {report.FailureCount}",
+            $"Returned workspace item count: {report.ItemsReturnedCount}",
+        };
+
+        if (report.Failures.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Failure summaries:");
+            foreach (var failure in report.Failures)
+            {
+                lines.Add($"  {failure.DisplayName}: {failure.Reason}");
+                lines.Add($"    {failure.RootPath}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string FormatAvailability(bool? available)

@@ -42,12 +42,13 @@ public sealed class TranscriptsPageViewModel : PageViewModel
 
     private void Load(IDesktopShellService desktopShellService)
     {
-        foreach (var snapshot in desktopShellService.LoadWorkspaceSnapshotsAsync(includeRuntimeInspection: false).GetAwaiter().GetResult())
+        foreach (var workspaceItem in desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: false).GetAwaiter().GetResult().Items.Where(item => item.HasSnapshot))
         {
+            var snapshot = workspaceItem.Snapshot!;
             var timeline = desktopShellService.LoadTimeline(snapshot.Paths.TimelinePath);
-            foreach (var item in timeline.Events.OrderByDescending(item => item.OccurredUtc).Take(8))
+            foreach (var timelineEvent in timeline.Events.OrderByDescending(item => item.OccurredUtc).Take(8))
             {
-                Entries.Add(new TranscriptEntryViewModel(item.Summary, snapshot.Definition.Workspace.Name, item.Details, item.OccurredUtc, snapshot.Paths.TimelinePath));
+                Entries.Add(new TranscriptEntryViewModel(timelineEvent.Summary, snapshot.Definition.Workspace.Name, timelineEvent.Details, timelineEvent.OccurredUtc, snapshot.Paths.TimelinePath));
             }
         }
 

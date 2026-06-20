@@ -58,7 +58,7 @@ public sealed class AvaloniaAppBootstrapper
             runtimeResolver,
             terminalLauncher);
 
-        var desktopShellService = new DesktopShellService(orchestrator, timelineService, checkpointService);
+        var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService);
         var doctorService = new WorkspaceDoctorService(platformDetector, runtimeResolver, new WorkspaceDiscoveryService(), yamlService, new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), yamlService, platformDetector, runtimeResolver, resolver, composeGenerator, provisioningScriptGenerator);
         var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService);

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
@@ -9,6 +10,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private WorkspaceSummaryViewModel? _selectedWorkspace;
     private string _emptyStateTitle = string.Empty;
     private string _emptyStateMessage = string.Empty;
+    private WorkspaceLoadReport _workspaceLoadReport = new();
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -26,6 +28,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public Func<string, Task>? ValidateWorkspaceAsync { get; set; }
     public bool HasWorkspaces => Workspaces.Count > 0;
     public bool ShowEmptyState => !HasWorkspaces;
+    public WorkspaceLoadReport WorkspaceLoadReport
+    {
+        get => _workspaceLoadReport;
+        private set => SetProperty(ref _workspaceLoadReport, value);
+    }
 
     public string EmptyStateTitle
     {
@@ -56,10 +63,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         Workspaces.Clear();
-        foreach (var snapshot in (await _desktopShellService.LoadWorkspaceSnapshotsAsync(includeRuntimeInspection: true, cancellationToken))
-            .OrderBy(item => item.Definition.Workspace.Name, StringComparer.OrdinalIgnoreCase))
+        var loadResult = await _desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, cancellationToken);
+        WorkspaceLoadReport = loadResult.Report;
+        foreach (var item in loadResult.Items.OrderBy(item => string.IsNullOrWhiteSpace(item.Record.Name) ? item.Record.RootPath : item.Record.Name, StringComparer.OrdinalIgnoreCase))
         {
-            Workspaces.Add(new WorkspaceSummaryViewModel(snapshot));
+            Workspaces.Add(new WorkspaceSummaryViewModel(item));
         }
 
         RaisePropertyChanged(nameof(HasWorkspaces));
@@ -93,7 +101,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        await _desktopShellService.OpenPathAsync(SelectedWorkspace.Snapshot.Paths.RootPath);
+        await _desktopShellService.OpenPathAsync(SelectedWorkspace.RootPath);
     }
 
     private async Task ValidateSelectedWorkspaceInternalAsync()
@@ -103,7 +111,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        await ValidateWorkspaceAsync(SelectedWorkspace.Snapshot.Paths.RootPath);
+        await ValidateWorkspaceAsync(SelectedWorkspace.RootPath);
     }
 
     private void UpdateDetailPanel()
@@ -129,13 +137,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailItems.Add(new DetailItemViewModel("Last activity", SelectedWorkspace.LastActivity));
         DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
         DetailItems.Add(new DetailItemViewModel("Features", SelectedWorkspace.Features));
-        DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.Snapshot.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown"));
+        DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.RuntimeTarget));
+        if (SelectedWorkspace.HasError)
+        {
+            DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
+        }
 
         DetailActions.Add(new ActionItemViewModel("Open", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", "Run portable doctor and platform validation from the Diagnostics page.", true, string.Empty, ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
-        DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "Recovery actions are not ported yet. Use WPF or CLI for now.", DisabledActionCommand));
-        DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "Save Point creation is not implemented in Avalonia preview yet.", DisabledActionCommand));
+        DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before recovery UI can be offered in Avalonia. Use WPF or CLI for now." : "Recovery actions are not ported yet. Use WPF or CLI for now.", DisabledActionCommand));
+        DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before Save Point operations can run. Use WPF or CLI for now." : "Save Point creation is not implemented in Avalonia preview yet.", DisabledActionCommand));
 
         RaisePropertyChanged(nameof(SelectedWorkspace));
     }

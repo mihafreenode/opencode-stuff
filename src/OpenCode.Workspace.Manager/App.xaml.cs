@@ -20,7 +20,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenCode.Workspace.Manager");
+        var appDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
         var localization = new PoLocalizationService(Path.Combine(AppContext.BaseDirectory, "Localization"), PoLocalizationService.DetectLanguageCode());
         var diagnostics = new StartupDiagnosticsService(appDataRoot);
         _startupDiagnostics = diagnostics;

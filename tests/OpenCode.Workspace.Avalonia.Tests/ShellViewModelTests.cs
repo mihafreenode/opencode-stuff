@@ -96,6 +96,73 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task MissingRuntimeState_DoesNotPreventDisplay()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("alpha", page.SelectedWorkspace?.Name);
+        Assert.Contains(page.DetailItems, item => item.Label == "Runtime-state status" && item.Value == "Missing");
+    }
+
+    [Fact]
+    public async Task InvalidWorkspace_IsRepresentedInsteadOfHidden()
+    {
+        var invalidRecord = new WorkspaceRecord
+        {
+            Name = "broken",
+            RootPath = "/workspace/broken",
+            RepositoryPath = "/workspace/broken",
+            ConfigurationPath = "workspace.yaml",
+            CreatedUtc = DateTimeOffset.UtcNow,
+            LastOpenedUtc = DateTimeOffset.UtcNow,
+        };
+        var invalidItem = new WorkspaceShellItem
+        {
+            Record = invalidRecord,
+            ErrorMessage = "workspace.yaml missing",
+        };
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")], [invalidItem]));
+
+        await page.LoadAsync();
+        page.SelectedWorkspace = page.Workspaces.Single(item => item.Name == "broken");
+
+        Assert.Equal(2, page.Workspaces.Count);
+        Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Contains(page.DetailItems, item => item.Label == "Load failure" && item.Value.Contains("workspace.yaml missing", StringComparison.Ordinal));
+        Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
+    }
+
+    [Fact]
+    public async Task WorkspaceLoadReport_CapturesPathAndCounts()
+    {
+        var invalidItem = new WorkspaceShellItem
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = "broken",
+                RootPath = "/workspace/broken",
+                RepositoryPath = "/workspace/broken",
+                CreatedUtc = DateTimeOffset.UtcNow,
+                LastOpenedUtc = DateTimeOffset.UtcNow,
+            },
+            ErrorMessage = "broken workspace",
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")], [invalidItem]));
+
+        await page.LoadAsync();
+
+        Assert.Equal(WorkspaceAppDataPaths.GetWorkspaceIndexPath(), page.WorkspaceLoadReport.IndexFilePath);
+        Assert.Equal(2, page.WorkspaceLoadReport.RawRecordCount);
+        Assert.Equal(2, page.WorkspaceLoadReport.SnapshotAttemptCount);
+        Assert.Equal(1, page.WorkspaceLoadReport.SnapshotCount);
+        Assert.Equal(1, page.WorkspaceLoadReport.FailureCount);
+        Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
+    }
+
+    [Fact]
     public async Task DoctorResults_PopulateChecklist()
     {
         var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
@@ -206,7 +273,7 @@ public sealed class ShellViewModelTests
     private static AppBuildInfo CreateAppBuildInfo()
         => new("/tmp/app", "Debug", "1.0.0", "1.0.0-preview", "abcdef123456", DateTimeOffset.UtcNow.ToString("O"), "1.0.0", "workspace-yaml-v1");
 
-    private static WorkspaceSnapshot CreateSnapshot(string name)
+    private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true)
     {
         var root = Path.Combine(Path.GetTempPath(), $"oc-avalonia-{name}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -283,6 +350,7 @@ public sealed class ShellViewModelTests
                 AdvancedGit = new WorkspaceAdvancedGitSnapshot { CurrentBranch = $"users/test/{name}", StatusSummary = "clean" },
             },
             Session = new WorkspaceSessionSnapshot { SessionName = name, State = WorkspaceSessionState.Resumable },
+            LocalRuntimeState = includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" } : null,
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
             UpdateRequired = false,
         };
@@ -291,17 +359,34 @@ public sealed class ShellViewModelTests
     private sealed class FakeDesktopShellService : IDesktopShellService
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
+        private readonly IReadOnlyList<WorkspaceShellItem> _extraItems;
 
-        public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots)
+        public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
             _snapshots = snapshots;
+            _extraItems = extraItems ?? [];
         }
 
-        public Task<IReadOnlyList<WorkspaceSnapshot>> LoadWorkspaceSnapshotsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
-            => Task.FromResult(_snapshots);
+        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = _snapshots.Select(item => new WorkspaceShellItem { Record = item.Record, Snapshot = item }).Concat(_extraItems).ToList(),
+                Report = new WorkspaceLoadReport
+                {
+                    IndexFilePath = WorkspaceAppDataPaths.GetWorkspaceIndexPath(),
+                    AppDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot(),
+                    RawRecordCount = _snapshots.Count + _extraItems.Count,
+                    SnapshotAttemptCount = _snapshots.Count + _extraItems.Count,
+                    SnapshotCount = _snapshots.Count,
+                    Failures = _extraItems.Select(item => new WorkspaceLoadFailure(string.IsNullOrWhiteSpace(item.Record.Name) ? item.Record.RootPath : item.Record.Name, item.Record.RootPath, item.ErrorMessage)).ToList(),
+                    ItemsReturnedCount = _snapshots.Count + _extraItems.Count,
+                },
+            });
 
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences()
-            => _snapshots.Select(item => new WorkspaceReference(item.Definition.Workspace.Name, item.Paths.RootPath)).ToList();
+            => _snapshots.Select(item => new WorkspaceReference(item.Definition.Workspace.Name, item.Paths.RootPath))
+                .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
+                .ToList();
 
         public WorkspaceTimeline LoadTimeline(string timelinePath)
             => new()

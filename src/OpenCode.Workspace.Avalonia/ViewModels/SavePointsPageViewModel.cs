@@ -42,8 +42,9 @@ public sealed class SavePointsPageViewModel : PageViewModel
 
     private void Load(IDesktopShellService desktopShellService)
     {
-        foreach (var snapshot in desktopShellService.LoadWorkspaceSnapshotsAsync(includeRuntimeInspection: false).GetAwaiter().GetResult())
+        foreach (var workspaceItem in desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: false).GetAwaiter().GetResult().Items.Where(item => item.HasSnapshot))
         {
+            var snapshot = workspaceItem.Snapshot!;
             var checkpoints = desktopShellService.LoadCheckpointIndex(snapshot.Paths.CheckpointIndexPath);
             foreach (var checkpoint in checkpoints.Items.OrderByDescending(item => item.CreatedUtc).Take(5))
             {
@@ -51,9 +52,9 @@ public sealed class SavePointsPageViewModel : PageViewModel
             }
 
             var timeline = desktopShellService.LoadTimeline(snapshot.Paths.TimelinePath);
-            foreach (var item in timeline.Events.Where(item => string.Equals(item.Type, "save-point", StringComparison.OrdinalIgnoreCase)).OrderByDescending(item => item.OccurredUtc).Take(5))
+            foreach (var timelineEvent in timeline.Events.Where(item => string.Equals(item.Type, "save-point", StringComparison.OrdinalIgnoreCase)).OrderByDescending(item => item.OccurredUtc).Take(5))
             {
-                Entries.Add(new SavePointEntryViewModel(item.Summary, item.Details, item.OccurredUtc, snapshot.Definition.Workspace.Name));
+                Entries.Add(new SavePointEntryViewModel(timelineEvent.Summary, timelineEvent.Details, timelineEvent.OccurredUtc, snapshot.Definition.Workspace.Name));
             }
         }
 

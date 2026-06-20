@@ -1,3 +1,4 @@
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Diagnostics;
 using OpenCode.Workspace.Core.Generation;
@@ -13,6 +14,7 @@ public sealed class CliApplication
     private readonly TextWriter _error;
     private readonly Func<string, CancellationToken, Task<WorkspaceDoctorResult>> _doctorRunner;
     private readonly Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>> _platformValidationRunner;
+    private readonly Func<CancellationToken, Task<WorkspaceLoadReport>> _workspaceDiscoveryRunner;
 
     public CliApplication(TextWriter output, TextWriter error)
         : this(output, error, null, null)
@@ -23,12 +25,14 @@ public sealed class CliApplication
         TextWriter output,
         TextWriter error,
         Func<string, CancellationToken, Task<WorkspaceDoctorResult>>? doctorRunner,
-        Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>>? platformValidationRunner)
+        Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>>? platformValidationRunner,
+        Func<CancellationToken, Task<WorkspaceLoadReport>>? workspaceDiscoveryRunner = null)
     {
         _output = output;
         _error = error;
         _doctorRunner = doctorRunner ?? RunDoctorAsync;
         _platformValidationRunner = platformValidationRunner ?? RunPlatformValidationAsync;
+        _workspaceDiscoveryRunner = workspaceDiscoveryRunner ?? RunWorkspaceDiscoveryAsync;
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
@@ -45,6 +49,7 @@ public sealed class CliApplication
             {
                 "doctor" => await RunDoctorCommandAsync(args[1..], cancellationToken),
                 "validate-platform" => await RunValidatePlatformCommandAsync(args[1..], cancellationToken),
+                "debug-workspace-discovery" => await RunWorkspaceDiscoveryCommandAsync(cancellationToken),
                 _ => await FailWithHelpAsync($"Unknown command '{args[0]}'."),
             };
         }
@@ -87,6 +92,13 @@ public sealed class CliApplication
         }
 
         return report.IsSuccess ? 0 : 1;
+    }
+
+    private async Task<int> RunWorkspaceDiscoveryCommandAsync(CancellationToken cancellationToken)
+    {
+        var report = await _workspaceDiscoveryRunner(cancellationToken);
+        await _output.WriteLineAsync(CliOutputFormatter.FormatWorkspaceDiscovery(report));
+        return 0;
     }
 
     private async Task<int> FailWithHelpAsync(string message)
@@ -198,6 +210,43 @@ public sealed class CliApplication
         return await service.ValidateAsync(request, cancellationToken);
     }
 
+    private static async Task<WorkspaceLoadReport> RunWorkspaceDiscoveryAsync(CancellationToken cancellationToken)
+    {
+        var appDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
+        var catalogRoot = ResolveCatalogRoot(appDataRoot) ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
+        var provider = new BuiltInCatalogProvider(catalogRoot);
+        var yamlService = new WorkspaceYamlService();
+        var repository = new WorkspaceRepository(appDataRoot);
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var processRunner = new ProcessRunner();
+        var orchestrator = new WorkspaceOrchestrator(
+            yamlService,
+            new WorkspaceDiscoveryService(),
+            repository,
+            resolver,
+            new ComposeGenerator(),
+            new EnvironmentFileGenerator(),
+            new ProvisioningScriptGenerator(),
+            new TerminalArtifactsGenerator(),
+            new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
+            new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            new WorkspaceTimelineService(),
+            new WorkspaceSafetyService(),
+            new WorkspaceIgnorePolicyService(),
+            new WorkspaceRuntimeStateService(),
+            new GitWorkspaceProvider(processRunner, new WorkspaceIgnorePolicyService()),
+            new DockerContainerRuntime(new DockerService(processRunner)),
+            new PlatformDetector(processRunner),
+            new RuntimeResolver(),
+            new NullTerminalLauncher());
+
+        var service = new WorkspaceDiscoveryReportService(orchestrator, repository);
+        var result = await service.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, cancellationToken);
+        return result.Report;
+    }
+
     internal static string? ResolveCatalogRoot(string workspacePath)
     {
         foreach (var start in CandidateRoots(workspacePath))
@@ -236,5 +285,11 @@ public sealed class CliApplication
 
         yield return Environment.CurrentDirectory;
         yield return AppContext.BaseDirectory;
+    }
+
+    private sealed class NullTerminalLauncher : ITerminalLauncher
+    {
+        public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Terminal attach is not available in the CLI workspace discovery command.");
     }
 }

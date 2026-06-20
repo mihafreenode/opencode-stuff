@@ -1,4 +1,5 @@
 using System.IO;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
@@ -142,7 +143,7 @@ if (args.Length != 1)
 var workspaceRoot = args[0];
 var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 var catalogRoot = Path.Combine(repositoryRoot, "catalog");
-var appDataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenCode.Workspace.Manager");
+var appDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
 
 var provider = new BuiltInCatalogProvider(catalogRoot);
 var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
