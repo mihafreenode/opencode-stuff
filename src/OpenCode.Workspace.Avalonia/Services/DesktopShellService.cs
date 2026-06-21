@@ -84,6 +84,7 @@ public sealed class DesktopShellService : IDesktopShellService
 
             await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow);
             _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", "Regenerated runtime files and refreshed workspace state.");
+            refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
             append(OperationTranscriptLineKind.Result, "Completed");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
