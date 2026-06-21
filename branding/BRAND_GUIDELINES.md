@@ -22,6 +22,15 @@ The brand should feel credible for serious engineering work first. The Nakor ref
 
 Primary symbol: a satchel holding useful developer artifacts.
 
+Canonical raster assets:
+
+- documentation and branding artwork: `docs/images/opencode-stuff-satchel-transparent.png`
+- application icon source: `docs/images/opencode-stuff-satchel-icon.png`
+
+The icon source is canonical for Avalonia, Windows, Linux, macOS, installer, taskbar, dock, and favicon generation.
+
+Do not redesign, redraw, regenerate, or otherwise reinterpret the application icon. Generate derived sizes from the canonical icon source only.
+
 Contained artifacts:
 
 - terminal prompt
@@ -68,6 +77,7 @@ Icon-only mark:
 
 - satchel silhouette with minimal internal artifacts
 - usable for avatar, favicon, and app icon
+- application icon variants must be generated from `opencode-stuff-satchel-icon.png`
 
 ## Clear Space
 
@@ -79,7 +89,45 @@ Minimum clear space around the mark or lockup:
 
 - master logo: `160px` wide minimum
 - icon-only mark: `24px` minimum
-- favicon: use dedicated simplified variants from `icons/`
+- favicon and application icons: generate from `opencode-stuff-satchel-icon.png`
+
+## Asset Roles
+
+`opencode-stuff-satchel-transparent.png`
+
+- README
+- documentation landing pages
+- onboarding guides
+- release notes
+- splash and about surfaces
+- presentations and branding surfaces
+
+`opencode-stuff-satchel-icon.png`
+
+- Avalonia application icon
+- Windows executable and installer icon generation
+- Linux desktop icon
+- macOS application icon generation
+- taskbar and dock icon assets
+- favicon generation
+
+Do not use the full branding artwork as the primary application icon because small sizes lose detail.
+
+## Icon Generation Policy
+
+One source image. Many generated sizes. No artistic drift.
+
+Generate resized assets from `opencode-stuff-satchel-icon.png` with ImageMagick:
+
+```bash
+magick opencode-stuff-satchel-icon.png -resize 16x16 opencode-stuff-satchel-icon-16.png
+magick opencode-stuff-satchel-icon.png -resize 32x32 opencode-stuff-satchel-icon-32.png
+magick opencode-stuff-satchel-icon.png -resize 48x48 opencode-stuff-satchel-icon-48.png
+magick opencode-stuff-satchel-icon.png -resize 64x64 opencode-stuff-satchel-icon-64.png
+magick opencode-stuff-satchel-icon.png -resize 128x128 opencode-stuff-satchel-icon-128.png
+magick opencode-stuff-satchel-icon.png -resize 256x256 opencode-stuff-satchel-icon-256.png
+magick opencode-stuff-satchel-icon.png -define icon:auto-resize=16,24,32,48,64,128,256 opencode-stuff-satchel-icon.ico
+```
 
 ## Typography
 

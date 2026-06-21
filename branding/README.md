@@ -2,6 +2,11 @@
 
 This folder contains the source branding package for `opencode stuff`.
 
+Canonical exported raster assets live in `docs/images/`:
+
+- `opencode-stuff-satchel-transparent.png`: documentation and branding artwork for medium and large surfaces
+- `opencode-stuff-satchel-icon.png`: canonical application icon source for all generated icon sizes and package assets
+
 Contents:
 
 - `logo/`: master logo and icon-only marks
@@ -10,4 +15,6 @@ Contents:
 - `terminal/`: startup banners
 - `BRAND_GUIDELINES.md`: usage rules and design system
 
-All primary artwork is SVG-first and designed for dark and light backgrounds.
+Application icon variants must be generated from `docs/images/opencode-stuff-satchel-icon.png`.
+
+Do not redraw, reinterpret, manually simplify, vectorize, or create AI-generated icon variants for packaging work.

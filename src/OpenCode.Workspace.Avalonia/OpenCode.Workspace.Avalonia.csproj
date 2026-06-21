@@ -19,11 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="..\..\branding\exports\app-icon\opencode-stuff-app-256.png">
-      <Link>Assets\opencode-stuff-app.png</Link>
+    <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-icon.png">
+      <Link>Assets\opencode-stuff-satchel-icon.png</Link>
     </AvaloniaResource>
-    <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel.png">
-      <Link>Assets\opencode-stuff-satchel.png</Link>
+    <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-transparent.png">
+      <Link>Assets\opencode-stuff-satchel-transparent.png</Link>
     </AvaloniaResource>
   </ItemGroup>
 

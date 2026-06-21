@@ -7,7 +7,7 @@
         Height="920"
         MinWidth="1200"
         MinHeight="760"
-        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-app.png"
+        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.png"
         Background="{DynamicResource AppBackgroundBrush}">
   <Window.DataTemplates>
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
@@ -62,8 +62,9 @@
                         IsVisible="{Binding ShowOperationLogToggleButton}" />
               </Grid>
               <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowLoadingState}">
-                <TextBlock Text="Loading workspaces..." TextWrapping="Wrap" />
-                <TextBlock Text="Reading the shared workspace index and snapshot state." TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="{Binding LoadingTitle}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding LoadingMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="{Binding LoadingProgressLabel}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
               </StackPanel>
               <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowErrorState}">
                 <TextBlock Text="Workspace discovery failed." TextWrapping="Wrap" />
@@ -352,7 +353,7 @@
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="220,*,340">
     <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel.png" Width="34" Height="34" Stretch="Uniform" />
+        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-transparent.png" Width="34" Height="34" Stretch="Uniform" />
         <StackPanel Grid.Column="1" Spacing="2">
           <TextBlock Text="opencode stuff" FontSize="22" FontWeight="SemiBold" />
           <TextBlock Text="There is no magic. Only stuff." Foreground="{DynamicResource TextMutedBrush}" />

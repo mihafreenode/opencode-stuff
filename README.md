@@ -2,6 +2,13 @@
 
 There is no magic. Only stuff.
 
+Branding asset roles:
+
+- `docs/images/opencode-stuff-satchel-transparent.png`: documentation and branding artwork for README, docs, onboarding, release notes, splash, and about surfaces
+- `docs/images/opencode-stuff-satchel-icon.png`: canonical application icon source for Avalonia, Windows, Linux, macOS, taskbar, dock, installer, package, and favicon assets
+
+Generate icon sizes from `opencode-stuff-satchel-icon.png`. Do not redraw or reinterpret the icon for platform variants.
+
 `opencode stuff` currently ships two desktop shells:
 
 - `OpenCode Workspace Manager`: the stable Windows WPF shell
