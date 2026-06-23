@@ -26,6 +26,8 @@ Canonical raster assets:
 
 - documentation and branding artwork: `docs/images/opencode-stuff-satchel-transparent.png`
 - application icon source: `docs/images/opencode-stuff-satchel-icon.png`
+- source header artwork: `docs/images/opencode-stuff-header-brand.png`
+- UI-ready Avalonia header asset: `docs/images/opencode-stuff-header-brand-ui.png`
 
 The icon source is canonical for Avalonia, Windows, Linux, macOS, installer, taskbar, dock, and favicon generation.
 
@@ -113,6 +115,17 @@ Minimum clear space around the mark or lockup:
 
 Do not use the full branding artwork as the primary application icon because small sizes lose detail.
 
+`opencode-stuff-header-brand.png`
+
+- source artwork for the wide lockup header
+- preserve the original exported source for future derivation work
+
+`opencode-stuff-header-brand-ui.png`
+
+- Avalonia header banner asset
+- derived from `opencode-stuff-header-brand.png` with the ImageMagick trim pipeline
+- do not manually redraw it to adjust padding
+
 ## Icon Generation Policy
 
 One source image. Many generated sizes. No artistic drift.
@@ -127,6 +140,12 @@ magick opencode-stuff-satchel-icon.png -resize 64x64 opencode-stuff-satchel-icon
 magick opencode-stuff-satchel-icon.png -resize 128x128 opencode-stuff-satchel-icon-128.png
 magick opencode-stuff-satchel-icon.png -resize 256x256 opencode-stuff-satchel-icon-256.png
 magick opencode-stuff-satchel-icon.png -define icon:auto-resize=16,24,32,48,64,128,256 opencode-stuff-satchel-icon.ico
+```
+
+Generate the Avalonia header asset from the source artwork with the ImageMagick trim pipeline:
+
+```bash
+magick docs/images/opencode-stuff-header-brand.png -fuzz 8% -trim +repage -alpha set -fuzz 12% -transparent "rgb(16,19,19)" -shave 9x5 -trim +repage -bordercolor none -border 4x2 docs/images/opencode-stuff-header-brand-ui.png
 ```
 
 ## Typography
