@@ -535,7 +535,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         DetailActions.Add(new ActionItemViewModel("Open", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
-        DetailActions.Add(new ActionItemViewModel("Validate", "Run portable doctor and platform validation from the Diagnostics page.", true, string.Empty, ValidateSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before recovery UI can be offered in Avalonia. Use WPF or CLI for now." : "Recovery actions are not ported yet. Use WPF or CLI for now.", DisabledActionCommand));
@@ -546,6 +546,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanReprovisionSelectedWorkspace()
         => SelectedWorkspace is { HasSnapshot: true } && !IsReprovisioning;
+
+    private bool CanValidateSelectedWorkspace()
+        => SelectedWorkspace is { IsLoading: false };
+
+    private string GetValidateDisabledReason(WorkspaceSummaryViewModel workspace)
+        => workspace.IsLoading
+            ? "Workspace details are still loading. Validation will be available when background checks finish."
+            : string.Empty;
+
+    private static string BuildValidateDescription(WorkspaceSummaryViewModel workspace)
+        => workspace.IsLoading
+            ? "Loading workspace details before validation becomes available."
+            : "Run portable doctor and platform validation from the Diagnostics page.";
 
     private string GetReprovisionDisabledReason(WorkspaceSummaryViewModel workspace)
     {

@@ -27,7 +27,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? string.IsNullOrWhiteSpace(Snapshot!.Record.RepositoryPath) ? Snapshot.Paths.RootPath : Snapshot.Record.RepositoryPath
         : string.IsNullOrWhiteSpace(Record.RepositoryPath) ? Record.RootPath : Record.RepositoryPath;
     public string RuntimeStatusLabel => IsLoading
-        ? "Loading"
+        ? "Loading..."
         : HasError
         ? _runtimeStatusLabelOverride ?? "Error"
         : !string.IsNullOrWhiteSpace(_runtimeStatusLabelOverride)
@@ -42,7 +42,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
                     ? "Stopped"
                     : "Ready";
     public string ProtectionLabel => IsLoading
-        ? "Loading"
+        ? "Loading..."
         : HasError
         ? "Needs Review"
         : Snapshot!.Safety.OverallStatus switch
@@ -60,7 +60,11 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         : string.IsNullOrWhiteSpace(Snapshot!.ResolvedRuntimePlan?.TargetPlatform)
             ? $"Runtime {Snapshot.RuntimeState}"
             : $"Runtime {Snapshot.ResolvedRuntimePlan.TargetPlatform}";
-    public string CurrentBranch => !HasSnapshot || string.IsNullOrWhiteSpace(Snapshot!.Safety.AdvancedGit.CurrentBranch) ? Record.SelectedWorkspaceBranch is { Length: > 0 } ? Record.SelectedWorkspaceBranch : "Unknown" : Snapshot.Safety.AdvancedGit.CurrentBranch;
+    public string CurrentBranch => IsLoading
+        ? "Loading..."
+        : !HasSnapshot || string.IsNullOrWhiteSpace(Snapshot!.Safety.AdvancedGit.CurrentBranch)
+            ? Record.SelectedWorkspaceBranch is { Length: > 0 } ? Record.SelectedWorkspaceBranch : "Unknown"
+            : Snapshot.Safety.AdvancedGit.CurrentBranch;
     public string Services => IsLoading ? "Loading details..." : !HasSnapshot ? "Unavailable" : Snapshot!.Definition.Services.Count == 0 ? "No services" : string.Join(", ", Snapshot.Definition.Services);
     public string Features => IsLoading ? "Loading details..." : !HasSnapshot ? "Unavailable" : Snapshot!.Definition.Features.Count == 0 ? "No features" : string.Join(", ", Snapshot.Definition.Features);
     public string LastActivity => IsLoading
@@ -79,7 +83,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             ? CurrentBranch
             : Snapshot.Safety.AdvancedGit.StatusSummary;
     public string LocalRuntimeStateStatus => IsLoading
-        ? "Loading"
+        ? "Loading..."
         : !HasSnapshot
         ? "Unavailable"
         : Snapshot!.LocalRuntimeState is null
@@ -87,7 +91,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         : string.IsNullOrWhiteSpace(Snapshot.LocalRuntimeState.ResolvedPlatform)
             ? "Loaded"
             : $"Loaded ({Snapshot.LocalRuntimeState.ResolvedPlatform})";
-    public string RuntimeTarget => IsLoading ? "Unknown" : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
+    public string RuntimeTarget => IsLoading ? "Loading..." : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
 
     public void SetReprovisioningState(string message)
     {

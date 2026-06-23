@@ -324,9 +324,7 @@ public sealed class WorkspaceDiscoveryReportService
 
     private static void WriteDiscoveryLog(WorkspaceLoadReport report)
     {
-#if !DEBUG
-        return;
-#endif
+#if DEBUG
         var appDataRoot = report.AppDataRoot;
         if (string.IsNullOrWhiteSpace(appDataRoot))
         {
@@ -367,6 +365,7 @@ public sealed class WorkspaceDiscoveryReportService
         }
 
         File.WriteAllLines(logPath, lines);
+#endif
     }
 
     private static string FormatDuration(TimeSpan duration)

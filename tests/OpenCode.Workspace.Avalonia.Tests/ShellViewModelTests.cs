@@ -532,7 +532,7 @@ public sealed class ShellViewModelTests
         var loadTask = page.LoadAsync();
 
         Assert.Equal(2, page.Workspaces.Count);
-        Assert.All(page.Workspaces, item => Assert.Equal("Loading", item.RuntimeStatusLabel));
+        Assert.All(page.Workspaces, item => Assert.Equal("Loading...", item.RuntimeStatusLabel));
         Assert.NotNull(page.SelectedWorkspace);
 
         release.SetResult();
