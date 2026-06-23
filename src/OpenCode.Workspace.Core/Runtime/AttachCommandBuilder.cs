@@ -1,11 +1,7 @@
 using OpenCode.Workspace.Core.Models;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Core.Runtime;
 
-/// <summary>
-/// Builds the attach command in one place so both the launcher and tests can
-/// validate the exact handoff contract without scraping WPF view model code.
-/// </summary>
 public sealed class AttachCommandBuilder
 {
     public WindowsTerminalCommand Build(WorkspaceSnapshot snapshot)

@@ -353,8 +353,11 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", "[create] Ensuring workspace scaffolding files.");
         EnsureWorkspaceScaffolding(paths, definition);
         Log(log, "app", "[create] Workspace scaffolding ensured.");
+        Log(log, "app", "[create] Writing workspace definition.");
+        WriteWorkspaceDefinition(paths, definition);
+        Log(log, "app", "[create] Workspace definition written.");
         Log(log, "app", "[create] Writing generated workspace files.");
-        WriteGeneratedFiles(paths, definition);
+        WriteManagedGeneratedFiles(paths, definition);
         Log(log, "app", "[create] Generated workspace files written.");
         Log(log, "app", "[create] Initializing workspace repository.");
         await _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false, log, cancellationToken);
@@ -578,7 +581,12 @@ public sealed class WorkspaceOrchestrator
 
         CreateFolderStructure(paths);
         EnsureWorkspaceScaffolding(paths, definition);
-        WriteGeneratedFiles(paths, definition);
+        if (discovery.Status != WorkspaceDiscoveryStatus.Found)
+        {
+            WriteWorkspaceDefinition(paths, definition);
+        }
+
+        WriteManagedGeneratedFiles(paths, definition);
 
         var now = DateTimeOffset.UtcNow;
         _workspaceRepository.Save(new WorkspaceRecord
@@ -606,7 +614,8 @@ public sealed class WorkspaceOrchestrator
 
     public async Task RegenerateAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
     {
-        WriteGeneratedFiles(snapshot.Paths, snapshot.Definition);
+        WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
+        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition);
         await Task.CompletedTask;
     }
 
@@ -843,11 +852,15 @@ public sealed class WorkspaceOrchestrator
         _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts));
     }
 
-    private GeneratedWorkspaceArtifacts WriteGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
+    private void WriteWorkspaceDefinition(WorkspacePaths paths, WorkspaceDefinition definition)
+    {
+        _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
+    }
+
+    private GeneratedWorkspaceArtifacts WriteManagedGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var generatedArtifacts = GenerateArtifacts(definition, paths, runtimeMetadata);
 
-        _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
         File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
         File.WriteAllText(paths.EnvironmentFilePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.EnvironmentFile));
         File.WriteAllText(paths.StarshipConfigPath, generatedArtifacts.StarshipConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -928,7 +941,7 @@ public sealed class WorkspaceOrchestrator
             ? File.ReadAllText(paths.ComposePath)
             : null;
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
-        var generatedArtifacts = WriteGeneratedFiles(paths, definition, runtimeMetadata);
+        var generatedArtifacts = WriteManagedGeneratedFiles(paths, definition, runtimeMetadata);
         var composeWasUpdated = !string.Equals(previousCompose, generatedArtifacts.ComposeYaml, StringComparison.Ordinal);
 
         if (composeWasUpdated)

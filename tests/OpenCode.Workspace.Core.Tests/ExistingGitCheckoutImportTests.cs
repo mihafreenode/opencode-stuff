@@ -209,7 +209,10 @@ public sealed class ExistingGitCheckoutImportTests
                 Skills = new List<string>(),
                 Mcp = new List<string>(),
             });
-            File.WriteAllText(Path.Combine(rootPath, "workspace.yaml"), yaml);
+            var workspaceYamlPath = Path.Combine(rootPath, "workspace.yaml");
+            File.WriteAllText(workspaceYamlPath, yaml + "customExtension:\n  keepMe: true\n");
+            var beforeHash = ComputeFileHash(workspaceYamlPath);
+            var beforeTimestamp = File.GetLastWriteTimeUtc(workspaceYamlPath);
 
             var orchestrator = CreateOrchestrator(appDataRoot);
             var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
@@ -221,6 +224,9 @@ public sealed class ExistingGitCheckoutImportTests
 
             Assert.Equal("Existing Workspace", snapshot.Definition.Workspace.Name);
             Assert.Contains("postgres", snapshot.Definition.Services, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(beforeHash, ComputeFileHash(workspaceYamlPath));
+            Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(workspaceYamlPath));
+            Assert.Contains("customExtension:", File.ReadAllText(workspaceYamlPath), StringComparison.Ordinal);
         }
         finally
         {
@@ -309,7 +315,9 @@ public sealed class ExistingGitCheckoutImportTests
                 Services = ["postgres"],
                 Skills = [],
                 Mcp = [],
-            }));
+            }) + "customPathSetting:\n  preserve: true\n");
+            var beforeHash = ComputeFileHash(configPath);
+            var beforeTimestamp = File.GetLastWriteTimeUtc(configPath);
 
             var orchestrator = CreateOrchestrator(appDataRoot);
             var snapshot = await orchestrator.ImportExistingGitCheckoutAsync(new ExistingGitCheckoutImportRequest
@@ -323,6 +331,9 @@ public sealed class ExistingGitCheckoutImportTests
             Assert.Equal(relativePath, snapshot.Record.ConfigurationPath);
             Assert.Equal(configPath, snapshot.Paths.WorkspaceYamlPath);
             Assert.False(File.Exists(Path.Combine(rootPath, "workspace.yaml")) && !string.Equals(relativePath, "workspace.yaml", StringComparison.Ordinal));
+            Assert.Equal(beforeHash, ComputeFileHash(configPath));
+            Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(configPath));
+            Assert.Contains("customPathSetting:", File.ReadAllText(configPath), StringComparison.Ordinal);
         }
         finally
         {
@@ -503,6 +514,12 @@ customSection:
 
     private static async Task<ProcessResult> RunGitAsync(string workingDirectory, params string[] arguments)
         => await new ProcessRunner().RunAsync("git", arguments, workingDirectory);
+
+    private static string ComputeFileHash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+    }
 
     private static string CreateTempPath() => Path.Combine(Path.GetTempPath(), $"existing-checkout-{Guid.NewGuid():N}");
 

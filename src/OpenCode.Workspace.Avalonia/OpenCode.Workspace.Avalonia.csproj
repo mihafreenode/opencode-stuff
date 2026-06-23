@@ -22,6 +22,9 @@
     <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-icon.png">
       <Link>Assets\opencode-stuff-satchel-icon.png</Link>
     </AvaloniaResource>
+    <AvaloniaResource Include="..\..\docs\images\opencode-stuff-header-brand-ui.png">
+      <Link>Assets\opencode-stuff-header-brand-ui.png</Link>
+    </AvaloniaResource>
     <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-transparent.png">
       <Link>Assets\opencode-stuff-satchel-transparent.png</Link>
     </AvaloniaResource>

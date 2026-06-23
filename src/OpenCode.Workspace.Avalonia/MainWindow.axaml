@@ -13,11 +13,15 @@
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
       <Grid RowDefinitions="Auto,*" RowSpacing="12">
         <Border Classes="panel">
-          <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="6">
             <TextBlock Text="Local workspaces" Classes="section-title" />
-            <TextBlock Text="Repository-first durable workspaces discovered from the local index and workspace configuration files."
+            <Button Grid.Column="1" Content="Create Workspace" Command="{Binding CreateWorkspaceCommand}" Classes="accent" />
+            <Button Grid.Column="2" Content="Open Existing Repository" Command="{Binding OpenExistingRepositoryCommand}" />
+            <Button Grid.Column="3" Content="Refresh" Command="{Binding RefreshWorkspacesCommand}" />
+            <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
+                       Text="Repository-first durable workspaces discovered from the local index and workspace configuration files."
                        Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-          </StackPanel>
+          </Grid>
         </Border>
 
         <DockPanel Grid.Row="1" LastChildFill="True">
@@ -137,6 +141,7 @@
             <TextBlock Text="Latest validation context" FontWeight="SemiBold" />
             <TextBlock Text="{Binding LatestValidationContext}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding HasValidationResults}" />
             <TextBlock Text="{Binding LatestDoctorSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding HasDoctorResults}" />
+            <TextBlock Text="{Binding LatestWorkspaceLoadSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
           </StackPanel>
         </Border>
 
@@ -351,16 +356,37 @@
   </Window.DataTemplates>
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="220,*,340">
-    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-transparent.png" Width="34" Height="34" Stretch="Uniform" />
-        <StackPanel Grid.Column="1" Spacing="2">
-          <TextBlock Text="opencode stuff" FontSize="22" FontWeight="SemiBold" />
-          <TextBlock Text="There is no magic. Only stuff." Foreground="{DynamicResource TextMutedBrush}" />
+    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,14" MinHeight="136">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="20" VerticalAlignment="Center">
+        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png"
+               Height="112"
+               MaxWidth="760"
+               Stretch="Uniform"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Center"
+               Margin="0,4,0,2"
+               RenderOptions.BitmapInterpolationMode="HighQuality" />
+        <Border Grid.Column="1" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Border Classes="header-stat">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Workspaces" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderWorkspaceCount}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            </StackPanel>
+          </Border>
+          <Border Classes="header-stat">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Runtime" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderRuntimeSummary}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrandHeaderTextBrush}" />
+            </StackPanel>
+          </Border>
+          <Border Classes="header-stat">
+            <StackPanel Spacing="2">
+              <TextBlock Text="Status" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderStatusSummary}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            </StackPanel>
+          </Border>
         </StackPanel>
-        <Border Grid.Column="2" Classes="status-chip" VerticalAlignment="Center">
-          <TextBlock Text="Avalonia Preview" />
-        </Border>
       </Grid>
     </Border>
 
@@ -369,7 +395,10 @@
         <ItemsControl ItemsSource="{Binding NavigationItems}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Button Classes="nav-item" Content="{Binding Title}" Command="{Binding SelectCommand}" />
+              <Grid ColumnDefinitions="4,*" ColumnSpacing="10">
+                <Border Background="{DynamicResource AccentBrush}" CornerRadius="999" IsVisible="{Binding IsSelected}" />
+                <Button Grid.Column="1" Classes="nav-item" Content="{Binding Title}" Command="{Binding SelectCommand}" />
+              </Grid>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

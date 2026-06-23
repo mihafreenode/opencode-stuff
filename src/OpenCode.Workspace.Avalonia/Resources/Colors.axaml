@@ -3,7 +3,7 @@
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F4F5F7" />
-      <SolidColorBrush x:Key="ShellHeaderBrush" Color="#FCFCFD" />
+      <SolidColorBrush x:Key="ShellHeaderBrush" Color="#151B24" />
       <SolidColorBrush x:Key="ShellFooterBrush" Color="#FCFCFD" />
       <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
       <SolidColorBrush x:Key="PanelSubtleBrush" Color="#F8F9FB" />
@@ -17,6 +17,8 @@
       <SolidColorBrush x:Key="SuccessBrush" Color="#1D7A3E" />
       <SolidColorBrush x:Key="WarningBrush" Color="#B7791F" />
       <SolidColorBrush x:Key="DangerBrush" Color="#B42318" />
+      <SolidColorBrush x:Key="BrandHeaderTextBrush" Color="#F7F8FA" />
+      <SolidColorBrush x:Key="BrandHeaderMutedBrush" Color="#CBD2D9" />
     </ResourceDictionary>
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="AppBackgroundBrush" Color="#11161D" />
@@ -34,6 +36,8 @@
       <SolidColorBrush x:Key="SuccessBrush" Color="#4ADE80" />
       <SolidColorBrush x:Key="WarningBrush" Color="#FBBF24" />
       <SolidColorBrush x:Key="DangerBrush" Color="#F87171" />
+      <SolidColorBrush x:Key="BrandHeaderTextBrush" Color="#F7F8FA" />
+      <SolidColorBrush x:Key="BrandHeaderMutedBrush" Color="#CBD5E1" />
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

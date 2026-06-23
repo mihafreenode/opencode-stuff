@@ -6,8 +6,8 @@ using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
-using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.Services;
+using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Manager.ViewModels;
 
 namespace OpenCode.Workspace.Windows.Tests;

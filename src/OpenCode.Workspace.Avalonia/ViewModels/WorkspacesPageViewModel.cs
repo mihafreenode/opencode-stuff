@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using Avalonia.Threading;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
@@ -8,6 +9,7 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 public sealed class WorkspacesPageViewModel : PageViewModel
 {
     private readonly IDesktopShellService _desktopShellService;
+    private readonly IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest> _templates;
     private WorkspaceSummaryViewModel? _selectedWorkspace;
     private string _emptyStateTitle = string.Empty;
     private string _emptyStateMessage = string.Empty;
@@ -25,13 +27,23 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string _operationLogText = string.Empty;
     private OperationTranscript? _lastOperationTranscript;
     private bool _isOperationLogVisible;
+    private IWorkspaceInteractionService? _interactionService;
+    private bool _isWorkspaceActionRunning;
+    private string _workspaceActionStatusMessage = string.Empty;
 
-    public WorkspacesPageViewModel(IDesktopShellService desktopShellService)
+    public WorkspacesPageViewModel(IDesktopShellService desktopShellService, IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest>? templates = null)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
     {
         _desktopShellService = desktopShellService;
+        _templates = templates ?? [];
+        CreateWorkspaceCommand = new AsyncRelayCommand(CreateWorkspaceAsync, () => _interactionService is not null && !IsBusyForWorkspaceActions);
+        OpenExistingRepositoryCommand = new AsyncRelayCommand(OpenExistingRepositoryAsync, () => _interactionService is not null && !IsBusyForWorkspaceActions);
+        RefreshWorkspacesCommand = new AsyncRelayCommand(() => LoadAsync(), () => !IsBusyForWorkspaceActions);
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
+        StartWorkspaceCommand = new AsyncRelayCommand(StartSelectedWorkspaceAsync, CanStartSelectedWorkspace);
+        RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
+        AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
         CopyOperationLogCommand = new AsyncRelayCommand(CopyOperationLogAsync, () => HasOperationLog && _clipboardService is not null);
         ClearOperationLogCommand = new RelayCommand(ClearOperationLog, () => HasOperationLog);
@@ -41,8 +53,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     public ObservableCollection<WorkspaceSummaryViewModel> Workspaces { get; } = [];
+    public AsyncRelayCommand CreateWorkspaceCommand { get; }
+    public AsyncRelayCommand OpenExistingRepositoryCommand { get; }
+    public AsyncRelayCommand RefreshWorkspacesCommand { get; }
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
+    public AsyncRelayCommand StartWorkspaceCommand { get; }
+    public AsyncRelayCommand RecoverWorkspaceCommand { get; }
+    public AsyncRelayCommand AttachWorkspaceCommand { get; }
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
     public AsyncRelayCommand CopyOperationLogCommand { get; }
     public RelayCommand ClearOperationLogCommand { get; }
@@ -106,6 +124,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     public bool HasOperationLog => !string.IsNullOrWhiteSpace(OperationLogText);
     public bool ShowOperationLogToggleButton => HasOperationLog;
+    public bool IsBusyForWorkspaceActions => _isWorkspaceActionRunning || IsReprovisioning;
 
     public OperationTranscript? LastOperationTranscript
     {
@@ -180,6 +199,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 UpdateDetailPanel();
                 OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
                 ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+                StartWorkspaceCommand.RaiseCanExecuteChanged();
+                RecoverWorkspaceCommand.RaiseCanExecuteChanged();
+                AttachWorkspaceCommand.RaiseCanExecuteChanged();
                 ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
             }
         }
@@ -350,6 +372,57 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ? $"{duration.TotalSeconds:F1} s"
             : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
 
+    private async Task CreateWorkspaceAsync()
+    {
+        if (_interactionService is null)
+        {
+            return;
+        }
+
+        var draft = await _interactionService.ShowCreateWorkspaceDialogAsync(_templates);
+        if (draft is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Create Workspace", draft.WorkspaceName);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = $"Creating workspace {draft.WorkspaceName}..." });
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Generating workspace files..." });
+        var definition = _desktopShellService.BuildWorkspaceDefinition(draft);
+        var snapshot = await _desktopShellService.CreateWorkspaceAsync(draft.WorkspaceRootPath, definition, new OperationTranscriptSink(this));
+        await LoadAsync();
+        SelectWorkspace(snapshot.Paths.RootPath);
+        DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
+    }
+
+    private async Task OpenExistingRepositoryAsync()
+    {
+        if (_interactionService is null)
+        {
+            return;
+        }
+
+        var draft = await _interactionService.ShowOpenExistingRepositoryDialogAsync(_desktopShellService.InspectExistingGitCheckoutAsync, _desktopShellService.ValidateExistingGitCheckoutBranchAsync);
+        if (draft is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Open Existing Repository", draft.WorkspaceName);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = $"Importing repository {draft.WorkspaceName}..." });
+        var snapshot = await _desktopShellService.ImportExistingGitCheckoutAsync(new OpenCode.Workspace.Core.Workspaces.ExistingGitCheckoutImportRequest
+        {
+            RepositoryPath = draft.RepositoryPath,
+            WorkspaceName = draft.WorkspaceName,
+            BranchMode = draft.BranchMode,
+            NamedBranch = draft.NamedBranch,
+            ReuseExistingNamedBranch = draft.ReuseExistingNamedBranch,
+        }, new OperationTranscriptSink(this));
+        await LoadAsync();
+        SelectWorkspace(snapshot.Paths.RootPath);
+        DetailSummary = $"Imported existing Git checkout '{snapshot.Definition.Workspace.Name}'.";
+    }
+
     private async Task OpenSelectedWorkspaceAsync()
     {
         if (SelectedWorkspace is null)
@@ -360,6 +433,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         await _desktopShellService.OpenPathAsync(SelectedWorkspace.RootPath);
     }
 
+    private void SelectWorkspace(string rootPath)
+    {
+        SelectedWorkspace = Workspaces.FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task ValidateSelectedWorkspaceInternalAsync()
     {
         if (SelectedWorkspace is null || ValidateWorkspaceAsync is null)
@@ -368,6 +446,70 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         await ValidateWorkspaceAsync(SelectedWorkspace.RootPath);
+    }
+
+    private async Task StartSelectedWorkspaceAsync()
+    {
+        await RunWorkspaceOperationAsync(
+            "Start",
+            "Starting workspace...",
+            (rootPath, snapshot, sink) => _desktopShellService.StartWorkspaceAsync(rootPath, snapshot, sink));
+    }
+
+    private async Task RecoverSelectedWorkspaceAsync()
+    {
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Recover", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Assessing recovery..." });
+        DetailSummary = "Assessing recovery...";
+
+        WorkspaceRecoveryAssessment assessment;
+        try
+        {
+            assessment = await _desktopShellService.AssessWorkspaceRecoveryAsync(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot);
+        }
+        catch (Exception exception)
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
+            DetailSummary = exception.Message;
+            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            throw;
+        }
+
+        if (!await _interactionService.ConfirmRecoveryAsync(assessment))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Recovery cancelled.";
+            return;
+        }
+
+        await RunWorkspaceOperationAsync(
+            "Recover",
+            "Recovering workspace...",
+            (rootPath, snapshot, sink) => _desktopShellService.RecoverWorkspaceAsync(rootPath, snapshot, sink));
+    }
+
+    private async Task AttachSelectedWorkspaceAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Attach", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing attach..." });
+        DetailSummary = "Preparing attach...";
+
+        await RunWorkspaceOperationAsync(
+            "Attach",
+            "Validating runtime...",
+            (rootPath, snapshot, sink) => _desktopShellService.AttachWorkspaceAsync(rootPath, snapshot, sink),
+            preserveExistingTranscript: true);
     }
 
     private async Task ReprovisionSelectedWorkspaceAsync()
@@ -422,6 +564,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         _clipboardService = clipboardService;
         CopyOperationLogCommand.RaiseCanExecuteChanged();
+    }
+
+    public void SetInteractionService(IWorkspaceInteractionService interactionService)
+    {
+        _interactionService = interactionService;
+        CreateWorkspaceCommand.RaiseCanExecuteChanged();
+        OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
     }
 
     private void ToggleOperationLogVisibility()
@@ -534,11 +683,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
         }
 
-        DetailActions.Add(new ActionItemViewModel("Open", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Start", BuildStartDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), StartWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
-        DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
-        DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before recovery UI can be offered in Avalonia. Use WPF or CLI for now." : "Recovery actions are not ported yet. Use WPF or CLI for now.", DisabledActionCommand));
         DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before Save Point operations can run. Use WPF or CLI for now." : "Save Point creation is not implemented in Avalonia preview yet.", DisabledActionCommand));
 
         RaisePropertyChanged(nameof(SelectedWorkspace));
@@ -546,6 +696,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanReprovisionSelectedWorkspace()
         => SelectedWorkspace is { HasSnapshot: true } && !IsReprovisioning;
+
+    private bool CanStartSelectedWorkspace()
+        => CanStartWorkspace(SelectedWorkspace);
+
+    private bool CanRecoverSelectedWorkspace()
+        => CanRecoverWorkspace(SelectedWorkspace);
+
+    private bool CanAttachSelectedWorkspace()
+        => CanAttachWorkspace(SelectedWorkspace);
 
     private bool CanValidateSelectedWorkspace()
         => SelectedWorkspace is { IsLoading: false };
@@ -555,10 +714,48 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ? "Workspace details are still loading. Validation will be available when background checks finish."
             : string.Empty;
 
+    private string GetStartDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanStartWorkspace(workspace) ? string.Empty : "Workspace root or configuration file is missing, so start cannot run.";
+
+    private string GetRecoverDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanRecoverWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so recovery cannot run.";
+
+    private string GetAttachDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanAttachWorkspace(workspace) ? string.Empty : "Workspace root or configuration file is missing, so attach cannot run.";
+
     private static string BuildValidateDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
             ? "Loading workspace details before validation becomes available."
             : "Run portable doctor and platform validation from the Diagnostics page.";
+
+    private string BuildStartDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : workspace.Snapshot?.RuntimeState == OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running
+                ? "Workspace runtime is already running. Start will re-check runtime readiness."
+                : workspace.Snapshot?.LocalRuntimeState is null
+                    ? "Runtime state is missing. Start will regenerate runtime files and bring the workspace online."
+                    : "Start the workspace runtime and provision it if generated files are out of date.";
+
+    private string BuildRecoverDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanRecoverWorkspace(workspace)
+                ? "Assess and repair generated runtime files and container readiness without deleting user work."
+                : "Workspace root or configuration file is missing, so recovery cannot run.";
+
+    private string BuildAttachDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanAttachWorkspace(workspace)
+                ? "Launch a terminal attach session after validating runtime readiness."
+                : "Workspace root or configuration file is missing, so attach cannot run.";
 
     private string GetReprovisionDisabledReason(WorkspaceSummaryViewModel workspace)
     {
@@ -620,6 +817,50 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         return workspace.SafetyState;
+    }
+
+    private static bool CanStartWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (workspace is null || workspace.IsLoading)
+        {
+            return false;
+        }
+
+        if (workspace.HasSnapshot)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(workspace.RootPath) || !Directory.Exists(workspace.RootPath))
+        {
+            return false;
+        }
+
+        var relativeConfigurationPath = string.IsNullOrWhiteSpace(workspace.Record.ConfigurationPath)
+            ? "workspace.yaml"
+            : workspace.Record.ConfigurationPath.Replace('/', Path.DirectorySeparatorChar);
+        var fullConfigurationPath = Path.Combine(workspace.RootPath, relativeConfigurationPath);
+        return File.Exists(fullConfigurationPath);
+    }
+
+    private bool CanRecoverWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return CanStartWorkspace(workspace);
+    }
+
+    private bool CanAttachWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return CanStartWorkspace(workspace);
     }
 
     private void ReplaceSelectedWorkspace(OpenCode.Workspace.Core.Models.WorkspaceSnapshot snapshot)
@@ -697,5 +938,59 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             Dispatcher.UIThread.Post(Apply);
         }
+    }
+
+    private async Task RunWorkspaceOperationAsync(string operationName, string initialStatusMessage, Func<string, OpenCode.Workspace.Core.Models.WorkspaceSnapshot?, IOperationLogSink, Task<WorkspaceOperationResult>> operation, bool preserveExistingTranscript = false)
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = initialStatusMessage;
+            RaiseWorkspaceActionCommandStates();
+            if (!preserveExistingTranscript)
+            {
+                StartOperationTranscript(operationName, SelectedWorkspace.Name);
+            }
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = initialStatusMessage });
+            DetailSummary = initialStatusMessage;
+            var sink = new OperationTranscriptSink(this);
+            var result = await operation(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            CompleteOperationTranscript(result.Transcript);
+            _workspaceActionStatusMessage = result.Message;
+            DetailSummary = result.Message;
+        }
+        catch (Exception exception)
+        {
+            _workspaceActionStatusMessage = exception.Message;
+            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            DetailSummary = exception.Message;
+            throw;
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+        }
+    }
+
+    private string GetCurrentWorkspaceActionStatusMessage()
+        => string.IsNullOrWhiteSpace(_workspaceActionStatusMessage) ? "Workspace action in progress." : _workspaceActionStatusMessage;
+
+    private void RaiseWorkspaceActionCommandStates()
+    {
+        CreateWorkspaceCommand.RaiseCanExecuteChanged();
+        OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
+        RefreshWorkspacesCommand.RaiseCanExecuteChanged();
+        StartWorkspaceCommand.RaiseCanExecuteChanged();
+        RecoverWorkspaceCommand.RaiseCanExecuteChanged();
+        AttachWorkspaceCommand.RaiseCanExecuteChanged();
+        ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+        ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
     }
 }

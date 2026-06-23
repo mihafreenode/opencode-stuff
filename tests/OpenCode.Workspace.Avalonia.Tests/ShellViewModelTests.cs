@@ -4,6 +4,7 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.Tests;
 
@@ -55,6 +56,36 @@ public sealed class ShellViewModelTests
         Assert.Contains("opencode-stuff-header-brand-ui.png", brandGuidelines, StringComparison.Ordinal);
         Assert.Contains("ImageMagick trim", brandGuidelines, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-satchel-icon.png", brandGuidelines, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DialogCodeBehind_UsesBackingFieldsInsteadOfGeneratedNamedControls()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var createWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml.cs"));
+        var openExistingWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenExistingRepositoryWindow.axaml.cs"));
+        var recoveryWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RecoveryConfirmationWindow.axaml.cs"));
+
+        Assert.DoesNotContain("ValidationMessageTextBlock.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("StatusTextBlock.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("InspectionSummaryTextBlock.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("RepositoryPathTextBox.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkspaceNameTextBox.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("BranchModeComboBox.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("NamedBranchTextBox.", openExistingWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReuseExistingBranchCheckBox.", openExistingWindow, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("TemplateComboBox.", createWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkspaceNameTextBox.", createWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkspacePathTextBox.", createWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("TemplateSummaryTextBlock.", createWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ValidationMessageTextBlock.", createWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("StatusTextBlock.", createWindow, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("TitleTextBlock.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("SummaryTextBlock.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfirmationTextBlock.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindingsItemsControl.", recoveryWindow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -393,15 +424,171 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task DisabledActions_ExposeReasonText()
+    public async Task AttachAction_IsEnabledForLoadedWorkspace()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
         await page.LoadAsync();
 
         var attach = page.DetailActions.Single(item => item.Label == "Attach");
 
-        Assert.False(attach.IsEnabled);
-        Assert.Equal("Unavailable in Avalonia preview. Use WPF or CLI for now.", attach.DisabledReason);
+        Assert.True(attach.IsEnabled);
+        Assert.Equal(string.Empty, attach.DisabledReason);
+    }
+
+    [Fact]
+    public async Task StartAction_IsEnabledForConfigBackedWorkspaceWithoutRuntimeStateSnapshot()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-start-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var start = page.DetailActions.Single(item => item.Label == "Start");
+            Assert.True(start.IsEnabled);
+            Assert.Equal(string.Empty, start.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RecoverAction_IsEnabledForConfigBackedWorkspaceWithoutSnapshotWhenInteractionServiceExists()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-recover-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            page.SetInteractionService(new FakeWorkspaceInteractionService());
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var recover = page.DetailActions.Single(item => item.Label == "Recover");
+            Assert.True(recover.IsEnabled);
+            Assert.Equal(string.Empty, recover.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AttachAction_IsEnabledForConfigBackedWorkspaceWithoutSnapshot()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-attach-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var attach = page.DetailActions.Single(item => item.Label == "Attach");
+            Assert.True(attach.IsEnabled);
+            Assert.Equal(string.Empty, attach.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task AttachStart_EmitsImmediateTranscriptBeforeLauncherCompletes()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            AttachResultFactoryAsync = async (_, _, cancellationToken) =>
+            {
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceOperationResult { Snapshot = CreateSnapshot("alpha"), Message = "attach launched", Transcript = new OperationTranscript() };
+            },
+        });
+
+        await page.LoadAsync();
+        var attachTask = page.DetailActions.Single(item => item.Label == "Attach").Command is AsyncRelayCommand cmd ? cmd.ExecuteAsync() : throw new InvalidOperationException();
+        await started.Task;
+
+        Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Validating runtime...", page.OperationLogText, StringComparison.Ordinal);
+
+        release.SetResult();
+        await attachTask;
+    }
+
+    [Fact]
+    public async Task AttachFailure_IsSurfacedInTranscript()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            AttachException = new InvalidOperationException("Windows Terminal launch failed."),
+        });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Attach").Command).ExecuteAsync());
+
+        Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Windows Terminal launch failed.", page.DetailSummary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -967,7 +1154,9 @@ public sealed class ShellViewModelTests
         public Func<bool, Action<WorkspaceLoadProgressUpdate>?, CancellationToken, Task<WorkspaceLoadResult>>? LoadWorkspaceItemsAsyncFactory { get; init; }
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
+        public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
         public Exception? ReprovisionException { get; init; }
+        public Exception? AttachException { get; init; }
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
@@ -1013,6 +1202,51 @@ public sealed class ShellViewModelTests
             => _snapshots.Select(item => new WorkspaceReference(item.Definition.Workspace.Name, item.Paths.RootPath))
                 .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
                 .ToList();
+
+        public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
+            => Task.FromResult(new ExistingGitCheckoutPlan
+            {
+                RepositoryPath = repositoryPath,
+                WorkspaceName = workspaceName,
+                Repository = new GitRepositoryInspection { IsRepository = true, CurrentBranch = "users/test/demo", StatusSummary = "clean" },
+                DiscoveryResult = new WorkspaceDiscoveryResult { Status = WorkspaceDiscoveryStatus.NotFound },
+            });
+
+        public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default)
+            => Task.FromResult(new GitBranchValidationResult(true, string.Empty, false));
+
+        public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(CreateSnapshot(request.WorkspaceName));
+
+        public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft)
+            => new() { Workspace = new WorkspaceMetadata { Name = draft.WorkspaceName, Image = "ubuntu:24.04" }, Provider = new WorkspaceProviderDefinition { Type = "git" }, Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion } };
+
+        public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(CreateSnapshot(definition.Workspace.Name));
+
+        public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+
+        public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceRecoveryAssessment { Title = "Recover", Summary = "summary", Findings = ["finding"], ConfirmationMessage = "confirm" });
+
+        public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("recovered"), Message = "recovered", Transcript = new OperationTranscript() });
+
+        public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            if (AttachException is not null)
+            {
+                throw AttachException;
+            }
+
+            if (AttachResultFactoryAsync is not null)
+            {
+                return AttachResultFactoryAsync(rootPath, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("attached"), Message = "attached", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
@@ -1100,8 +1334,29 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
+        public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
+    {
+        public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
+            => Task.FromResult<CreateWorkspaceDraft?>(null);
+
+        public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
+            => Task.FromResult<ExistingRepositoryImportDraft?>(null);
+
+        public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
+            => Task.FromResult(true);
     }
 
     private sealed class ThrowingDesktopShellService : IDesktopShellService
@@ -1112,6 +1367,15 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }

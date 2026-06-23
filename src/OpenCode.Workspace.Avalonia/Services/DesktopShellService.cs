@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.Services;
@@ -37,6 +38,202 @@ public sealed class DesktopShellService : IDesktopShellService
     public WorkspaceTimeline LoadTimeline(string timelinePath) => _timelineService.Load(timelinePath);
 
     public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => _checkpointService.LoadIndex(checkpointIndexPath);
+
+    public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
+        => _workspaceOrchestrator.InspectExistingGitCheckoutAsync(repositoryPath, workspaceName, cancellationToken);
+
+    public async Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default)
+    {
+        var repositoryService = new GitRepositoryService(new ProcessRunner());
+        return await repositoryService.ValidateBranchNameAsync(repositoryPath, branchName, cancellationToken);
+    }
+
+    public async Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
+        return await _workspaceOrchestrator.ImportExistingGitCheckoutAsync(request, log, cancellationToken);
+    }
+
+    public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft)
+        => new()
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Name = draft.WorkspaceName,
+                Id = WorkspacePathBuilder.Slugify(draft.WorkspaceName),
+                Image = string.IsNullOrWhiteSpace(draft.Template.WorkspaceImage) ? "ubuntu:24.04" : draft.Template.WorkspaceImage,
+            },
+            Provider = new WorkspaceProviderDefinition { Type = "git" },
+            Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion },
+            Features = draft.Template.Features.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Services = draft.Template.Services.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Skills = draft.Template.Skills.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Mcp = draft.Template.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            Agent = new AgentPreferences { Profile = AgentProfileResolver.BuiltInDefault.ProfileId },
+            Terminal = new TerminalPreferences
+            {
+                InstallIfMissing = false,
+                Font = new TerminalFontPreferences { Provider = "nerd-fonts", Family = "JetBrainsMono Nerd Font" },
+                Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                Utilities = new TerminalUtilityPreferences(),
+            },
+        };
+
+    public async Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
+        return await _workspaceOrchestrator.CreateWorkspaceAsync(rootPath, definition, log, cancellationToken, includeRuntimeInspection: false);
+    }
+
+    public async Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Start", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+
+            if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+            {
+                append(OperationTranscriptLineKind.Status, "Preparing runtime...");
+                await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+                await PersistWorkspaceRecordAsync(snapshot, "Start", "Provisioned and started workspace.", true, cancellationToken, DateTimeOffset.UtcNow);
+            }
+            else
+            {
+                if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+                {
+                    append(OperationTranscriptLineKind.Status, "Starting services...");
+                    await _workspaceOrchestrator.StartAsync(snapshot, log, cancellationToken);
+                }
+
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+                await PersistWorkspaceRecordAsync(snapshot, "Start", "Started workspace.", true, cancellationToken);
+            }
+
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' is running.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Start");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        var findings = new List<string>();
+        if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+        {
+            findings.Add("Generated runtime files are out of date and need repair.");
+        }
+
+        if (snapshot.LocalRuntimeState is null)
+        {
+            findings.Add("Local runtime state is missing and will be regenerated.");
+        }
+
+        if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            findings.Add($"Workspace runtime is currently {snapshot.RuntimeState}.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Record.LastOperationResult) && snapshot.Record.LastOperationSucceeded == false)
+        {
+            findings.Add($"Last operation failed: {snapshot.Record.LastOperationResult}");
+        }
+
+        if (findings.Count == 0)
+        {
+            findings.Add("No blocking issues were detected, but recovery can still revalidate generated files and runtime state.");
+        }
+
+        return new WorkspaceRecoveryAssessment
+        {
+            Title = $"Recover {snapshot.Definition.Workspace.Name}",
+            Summary = "Recovery validates generated files, repairs Docker compose state, and refreshes runtime readiness without deleting user work.",
+            Findings = findings,
+            ConfirmationMessage = "Run workspace recovery now?",
+        };
+    }
+
+    public async Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Recover", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Recovering workspace runtime...");
+            await _workspaceOrchestrator.RecoverAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(snapshot, "Recover", "Repaired workspace runtime and validated generated files.", true, cancellationToken);
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' runtime was repaired.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Recover");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Attach", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Preparing attach...");
+            append(OperationTranscriptLineKind.Status, "Validating runtime...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            await _workspaceOrchestrator.AttachAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(snapshot, "Attach", "Opened workspace attach session.", true, cancellationToken);
+            append(OperationTranscriptLineKind.Status, "Launching terminal...");
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Attach launched for '{snapshot.Definition.Workspace.Name}'.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Attach");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
 
     public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
@@ -156,7 +353,7 @@ public sealed class DesktopShellService : IDesktopShellService
         return _workspaceRepository.SaveAsync(record, cancellationToken);
     }
 
-    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken)
+    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision")
     {
         var failureRecord = new WorkspaceRecord
         {
@@ -173,7 +370,7 @@ public sealed class DesktopShellService : IDesktopShellService
             LastOpenedUtc = record.LastOpenedUtc,
             LastPreparedUtc = record.LastPreparedUtc,
             OracleSoftwareNoticeShown = record.OracleSoftwareNoticeShown,
-            LastOperationName = "Reprovision",
+            LastOperationName = operationName,
             LastOperationResult = errorMessage,
             LastOperationSucceeded = false,
             LastOperationUtc = DateTimeOffset.UtcNow,
@@ -237,4 +434,24 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
+    private static OperationTranscript CreateTranscript(string operationName, string? workspaceName, string rootPath, IOperationLogSink? logSink, out Action<OperationTranscriptLineKind, string> append, out Action<CommandLogEntry>? log)
+    {
+        var transcript = new OperationTranscript
+        {
+            OperationName = operationName,
+            WorkspaceName = workspaceName ?? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+            StartedUtc = DateTimeOffset.UtcNow,
+        };
+
+        Action<OperationTranscriptLineKind, string> appender = (kind, text) =>
+        {
+            var line = new OperationTranscriptLine { Kind = kind, Text = text };
+            transcript.Lines.Add(line);
+            logSink?.Append(line);
+        };
+
+        append = appender;
+        log = entry => appender(MapLineKind(entry), entry.Message);
+        return transcript;
+    }
 }

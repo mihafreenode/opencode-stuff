@@ -34,7 +34,9 @@ public sealed class AvaloniaAppBootstrapper
         var containerRuntime = new DockerContainerRuntime(dockerService);
         var platformDetector = new PlatformDetector(processRunner);
         var runtimeResolver = new RuntimeResolver();
-        var terminalLauncher = new PreviewTerminalLauncher();
+        ITerminalLauncher terminalLauncher = OperatingSystem.IsWindows()
+            ? new WindowsTerminalLauncher(new AttachCommandBuilder())
+            : new PreviewTerminalLauncher();
         var orchestrator = new WorkspaceOrchestrator(
             yamlService,
             new WorkspaceDiscoveryService(),

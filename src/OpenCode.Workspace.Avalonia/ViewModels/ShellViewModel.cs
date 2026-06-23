@@ -100,7 +100,8 @@ public sealed class ShellViewModel : ObservableObject
         AppBuildInfo appBuildInfo,
         string languageCode)
     {
-        var workspacesPage = new WorkspacesPageViewModel(desktopShellService);
+        var templates = templateCatalogShellService.LoadTemplates();
+        var workspacesPage = new WorkspacesPageViewModel(desktopShellService, templates);
         var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopShellService.LoadWorkspaceReferences(), () => workspacesPage.WorkspaceLoadReport);
         var shell = new ShellViewModel(
             workspacesPage,
@@ -126,6 +127,11 @@ public sealed class ShellViewModel : ObservableObject
     public void SetClipboardService(IClipboardService clipboardService)
     {
         _workspacesPage.SetClipboardService(clipboardService);
+    }
+
+    public void SetInteractionService(IWorkspaceInteractionService interactionService)
+    {
+        _workspacesPage.SetInteractionService(interactionService);
     }
 
     private NavigationItemViewModel CreateNavigationItem(PageViewModel page)

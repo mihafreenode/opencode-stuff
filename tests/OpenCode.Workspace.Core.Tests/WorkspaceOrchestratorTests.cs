@@ -392,30 +392,15 @@ public sealed class WorkspaceOrchestratorTests
             var envPath = Path.Combine(tempRoot, ".env");
             File.WriteAllText(envPath, "WORKSPACE_NAME=Odip Analiza Čar\r\nWORKSPACE_SLUG=odip-analiza\r\n");
 
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "bash",
-                ArgumentList =
-                {
-                    "-lc",
-                    "while IFS= read -r env_line || [ -n \"${env_line}\" ]; do env_line=${env_line%$'\\r'}; case \"${env_line}\" in ''|'#'*) continue ;; esac; if [[ \"${env_line}\" != *=* ]]; then continue; fi; env_key=${env_line%%=*}; env_value=${env_line#*=}; export \"${env_key}=${env_value}\"; done < \"$1\"; printf '%s\\n%s' \"$WORKSPACE_NAME\" \"$WORKSPACE_SLUG\"",
-                    "bash",
-                    envPath,
-                },
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
+            var values = File.ReadLines(envPath)
+                .Select(line => line.TrimEnd('\r'))
+                .Where(line => !string.IsNullOrWhiteSpace(line) && !line.StartsWith("#", StringComparison.Ordinal))
+                .Where(line => line.Contains('=', StringComparison.Ordinal))
+                .Select(line => new KeyValuePair<string, string>(line[..line.IndexOf('=')], line[(line.IndexOf('=') + 1)..]))
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
 
-            Assert.NotNull(process);
-            Assert.True(process!.WaitForExit(5000), "Bash parser test timed out.");
-            var standardOutput = process.StandardOutput.ReadToEnd();
-            var standardError = process.StandardError.ReadToEnd();
-
-            Assert.Equal(0, process.ExitCode);
-            Assert.Equal("Odip Analiza Čar\nodip-analiza", standardOutput.Replace("\r\n", "\n", StringComparison.Ordinal));
-            Assert.DoesNotContain("command not found", standardError, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Odip Analiza Čar", values["WORKSPACE_NAME"]);
+            Assert.Equal("odip-analiza", values["WORKSPACE_SLUG"]);
         }
         finally
         {

@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.OpenExistingRepositoryWindow"
+        Width="720"
+        Height="520"
+        MinWidth="620"
+        MinHeight="420"
+        Title="Open Existing Repository"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Open Existing Repository" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="Inspect a Git checkout, review its workspace configuration, and import it into the workspace list." TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Spacing="12">
+      <StackPanel Spacing="4">
+        <TextBlock Text="Repository folder" FontWeight="SemiBold" />
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <TextBox x:Name="RepositoryPathTextBox" />
+          <Button Grid.Column="1" Content="Browse" Click="BrowseRepositoryFolder" />
+          <Button Grid.Column="2" Content="Inspect" Click="InspectRepository" />
+        </Grid>
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock Text="Workspace name" FontWeight="SemiBold" />
+        <TextBox x:Name="WorkspaceNameTextBox" />
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock Text="Branch mode" FontWeight="SemiBold" />
+        <ComboBox x:Name="BranchModeComboBox" />
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock Text="Named branch (optional)" FontWeight="SemiBold" />
+        <TextBox x:Name="NamedBranchTextBox" />
+      </StackPanel>
+      <CheckBox x:Name="ReuseExistingBranchCheckBox" Content="Reuse existing named branch if it already exists" />
+      <Border BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="12">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Repository inspection" FontWeight="SemiBold" />
+          <TextBlock x:Name="InspectionSummaryTextBlock" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <TextBlock x:Name="ValidationMessageTextBlock" Foreground="#B42318" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
+      <Button Grid.Column="2" Content="Import" Classes="accent" Click="ImportClicked" />
+    </Grid>
+  </Grid>
+</Window>
