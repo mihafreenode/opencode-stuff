@@ -26,6 +26,7 @@ public sealed class ComposeGenerator
         builder.AppendLine("services:");
         builder.AppendLine("  workspace:");
         builder.AppendLine($"    image: {workspace.Definition.Workspace.Image}");
+        AppendPlatform(builder, runtimeMetadata);
         builder.AppendLine($"    container_name: {slug}-workspace");
         builder.AppendLine("    tty: true");
         builder.AppendLine("    stdin_open: true");
@@ -51,6 +52,7 @@ public sealed class ComposeGenerator
         {
             builder.AppendLine($"  {service.Id}:");
             builder.AppendLine($"    image: {service.Image}");
+            AppendPlatform(builder, runtimeMetadata);
 
             if (service.Profiles.Count > 0)
             {
@@ -186,6 +188,17 @@ public sealed class ComposeGenerator
 
     private static string ResolveDependsOnCondition(string? condition)
         => string.IsNullOrWhiteSpace(condition) ? "service_started" : condition.Trim();
+
+    private static void AppendPlatform(StringBuilder builder, GeneratedArtifactRuntimeMetadata? runtimeMetadata)
+    {
+        if (string.IsNullOrWhiteSpace(runtimeMetadata?.TargetPlatform)
+            || string.Equals(runtimeMetadata.TargetPlatform, "unresolved", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        builder.AppendLine($"    platform: {runtimeMetadata.TargetPlatform}");
+    }
 
     private static string EscapeYamlDoubleQuoted(string value)
         => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);

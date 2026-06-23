@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Core.Models;
 
@@ -7,6 +8,7 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 public sealed class DiagnosticsPageViewModel : PageViewModel
 {
     private readonly IDiagnosticsShellService _diagnosticsShellService;
+    private readonly Func<WorkspaceLoadReport> _workspaceLoadReportProvider;
     private WorkspaceReference? _selectedWorkspaceTarget;
     private string _statusMessage;
     private DiagnosticItemViewModel? _selectedDoctorItem;
@@ -14,11 +16,13 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     private string _latestDoctorSummary = "Doctor has not been run yet.";
     private string _latestValidationSummary = "No platform validation has been run yet.";
     private string _latestValidationContext = string.Empty;
+    private string _latestWorkspaceLoadSummary = "Workspace loading has not completed yet.";
 
-    public DiagnosticsPageViewModel(IDiagnosticsShellService diagnosticsShellService, IEnumerable<WorkspaceReference> workspaceTargets)
+    public DiagnosticsPageViewModel(IDiagnosticsShellService diagnosticsShellService, IEnumerable<WorkspaceReference> workspaceTargets, Func<WorkspaceLoadReport>? workspaceLoadReportProvider = null)
         : base("Diagnostics", "Checklist-style host and workspace diagnostics.")
     {
         _diagnosticsShellService = diagnosticsShellService;
+        _workspaceLoadReportProvider = workspaceLoadReportProvider ?? (() => new WorkspaceLoadReport());
         _statusMessage = "Choose a workspace target and run a doctor or validation command.";
         WorkspaceTargets = new ObservableCollection<WorkspaceReference>(workspaceTargets);
         _selectedWorkspaceTarget = WorkspaceTargets.FirstOrDefault();
@@ -53,6 +57,12 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     {
         get => _latestValidationContext;
         private set => SetProperty(ref _latestValidationContext, value);
+    }
+
+    public string LatestWorkspaceLoadSummary
+    {
+        get => _latestWorkspaceLoadSummary;
+        private set => SetProperty(ref _latestWorkspaceLoadSummary, value);
     }
 
     public WorkspaceReference? SelectedWorkspaceTarget
@@ -105,6 +115,7 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
     public async Task RunDoctorAsync()
     {
+        RefreshWorkspaceLoadSummary();
         if (SelectedWorkspaceTarget is null)
         {
             return;
@@ -130,6 +141,7 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
     public async Task ValidateAsync(string targetPlatform)
     {
+        RefreshWorkspaceLoadSummary();
         if (SelectedWorkspaceTarget is null)
         {
             return;
@@ -196,6 +208,26 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Validate linux/amd64", "Validate direct or fallback amd64 runtime readiness.", SelectedWorkspaceTarget is not null, string.Empty, ValidateAmd64Command));
         DetailActions.Add(new ActionItemViewModel("Validate linux/arm64", "Validate ARM64 build and execution readiness.", SelectedWorkspaceTarget is not null, string.Empty, ValidateArm64Command));
     }
+
+    public void RefreshWorkspaceLoadSummary()
+    {
+        var report = _workspaceLoadReportProvider();
+        if (report.RawRecordCount == 0 && report.TotalDuration == TimeSpan.Zero)
+        {
+            LatestWorkspaceLoadSummary = "Workspace loading has not completed yet.";
+            return;
+        }
+
+        var slowest = report.SlowestTiming;
+        LatestWorkspaceLoadSummary = slowest is null
+            ? $"Last workspace load: {report.RawRecordCount} workspaces in {FormatDuration(report.TotalDuration)}."
+            : $"Last workspace load: {report.RawRecordCount} workspaces in {FormatDuration(report.TotalDuration)}. Slowest stage: {slowest.StageLabel} for {slowest.WorkspaceName} in {FormatDuration(slowest.Duration)}.";
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+        => duration.TotalMilliseconds >= 1000
+            ? $"{duration.TotalSeconds:F1} s"
+            : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
 
     private static string ToStatus(bool success, bool warning = false)
         => warning ? "Warning" : success ? "Pass" : "Fail";

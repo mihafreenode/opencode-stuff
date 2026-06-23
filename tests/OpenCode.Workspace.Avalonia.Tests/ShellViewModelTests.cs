@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
@@ -14,6 +15,46 @@ public sealed class ShellViewModelTests
         var shell = CreateShell();
 
         Assert.Equal("Workspaces", shell.CurrentPage.Title);
+    }
+
+    [Fact]
+    public void MainWindowHeader_UsesTrimmedBrandBannerMarkup()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
+        var project = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenCode.Workspace.Avalonia.csproj"));
+        var readme = File.ReadAllText(Path.Combine(repoRoot, "README.md"));
+        var brandingReadme = File.ReadAllText(Path.Combine(repoRoot, "branding", "README.md"));
+        var brandGuidelines = File.ReadAllText(Path.Combine(repoRoot, "branding", "BRAND_GUIDELINES.md"));
+        var headerImageStart = axaml.IndexOf("<Image Source=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png\"", StringComparison.Ordinal);
+        var headerImageEnd = axaml.IndexOf("/>", headerImageStart, StringComparison.Ordinal);
+        var headerImageMarkup = axaml.Substring(headerImageStart, headerImageEnd - headerImageStart);
+
+        Assert.Contains("Assets/opencode-stuff-satchel-icon.png", axaml, StringComparison.Ordinal);
+        Assert.Contains("Assets/opencode-stuff-header-brand-ui.png", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Icon=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assets/opencode-stuff-satchel-transparent.png", axaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Workspaces\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Runtime\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Status\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Height=\"112\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Stretch=\"Uniform\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("RenderOptions.BitmapInterpolationMode=\"HighQuality\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("BorderThickness", headerImageMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("BorderBrush", headerImageMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background", headerImageMarkup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Avalonia Preview", axaml, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-header-brand-ui.png", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assets\\opencode-stuff-header-brand.png", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("opencode-stuff-header-brand-trimmed.png", project, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-satchel-icon.png", project, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-header-brand-ui.png", readme, StringComparison.Ordinal);
+        Assert.Contains("ImageMagick trim", readme, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-header-brand-ui.png", brandingReadme, StringComparison.Ordinal);
+        Assert.Contains("ImageMagick trim", brandingReadme, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-header-brand-ui.png", brandGuidelines, StringComparison.Ordinal);
+        Assert.Contains("ImageMagick trim", brandGuidelines, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-satchel-icon.png", brandGuidelines, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,7 +93,7 @@ public sealed class ShellViewModelTests
 
         Assert.True(workspacesPage.IsLoading);
         Assert.False(workspacesPage.HasWorkspaces);
-        Assert.Equal("Loading workspaces...", workspacesPage.EmptyStateTitle);
+        Assert.Equal("Loading workspace index...", workspacesPage.EmptyStateTitle);
     }
 
     [Fact]
@@ -200,6 +241,81 @@ public sealed class ShellViewModelTests
         Assert.Equal(1, page.WorkspaceLoadReport.SnapshotCount);
         Assert.Equal(1, page.WorkspaceLoadReport.FailureCount);
         Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
+        Assert.NotEmpty(page.WorkspaceLoadReport.Timings);
+        Assert.True(page.WorkspaceLoadReport.TotalDuration > TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task ProgressiveLoading_UpdatesStatusAndAddsRowsBeforeCompletion()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshots = new[] { CreateSnapshot("alpha"), CreateSnapshot("beta") };
+        var service = new FakeDesktopShellService(snapshots)
+        {
+            LoadWorkspaceItemsAsyncFactory = async (_, progress, _) =>
+            {
+                progress?.Invoke(new WorkspaceLoadProgressUpdate
+                {
+                    Title = "Loading workspace index...",
+                    Message = "Found 2 workspaces. Workspace index loaded in 12 ms.",
+                    ProgressLabel = "Workspace 0 of 2",
+                    TotalWorkspaces = 2,
+                });
+                progress?.Invoke(new WorkspaceLoadProgressUpdate
+                {
+                    Title = "Loading alpha...",
+                    Message = "Checking repository status...",
+                    ProgressLabel = "Workspace 1 of 2",
+                    CurrentWorkspaceName = "alpha",
+                    CurrentWorkspaceIndex = 1,
+                    TotalWorkspaces = 2,
+                    LoadedItem = new WorkspaceShellItem { Record = snapshots[0].Record, Snapshot = snapshots[0] },
+                });
+                await release.Task;
+                return new WorkspaceLoadResult
+                {
+                    Items = snapshots.Select(item => new WorkspaceShellItem { Record = item.Record, Snapshot = item }).ToList(),
+                    Report = new WorkspaceLoadReport
+                    {
+                        IndexFilePath = WorkspaceAppDataPaths.GetWorkspaceIndexPath(),
+                        AppDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot(),
+                        StartedUtc = DateTimeOffset.UtcNow.AddSeconds(-1),
+                        CompletedUtc = DateTimeOffset.UtcNow,
+                        TotalDuration = TimeSpan.FromSeconds(1),
+                        RawRecordCount = 2,
+                        SnapshotAttemptCount = 2,
+                        SnapshotCount = 2,
+                        ItemsReturnedCount = 2,
+                        Timings =
+                        [
+                            new WorkspaceLoadTiming
+                            {
+                                StageKey = "git-status",
+                                StageLabel = "Repository status",
+                                WorkspaceName = "alpha",
+                                Duration = TimeSpan.FromMilliseconds(120),
+                                StartedUtc = DateTimeOffset.UtcNow.AddMilliseconds(-250),
+                                CompletedUtc = DateTimeOffset.UtcNow.AddMilliseconds(-130),
+                                Succeeded = true,
+                            },
+                        ],
+                    },
+                };
+            },
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        var loadTask = page.LoadAsync();
+
+        Assert.Equal("Loading alpha...", page.LoadingTitle);
+        Assert.Equal("Checking repository status...", page.LoadingMessage);
+        Assert.Equal("Workspace 1 of 2", page.LoadingProgressLabel);
+        Assert.Single(page.Workspaces);
+
+        release.SetResult();
+        await loadTask;
+
+        Assert.Equal(2, page.Workspaces.Count);
     }
 
     [Fact]
@@ -212,6 +328,34 @@ public sealed class ShellViewModelTests
         Assert.NotEmpty(page.DoctorItems);
         Assert.Contains(page.DoctorItems, item => item.Title == "Docker Engine");
         Assert.Equal("Workspace can run on this machine.", page.StatusMessage);
+    }
+
+    [Fact]
+    public void DiagnosticsPage_ReportsLatestWorkspaceLoadSummary()
+    {
+        var page = new DiagnosticsPageViewModel(
+            new FakeDiagnosticsShellService(),
+            [new WorkspaceReference("alpha", "/workspace/alpha")],
+            () => new WorkspaceLoadReport
+            {
+                RawRecordCount = 9,
+                TotalDuration = TimeSpan.FromSeconds(2.8),
+                Timings =
+                [
+                    new WorkspaceLoadTiming
+                    {
+                        StageLabel = "Repository status",
+                        WorkspaceName = "Odip Analiza",
+                        Duration = TimeSpan.FromSeconds(1.9),
+                    },
+                ],
+            });
+
+        page.RefreshWorkspaceLoadSummary();
+
+        Assert.Contains("9 workspaces", page.LatestWorkspaceLoadSummary, StringComparison.Ordinal);
+        Assert.Contains("2.8 s", page.LatestWorkspaceLoadSummary, StringComparison.Ordinal);
+        Assert.Contains("Odip Analiza", page.LatestWorkspaceLoadSummary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -305,7 +449,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task SuccessfulReprovision_RefreshesWorkspaceSnapshot()
     {
-        var original = CreateSnapshot("alpha", includeRuntimeState: false);
+        var original = CreateSnapshot("alpha", includeRuntimeState: false, lastOperationResult: "Workspace provisioning failed. Exit code: 127. /workspace/.env: line 17...", lastOperationSucceeded: false);
         var refreshed = CreateSnapshot("alpha", includeRuntimeState: true, updateRequired: false, lastOperationResult: "Workspace reprovisioned successfully.");
         var desktop = new FakeDesktopShellService([original])
         {
@@ -318,6 +462,142 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Loaded (linux/amd64)", page.SelectedWorkspace?.LocalRuntimeStateStatus);
         Assert.Equal("Workspace reprovisioned successfully.", page.ReprovisionStatusMessage);
+        Assert.Equal("Running", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Workspace reprovisioned successfully.", page.SelectedWorkspace?.LastActivity);
+    }
+
+    [Fact]
+    public async Task ReprovisionStart_ClearsPreviousFailureDisplayAndShowsInProgress()
+    {
+        var previousFailure = "Workspace provisioning failed. Exit code: 127. /workspace/.env: line 17: $'Analiza\\r': command not found";
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationResult: previousFailure, lastOperationSucceeded: false)])
+        {
+            ReprovisionResultFactoryAsync = async (_, sink, _) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Generating runtime files..." });
+                started.SetResult();
+                await release.Task;
+                return new WorkspaceReprovisionResult
+                {
+                    Snapshot = CreateSnapshot("alpha", lastOperationResult: "Workspace reprovisioned successfully.", lastOperationSucceeded: true),
+                    Succeeded = true,
+                    Message = "Workspace reprovisioned successfully.",
+                };
+            },
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        var reprovisionTask = page.ReprovisionWorkspaceCommand.ExecuteAsync();
+        await started.Task;
+
+        Assert.Equal("Reprovisioning", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Contains("Generating runtime files", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain("Analiza", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("Generating runtime files", page.DetailSummary, StringComparison.Ordinal);
+
+        release.SetResult();
+        await reprovisionTask;
+    }
+
+    [Fact]
+    public async Task WorkspaceRows_AppearImmediatelyWhileDetailsContinueLoading()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeDesktopShellService([])
+        {
+            LoadWorkspaceItemsAsyncFactory = async (_, progress, cancellationToken) =>
+            {
+                var alpha = CreateSnapshot("alpha");
+                var beta = CreateSnapshot("beta");
+                progress?.Invoke(new WorkspaceLoadProgressUpdate { Title = "Loading alpha...", Message = "Loading details in background.", ProgressLabel = "Workspace 1 of 2", LoadedItem = new WorkspaceShellItem { Record = alpha.Record, IsLoading = true, LoadingStatusMessage = "Checking workspace configuration..." } });
+                progress?.Invoke(new WorkspaceLoadProgressUpdate { Title = "Loading beta...", Message = "Loading details in background.", ProgressLabel = "Workspace 2 of 2", LoadedItem = new WorkspaceShellItem { Record = beta.Record, IsLoading = true, LoadingStatusMessage = "Checking Git status..." } });
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceLoadResult
+                {
+                    Items =
+                    [
+                        new WorkspaceShellItem { Record = alpha.Record, Snapshot = alpha },
+                        new WorkspaceShellItem { Record = beta.Record, Snapshot = beta },
+                    ],
+                    Report = new WorkspaceLoadReport { RawRecordCount = 2, SnapshotAttemptCount = 2, SnapshotCount = 2, ItemsReturnedCount = 2, Timings = [] },
+                };
+            },
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        var loadTask = page.LoadAsync();
+
+        Assert.Equal(2, page.Workspaces.Count);
+        Assert.All(page.Workspaces, item => Assert.Equal("Loading", item.RuntimeStatusLabel));
+        Assert.NotNull(page.SelectedWorkspace);
+
+        release.SetResult();
+        await loadTask;
+
+        Assert.All(page.Workspaces, item => Assert.False(item.IsLoading));
+    }
+
+    [Fact]
+    public async Task SelectedWorkspace_SurvivesRowReplacementAfterPlaceholderLoad()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var alpha = CreateSnapshot("alpha");
+        var service = new FakeDesktopShellService([])
+        {
+            LoadWorkspaceItemsAsyncFactory = async (_, progress, cancellationToken) =>
+            {
+                progress?.Invoke(new WorkspaceLoadProgressUpdate { Title = "Loading alpha...", Message = "Loading details in background.", ProgressLabel = "Workspace 1 of 1", LoadedItem = new WorkspaceShellItem { Record = alpha.Record, IsLoading = true, LoadingStatusMessage = "Checking workspace configuration..." } });
+                await release.Task.WaitAsync(cancellationToken);
+                progress?.Invoke(new WorkspaceLoadProgressUpdate { Title = "Loading alpha...", Message = "Snapshot loaded.", ProgressLabel = "Workspace 1 of 1", LoadedItem = new WorkspaceShellItem { Record = alpha.Record, Snapshot = alpha } });
+                return new WorkspaceLoadResult
+                {
+                    Items = [new WorkspaceShellItem { Record = alpha.Record, Snapshot = alpha }],
+                    Report = new WorkspaceLoadReport { RawRecordCount = 1, SnapshotAttemptCount = 1, SnapshotCount = 1, ItemsReturnedCount = 1, Timings = [] },
+                };
+            },
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        var loadTask = page.LoadAsync();
+        Assert.True(page.SelectedWorkspace?.IsLoading);
+
+        release.SetResult();
+        await loadTask;
+
+        Assert.NotNull(page.SelectedWorkspace);
+        Assert.False(page.SelectedWorkspace.IsLoading);
+        Assert.Equal(alpha.Paths.RootPath, page.SelectedWorkspace.RootPath);
+        Assert.Equal("alpha", page.SelectedWorkspace.Name);
+    }
+
+    [Fact]
+    public async Task Reprovision_ShowsImmediateLogEntriesBeforeServiceCompletes()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactoryAsync = async (_, _, cancellationToken) =>
+            {
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "done" };
+            },
+        });
+
+        await page.LoadAsync();
+        var reprovisionTask = page.ReprovisionWorkspaceCommand.ExecuteAsync();
+        await started.Task;
+
+        Assert.Contains("Starting reprovision for alpha", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Loading current workspace state", page.OperationLogText, StringComparison.Ordinal);
+
+        release.SetResult();
+        await reprovisionTask;
     }
 
     [Fact]
@@ -368,7 +648,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FailedReprovision_ShowsFailureState()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationResult: "Old failure", lastOperationSucceeded: false)])
         {
             ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
         };
@@ -378,6 +658,8 @@ public sealed class ShellViewModelTests
         await page.ReprovisionWorkspaceCommand.ExecuteAsync();
 
         Assert.Equal("Workspace reprovision failed. Exit code: 127. See Operation Log panel.", page.ReprovisionStatusMessage);
+        Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Workspace reprovision failed. Exit code: 127. See Operation Log panel.", page.SelectedWorkspace?.LastActivity);
         Assert.Contains(page.DetailItems, item => item.Label == "Failure");
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -496,7 +778,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public void MainWindow_OperationLogView_UsesWrappedLayoutWithoutHorizontalScroll()
     {
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var repoRoot = GetRepositoryRoot();
         var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
 
         Assert.Contains("DockPanel Grid.Row=\"1\" LastChildFill=\"True\"", axaml, StringComparison.Ordinal);
@@ -587,10 +869,15 @@ public sealed class ShellViewModelTests
             "en");
     }
 
+    private static string GetRepositoryRoot([CallerFilePath] string sourceFilePath = "")
+    {
+        return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
+    }
+
     private static AppBuildInfo CreateAppBuildInfo()
         => new("/tmp/app", "Debug", "1.0.0", "1.0.0-preview", "abcdef123456", DateTimeOffset.UtcNow.ToString("O"), "1.0.0", "workspace-yaml-v1");
 
-    private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true, bool updateRequired = false, string? lastOperationResult = null)
+    private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true, bool updateRequired = false, string? lastOperationResult = null, bool? lastOperationSucceeded = true)
     {
         var root = Path.Combine(Path.GetTempPath(), $"oc-avalonia-{name}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -610,7 +897,7 @@ public sealed class ShellViewModelTests
                 LastOpenedUtc = DateTimeOffset.UtcNow,
                 CreatedUtc = DateTimeOffset.UtcNow,
                 LastOperationResult = lastOperationResult ?? "Loaded workspace.",
-                LastOperationSucceeded = true,
+                LastOperationSucceeded = lastOperationSucceeded,
             },
             Definition = new WorkspaceDefinition
             {
@@ -677,7 +964,9 @@ public sealed class ShellViewModelTests
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
         private readonly IReadOnlyList<WorkspaceShellItem> _extraItems;
+        public Func<bool, Action<WorkspaceLoadProgressUpdate>?, CancellationToken, Task<WorkspaceLoadResult>>? LoadWorkspaceItemsAsyncFactory { get; init; }
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
+        public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Exception? ReprovisionException { get; init; }
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
@@ -686,28 +975,46 @@ public sealed class ShellViewModelTests
             _extraItems = extraItems ?? [];
         }
 
-        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceLoadResult
+        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
+            => LoadWorkspaceItemsAsyncFactory?.Invoke(includeRuntimeInspection, progress, cancellationToken) ?? Task.FromResult(BuildLoadResult());
+
+        private WorkspaceLoadResult BuildLoadResult()
+            => new()
             {
                 Items = _snapshots.Select(item => new WorkspaceShellItem { Record = item.Record, Snapshot = item }).Concat(_extraItems).ToList(),
                 Report = new WorkspaceLoadReport
                 {
                     IndexFilePath = WorkspaceAppDataPaths.GetWorkspaceIndexPath(),
                     AppDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot(),
+                    StartedUtc = DateTimeOffset.UtcNow.AddMilliseconds(-25),
+                    CompletedUtc = DateTimeOffset.UtcNow,
+                    TotalDuration = TimeSpan.FromMilliseconds(25),
                     RawRecordCount = _snapshots.Count + _extraItems.Count,
                     SnapshotAttemptCount = _snapshots.Count + _extraItems.Count,
                     SnapshotCount = _snapshots.Count,
                     Failures = _extraItems.Select(item => new WorkspaceLoadFailure(string.IsNullOrWhiteSpace(item.Record.Name) ? item.Record.RootPath : item.Record.Name, item.Record.RootPath, item.ErrorMessage)).ToList(),
                     ItemsReturnedCount = _snapshots.Count + _extraItems.Count,
+                    Timings =
+                    [
+                        new WorkspaceLoadTiming
+                        {
+                            StageKey = "workspace-index",
+                            StageLabel = "Workspace index",
+                            Duration = TimeSpan.FromMilliseconds(12),
+                            StartedUtc = DateTimeOffset.UtcNow.AddMilliseconds(-25),
+                            CompletedUtc = DateTimeOffset.UtcNow.AddMilliseconds(-13),
+                            Succeeded = true,
+                        },
+                    ],
                 },
-            });
+            };
 
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences()
             => _snapshots.Select(item => new WorkspaceReference(item.Definition.Workspace.Name, item.Paths.RootPath))
                 .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
                 .ToList();
 
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
             logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "Preparing workspace" });
             if (ReprovisionException is not null)
@@ -728,6 +1035,11 @@ public sealed class ShellViewModelTests
                     }
                 }
                 throw ReprovisionException;
+            }
+
+            if (ReprovisionResultFactoryAsync is not null)
+            {
+                return ReprovisionResultFactoryAsync(rootPath, logSink, cancellationToken);
             }
 
             var result = ReprovisionResultFactory?.Invoke(rootPath, logSink)
@@ -779,7 +1091,7 @@ public sealed class ShellViewModelTests
     {
         public int LoadCalls { get; private set; }
 
-        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
+        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
         {
             LoadCalls++;
             return Task.FromResult(new WorkspaceLoadResult());
@@ -788,19 +1100,19 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class ThrowingDesktopShellService : IDesktopShellService
     {
-        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
+        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Simulated workspace discovery failure.");
 
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
-        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 

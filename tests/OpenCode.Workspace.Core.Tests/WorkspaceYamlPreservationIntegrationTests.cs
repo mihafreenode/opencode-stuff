@@ -141,7 +141,7 @@ x-company:
     private static WorkspaceOrchestrator CreateOrchestrator(string appDataRoot)
     {
         var processRunner = new ProcessRunner();
-        var catalog = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var catalog = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(catalog.LoadFeatures(), catalog.LoadServices(), catalog.LoadCapabilities(), catalog.LoadKnowledgePacks());
         var ignorePolicy = new WorkspaceIgnorePolicyService();
         return new WorkspaceOrchestrator(

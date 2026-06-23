@@ -28,7 +28,7 @@ public sealed class OraclePortConflictHandlingTests
     [Fact]
     public void ComposeGenerator_UsesConfigurableOracleHostPortVariables()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var resolved = resolver.Resolve(new WorkspaceDefinition
         {
@@ -99,7 +99,7 @@ public sealed class OraclePortConflictHandlingTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var definition = new WorkspaceDefinition
             {

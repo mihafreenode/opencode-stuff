@@ -34,6 +34,8 @@ public sealed class WorkspaceOrchestrator
     private readonly IRuntimeResolver _runtimeResolver;
     private readonly ITerminalLauncher _terminalLauncher;
     private readonly OpenCodeSessionService _openCodeSessionService = new();
+    private readonly object _hostPlatformLock = new();
+    private Task<HostPlatformInfo>? _cachedHostPlatformDetectionTask;
 
     public WorkspaceOrchestrator(
         WorkspaceYamlService workspaceYamlService,
@@ -130,12 +132,14 @@ public sealed class WorkspaceOrchestrator
     public WorkspaceSnapshot LoadSnapshot(string rootPath)
         => Task.Run(() => LoadSnapshotAsync(rootPath)).GetAwaiter().GetResult();
 
-    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default, bool includeRuntimeInspection = true)
+    public async Task<WorkspaceSnapshot> LoadSnapshotAsync(string rootPath, CancellationToken cancellationToken = default, bool includeRuntimeInspection = true, Action<WorkspaceLoadTiming>? loadObserver = null, bool includeSessionInspection = true, Action<WorkspaceLoadStageProgress>? stageProgress = null)
     {
+        var workspaceName = string.Empty;
         var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
-        var configurationPath = ResolveConfigurationPath(rootPath, record?.ConfigurationPath);
-        var paths = WorkspacePathBuilder.Build(rootPath, configurationPath);
-        var definition = _workspaceYamlService.Read(paths.WorkspaceYamlPath);
+        var configurationPath = MeasureStage("configuration-path", "Configuration path", "Resolved workspace configuration path.", rootPath, workspaceName, () => ResolveConfigurationPath(rootPath, record?.ConfigurationPath), loadObserver, stageProgress);
+        var paths = MeasureStage("workspace-paths", "Workspace paths", "Built workspace path set.", rootPath, workspaceName, () => WorkspacePathBuilder.Build(rootPath, configurationPath), loadObserver, stageProgress);
+        var definition = MeasureStage("workspace-definition", "Workspace definition", "Loaded workspace definition.", rootPath, workspaceName, () => _workspaceYamlService.Read(paths.WorkspaceYamlPath), loadObserver, stageProgress);
+        workspaceName = definition.Workspace.Name;
         record ??= new WorkspaceRecord
             {
                 Name = definition.Workspace.Name,
@@ -146,16 +150,18 @@ public sealed class WorkspaceOrchestrator
                 LastOpenedUtc = DateTimeOffset.UtcNow,
             };
 
-        var generatedArtifacts = GenerateArtifacts(definition, paths);
-        var appliedState = _workspaceAppliedStateService.Read(paths.AppliedStatePath);
-        var localRuntimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
-        var updateRequired = IsUpdateRequired(paths, generatedArtifacts, appliedState);
-        var latestCheckpoint = _workspaceCheckpointService.GetLatest(paths.CheckpointIndexPath);
-        var lastSuccessfulPublishUtc = _workspaceTimelineService.GetLastPublishUtc(paths.TimelinePath);
-        var gitState = await _workspaceProvider.GetGitStateAsync(paths, definition, cancellationToken);
-        var ignorePolicyReview = _workspaceIgnorePolicyService.ReviewWorkspace(paths.RootPath);
-        var safety = _workspaceSafetyService.Build(gitState, latestCheckpoint, lastSuccessfulPublishUtc, ignorePolicyReview);
-        var resolvedRuntimePlan = await TryResolveRuntimePlanAsync(definition, cancellationToken);
+        var generatedArtifacts = MeasureStage("generated-artifacts", "Generated artifacts", "Generated managed runtime artifacts for comparison.", rootPath, workspaceName, () => GenerateArtifacts(definition, paths), loadObserver, stageProgress);
+        var appliedState = MeasureStage("applied-state", "Applied state", "Loaded applied runtime state record.", rootPath, workspaceName, () => _workspaceAppliedStateService.Read(paths.AppliedStatePath), loadObserver, stageProgress);
+        var localRuntimeState = MeasureStage("local-runtime-state", "Runtime state", "Loaded local runtime state file.", rootPath, workspaceName, () => _workspaceRuntimeStateService.Read(paths.RuntimeStatePath), loadObserver, stageProgress);
+        var updateRequired = MeasureStage("update-required", "Update check", "Compared desired and applied runtime state.", rootPath, workspaceName, () => IsUpdateRequired(paths, generatedArtifacts, appliedState), loadObserver, stageProgress);
+        var latestCheckpoint = MeasureStage("checkpoint-index", "Checkpoint index", "Loaded latest checkpoint state.", rootPath, workspaceName, () => _workspaceCheckpointService.GetLatest(paths.CheckpointIndexPath), loadObserver, stageProgress);
+        var lastSuccessfulPublishUtc = MeasureStage("timeline-history", "Timeline history", "Loaded timeline publish history.", rootPath, workspaceName, () => _workspaceTimelineService.GetLastPublishUtc(paths.TimelinePath), loadObserver, stageProgress);
+        var gitState = await MeasureStageAsync("git-status", "Repository status", "Loaded workspace repository state.", rootPath, workspaceName, () => _workspaceProvider.GetGitStateAsync(paths, definition, cancellationToken), loadObserver, stageProgress);
+        var ignorePolicyReview = MeasureStage("ignore-policy", "Ignore policy", "Reviewed tracked, ignored, and uncertain workspace content.", rootPath, workspaceName, () => gitState.ChangedPaths.Count == 0
+            ? _workspaceIgnorePolicyService.ReviewPaths(paths.RootPath, Array.Empty<string>())
+            : _workspaceIgnorePolicyService.ReviewChangedPaths(paths.RootPath, gitState.ChangedPaths), loadObserver, stageProgress);
+        var safety = MeasureStage("safety-summary", "Safety summary", "Built safety summary from Git and workspace signals.", rootPath, workspaceName, () => _workspaceSafetyService.Build(gitState, latestCheckpoint, lastSuccessfulPublishUtc, ignorePolicyReview), loadObserver, stageProgress);
+        var resolvedRuntimePlan = await MeasureStageAsync("runtime-plan", "Runtime plan", "Resolved runtime plan for the current host.", rootPath, workspaceName, () => TryResolveRuntimePlanAsync(definition, cancellationToken), loadObserver, stageProgress);
 
         var snapshot = new WorkspaceSnapshot
         {
@@ -200,9 +206,11 @@ public sealed class WorkspaceOrchestrator
             };
         }
 
-        var runtimeState = await GetRuntimeStateAsync(snapshot, cancellationToken);
+        var runtimeState = await MeasureStageAsync("runtime-inspection", "Runtime inspection", "Inspected current runtime state.", rootPath, workspaceName, () => GetRuntimeStateAsync(snapshot, cancellationToken), loadObserver, stageProgress);
         var sessionState = runtimeState == WorkspaceRuntimeState.Running
-            ? await GetSessionStateAsync(definition, cancellationToken)
+            ? includeSessionInspection
+                ? await MeasureStageAsync("session-inspection", "Session inspection", "Inspected OpenCode session state.", rootPath, workspaceName, () => GetSessionStateAsync(definition, cancellationToken), loadObserver, stageProgress)
+                : WorkspaceSessionState.Unknown
             : WorkspaceSessionState.NotRunning;
         return new WorkspaceSnapshot
         {
@@ -222,6 +230,115 @@ public sealed class WorkspaceOrchestrator
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
         };
+    }
+
+    private static void MeasureStage(string stageKey, string stageLabel, string details, string rootPath, string workspaceName, Action action, Action<WorkspaceLoadTiming>? loadObserver, Action<WorkspaceLoadStageProgress>? stageProgress)
+    {
+        MeasureStage<object?>(stageKey, stageLabel, details, rootPath, workspaceName, () =>
+        {
+            action();
+            return null;
+        }, loadObserver, stageProgress);
+    }
+
+    private static T MeasureStage<T>(string stageKey, string stageLabel, string details, string rootPath, string workspaceName, Func<T> action, Action<WorkspaceLoadTiming>? loadObserver, Action<WorkspaceLoadStageProgress>? stageProgress)
+    {
+        var startedUtc = DateTimeOffset.UtcNow;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        stageProgress?.Invoke(new WorkspaceLoadStageProgress
+        {
+            StageKey = stageKey,
+            StageLabel = stageLabel,
+            WorkspaceName = workspaceName,
+            RootPath = rootPath,
+            Details = details,
+        });
+        try
+        {
+            var result = action();
+            stopwatch.Stop();
+            loadObserver?.Invoke(new WorkspaceLoadTiming
+            {
+                StageKey = stageKey,
+                StageLabel = stageLabel,
+                WorkspaceName = workspaceName,
+                RootPath = rootPath,
+                Details = details,
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc + stopwatch.Elapsed,
+                Duration = stopwatch.Elapsed,
+                Succeeded = true,
+            });
+            return result;
+        }
+        catch (Exception exception)
+        {
+            stopwatch.Stop();
+            loadObserver?.Invoke(new WorkspaceLoadTiming
+            {
+                StageKey = stageKey,
+                StageLabel = stageLabel,
+                WorkspaceName = workspaceName,
+                RootPath = rootPath,
+                Details = details,
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc + stopwatch.Elapsed,
+                Duration = stopwatch.Elapsed,
+                Succeeded = false,
+                FailureMessage = exception.Message,
+            });
+            throw;
+        }
+    }
+
+    private static async Task<T> MeasureStageAsync<T>(string stageKey, string stageLabel, string details, string rootPath, string workspaceName, Func<Task<T>> action, Action<WorkspaceLoadTiming>? loadObserver, Action<WorkspaceLoadStageProgress>? stageProgress)
+    {
+        var startedUtc = DateTimeOffset.UtcNow;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        stageProgress?.Invoke(new WorkspaceLoadStageProgress
+        {
+            StageKey = stageKey,
+            StageLabel = stageLabel,
+            WorkspaceName = workspaceName,
+            RootPath = rootPath,
+            Details = details,
+        });
+        try
+        {
+            var result = await action();
+            stopwatch.Stop();
+            loadObserver?.Invoke(new WorkspaceLoadTiming
+            {
+                StageKey = stageKey,
+                StageLabel = stageLabel,
+                WorkspaceName = workspaceName,
+                RootPath = rootPath,
+                Details = details,
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc + stopwatch.Elapsed,
+                Duration = stopwatch.Elapsed,
+                Succeeded = true,
+            });
+            return result;
+        }
+        catch (Exception exception)
+        {
+            stopwatch.Stop();
+            loadObserver?.Invoke(new WorkspaceLoadTiming
+            {
+                StageKey = stageKey,
+                StageLabel = stageLabel,
+                WorkspaceName = workspaceName,
+                RootPath = rootPath,
+                Details = details,
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc + stopwatch.Elapsed,
+                Duration = stopwatch.Elapsed,
+                Succeeded = false,
+                FailureMessage = exception.Message,
+            });
+            throw;
+        }
     }
 
     public WorkspaceSnapshot CreateWorkspace(string rootPath, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null)
@@ -726,9 +843,9 @@ public sealed class WorkspaceOrchestrator
         _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts));
     }
 
-    private GeneratedWorkspaceArtifacts WriteGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition)
+    private GeneratedWorkspaceArtifacts WriteGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
-        var generatedArtifacts = GenerateArtifacts(definition, paths);
+        var generatedArtifacts = GenerateArtifacts(definition, paths, runtimeMetadata);
 
         _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
         File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
@@ -803,14 +920,15 @@ public sealed class WorkspaceOrchestrator
         return result.ComposeWasUpdated;
     }
 
-    private Task<GeneratedFilesUpdateResult> EnsureManagedGeneratedFilesCurrentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    private async Task<GeneratedFilesUpdateResult> EnsureManagedGeneratedFilesCurrentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var previousCompose = File.Exists(paths.ComposePath)
             ? File.ReadAllText(paths.ComposePath)
             : null;
-        var generatedArtifacts = WriteGeneratedFiles(paths, definition);
+        var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
+        var generatedArtifacts = WriteGeneratedFiles(paths, definition, runtimeMetadata);
         var composeWasUpdated = !string.Equals(previousCompose, generatedArtifacts.ComposeYaml, StringComparison.Ordinal);
 
         if (composeWasUpdated)
@@ -820,7 +938,7 @@ public sealed class WorkspaceOrchestrator
             Log(log, "app", "Regenerated stale compose.yaml before Docker operation.");
         }
 
-        return Task.FromResult(new GeneratedFilesUpdateResult(generatedArtifacts, composeWasUpdated));
+        return new GeneratedFilesUpdateResult(generatedArtifacts, composeWasUpdated);
     }
 
     private static void EnsureGeneratedScriptPermissions(string fullPath)
@@ -848,13 +966,17 @@ public sealed class WorkspaceOrchestrator
         }
     }
 
-    private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths)
+    private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadataOverride = null)
     {
         var resolved = _workspaceResolver.Resolve(definition);
-        var runtimeState = _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath);
-        var runtimeMetadata = runtimeState.Status == WorkspaceRuntimeStateReadStatus.Loaded
-            ? GeneratedArtifactRuntimeMetadataBuilder.Create(runtimeState.State)
-            : GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        var runtimeMetadata = runtimeMetadataOverride;
+        if (runtimeMetadata is null)
+        {
+            var runtimeState = _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath);
+            runtimeMetadata = runtimeState.Status == WorkspaceRuntimeStateReadStatus.Loaded
+                ? GeneratedArtifactRuntimeMetadataBuilder.Create(runtimeState.State)
+                : GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        }
         var workspaceYaml = _workspaceYamlService.Write(definition);
         var composeYaml = _composeGenerator.Generate(resolved, paths, runtimeMetadata);
         var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata);
@@ -899,6 +1021,20 @@ public sealed class WorkspaceOrchestrator
             AdditionalFiles = additionalFiles,
             AdditionalBinaryFiles = additionalBinaryFiles,
         };
+    }
+
+    private async Task<GeneratedArtifactRuntimeMetadata> ResolveRuntimeMetadataForGenerationAsync(WorkspaceDefinition definition, WorkspacePaths paths, CancellationToken cancellationToken)
+    {
+        var runtimeState = _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath);
+        if (runtimeState.Status == WorkspaceRuntimeStateReadStatus.Loaded)
+        {
+            return GeneratedArtifactRuntimeMetadataBuilder.Create(runtimeState.State);
+        }
+
+        var resolvedRuntimePlan = await TryResolveRuntimePlanAsync(definition, cancellationToken);
+        return resolvedRuntimePlan is null
+            ? GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null)
+            : GeneratedArtifactRuntimeMetadataBuilder.Create(resolvedRuntimePlan);
     }
 
     private static bool IsUpdateRequired(WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, WorkspaceAppliedState? appliedState)
@@ -1173,7 +1309,9 @@ public sealed class WorkspaceOrchestrator
     {
         try
         {
-            var result = await _containerRuntime.ListOpenCodeSessionsAsync(definition, cancellationToken: cancellationToken);
+            using var sessionListTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            sessionListTimeout.CancelAfter(TimeSpan.FromSeconds(3));
+            var result = await _containerRuntime.ListOpenCodeSessionsAsync(definition, cancellationToken: sessionListTimeout.Token);
             if (!result.IsSuccess)
             {
                 return WorkspaceSessionState.Unknown;
@@ -1185,7 +1323,9 @@ public sealed class WorkspaceOrchestrator
                 {
                     try
                     {
-                        var export = await _containerRuntime.ExportOpenCodeSessionAsync(definition, session, cancellationToken: cancellationToken);
+                        using var exportTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        exportTimeout.CancelAfter(TimeSpan.FromSeconds(1));
+                        var export = await _containerRuntime.ExportOpenCodeSessionAsync(definition, session, cancellationToken: exportTimeout.Token);
                         return _openCodeSessionService.TryGetSessionDirectory(export.StandardOutput);
                     }
                     catch
@@ -1209,7 +1349,7 @@ public sealed class WorkspaceOrchestrator
     {
         try
         {
-            var hostPlatform = await _platformDetector.DetectAsync(cancellationToken);
+            var hostPlatform = await GetCachedHostPlatformAsync(cancellationToken);
             return await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
         }
         catch
@@ -1220,7 +1360,7 @@ public sealed class WorkspaceOrchestrator
 
     private async Task WriteRuntimeStateAsync(WorkspaceDefinition definition, WorkspacePaths paths, CancellationToken cancellationToken)
     {
-        var hostPlatform = await _platformDetector.DetectAsync(cancellationToken);
+        var hostPlatform = await GetCachedHostPlatformAsync(cancellationToken);
         var resolvedRuntimePlan = await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
         if (!resolvedRuntimePlan.IsAvailable)
         {
@@ -1229,6 +1369,17 @@ public sealed class WorkspaceOrchestrator
 
         var runtimeState = _workspaceRuntimeStateService.CreateState(resolvedRuntimePlan, DateTimeOffset.UtcNow);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
+    }
+
+    private Task<HostPlatformInfo> GetCachedHostPlatformAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_hostPlatformLock)
+        {
+            _cachedHostPlatformDetectionTask ??= _platformDetector.DetectAsync(CancellationToken.None);
+            return _cachedHostPlatformDetectionTask;
+        }
     }
 
     private static void EnsureSuccess(ProcessResult result, string failureMessage)

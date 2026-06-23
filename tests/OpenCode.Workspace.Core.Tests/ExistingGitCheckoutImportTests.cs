@@ -478,7 +478,7 @@ customSection:
     private static WorkspaceOrchestrator CreateOrchestrator(string appDataRoot)
     {
         var processRunner = new ProcessRunner();
-        var catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var catalogProvider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities(), catalogProvider.LoadKnowledgePacks());
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),

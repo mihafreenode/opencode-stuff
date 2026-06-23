@@ -111,6 +111,7 @@ public sealed class WorkspaceGitState
     public bool IsSafeWorkingCopy { get; init; }
     public bool IsWorkspaceBranch { get; init; }
     public List<string> ConflictingFiles { get; init; } = new();
+    public List<string> ChangedPaths { get; init; } = new();
 }
 
 public enum WorkspaceContentDisposition

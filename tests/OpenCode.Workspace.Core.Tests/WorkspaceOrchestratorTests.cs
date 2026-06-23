@@ -277,7 +277,7 @@ public sealed class WorkspaceOrchestratorTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
             var definition = new TemplateExpander().Expand("education-demo", template);
             var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
@@ -939,6 +939,35 @@ public sealed class WorkspaceOrchestratorTests
 
             Assert.Null(loaded.LocalRuntimeState);
             Assert.Equal(created.Definition.Workspace.Name, loaded.Definition.Workspace.Name);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task LoadSnapshotAsync_WhenSessionInspectionTimesOut_ReturnsUnknownSessionState()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime
+            {
+                ListOpenCodeSessionsAsyncFactory = async cancellationToken =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    return Success("docker exec opencode session list");
+                },
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
+
+            var snapshot = await orchestrator.LoadSnapshotAsync(tempRoot, includeSessionInspection: true);
+
+            Assert.Equal(WorkspaceRuntimeState.Running, snapshot.RuntimeState);
+            Assert.Equal(WorkspaceSessionState.Unknown, snapshot.Session.State);
         }
         finally
         {
@@ -1741,6 +1770,10 @@ public sealed class WorkspaceOrchestratorTests
 
         public Func<ProcessResult>? ToolValidationResultFactory { get; init; }
 
+        public Func<CancellationToken, Task<ProcessResult>>? ListOpenCodeSessionsAsyncFactory { get; init; }
+
+        public Func<string, CancellationToken, Task<ProcessResult>>? ExportOpenCodeSessionAsyncFactory { get; init; }
+
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
 
         public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => DockerService.CreatePermissionRepairArguments(workspaceRootPath);
@@ -1835,10 +1868,14 @@ public sealed class WorkspaceOrchestratorTests
         }
 
         public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker exec opencode session list"));
+            => ListOpenCodeSessionsAsyncFactory is not null
+                ? ListOpenCodeSessionsAsyncFactory(cancellationToken)
+                : Task.FromResult(Success("docker exec opencode session list"));
 
         public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker exec opencode session export"));
+            => ExportOpenCodeSessionAsyncFactory is not null
+                ? ExportOpenCodeSessionAsyncFactory(sessionId, cancellationToken)
+                : Task.FromResult(Success("docker exec opencode session export"));
     }
 
     private static ProcessResult Success(string command, string standardOutput = "")

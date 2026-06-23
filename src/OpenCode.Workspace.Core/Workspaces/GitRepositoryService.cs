@@ -58,8 +58,18 @@ public sealed class GitRepositoryService
 
         var uncommittedCount = 0;
         var untrackedCount = 0;
-        foreach (var line in statusResult.StandardOutputLines.Select(item => item.Trim()).Where(item => !string.IsNullOrWhiteSpace(item)))
+        var changedPaths = new List<string>();
+        foreach (var line in statusResult.StandardOutputLines.Select(item => item.TrimEnd()).Where(item => !string.IsNullOrWhiteSpace(item)))
         {
+            if (line.Length >= 4)
+            {
+                var path = line[3..].Trim();
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    changedPaths.Add(path.Contains(" -> ", StringComparison.Ordinal) ? path[(path.LastIndexOf(" -> ", StringComparison.Ordinal) + 4)..] : path);
+                }
+            }
+
             if (line.StartsWith("??", StringComparison.Ordinal))
             {
                 untrackedCount++;
@@ -113,6 +123,7 @@ public sealed class GitRepositoryService
             IsSafeWorkingCopy = isSafeWorkingCopy,
             IsWorkspaceBranch = isWorkspaceBranch,
             ConflictingFiles = conflictingFiles,
+            ChangedPaths = changedPaths,
         };
     }
 
@@ -292,6 +303,7 @@ public sealed record GitRepositoryInspection(
     bool IsProtectedBranch = false,
     bool IsSafeWorkingCopy = false,
     bool IsWorkspaceBranch = false,
-    List<string>? ConflictingFiles = null);
+    List<string>? ConflictingFiles = null,
+    List<string>? ChangedPaths = null);
 
 public sealed record GitBranchValidationResult(bool IsValid, string Message, bool BranchExists);

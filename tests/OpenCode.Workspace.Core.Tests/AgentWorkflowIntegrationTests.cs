@@ -9,7 +9,7 @@ public sealed class AgentWorkflowIntegrationTests
     [Fact]
     public void AgentWorkflowPath_RoundTripsSkillAndMcpSelectionsThroughCatalogResolution()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var yaml = new WorkspaceYamlService();
         var resolver = new AgentProfileResolver();
 

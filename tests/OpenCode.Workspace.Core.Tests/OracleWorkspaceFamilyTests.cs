@@ -9,7 +9,7 @@ public sealed class OracleWorkspaceFamilyTests
     [Fact]
     public void Detect_TemplateKind_ReturnsExpectedOracleWorkspaceKinds()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var templates = provider.LoadTemplates();
 
         Assert.Equal(OracleWorkspaceKind.PlSql, OracleWorkspaceFamily.Detect(templates.Single(item => item.Id == "oracle-plsql-demo")));

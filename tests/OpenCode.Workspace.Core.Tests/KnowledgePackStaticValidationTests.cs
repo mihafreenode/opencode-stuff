@@ -49,7 +49,7 @@ public sealed class KnowledgePackStaticValidationTests
     [Fact]
     public void KnowledgePackCatalog_LoadsUniqueIdsAndValidSources()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var packs = provider.LoadKnowledgePacks();
         var allowedSourceCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -163,7 +163,7 @@ public sealed class KnowledgePackStaticValidationTests
 
     private static IReadOnlyDictionary<string, string> GenerateWorkspaceFiles(params string[] features)
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var definition = new WorkspaceDefinition
         {

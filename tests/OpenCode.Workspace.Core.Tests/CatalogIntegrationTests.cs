@@ -8,7 +8,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void BuiltInCatalog_LoadsAndValidatesBuiltInManifests()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var validator = new CatalogValidator();
 
         var features = provider.LoadFeatures();
@@ -32,7 +32,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void TemplateExpander_CreatesPortableWorkspaceDefinition()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var template = provider.LoadTemplates().Single(item => item.Id == "data-processing");
         var expander = new TemplateExpander();
 
@@ -49,7 +49,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void TemplateExpander_CarriesTemplateSkillsAndMcpSelections()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var template = provider.LoadTemplates().Single(item => item.Id == "oracle-apexlang-demo");
         var expander = new TemplateExpander();
 
@@ -64,7 +64,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void WorkspaceResolver_DeduplicatesDependenciesAndAlwaysEnablesCore()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
 
         var resolved = resolver.Resolve(new OpenCode.Workspace.Core.Models.WorkspaceDefinition
@@ -90,7 +90,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void OracleFeature_DoesNotHardcodeLibaioInCatalogPackageList()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var oracleFeature = provider.LoadFeatures().Single(feature => feature.Id == "oracle-demo");
 
         Assert.DoesNotContain("libaio1", oracleFeature.Dependencies.Apt, StringComparer.OrdinalIgnoreCase);
@@ -101,7 +101,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void OracleCatalog_ContainsPlSqlApexAndApexLangTemplates()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var templates = provider.LoadTemplates();
 
         Assert.Contains(templates, template => template.Id == "education-stem-demo");
@@ -113,7 +113,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void FeatureMetadata_AndKnowledgePacks_LoadForAnalyticsPublishingAndOracle()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var features = provider.LoadFeatures();
         var knowledgePacks = provider.LoadKnowledgePacks();
 
@@ -140,7 +140,7 @@ public sealed class CatalogIntegrationTests
     [Fact]
     public void EducationStemDemoTemplate_ExpandsToFeaturedLearningWorkspace()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
         var expander = new TemplateExpander();
 

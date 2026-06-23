@@ -12,6 +12,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string _emptyStateTitle = string.Empty;
     private string _emptyStateMessage = string.Empty;
     private WorkspaceLoadReport _workspaceLoadReport = new();
+    private string _loadingTitle = string.Empty;
+    private string _loadingMessage = string.Empty;
+    private string _loadingProgressLabel = string.Empty;
     private bool _isLoading;
     private bool _hasLoadError;
     private string _loadErrorMessage = string.Empty;
@@ -131,6 +134,24 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool ShowLoadingState => IsLoading;
     public bool ShowErrorState => HasLoadError && !HasWorkspaces;
     public bool ShowOperationLogPanel => HasOperationLog && IsOperationLogVisible;
+    public string LoadingTitle
+    {
+        get => _loadingTitle;
+        private set => SetProperty(ref _loadingTitle, value);
+    }
+
+    public string LoadingMessage
+    {
+        get => _loadingMessage;
+        private set => SetProperty(ref _loadingMessage, value);
+    }
+
+    public string LoadingProgressLabel
+    {
+        get => _loadingProgressLabel;
+        private set => SetProperty(ref _loadingProgressLabel, value);
+    }
+
     public WorkspaceLoadReport WorkspaceLoadReport
     {
         get => _workspaceLoadReport;
@@ -170,15 +191,26 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         Workspaces.Clear();
         try
         {
-            var loadResult = await _desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, cancellationToken);
+            var loadResult = await _desktopShellService.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, progress: update =>
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                {
+                    ApplyLoadProgressUpdate(update);
+                }
+                else
+                {
+                    Dispatcher.UIThread.Post(() => ApplyLoadProgressUpdate(update));
+                }
+            }, cancellationToken);
             WorkspaceLoadReport = loadResult.Report;
             foreach (var item in loadResult.Items.OrderBy(item => string.IsNullOrWhiteSpace(item.Record.Name) ? item.Record.RootPath : item.Record.Name, StringComparer.OrdinalIgnoreCase))
             {
-                Workspaces.Add(new WorkspaceSummaryViewModel(item));
+                ApplyWorkspaceItem(new WorkspaceSummaryViewModel(item));
             }
 
             HasLoadError = false;
             LoadErrorMessage = string.Empty;
+            DetailSummary = BuildCompletedLoadSummary(loadResult.Report);
         }
         catch (Exception exception)
         {
@@ -208,7 +240,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (!HasLoadError)
         {
-            SelectedWorkspace = Workspaces.FirstOrDefault();
+            if (SelectedWorkspace is null)
+            {
+                SelectedWorkspace = Workspaces.FirstOrDefault();
+            }
+            else
+            {
+                UpdateDetailPanel();
+            }
         }
         if (SelectedWorkspace is null)
         {
@@ -237,19 +276,79 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         EmptyStateMessage = string.Empty;
     }
 
+    private void ApplyLoadProgressUpdate(WorkspaceLoadProgressUpdate update)
+    {
+        LoadingTitle = update.Title;
+        LoadingMessage = update.Message;
+        LoadingProgressLabel = update.ProgressLabel;
+        EmptyStateTitle = update.Title;
+        EmptyStateMessage = update.Message;
+        DetailSummary = string.IsNullOrWhiteSpace(update.ProgressLabel)
+            ? update.Message
+            : $"{update.ProgressLabel}. {update.Message}";
+
+        if (update.LoadedItem is not null)
+        {
+            ApplyWorkspaceItem(new WorkspaceSummaryViewModel(update.LoadedItem));
+        }
+    }
+
+    private void ApplyWorkspaceItem(WorkspaceSummaryViewModel summary)
+    {
+        var existingIndex = Workspaces
+            .Select((item, index) => new { item, index })
+            .FirstOrDefault(pair => string.Equals(pair.item.RootPath, summary.RootPath, StringComparison.OrdinalIgnoreCase));
+
+        if (existingIndex is null)
+        {
+            Workspaces.Add(summary);
+            RaisePropertyChanged(nameof(HasWorkspaces));
+            if (SelectedWorkspace is null)
+            {
+                SelectedWorkspace = summary;
+            }
+
+            return;
+        }
+
+        var wasSelected = ReferenceEquals(SelectedWorkspace, existingIndex.item)
+            || string.Equals(SelectedWorkspace?.RootPath, summary.RootPath, StringComparison.OrdinalIgnoreCase);
+        Workspaces[existingIndex.index] = summary;
+        if (wasSelected)
+        {
+            SelectedWorkspace = summary;
+        }
+    }
+
     private void SetLoadingState()
     {
         IsLoading = true;
         HasLoadError = false;
         LoadErrorMessage = string.Empty;
-        EmptyStateTitle = "Loading workspaces...";
-        EmptyStateMessage = "Reading the shared workspace index and snapshot state.";
+        LoadingTitle = "Loading workspace index...";
+        LoadingMessage = "Reading the shared workspace index.";
+        LoadingProgressLabel = string.Empty;
+        EmptyStateTitle = LoadingTitle;
+        EmptyStateMessage = LoadingMessage;
         DetailTitle = "Workspaces";
-        DetailSummary = "Loading workspace index and snapshot state.";
+        DetailSummary = "Loading workspace index and startup diagnostics.";
         RaisePropertyChanged(nameof(ShowLoadingState));
         RaisePropertyChanged(nameof(ShowErrorState));
         RaisePropertyChanged(nameof(ShowEmptyState));
     }
+
+    private static string BuildCompletedLoadSummary(WorkspaceLoadReport report)
+    {
+        var loadedSummary = $"Loaded {report.SnapshotCount} of {report.RawRecordCount} workspaces in {FormatDuration(report.TotalDuration)}.";
+        return report.SlowestTiming is null
+            ? loadedSummary
+            : $"{loadedSummary} Slowest stage: {report.SlowestTiming.StageLabel} for {report.SlowestTiming.WorkspaceName} in {FormatDuration(report.SlowestTiming.Duration)}.";
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+        => duration.TotalMilliseconds >= 1000
+            ? $"{duration.TotalSeconds:F1} s"
+            : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
 
     private async Task OpenSelectedWorkspaceAsync()
     {
@@ -281,12 +380,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         try
         {
             IsReprovisioning = true;
-            ReprovisionStatusMessage = "Preparing workspace";
+            ReprovisionStatusMessage = "Starting reprovision...";
             StartOperationTranscript("Reprovision", SelectedWorkspace.Name);
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = $"Starting reprovision for {SelectedWorkspace.Name}..." });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Loading current workspace state..." });
+            SelectedWorkspace.SetReprovisioningState("Reprovisioning workspace... Generating runtime files...");
             UpdateDetailPanel();
 
             var result = await _desktopShellService.ReprovisionWorkspaceAsync(
                 SelectedWorkspace.RootPath,
+                SelectedWorkspace.Snapshot,
                 new OperationTranscriptSink(this));
 
             ReplaceSelectedWorkspace(result.Snapshot);
@@ -296,10 +399,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            var selectedWorkspaceRootPath = SelectedWorkspace?.RootPath ?? string.Empty;
             ReprovisionStatusMessage = GetActionableReprovisionFailure(exception.Message);
+            SelectedWorkspace?.SetOperationFailureState(ReprovisionStatusMessage);
             DetailSummary = ReprovisionStatusMessage;
             DetailItems.Clear();
-            DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
+            DetailItems.Add(new DetailItemViewModel("Root path", selectedWorkspaceRootPath));
             DetailItems.Add(new DetailItemViewModel("Failure", ReprovisionStatusMessage));
             DetailActions.Clear();
             DetailActions.Add(new ActionItemViewModel("Reprovision", "Retry workspace regeneration and runtime provisioning.", CanReprovisionSelectedWorkspace(), string.Empty, ReprovisionWorkspaceCommand));
@@ -466,6 +571,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return "Runtime state is missing. Reprovision will regenerate local runtime state.";
         }
 
+        if (workspace.IsLoading)
+        {
+            return string.IsNullOrWhiteSpace(workspace.LastActivity) ? "Loading details..." : workspace.LastActivity;
+        }
+
         if (workspace.Snapshot?.UpdateRequired == true || workspace.Snapshot?.AppliedState is null)
         {
             return "Workspace files are out of date. Reprovision to regenerate runtime files.";
@@ -484,6 +594,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (workspace.Snapshot?.LocalRuntimeState is null)
         {
             return "Runtime state is missing. Reprovision will regenerate local runtime state.";
+        }
+
+        if (workspace.IsLoading)
+        {
+            return string.IsNullOrWhiteSpace(workspace.LastActivity) ? "Loading details..." : workspace.LastActivity;
         }
 
         if (workspace.Snapshot?.UpdateRequired == true || workspace.Snapshot?.AppliedState is null)
@@ -552,8 +667,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             void Apply()
             {
-                _owner.ReprovisionStatusMessage = line.Text;
-                _owner.DetailSummary = line.Text;
+                if (line.Kind is OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment)
+                {
+                    _owner.ReprovisionStatusMessage = line.Text;
+                    _owner.DetailSummary = line.Text;
+                    _owner.SelectedWorkspace?.SetReprovisioningState(line.Text);
+                }
                 _owner.AppendOperationTranscriptLine(line);
             }
 
@@ -563,7 +682,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 return;
             }
 
-            Dispatcher.UIThread.InvokeAsync(Apply).GetAwaiter().GetResult();
+            Dispatcher.UIThread.Post(Apply);
         }
     }
 }

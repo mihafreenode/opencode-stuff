@@ -440,7 +440,7 @@ public sealed class WorkspaceCapabilityCatalogTests
             AppDataRoot = Path.Combine(Root, ".appdata");
             Directory.CreateDirectory(Root);
             Directory.CreateDirectory(AppDataRoot);
-            _catalogProvider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            _catalogProvider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             Orchestrator = CreateOrchestrator();
         }
 

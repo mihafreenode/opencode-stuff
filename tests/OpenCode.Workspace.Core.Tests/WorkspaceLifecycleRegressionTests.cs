@@ -110,7 +110,7 @@ public sealed class WorkspaceLifecycleRegressionTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateCatalogResolver(provider);
             var orchestrator = CreateOrchestrator(root, resolver);
             var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
@@ -178,7 +178,7 @@ public sealed class WorkspaceLifecycleRegressionTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateCatalogResolver(provider);
             var orchestrator = CreateOrchestrator(root, resolver);
             var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
@@ -242,7 +242,7 @@ public sealed class WorkspaceLifecycleRegressionTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateCatalogResolver(provider);
             var orchestrator = CreateOrchestratorWithProviderAndDocker(root, resolver, new FakeWorkspaceProvider(), new DockerService(new ComposeOnlySuccessRunner()));
             var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
@@ -346,7 +346,7 @@ public sealed class WorkspaceLifecycleRegressionTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateCatalogResolver(provider);
             var orchestrator = CreateOrchestrator(root, resolver);
 
@@ -709,7 +709,7 @@ x-legacy:
     [Fact]
     public void EducationStemDemoGeneration_IsDeterministic_AndLeavesAnalyticsAndOraclePathsAvailable()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = CreateCatalogResolver(provider);
         var generator = new WorkspaceContentGenerator();
         var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
@@ -753,7 +753,7 @@ x-legacy:
 
     private static WorkspaceResolver CreateCatalogResolver(BuiltInCatalogProvider? provider = null)
     {
-        provider ??= new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        provider ??= new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         return new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
     }
 

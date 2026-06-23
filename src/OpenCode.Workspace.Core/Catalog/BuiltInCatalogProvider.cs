@@ -13,6 +13,8 @@ public sealed class BuiltInCatalogProvider
 {
     private readonly string _catalogRootPath;
     private readonly IDeserializer _deserializer;
+    private readonly Dictionary<string, object> _manifestCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _cacheLock = new();
 
     public BuiltInCatalogProvider(string catalogRootPath)
     {
@@ -33,16 +35,31 @@ public sealed class BuiltInCatalogProvider
 
     private IReadOnlyList<TManifest> LoadAll<TManifest>(string folderName)
     {
+        lock (_cacheLock)
+        {
+            if (_manifestCache.TryGetValue(folderName, out var cached))
+            {
+                return (IReadOnlyList<TManifest>)cached;
+            }
+        }
+
         var folderPath = Path.Combine(_catalogRootPath, folderName);
         if (!Directory.Exists(folderPath))
         {
             return Array.Empty<TManifest>();
         }
 
-        return Directory.GetFiles(folderPath, "*.yaml", SearchOption.TopDirectoryOnly)
+        var manifests = Directory.EnumerateFiles(folderPath, "*.yaml", SearchOption.TopDirectoryOnly)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .Select(ReadManifest<TManifest>)
             .ToList();
+
+        lock (_cacheLock)
+        {
+            _manifestCache[folderName] = manifests;
+        }
+
+        return manifests;
     }
 
     private TManifest ReadManifest<TManifest>(string filePath)

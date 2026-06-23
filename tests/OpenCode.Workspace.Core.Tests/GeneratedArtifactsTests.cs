@@ -671,6 +671,8 @@ public sealed class GeneratedArtifactsTests
             Assert.DoesNotContain("ORACLE_PASSWORD", header, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(Environment.UserName, header, StringComparison.OrdinalIgnoreCase);
         }
+
+        Assert.Contains("platform: linux/amd64", artifacts[0], StringComparison.Ordinal);
     }
 
     private static string ReadHeader(string content)

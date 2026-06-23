@@ -52,6 +52,8 @@ public sealed class ShellViewModel : ObservableObject
             CreateNavigationItem(documentationPage),
             CreateNavigationItem(settingsPage),
         ];
+
+        RefreshStatusBar();
     }
 
     public ObservableCollection<NavigationItemViewModel> NavigationItems { get; } = [];
@@ -70,6 +72,17 @@ public sealed class ShellViewModel : ObservableObject
 
     public string StatusBarBuild { get; }
     public WorkspaceLoadReport WorkspaceLoadReport => _workspacesPage.WorkspaceLoadReport;
+    public string HeaderWorkspaceCount => WorkspaceLoadReport.RawRecordCount.ToString();
+    public string HeaderRuntimeSummary => _workspacesPage.SelectedWorkspace is null || string.Equals(_workspacesPage.SelectedWorkspace.RuntimeTarget, "Unavailable", StringComparison.Ordinal)
+        ? "Unknown"
+        : _workspacesPage.SelectedWorkspace.RuntimeTarget;
+    public string HeaderStatusSummary => _workspacesPage.IsLoading
+        ? "Loading"
+        : _workspacesPage.IsReprovisioning
+            ? "Busy"
+            : _workspacesPage.HasLoadError || WorkspaceLoadReport.FailureCount > 0
+                ? "Issues"
+                : "Ready";
     public string StatusBarState => CurrentPage == _diagnosticsPage && !string.IsNullOrWhiteSpace(_diagnosticsPage.StatusMessage)
         ? $"Diagnostics: {_diagnosticsPage.StatusMessage}"
         : $"Current page: {CurrentPage.Title}";
@@ -88,7 +101,7 @@ public sealed class ShellViewModel : ObservableObject
         string languageCode)
     {
         var workspacesPage = new WorkspacesPageViewModel(desktopShellService);
-        var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopShellService.LoadWorkspaceReferences());
+        var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopShellService.LoadWorkspaceReferences(), () => workspacesPage.WorkspaceLoadReport);
         var shell = new ShellViewModel(
             workspacesPage,
             diagnosticsPage,
@@ -106,6 +119,7 @@ public sealed class ShellViewModel : ObservableObject
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _workspacesPage.LoadAsync(cancellationToken);
+        _diagnosticsPage.RefreshWorkspaceLoadSummary();
         RefreshStatusBar();
     }
 
@@ -128,10 +142,18 @@ public sealed class ShellViewModel : ObservableObject
 
     private void RefreshStatusBar()
     {
+        foreach (var item in NavigationItems)
+        {
+            item.IsSelected = ReferenceEquals(item.Page, CurrentPage);
+        }
+
         RaisePropertyChanged(nameof(StatusBarState));
         RaisePropertyChanged(nameof(StatusBarWorkspace));
         RaisePropertyChanged(nameof(StatusBarBranch));
         RaisePropertyChanged(nameof(StatusBarRuntime));
         RaisePropertyChanged(nameof(StatusBarProtection));
+        RaisePropertyChanged(nameof(HeaderWorkspaceCount));
+        RaisePropertyChanged(nameof(HeaderRuntimeSummary));
+        RaisePropertyChanged(nameof(HeaderStatusSummary));
     }
 }

@@ -1,6 +1,8 @@
 using OpenCode.Workspace.Cli;
 using OpenCode.Workspace.Core.Models;
 
+using System.Runtime.CompilerServices;
+
 namespace OpenCode.Workspace.Cli.Tests;
 
 public sealed class ExampleOutputSynchronizationTests
@@ -140,17 +142,30 @@ public sealed class ExampleOutputSynchronizationTests
         Assert.Equal(expected, actual.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n'));
     }
 
-    private static string RepoRoot()
+    private static string RepoRoot([CallerFilePath] string sourceFilePath = "")
     {
-        var current = AppContext.BaseDirectory;
-        while (!string.IsNullOrWhiteSpace(current))
+        var sourceRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
+        if (Directory.Exists(Path.Combine(sourceRoot, "docs"))
+            && Directory.Exists(Path.Combine(sourceRoot, "src"))
+            && File.Exists(Path.Combine(sourceRoot, "OpenCode.Workspace.Manager.slnx")))
         {
-            if (Directory.Exists(Path.Combine(current, "docs")) && Directory.Exists(Path.Combine(current, "src")))
-            {
-                return current;
-            }
+            return sourceRoot;
+        }
 
-            current = Path.GetDirectoryName(current);
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            var current = start;
+            while (!string.IsNullOrWhiteSpace(current))
+            {
+                if (Directory.Exists(Path.Combine(current, "docs"))
+                    && Directory.Exists(Path.Combine(current, "src"))
+                    && File.Exists(Path.Combine(current, "OpenCode.Workspace.Manager.slnx")))
+                {
+                    return current;
+                }
+
+                current = Path.GetDirectoryName(current);
+            }
         }
 
         throw new InvalidOperationException("Repository root not found.");

@@ -16,7 +16,7 @@ public sealed class OraclePlSqlTemplateRegressionTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
             var template = provider.LoadTemplates().Single(item => item.Id == "oracle-plsql-demo");
             var definition = new TemplateExpander().Expand("oracle-demo-workspace", template);

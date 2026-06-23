@@ -26,8 +26,8 @@ public sealed class DesktopShellService : IDesktopShellService
         _checkpointService = checkpointService;
     }
 
-    public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, CancellationToken cancellationToken = default)
-        => await _workspaceDiscoveryReportService.LoadWorkspaceItemsAsync(includeRuntimeInspection, cancellationToken);
+    public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
+        => await _workspaceDiscoveryReportService.LoadWorkspaceItemsAsync(includeRuntimeInspection, progress, cancellationToken);
 
     public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences()
         => _workspaceOrchestrator.LoadWorkspaceRecords()
@@ -38,14 +38,14 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => _checkpointService.LoadIndex(checkpointIndexPath);
 
-    public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
-        var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
-        var wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
+        var snapshot = currentSnapshot;
+        var wasRunning = snapshot?.RuntimeState == WorkspaceRuntimeState.Running;
         var transcript = new OperationTranscript
         {
             OperationName = "Reprovision",
-            WorkspaceName = snapshot.Definition.Workspace.Name,
+            WorkspaceName = snapshot?.Definition.Workspace.Name ?? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
             StartedUtc = DateTimeOffset.UtcNow,
         };
         Action<OperationTranscriptLineKind, string> append = (kind, text) =>
@@ -58,33 +58,37 @@ public sealed class DesktopShellService : IDesktopShellService
 
         try
         {
+            append(OperationTranscriptLineKind.Status, snapshot is null ? "Loading current workspace state..." : "Using current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
             append(OperationTranscriptLineKind.Comment, BuildReprovisionReason(snapshot));
-            append(OperationTranscriptLineKind.Status, "Preparing workspace");
-            if (wasRunning)
+            append(OperationTranscriptLineKind.Status, "Preparing workspace operation...");
+            if (wasRunning == true)
             {
+                append(OperationTranscriptLineKind.Status, "Stopping running workspace...");
                 await _workspaceOrchestrator.StopAsync(snapshot, log, cancellationToken);
-                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false);
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
             }
 
-            append(OperationTranscriptLineKind.Status, "Generating files");
-            append(OperationTranscriptLineKind.Status, "Provisioning runtime");
+            append(OperationTranscriptLineKind.Status, "Starting Docker provisioning...");
             await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
 
-            append(OperationTranscriptLineKind.Status, "Validating compose");
-            var validationSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false);
+            append(OperationTranscriptLineKind.Status, "Validating compose...");
+            var validationSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
             await _workspaceOrchestrator.RecoverAsync(validationSnapshot, log, cancellationToken);
 
-            var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
-            if (!wasRunning)
+            append(OperationTranscriptLineKind.Status, "Refreshing workspace snapshot...");
+            var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            if (wasRunning == false)
             {
                 await _workspaceOrchestrator.StopAsync(refreshed, log, cancellationToken);
-                refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
+                refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             }
 
             await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow);
             _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", "Regenerated runtime files and refreshed workspace state.");
-            refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true);
+            refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             append(OperationTranscriptLineKind.Result, "Completed");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
@@ -99,8 +103,11 @@ public sealed class DesktopShellService : IDesktopShellService
         }
         catch (Exception exception)
         {
-            await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken);
-            _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", exception.Message);
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken);
+                _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", exception.Message);
+            }
             AppendFailureTranscript(exception, append);
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = false;

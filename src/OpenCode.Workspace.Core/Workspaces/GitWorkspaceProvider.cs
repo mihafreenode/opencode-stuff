@@ -72,6 +72,7 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
             IsSafeWorkingCopy = inspection.IsSafeWorkingCopy,
             IsWorkspaceBranch = inspection.IsWorkspaceBranch,
             ConflictingFiles = inspection.ConflictingFiles ?? [],
+            ChangedPaths = inspection.ChangedPaths ?? [],
         };
     }
 

@@ -12,7 +12,7 @@ public sealed class OracleApexStaticValidationTests
     [Fact]
     public void CatalogTemplates_ResolveExpectedOracleIntegrity()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var templates = provider.LoadTemplates();
 
         var plsql = templates.Single(template => template.Id == "oracle-plsql-demo");
@@ -40,7 +40,7 @@ public sealed class OracleApexStaticValidationTests
     [Fact]
     public void OracleTemplates_EncodeApexlangExtendsApexSemantics()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var templates = provider.LoadTemplates();
 
         var plsql = templates.Single(template => template.Id == "oracle-plsql-demo");
@@ -184,7 +184,7 @@ public sealed class OracleApexStaticValidationTests
     [Fact]
     public void OracleProvisioningScript_ContainsApexStagesOnlyForApexVariants()
     {
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var expander = new TemplateExpander();
         var generator = new ProvisioningScriptGenerator();
@@ -293,7 +293,7 @@ public sealed class OracleApexStaticValidationTests
             Assert.True(File.Exists(path), $"Expected tool doc to exist: {path}");
         }
 
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         Assert.DoesNotContain(provider.LoadTemplates(), template => template.Id.Contains("reporting", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -407,7 +407,7 @@ public sealed class OracleApexStaticValidationTests
     {
         Assert.True(OracleTemplateTestHelpers.CanRunGit(), "Git is required for workspace persistence tests.");
         var tempRoot = OracleTemplateTestHelpers.CreateTempRoot($"{workspaceName}-root");
-        var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var template = provider.LoadTemplates().Single(item => item.Id == templateId);
         var definition = new TemplateExpander().Expand(workspaceName, template);

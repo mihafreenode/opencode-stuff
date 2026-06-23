@@ -38,7 +38,7 @@ public sealed class WorkspaceAutomationHardeningTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateResolver(provider);
             var orchestrator = CreateOrchestrator(root, resolver);
 
@@ -118,7 +118,7 @@ public sealed class WorkspaceAutomationHardeningTests
 
         try
         {
-            var provider = new BuiltInCatalogProvider(Path.Combine(TestPaths.RepositoryRoot, "catalog"));
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
             var resolver = CreateResolver(provider);
             var template = provider.LoadTemplates().Single(item => item.Id == "education-stem-demo");
             var definition = new TemplateExpander().Expand("education-demo", template);
