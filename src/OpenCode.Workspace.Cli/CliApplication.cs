@@ -243,7 +243,7 @@ public sealed class CliApplication
             new NullTerminalLauncher());
 
         var service = new WorkspaceDiscoveryReportService(orchestrator, repository);
-        var result = await service.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, cancellationToken);
+        var result = await service.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, progress: null, cancellationToken);
         return result.Report;
     }
 

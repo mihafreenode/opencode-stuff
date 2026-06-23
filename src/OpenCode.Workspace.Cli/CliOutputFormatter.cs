@@ -116,12 +116,30 @@ public static class CliOutputFormatter
             $"App data directory: {report.AppDataRoot}",
             $"Workspace index path: {report.IndexFilePath}",
             $"Index file exists: {report.IndexFileExists}",
+            $"Total discovery time: {FormatDuration(report.TotalDuration)}",
             $"Raw workspace record count: {report.RawRecordCount}",
             $"Snapshot attempts: {report.SnapshotAttemptCount}",
             $"Snapshot successes: {report.SnapshotCount}",
             $"Snapshot failures: {report.FailureCount}",
             $"Returned workspace item count: {report.ItemsReturnedCount}",
         };
+
+        if (report.SlowestTiming is not null)
+        {
+            lines.Add($"Slowest stage: {report.SlowestTiming.StageLabel} ({report.SlowestTiming.WorkspaceName}) in {FormatDuration(report.SlowestTiming.Duration)}");
+        }
+
+        if (report.Timings.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Stage timings:");
+            foreach (var timing in report.Timings.OrderByDescending(item => item.Duration).Take(8))
+            {
+                var scope = string.IsNullOrWhiteSpace(timing.WorkspaceName) ? timing.StageLabel : $"{timing.WorkspaceName} - {timing.StageLabel}";
+                var outcome = timing.Succeeded ? string.Empty : $" (failed: {timing.FailureMessage})";
+                lines.Add($"  {scope}: {FormatDuration(timing.Duration)}{outcome}");
+            }
+        }
 
         if (report.Failures.Count > 0)
         {
@@ -136,6 +154,11 @@ public static class CliOutputFormatter
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    private static string FormatDuration(TimeSpan duration)
+        => duration.TotalMilliseconds >= 1000
+            ? $"{duration.TotalSeconds:F1} s"
+            : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
 
     private static string FormatAvailability(bool? available)
         => available switch
