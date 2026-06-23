@@ -6,13 +6,16 @@ Branding asset roles:
 
 - `docs/images/opencode-stuff-satchel-transparent.png`: documentation and branding artwork for README, docs, onboarding, release notes, splash, and about surfaces
 - `docs/images/opencode-stuff-satchel-icon.png`: canonical application icon source for Avalonia, Windows, Linux, macOS, taskbar, dock, installer, package, and favicon assets
+- `docs/images/opencode-stuff-header-brand.png`: source header artwork
+- `docs/images/opencode-stuff-header-brand-ui.png`: UI-ready Avalonia header asset derived from the source with an ImageMagick trim step
 
 Generate icon sizes from `opencode-stuff-satchel-icon.png`. Do not redraw or reinterpret the icon for platform variants.
+Generate the Avalonia header asset from `opencode-stuff-header-brand.png` with the ImageMagick trim pipeline rather than manual redraws. The source PNG is opaque, so the pipeline removes the light matte, keys out the connected dark banner background, shaves the residual banner edge, and then performs the final trim.
 
 `opencode stuff` currently ships two desktop shells:
 
-- `OpenCode Workspace Manager`: the stable Windows WPF shell
-- `OpenCode Workspace Avalonia`: the new cross-platform preview shell for Windows, macOS, and Linux
+- `OpenCode Workspace Avalonia`: the primary Windows desktop application and the cross-platform shell for Windows, macOS, and Linux
+- `OpenCode Workspace Manager`: the legacy Windows WPF shell retained for fallback and maintenance-only use
 
 Both shells share the durable workspace and diagnostics core.
 
@@ -22,36 +25,57 @@ Current desktop split:
 
 - `src/OpenCode.Workspace.Core/`: shared workspace/runtime/domain logic
 - `src/OpenCode.Workspace.AppSupport/`: minimal shell-neutral app support
-- `src/OpenCode.Workspace.Manager/`: Windows WPF shell
-- `src/OpenCode.Workspace.Avalonia/`: cross-platform Avalonia shell preview
+- `src/OpenCode.Workspace.Manager/`: Windows WPF fallback shell
+- `src/OpenCode.Workspace.Avalonia/`: cross-platform Avalonia shell and primary Windows desktop path
 
-The Avalonia shell currently focuses on:
+The Avalonia shell now covers the full Level A Windows workflow set:
 
-- workspaces overview
-- diagnostics
-- templates
-- transcripts preview
-- save points preview
-- documentation links
-- settings and theme selection
+- Create Workspace
+- Open Existing Repository
+- Start Workspace
+- Recover Workspace
+- Attach Workspace
+- responsive workspace overview and background enrichment
+- diagnostics and validation
+- reprovision with immediate transcript feedback
+- templates, transcripts, documentation links, and settings
 
-Known preview limitations:
+The Avalonia shell also keeps the recent reliability and ownership guarantees:
 
-- no full attach parity yet
-- no full save point write UI yet
-- no remote SSH-backed target flows yet
+- placeholder-first, non-blocking discovery
+- background detail enrichment without list freezes
+- repository-owned `workspace.yaml` / `workspace.yml` preservation during import
+- shared Windows Terminal attach orchestration and diagnostics
+- immediate transcript feedback for long-running operations
+
+Remaining non-migrated workflows are now Level B work rather than primary-path blockers:
+
+- Save Point write flow
+- Timeline actions
+- Backup/export
+- Publish
+- advanced Git recovery
+- Oracle/demo workflows
 
 Unavailable actions are shown with explicit reason text instead of being hidden or faked.
 
+Use Avalonia as the default Windows desktop application. Use the WPF shell only if you need an advanced workflow that has not been migrated yet.
+
+## Desktop Status
+
+Avalonia is now the primary Windows workspace manager.
+
+WPF remains available as a fallback/maintenance shell until the remaining Level B workflows are migrated or retired.
+
 ## OpenCode Workspace Manager
 
-OpenCode Workspace Manager is a Windows WPF application for durable workspaces, repository onboarding, and reusable development environments with disposable runtimes, local recovery, and safe Git-based working flows.
+OpenCode Workspace Manager is the legacy Windows WPF application for durable workspaces, repository onboarding, and reusable development environments with disposable runtimes, local recovery, and safe Git-based working flows.
 
 <img src="docs/walkthrough/images/main-window.png" alt="OpenCode Workspace Manager main window" width="900" />
 
 *Current main window showing workspace status, branch safety information, recovery state, and workspace management tools.*
 
-OpenCode Workspace Manager lets you work with AI agents in isolated, reproducible workspaces without risking your main branch or development environment.
+OpenCode Workspace Manager still lets you work with AI agents in isolated, reproducible workspaces without risking your main branch or development environment, but it is no longer the recommended first desktop entry point on Windows.
 
 Import an existing Git checkout, create a temporary workspace branch, work safely, and recover progress using Save Points and Checkpoints.
 
@@ -61,7 +85,7 @@ It is a workspace manager first, not a Docker launcher and not a single-template
 
 Templates are a starting point, not the long-term source of truth.
 
-When a repository already contains workspace configuration, OpenCode Workspace Manager now loads that repository-owned configuration instead of starting from application defaults.
+When a repository already contains workspace configuration, the desktop shells load that repository-owned configuration instead of starting from application defaults.
 
 Supported repository configuration paths are:
 

@@ -1,30 +1,35 @@
 # Avalonia Shell
 
-The Avalonia shell is the first cross-platform desktop shell for `opencode stuff`.
+The Avalonia shell is the primary Windows desktop shell and the first cross-platform desktop shell for `opencode stuff`.
 
-It exists alongside the existing Windows WPF application.
+It exists alongside the legacy Windows WPF application.
 
 Current split:
 
 - `OpenCode.Workspace.Core`: workspace, runtime, generation, diagnostics, catalog, and recovery domain logic
 - `OpenCode.Workspace.AppSupport`: small portable shell support such as localization and build-info services
-- `OpenCode.Workspace.Manager`: Windows WPF shell and Windows-specific integration
-- `OpenCode.Workspace.Avalonia`: cross-platform desktop shell preview for Windows, macOS, and Linux
+- `OpenCode.Workspace.Manager`: Windows WPF fallback shell and Windows-specific integration
+- `OpenCode.Workspace.Avalonia`: cross-platform desktop shell and primary Windows desktop path for Windows, macOS, and Linux
 
 ## Goals
 
 - keep the durable workspace model in shared code
 - avoid turning the cross-platform shell into a web dashboard
-- preserve the current WPF product while the Avalonia shell grows
+- keep the shared durable-workspace model stable while WPF moves into fallback/maintenance mode
 - keep platform-specific terminal behavior behind explicit services
 
-## Phase 1 Scope
+## Level A Scope
 
 Implemented in the Avalonia shell:
 
 - desktop startup and shell composition
 - left navigation
 - workspaces overview
+- create workspace
+- open existing repository
+- start workspace
+- recover workspace
+- attach workspace
 - diagnostics screen backed by core doctor and validation services
 - templates screen
 - save points read-only preview
@@ -36,9 +41,7 @@ Implemented in the Avalonia shell:
 
 Not implemented in this phase:
 
-- full attach or Windows Terminal parity
 - full Save Point write flows
-- full recovery UI parity
 - remote SSH-backed targets
 - packaging work
 
@@ -77,9 +80,9 @@ The right-side panel is contextual and shows selected workspace details, diagnos
 
 Attach remains intentionally platform-aware.
 
-- WPF keeps the Windows Terminal handoff and attach integration
-- Avalonia preview does not pretend to provide full terminal parity
-- preview actions explain when the user should use WPF or CLI instead
+- Avalonia now uses the shared Windows Terminal handoff and attach integration on Windows
+- platform launch remains an explicit service boundary for Linux and macOS later
+- WPF remains fallback-only for non-Level-A workflows
 
 ## Validation
 
@@ -89,4 +92,4 @@ Portable validation for this phase focuses on:
 - view-model tests
 - shared core and CLI test suites
 
-Windows-host validation still remains the authoritative build/test path for the WPF shell.
+Windows-host validation still remains the authoritative build/test path for the primary Windows desktop experience.

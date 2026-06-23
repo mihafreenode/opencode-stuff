@@ -30,14 +30,14 @@ The product is now split into four projects:
 
 - `OpenCode.Workspace.Core`: portable domain and generation logic
 - `OpenCode.Workspace.AppSupport`: minimal framework-neutral shell support
-- `OpenCode.Workspace.Manager`: WPF shell plus Windows-only runtime behavior
-- `OpenCode.Workspace.Avalonia`: cross-platform desktop shell preview
+- `OpenCode.Workspace.Manager`: WPF fallback shell plus Windows-only runtime behavior
+- `OpenCode.Workspace.Avalonia`: cross-platform desktop shell and primary Windows desktop path
 
 This separation exists so the durable workspace logic stays portable while the shells remain free to evolve independently.
 
-The WPF shell remains the stable Windows implementation.
+The Avalonia shell is now the primary Windows implementation.
 
-The Avalonia shell is a preview cross-platform shell focused on workspace inspection, diagnostics, templates, and read-only activity flows.
+The WPF shell remains available only for fallback and maintenance while the remaining Level B workflows are migrated or retired.
 
 ## Canonical Vs Generated Artifacts
 

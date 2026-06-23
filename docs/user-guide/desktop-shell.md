@@ -2,32 +2,40 @@
 
 `opencode stuff` now has two desktop shells:
 
-- `OpenCode Workspace Manager`: the current Windows WPF shell
-- `OpenCode Workspace Avalonia`: the new cross-platform preview shell
+- `OpenCode Workspace Avalonia`: the primary Windows desktop shell and the cross-platform desktop shell
+- `OpenCode Workspace Manager`: the legacy Windows WPF fallback shell
 
 ## Current Recommendation
 
-Use the WPF shell on Windows when you need the full current workflow, especially attach and Windows-specific integration.
+Use the Avalonia shell on Windows as the default desktop application path.
 
-Use the Avalonia shell when you want a portable, inspectable desktop shell for:
+Use the WPF shell only when you still need an advanced workflow that has not yet been migrated.
+
+Avalonia now covers the full Level A workflow set as well as the portable desktop shell for:
 
 - browsing workspaces
 - checking diagnostics
 - reviewing templates
 - viewing recent timeline activity
 - reviewing save point and checkpoint history
+- creating a workspace
+- opening an existing repository
+- starting a workspace
+- recovering a workspace
+- attaching to a workspace session
 
-## Avalonia Preview Features
+## Avalonia Features
 
 - calm native desktop shell layout
 - left navigation
-- workspaces page
+- workspaces page with placeholder-first discovery and background enrichment
 - diagnostics page
 - templates page
 - transcripts preview
 - save points preview
 - documentation links
 - settings and theme selection
+- immediate transcript feedback for long-running workspace actions
 
 Theme modes:
 
@@ -35,17 +43,18 @@ Theme modes:
 - `Light`
 - `Dark`
 
-## Preview Limitations
+## Remaining Gaps
 
-Some actions are intentionally visible but disabled.
+The primary remaining Windows desktop work is now Level B rather than Level A parity:
 
-Examples:
+- Save Point write flow
+- timeline actions
+- backup/export
+- publish
+- advanced Git recovery
+- Oracle/demo workflows
 
-- `Attach`
-- `Recover`
-- `Save Point`
-
-The preview shell explains why those actions are unavailable instead of hiding them or faking behavior.
+Unavailable or unfinished actions should still explain why they are unavailable instead of being hidden or faked.
 
 ## Diagnostics
 

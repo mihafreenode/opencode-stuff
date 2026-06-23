@@ -2,14 +2,18 @@
 
 This guide is for first-time use.
 
+On Windows, Avalonia is now the primary desktop application path.
+
+Use the legacy WPF shell only if you need a still-unported advanced workflow.
+
 If WSL, Docker Desktop, SSH access, and Git credentials are already working, you should be able to create a workspace, open it, start the runtime, and begin working without extra setup.
 
 ## First 5 Minutes
 
 1. Open OpenCode Stuff.
-2. Create a workspace, or open an existing one.
-3. Open the workspace.
-4. Wait for the runtime to become ready.
+2. Create a workspace, or open an existing repository.
+3. Start the workspace.
+4. Attach to the workspace session.
 5. Start working in the terminal session.
 
 If anything blocks that flow, use [Troubleshooting](troubleshooting.md).
@@ -31,7 +35,7 @@ If you still need setup help, use [Windows Setup](windows-prerequisites.md), esp
 ## Create A Workspace
 
 1. Open OpenCode Stuff.
-2. Select `Create Workspace`.
+2. Select `Create Workspace` in the Avalonia Workspaces page.
 3. Enter a workspace name.
 4. Keep the suggested workspace folder unless you have a reason to change it.
 5. Choose the features or services you want.
@@ -44,18 +48,20 @@ The app will:
 - create the initial Save Point
 - prepare the runtime files
 
-If you already have a workspace folder, you can open it instead. The app will initialize local recovery for plain folders automatically.
+If you already have a workspace repository, use `Open Existing Repository`. Repository-owned `workspace.yaml` / `workspace.yml` stays canonical and is not rewritten during import.
 
-## Open The Workspace
+## Start And Attach
 
 1. Select the workspace in the list.
-2. Choose `Open Workspace`, or double-click the workspace.
+2. Choose `Start`.
+3. Wait for the runtime to become ready.
+4. Choose `Attach`.
 
 The app will:
 
 - start the runtime if needed
 - validate that it is ready
-- open the terminal session
+- open the terminal session through the shared Windows Terminal attach path
 
 ## Start Working
 
@@ -101,9 +107,9 @@ You do not need to understand Docker or Git internals to use these parts of the 
 
 Use these actions regularly:
 
-- `Create Save Point` to record local progress
-- `Create Checkpoint` when you want extra local recovery
-- `Publish` when you want off-machine backup
+- `Recover Workspace` if runtime-generated state needs repair
+- `Create Save Point` to record local progress once the Level B save workflow is migrated
+- `Publish` when you want off-machine backup once the Level B publish workflow is migrated
 
 You do not need to publish every change. Local-only workspaces are valid.
 
