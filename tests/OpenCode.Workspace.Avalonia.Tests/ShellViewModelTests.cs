@@ -793,6 +793,206 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PublishAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-publish-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            page.SetInteractionService(new FakeWorkspaceInteractionService());
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var publish = page.DetailActions.Single(item => item.Label == "Publish");
+            Assert.True(publish.IsEnabled);
+            Assert.Equal(string.Empty, publish.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PublishBlockedByDirtyWork_ShowsSavePointRequirement()
+    {
+        var assessment = new WorkspacePublishAssessment
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = "workspace/users/alpha",
+            Summary = "Uncommitted or untracked work is present. Create a Save Point before publishing.",
+            ConfirmationMessage = string.Empty,
+            Findings = ["Working tree changes: 1 changed, 2 untracked."],
+            Warnings = [],
+            CanPublish = false,
+            IsBlocked = true,
+            RequiresConfirmation = false,
+            RequiresSavePoint = true,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/workspace/users/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            PublishAssessment = assessment,
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync();
+
+        Assert.Contains("Preparing publish...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Create a Save Point before publishing", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains(page.DetailItems, item => item.Label == "Findings" && item.Value.Contains("1 changed, 2 untracked", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PublishCancellation_StopsBeforeExecution()
+    {
+        var assessment = new WorkspacePublishAssessment
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = "workspace/users/alpha",
+            Summary = "Ready to publish 1 commit(s) to 'origin/workspace/users/alpha'.",
+            ConfirmationMessage = "Publish this Working Copy now?",
+            Findings = ["Ahead/behind: 1/0"],
+            Warnings = [],
+            CanPublish = true,
+            IsBlocked = false,
+            RequiresConfirmation = true,
+            RequiresSavePoint = false,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/workspace/users/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            PublishAssessment = assessment,
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = false });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync();
+
+        Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Equal("Publish cancelled.", page.DetailSummary);
+        Assert.Equal(0, service.PublishCallCount);
+    }
+
+    [Fact]
+    public async Task PublishSuccess_ShowsRemoteSummary()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var assessment = new WorkspacePublishAssessment
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = snapshot.Safety.AdvancedGit.CurrentBranch,
+            Summary = "Ready to publish 1 commit(s) to 'origin/workspace/users/alpha'.",
+            ConfirmationMessage = "Publish this Working Copy now?",
+            Findings = ["Ahead/behind: 1/0"],
+            Warnings = ["This is the first publish for the current Working Copy."],
+            CanPublish = true,
+            IsBlocked = false,
+            RequiresConfirmation = true,
+            RequiresSavePoint = false,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/workspace/users/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
+        var service = new FakeDesktopShellService([snapshot])
+        {
+            PublishAssessment = assessment,
+            PublishResultFactoryAsync = (_, _, cancellationToken) => Task.FromResult(new WorkspacePublishResult
+            {
+                Snapshot = snapshot,
+                Message = "Working Copy published successfully.",
+                Transcript = new OperationTranscript(),
+                Review = new WorkspacePublishReview
+                {
+                    IsBlocked = false,
+                    Message = "Working Copy published successfully.",
+                    WorkingCopyName = snapshot.Safety.AdvancedGit.CurrentBranch,
+                    RemoteName = "origin",
+                    RemoteBranch = "origin/workspace/users/alpha",
+                    AheadCount = 0,
+                    BehindCount = 0,
+                    LatestCommitSha = "abc123",
+                },
+            }),
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = true });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Remote" && item.Value == "origin");
+        Assert.Contains(page.DetailItems, item => item.Label == "Tracking" && item.Value == "origin/workspace/users/alpha");
+        Assert.Contains(page.DetailItems, item => item.Label == "Latest commit" && item.Value == "abc123");
+        Assert.Equal(1, service.PublishCallCount);
+    }
+
+    [Fact]
+    public async Task PublishFailure_IsSurfacedInTranscript()
+    {
+        var assessment = new WorkspacePublishAssessment
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = "workspace/users/alpha",
+            Summary = "Ready to publish 1 commit(s) to 'origin/workspace/users/alpha'.",
+            ConfirmationMessage = "Publish this Working Copy now?",
+            Findings = ["Ahead/behind: 1/0"],
+            Warnings = [],
+            CanPublish = true,
+            IsBlocked = false,
+            RequiresConfirmation = true,
+            RequiresSavePoint = false,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/workspace/users/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            PublishAssessment = assessment,
+            PublishException = new InvalidOperationException("Authentication failed while publishing."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = true });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync());
+
+        Assert.Contains("Preparing publish...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Authentication failed while publishing.", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SavePointStart_EmitsImmediateTranscriptBeforeSaveCompletes()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1618,13 +1818,34 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
+        public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspacePublishResult>>? PublishResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceBackupResult>>? BackupResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
+        public WorkspacePublishAssessment PublishAssessment { get; set; } = new()
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = "users/test/alpha",
+            Summary = "Ready to publish 1 commit(s) to 'origin/users/test/alpha'.",
+            ConfirmationMessage = "Publish this Working Copy now?",
+            Findings = ["Ahead/behind: 1/0"],
+            Warnings = [],
+            CanPublish = true,
+            IsBlocked = false,
+            RequiresConfirmation = true,
+            RequiresSavePoint = false,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/users/test/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
+        public Exception? PublishException { get; init; }
         public Exception? BackupException { get; init; }
         public Exception? SavePointException { get; init; }
         public Exception? TimelineException { get; init; }
+        public int PublishCallCount { get; private set; }
         public int BackupCallCount { get; private set; }
         public int CreateSavePointCallCount { get; private set; }
         public string? LastSavePointMessage { get; private set; }
@@ -1702,6 +1923,42 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+
+        public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(PublishAssessment);
+
+        public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            PublishCallCount++;
+
+            if (PublishException is not null)
+            {
+                throw PublishException;
+            }
+
+            if (PublishResultFactoryAsync is not null)
+            {
+                return PublishResultFactoryAsync(rootPath, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspacePublishResult
+            {
+                Snapshot = currentSnapshot ?? CreateSnapshot("published"),
+                Message = "Working Copy published successfully.",
+                Transcript = new OperationTranscript(),
+                Review = new WorkspacePublishReview
+                {
+                    IsBlocked = false,
+                    Message = "Working Copy published successfully.",
+                    WorkingCopyName = currentSnapshot?.Safety.AdvancedGit.CurrentBranch ?? "users/test/published",
+                    RemoteName = "origin",
+                    RemoteBranch = "origin/users/test/published",
+                    AheadCount = 0,
+                    BehindCount = 0,
+                    LatestCommitSha = "head123",
+                },
+            });
+        }
 
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
@@ -1879,6 +2136,8 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -1891,6 +2150,7 @@ public sealed class ShellViewModelTests
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
         public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
+        public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
@@ -1901,6 +2161,9 @@ public sealed class ShellViewModelTests
 
         public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
             => Task.FromResult(BackupArchivePath);
+
+        public Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default)
+            => Task.FromResult(PublishConfirmed);
 
         public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(SavePointDraft);
@@ -1924,6 +2187,8 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.PublishConfirmationWindow"
+        Width="680"
+        Height="460"
+        MinWidth="620"
+        MinHeight="380"
+        Title="Publish Workspace"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock x:Name="TitleTextBlock" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock x:Name="SummaryTextBlock" TextWrapping="Wrap" />
+    </StackPanel>
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="12">
+        <Border BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="12">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Findings" FontWeight="SemiBold" />
+            <ItemsControl x:Name="FindingsItemsControl" />
+          </StackPanel>
+        </Border>
+        <Border x:Name="WarningsBorder" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="10" Padding="12">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Warnings" FontWeight="SemiBold" />
+            <ItemsControl x:Name="WarningsItemsControl" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock x:Name="ConfirmationTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
+      <Button Grid.Column="2" Classes="accent" Content="Publish" Click="ConfirmClicked" />
+    </Grid>
+  </Grid>
+</Window>

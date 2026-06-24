@@ -15,6 +15,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceCheckpointService _checkpointService;
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly WorkspaceBackupExportService _workspaceBackupExportService;
+    private readonly WorkspacePublishAssessmentService _workspacePublishAssessmentService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -22,7 +23,8 @@ public sealed class DesktopShellService : IDesktopShellService
         WorkspaceTimelineService timelineService,
         WorkspaceCheckpointService checkpointService,
         WorkspaceSavePointMessageService savePointMessageService,
-        WorkspaceBackupExportService workspaceBackupExportService)
+        WorkspaceBackupExportService workspaceBackupExportService,
+        WorkspacePublishAssessmentService workspacePublishAssessmentService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
@@ -31,6 +33,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _checkpointService = checkpointService;
         _savePointMessageService = savePointMessageService;
         _workspaceBackupExportService = workspaceBackupExportService;
+        _workspacePublishAssessmentService = workspacePublishAssessmentService;
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -133,6 +136,60 @@ public sealed class DesktopShellService : IDesktopShellService
             if (snapshot is not null)
             {
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Start");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
+        return await _workspacePublishAssessmentService.AssessAsync(snapshot, log, cancellationToken);
+    }
+
+    public async Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Publish", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Publishing Working Copy...");
+            var review = await _workspaceOrchestrator.PublishAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+
+            if (review.IsBlocked)
+            {
+                append(OperationTranscriptLineKind.StandardError, review.Message);
+                transcript.CompletedUtc = DateTimeOffset.UtcNow;
+                transcript.Succeeded = false;
+                throw new InvalidOperationException(review.Message);
+            }
+
+            await PersistWorkspaceRecordAsync(snapshot, "Publish", review.Message, true, cancellationToken);
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspacePublishResult
+            {
+                Snapshot = snapshot,
+                Message = review.Message,
+                Transcript = transcript,
+                Review = review,
+            };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Publish");
             }
 
             AppendFailureTranscript(exception, append);

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 
@@ -50,6 +51,13 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         });
 
         return file?.TryGetLocalPath();
+    }
+
+    public async Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new PublishConfirmationWindow(assessment);
+        return await window.ShowDialog<bool>(_owner);
     }
 
     public async Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)

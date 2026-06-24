@@ -199,6 +199,16 @@ public sealed class GitRepositoryService
         await RunGitAsync(repositoryRoot, ["remote", "add", "origin", remoteUrl.Trim()], log, cancellationToken);
     }
 
+    public async Task FetchAsync(string repositoryRoot, string remoteName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteName))
+        {
+            throw new ArgumentException("Remote name is required.", nameof(remoteName));
+        }
+
+        await RunGitAsync(repositoryRoot, ["fetch", remoteName], log, cancellationToken);
+    }
+
     public async Task<bool> IsRepositoryAsync(string repositoryRoot, CancellationToken cancellationToken = default)
     {
         var result = await TryRunGitAsync(repositoryRoot, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
