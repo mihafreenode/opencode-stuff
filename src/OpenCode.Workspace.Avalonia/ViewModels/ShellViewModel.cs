@@ -8,6 +8,7 @@ public sealed class ShellViewModel : ObservableObject
 {
     private PageViewModel _currentPage;
     private readonly WorkspacesPageViewModel _workspacesPage;
+    private readonly SavePointsPageViewModel _savePointsPage;
     private readonly DiagnosticsPageViewModel _diagnosticsPage;
     private readonly SettingsPageViewModel _settingsPage;
 
@@ -23,13 +24,21 @@ public sealed class ShellViewModel : ObservableObject
         AppBuildInfo appBuildInfo)
     {
         _workspacesPage = workspacesPage;
+        _savePointsPage = savePointsPage;
         _diagnosticsPage = diagnosticsPage;
         _settingsPage = settingsPage;
         _currentPage = workspacesPage;
         StatusBarBuild = $"{appBuildInfo.BuildConfiguration} {appBuildInfo.AssemblyVersion}";
 
         workspacesPage.ValidateWorkspaceAsync = ValidateWorkspaceFromOverviewAsync;
-        workspacesPage.PropertyChanged += (_, _) => RefreshStatusBar();
+        workspacesPage.PropertyChanged += (_, eventArgs) =>
+        {
+            RefreshStatusBar();
+            if (eventArgs.PropertyName == nameof(WorkspacesPageViewModel.SelectedWorkspace))
+            {
+                _ = _savePointsPage.RefreshAsync(workspacesPage.SelectedWorkspace);
+            }
+        };
         diagnosticsPage.PropertyChanged += (_, eventArgs) =>
         {
             if (eventArgs.PropertyName is nameof(DiagnosticsPageViewModel.StatusMessage)
@@ -120,6 +129,7 @@ public sealed class ShellViewModel : ObservableObject
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _workspacesPage.LoadAsync(cancellationToken);
+        await _savePointsPage.RefreshAsync(_workspacesPage.SelectedWorkspace, cancellationToken);
         _diagnosticsPage.RefreshWorkspaceLoadSummary();
         RefreshStatusBar();
     }
@@ -127,6 +137,7 @@ public sealed class ShellViewModel : ObservableObject
     public void SetClipboardService(IClipboardService clipboardService)
     {
         _workspacesPage.SetClipboardService(clipboardService);
+        _savePointsPage.SetClipboardService(clipboardService);
     }
 
     public void SetInteractionService(IWorkspaceInteractionService interactionService)

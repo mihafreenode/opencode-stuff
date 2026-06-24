@@ -79,13 +79,20 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
     public async Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => await CreateSavePointAsync(paths, definition, message, beforeCommitAsync: null, log, cancellationToken);
 
-    public async Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Func<CancellationToken, Task>? beforeCommitAsync, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    public async Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Func<PendingSavePointMetadata, CancellationToken, Task>? beforeCommitAsync, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         EnsureProviderType(definition);
         await ValidateSavePointContentAsync(paths.RootPath, cancellationToken);
         await RunGitAsync(paths.RootPath, ["add", "-A"], log, cancellationToken);
 
         var status = await TryRunGitAsync(paths.RootPath, ["status", "--porcelain"], cancellationToken);
+        var affectedPaths = status.StandardOutputLines
+            .Where(line => !string.IsNullOrWhiteSpace(line) && line.Length >= 4)
+            .Select(line => line[3..].Trim())
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => path.Contains(" -> ", StringComparison.Ordinal) ? path[(path.LastIndexOf(" -> ", StringComparison.Ordinal) + 4)..] : path)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         if (!status.StandardOutputLines.Any(line => !string.IsNullOrWhiteSpace(line)))
         {
             log?.Invoke(new CommandLogEntry { Source = "git", Message = "No local changes were available for a Save Point." });
@@ -94,7 +101,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
 
         if (beforeCommitAsync is not null)
         {
-            await beforeCommitAsync(cancellationToken);
+            var inspection = await _gitRepositoryService.InspectAsync(paths.RootPath, cancellationToken);
+            await beforeCommitAsync(new PendingSavePointMetadata(inspection.CurrentBranch, affectedPaths), cancellationToken);
             await RunGitAsync(paths.RootPath, ["add", "-A"], log, cancellationToken);
         }
 
@@ -514,3 +522,5 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
         return _ignorePolicyService.ReviewWorkspaceForProtection(workspaceRoot);
     }
 }
+
+public sealed record PendingSavePointMetadata(string Branch, IReadOnlyList<string> AffectedPaths);

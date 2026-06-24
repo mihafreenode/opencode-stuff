@@ -695,9 +695,9 @@ public sealed class WorkspaceOrchestrator
                 snapshot.Paths,
                 snapshot.Definition,
                 message,
-                token =>
+                (metadata, token) =>
                 {
-                    _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "save-point", "Created Save Point", message);
+                    _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "save-point", "Created Save Point", message, metadata.Branch, affectedPaths: metadata.AffectedPaths);
                     return Task.CompletedTask;
                 },
                 log,

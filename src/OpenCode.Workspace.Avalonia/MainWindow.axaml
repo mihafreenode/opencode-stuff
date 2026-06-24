@@ -247,11 +247,21 @@
       <Grid RowDefinitions="Auto,*" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="6">
-            <TextBlock Text="Save Points" Classes="section-title" />
-            <TextBlock Text="Read-only preview of recent recovery and checkpoint history." Foreground="{DynamicResource TextMutedBrush}" />
+            <TextBlock Text="Timeline" Classes="section-title" />
+            <TextBlock Text="Workspace Save Points and related history entries with safe copy and open actions." Foreground="{DynamicResource TextMutedBrush}" />
           </StackPanel>
         </Border>
-        <ListBox Grid.Row="1" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" BorderThickness="0" Background="Transparent">
+        <Grid Grid.Row="1">
+          <Border Classes="panel-subtle" IsVisible="{Binding IsLoading}">
+            <TextBlock Text="Loading timeline..." Foreground="{DynamicResource TextMutedBrush}" />
+          </Border>
+          <Border Classes="panel-subtle" IsVisible="{Binding ShowErrorState}">
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+          </Border>
+          <Border Classes="panel-subtle" IsVisible="{Binding ShowEmptyState}">
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+          </Border>
+          <ListBox ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}" BorderThickness="0" Background="Transparent" IsVisible="{Binding ShowList}">
           <ListBox.ItemTemplate>
             <DataTemplate>
               <Border Classes="list-row" Margin="0,0,0,10">
@@ -263,7 +273,8 @@
               </Border>
             </DataTemplate>
           </ListBox.ItemTemplate>
-        </ListBox>
+          </ListBox>
+        </Grid>
       </Grid>
     </DataTemplate>
 

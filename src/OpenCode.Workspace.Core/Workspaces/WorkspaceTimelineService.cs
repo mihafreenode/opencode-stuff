@@ -41,7 +41,7 @@ public sealed class WorkspaceTimelineService
         Save(filePath, new WorkspaceTimeline());
     }
 
-    public void Append(string filePath, string type, string summary, string details)
+    public void Append(string filePath, string type, string summary, string details, string branch = "", string commitSha = "", IReadOnlyList<string>? affectedPaths = null)
     {
         var timeline = Load(filePath);
         timeline.Events.Add(new WorkspaceTimelineEvent
@@ -51,6 +51,9 @@ public sealed class WorkspaceTimelineService
             OccurredUtc = DateTimeOffset.UtcNow,
             Summary = summary,
             Details = details,
+            Branch = branch,
+            CommitSha = commitSha,
+            AffectedPaths = affectedPaths?.ToList() ?? [],
         });
 
         Save(filePath, timeline);

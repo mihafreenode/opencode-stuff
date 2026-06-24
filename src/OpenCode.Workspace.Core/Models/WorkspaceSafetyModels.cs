@@ -87,6 +87,9 @@ public sealed class WorkspaceTimelineEvent
     public DateTimeOffset OccurredUtc { get; init; }
     public string Summary { get; init; } = string.Empty;
     public string Details { get; init; } = string.Empty;
+    public string Branch { get; init; } = string.Empty;
+    public string CommitSha { get; init; } = string.Empty;
+    public List<string> AffectedPaths { get; init; } = new();
 }
 
 public sealed class WorkspaceGitState

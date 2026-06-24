@@ -722,6 +722,177 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task TimelineRefreshes_AfterSavePointSuccess()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TimelineByPath =
+            {
+                [snapshot.Paths.TimelinePath] = new WorkspaceTimeline(),
+            },
+        };
+        desktop.SavePointResultFactoryAsync = (_, _, _, _) =>
+        {
+            desktop.TimelineByPath[snapshot.Paths.TimelinePath] = new WorkspaceTimeline
+            {
+                Events =
+                [
+                    new WorkspaceTimelineEvent
+                    {
+                        Id = "sp-1",
+                        Type = "save-point",
+                        Summary = "Created Save Point",
+                        Details = "Manual Save Point",
+                        Branch = "users/test/alpha",
+                        CommitSha = "abc123",
+                        AffectedPaths = ["notes.txt"],
+                        OccurredUtc = DateTimeOffset.UtcNow,
+                    },
+                ],
+            };
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = snapshot, Message = "Save Point created.", Transcript = new OperationTranscript() });
+        };
+        var shell = CreateShellWithDesktop(desktop);
+        shell.SetClipboardService(new FakeClipboardService());
+        shell.SetInteractionService(new FakeWorkspaceInteractionService { SavePointDraft = new SavePointDraft { Message = "Manual Save Point" } });
+        await shell.InitializeAsync();
+
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        await workspacesPage.CreateSavePointCommand.ExecuteAsync();
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (((SavePointsPageViewModel)shell.NavigationItems.Single(item => item.Page is SavePointsPageViewModel).Page).Entries.Count == 1)
+            {
+                break;
+            }
+
+            await Task.Delay(50);
+        }
+
+        var timelinePage = (SavePointsPageViewModel)shell.NavigationItems.Single(item => item.Page is SavePointsPageViewModel).Page;
+        Assert.Single(timelinePage.Entries);
+        Assert.Equal("Manual Save Point", timelinePage.SelectedEntry?.Message);
+    }
+
+    [Fact]
+    public async Task TimelineEntrySelection_ShowsDetailsAndCopyActions()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TimelineByPath =
+            {
+                [snapshot.Paths.TimelinePath] = new WorkspaceTimeline
+                {
+                    Events =
+                    [
+                        new WorkspaceTimelineEvent
+                        {
+                            Id = "sp-1",
+                            Type = "save-point",
+                            Summary = "Created Save Point",
+                            Details = "Manual Save Point",
+                            Branch = "users/test/alpha",
+                            CommitSha = "abc123",
+                            AffectedPaths = ["notes.txt", "workspace.yaml"],
+                            OccurredUtc = DateTimeOffset.UtcNow,
+                        },
+                    ],
+                },
+            },
+        };
+        var clipboard = new FakeClipboardService();
+        var page = new SavePointsPageViewModel(desktop);
+        page.SetClipboardService(clipboard);
+
+        await page.RefreshAsync(new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }));
+
+        Assert.Equal("Created Save Point", page.DetailTitle);
+        Assert.Contains(page.DetailItems, item => item.Label == "Commit" && item.Value == "abc123");
+        Assert.Contains(page.DetailItems, item => item.Label == "Affected files" && item.Value.Contains("2 file", StringComparison.Ordinal));
+
+        var copyCommit = page.DetailActions.Single(item => item.Label == "Copy Commit Id");
+        await ((AsyncRelayCommand)copyCommit.Command).ExecuteAsync();
+        Assert.Equal("abc123", clipboard.Text);
+    }
+
+    [Fact]
+    public async Task TimelineCopyFailure_IsSurfacedWithoutThrowing()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TimelineByPath =
+            {
+                [snapshot.Paths.TimelinePath] = new WorkspaceTimeline
+                {
+                    Events =
+                    [
+                        new WorkspaceTimelineEvent
+                        {
+                            Id = "sp-1",
+                            Type = "save-point",
+                            Summary = "Created Save Point",
+                            Details = "Manual Save Point",
+                            CommitSha = "abc123",
+                            OccurredUtc = DateTimeOffset.UtcNow,
+                        },
+                    ],
+                },
+            },
+        };
+        var page = new SavePointsPageViewModel(desktop);
+        page.SetClipboardService(new ThrowingClipboardService());
+
+        await page.RefreshAsync(new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }));
+
+        var copyCommit = page.DetailActions.Single(item => item.Label == "Copy Commit Id");
+        await ((AsyncRelayCommand)copyCommit.Command).ExecuteAsync();
+
+        Assert.Contains("Timeline copy failed:", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TimelinePage_ShowsEmptyState_WhenNoEntriesExist()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        File.WriteAllText(snapshot.Paths.TimelinePath, "events: []\n");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TimelineByPath =
+            {
+                [snapshot.Paths.TimelinePath] = new WorkspaceTimeline(),
+            },
+        };
+        var page = new SavePointsPageViewModel(desktop);
+
+        await page.RefreshAsync(new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }));
+
+        Assert.Empty(page.Entries);
+        Assert.True(page.ShowEmptyState);
+        Assert.Contains("No timeline entries exist yet", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TimelinePage_ShowsActionableDiagnostics_WhenTimelineLoadFails()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TimelineException = new InvalidOperationException("timeline.yaml is corrupt"),
+        };
+        var page = new SavePointsPageViewModel(desktop);
+
+        await page.RefreshAsync(new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }));
+
+        Assert.True(page.ShowErrorState);
+        Assert.Contains("timeline.yaml is corrupt", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains(page.DetailActions, item => item.Label == "Open Timeline File");
+    }
+
+    [Fact]
     public async Task SavePointFailure_IsSurfacedInTranscript()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
@@ -1284,7 +1455,7 @@ public sealed class ShellViewModelTests
                 LocalRecovery = new WorkspaceLocalRecoverySnapshot { IsGitInitialized = true, AreUntrackedFilesProtected = true },
                 Backup = new WorkspaceBackupSnapshot { HasRemoteConfigured = true },
                 IgnorePolicy = new WorkspaceIgnorePolicyReview(),
-                AdvancedGit = new WorkspaceAdvancedGitSnapshot { CurrentBranch = $"users/test/{name}", StatusSummary = "clean" },
+                AdvancedGit = new WorkspaceAdvancedGitSnapshot { CurrentBranch = $"users/test/{name}", LatestCommitSha = "head123", StatusSummary = "clean" },
             },
             Session = new WorkspaceSessionSnapshot { SessionName = name, State = WorkspaceSessionState.Resumable },
             LocalRuntimeState = includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" } : null,
@@ -1301,12 +1472,15 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
-        public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; init; }
+        public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
         public Exception? SavePointException { get; init; }
+        public Exception? TimelineException { get; init; }
         public int CreateSavePointCallCount { get; private set; }
         public string? LastSavePointMessage { get; private set; }
+        public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> OpenedPaths { get; } = [];
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
@@ -1460,20 +1634,29 @@ public sealed class ShellViewModelTests
         }
 
         public WorkspaceTimeline LoadTimeline(string timelinePath)
-            => new()
+        {
+            if (TimelineException is not null)
             {
-                Events =
-                [
-                    new WorkspaceTimelineEvent
-                    {
-                        Id = Guid.NewGuid().ToString("N"),
-                        Type = "save-point",
-                        OccurredUtc = DateTimeOffset.UtcNow,
-                        Summary = "Created Save Point",
-                        Details = "Preview timeline entry.",
-                    },
-                ],
-            };
+                throw TimelineException;
+            }
+
+            return TimelineByPath.TryGetValue(timelinePath, out var timeline)
+                ? timeline
+                : new WorkspaceTimeline
+                {
+                    Events =
+                    [
+                        new WorkspaceTimelineEvent
+                        {
+                            Id = Guid.NewGuid().ToString("N"),
+                            Type = "save-point",
+                            OccurredUtc = DateTimeOffset.UtcNow,
+                            Summary = "Created Save Point",
+                            Details = "Preview timeline entry.",
+                        },
+                    ],
+                };
+        }
 
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath)
             => new()
@@ -1489,7 +1672,11 @@ public sealed class ShellViewModelTests
                 ],
             };
 
-        public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task OpenPathAsync(string path, CancellationToken cancellationToken = default)
+        {
+            OpenedPaths.Add(path);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TrackingDesktopShellService : IDesktopShellService
@@ -1569,6 +1756,12 @@ public sealed class ShellViewModelTests
             Text = text;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class ThrowingClipboardService : IClipboardService
+    {
+        public Task SetTextAsync(string text, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Clipboard unavailable");
     }
 
     private sealed class FakeDiagnosticsShellService : IDiagnosticsShellService
