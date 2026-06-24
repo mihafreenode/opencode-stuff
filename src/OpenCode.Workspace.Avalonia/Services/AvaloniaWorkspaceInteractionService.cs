@@ -25,6 +25,12 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync).ShowDialog<ExistingRepositoryImportDraft?>(_owner);
     }
 
+    public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return new SavePointWindow(initialMessage).ShowDialog<SavePointDraft?>(_owner);
+    }
+
     public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

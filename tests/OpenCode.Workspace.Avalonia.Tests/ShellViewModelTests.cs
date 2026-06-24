@@ -592,6 +592,104 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task SavePointAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-savepoint-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            page.SetInteractionService(new FakeWorkspaceInteractionService());
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var savePoint = page.DetailActions.Single(item => item.Label == "Save Point");
+            Assert.True(savePoint.IsEnabled);
+            Assert.Equal(string.Empty, savePoint.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SavePointStart_EmitsImmediateTranscriptBeforeSaveCompletes()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var interaction = new FakeWorkspaceInteractionService();
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            SavePointResultFactoryAsync = async (_, _, _, cancellationToken) =>
+            {
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceOperationResult { Snapshot = CreateSnapshot("alpha"), Message = "Save Point created.", Transcript = new OperationTranscript() };
+            },
+        });
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        var savePointTask = ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync();
+        await started.Task;
+
+        Assert.Contains("Preparing Save Point...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Creating Save Point...", page.OperationLogText, StringComparison.Ordinal);
+
+        release.SetResult();
+        await savePointTask;
+    }
+
+    [Fact]
+    public async Task SavePointCancellation_StopsBeforeSave()
+    {
+        var interaction = new FakeWorkspaceInteractionService { SavePointDraft = null };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync();
+
+        Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Equal("Save Point cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task SavePointFailure_IsSurfacedInTranscript()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            SavePointException = new InvalidOperationException("Save Point validation failed."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync());
+
+        Assert.Contains("Preparing Save Point...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Save Point validation failed.", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReprovisionAction_VisibleForSelectedWorkspace()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
@@ -1155,8 +1253,10 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
+        public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; init; }
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
+        public Exception? SavePointException { get; init; }
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
@@ -1203,6 +1303,9 @@ public sealed class ShellViewModelTests
                 .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
                 .ToList();
 
+        public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default)
+            => Task.FromResult("Capture current workspace state");
+
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
             => Task.FromResult(new ExistingGitCheckoutPlan
             {
@@ -1226,6 +1329,21 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+
+        public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            if (SavePointException is not null)
+            {
+                throw SavePointException;
+            }
+
+            if (SavePointResultFactoryAsync is not null)
+            {
+                return SavePointResultFactoryAsync(rootPath, message, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("savepoint"), Message = "Save Point created.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceRecoveryAssessment { Title = "Recover", Summary = "summary", Findings = ["finding"], ConfirmationMessage = "confirm" });
@@ -1334,12 +1452,14 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -1349,11 +1469,16 @@ public sealed class ShellViewModelTests
 
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
+        public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
+
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
             => Task.FromResult<CreateWorkspaceDraft?>(null);
 
         public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
             => Task.FromResult<ExistingRepositoryImportDraft?>(null);
+
+        public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
+            => Task.FromResult(SavePointDraft);
 
         public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
             => Task.FromResult(true);
@@ -1367,12 +1492,14 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

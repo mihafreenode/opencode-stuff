@@ -13,18 +13,21 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceRepository _workspaceRepository;
     private readonly WorkspaceTimelineService _timelineService;
     private readonly WorkspaceCheckpointService _checkpointService;
+    private readonly WorkspaceSavePointMessageService _savePointMessageService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
         WorkspaceRepository workspaceRepository,
         WorkspaceTimelineService timelineService,
-        WorkspaceCheckpointService checkpointService)
+        WorkspaceCheckpointService checkpointService,
+        WorkspaceSavePointMessageService savePointMessageService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
         _workspaceRepository = workspaceRepository;
         _timelineService = timelineService;
         _checkpointService = checkpointService;
+        _savePointMessageService = savePointMessageService;
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -38,6 +41,9 @@ public sealed class DesktopShellService : IDesktopShellService
     public WorkspaceTimeline LoadTimeline(string timelinePath) => _timelineService.Load(timelinePath);
 
     public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => _checkpointService.LoadIndex(checkpointIndexPath);
+
+    public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default)
+        => _savePointMessageService.SuggestAsync(rootPath, cancellationToken);
 
     public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
         => _workspaceOrchestrator.InspectExistingGitCheckoutAsync(repositoryPath, workspaceName, cancellationToken);
@@ -124,6 +130,42 @@ public sealed class DesktopShellService : IDesktopShellService
             if (snapshot is not null)
             {
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Start");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Create Save Point", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Creating Save Point...");
+            var created = await _workspaceOrchestrator.CreateSavePointAsync(snapshot, message, log, cancellationToken);
+            await PersistWorkspaceRecordAsync(snapshot, "Create Save Point", created ? "Created Save Point." : "Save Point skipped because there were no changes to capture.", true, cancellationToken);
+            append(OperationTranscriptLineKind.Result, created ? "Completed." : "Skipped.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = created ? "Save Point created." : "Save Point skipped because there were no changes to capture.",
+                Transcript = transcript,
+            };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Create Save Point");
             }
 
             AppendFailureTranscript(exception, append);

@@ -41,6 +41,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RefreshWorkspacesCommand = new AsyncRelayCommand(() => LoadAsync(), () => !IsBusyForWorkspaceActions);
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
+        CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, CanCreateSavePointSelectedWorkspace);
         StartWorkspaceCommand = new AsyncRelayCommand(StartSelectedWorkspaceAsync, CanStartSelectedWorkspace);
         RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
         AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
@@ -58,6 +59,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
+    public AsyncRelayCommand CreateSavePointCommand { get; }
     public AsyncRelayCommand StartWorkspaceCommand { get; }
     public AsyncRelayCommand RecoverWorkspaceCommand { get; }
     public AsyncRelayCommand AttachWorkspaceCommand { get; }
@@ -448,6 +450,46 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         await ValidateWorkspaceAsync(SelectedWorkspace.RootPath);
     }
 
+    private async Task CreateSavePointAsync()
+    {
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Create Save Point", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing Save Point..." });
+        DetailSummary = "Preparing Save Point...";
+
+        string suggestion;
+        try
+        {
+            suggestion = await _desktopShellService.SuggestSavePointMessageAsync(SelectedWorkspace.RootPath);
+        }
+        catch (Exception exception)
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
+            DetailSummary = exception.Message;
+            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            throw;
+        }
+
+        var draft = await _interactionService.ShowSavePointDialogAsync(suggestion);
+        if (draft is null)
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Save Point cancelled.";
+            return;
+        }
+
+        await RunWorkspaceOperationAsync(
+            "Create Save Point",
+            "Creating Save Point...",
+            (rootPath, snapshot, sink) => _desktopShellService.CreateSavePointAsync(rootPath, draft.Message, snapshot, sink),
+            preserveExistingTranscript: true);
+    }
+
     private async Task StartSelectedWorkspaceAsync()
     {
         await RunWorkspaceOperationAsync(
@@ -689,7 +731,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
-        DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, SelectedWorkspace.HasError ? "Workspace must load successfully before Save Point operations can run. Use WPF or CLI for now." : "Save Point creation is not implemented in Avalonia preview yet.", DisabledActionCommand));
+        DetailActions.Add(new ActionItemViewModel("Save Point", BuildSavePointDescription(SelectedWorkspace), CanCreateSavePointSelectedWorkspace(), GetSavePointDisabledReason(SelectedWorkspace), CreateSavePointCommand));
 
         RaisePropertyChanged(nameof(SelectedWorkspace));
     }
@@ -708,6 +750,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanValidateSelectedWorkspace()
         => SelectedWorkspace is { IsLoading: false };
+
+    private bool CanCreateSavePointSelectedWorkspace()
+        => CanCreateSavePointWorkspace(SelectedWorkspace);
 
     private string GetValidateDisabledReason(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
@@ -728,6 +773,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanAttachWorkspace(workspace) ? string.Empty : "Workspace root or configuration file is missing, so attach cannot run.";
+
+    private string GetSavePointDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanCreateSavePointWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
 
     private static string BuildValidateDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
@@ -756,6 +806,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : CanAttachWorkspace(workspace)
                 ? "Launch a terminal attach session after validating runtime readiness."
                 : "Workspace root or configuration file is missing, so attach cannot run.";
+
+    private string BuildSavePointDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanCreateSavePointWorkspace(workspace)
+                ? "Capture the current local milestone for recovery using the shared Git-backed Save Point flow."
+                : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
 
     private string GetReprovisionDisabledReason(WorkspaceSummaryViewModel workspace)
     {
@@ -856,6 +913,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private bool CanAttachWorkspace(WorkspaceSummaryViewModel? workspace)
     {
         if (IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return CanStartWorkspace(workspace);
+    }
+
+    private bool CanCreateSavePointWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions)
         {
             return false;
         }
@@ -987,6 +1054,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
         OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
         RefreshWorkspacesCommand.RaiseCanExecuteChanged();
+        CreateSavePointCommand.RaiseCanExecuteChanged();
         StartWorkspaceCommand.RaiseCanExecuteChanged();
         RecoverWorkspaceCommand.RaiseCanExecuteChanged();
         AttachWorkspaceCommand.RaiseCanExecuteChanged();

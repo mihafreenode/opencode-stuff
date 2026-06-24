@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.SavePointWindow"
+        Width="640"
+        Height="360"
+        MinWidth="560"
+        MinHeight="300"
+        Title="Create Save Point"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Create Save Point" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="Describe the local milestone you want to preserve. Save Points protect meaningful progress and are backed by Git internally." TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Spacing="8">
+      <TextBlock Text="Message" FontWeight="SemiBold" />
+      <TextBox x:Name="MessageTextBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
+      <TextBlock x:Name="ValidationMessageTextBlock" Foreground="#B42318" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Text="The message should explain what changed and why this is a recovery point worth keeping." VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
+      <Button Grid.Column="2" Classes="accent" Content="Create Save Point" Click="ConfirmClicked" />
+    </Grid>
+  </Grid>
+</Window>

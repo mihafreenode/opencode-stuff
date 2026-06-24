@@ -34,3 +34,8 @@ public sealed class ExistingRepositoryImportDraft
     public string NamedBranch { get; init; } = string.Empty;
     public bool ReuseExistingNamedBranch { get; init; }
 }
+
+public sealed class SavePointDraft
+{
+    public required string Message { get; init; }
+}
