@@ -33,19 +33,24 @@ public partial class SavePointWindow : Window
 
     private void CancelClicked(object? sender, RoutedEventArgs e)
     {
-        Close(null);
+        StartupLog.WriteGlobal("Save Point dialog cancelled.");
+        Result = null;
+        Close();
     }
 
     private void ConfirmClicked(object? sender, RoutedEventArgs e)
     {
         var message = _messageTextBox.Text?.Trim() ?? string.Empty;
+        StartupLog.WriteGlobal($"Save Point dialog confirm clicked. Message length: {message.Length}.");
         if (string.IsNullOrWhiteSpace(message))
         {
             _validationMessageTextBlock.Text = "Enter a Save Point message.";
+            StartupLog.WriteGlobal("Save Point dialog rejected empty message.");
             return;
         }
 
         Result = new SavePointDraft { Message = message };
-        Close(Result);
+        StartupLog.WriteGlobal("Save Point dialog accepted message and is closing.");
+        Close();
     }
 }

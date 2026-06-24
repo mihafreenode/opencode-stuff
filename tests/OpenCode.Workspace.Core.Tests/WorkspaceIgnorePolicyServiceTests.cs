@@ -8,7 +8,7 @@ public sealed class WorkspaceIgnorePolicyServiceTests
     private readonly WorkspaceIgnorePolicyService _service = new();
 
     [Fact]
-    public void ReviewWorkspace_GeneratedRootEnvironmentFile_StillRequiresSecretReview()
+    public void ReviewWorkspace_GeneratedRootEnvironmentFile_DoesNotRequireSecretReview()
     {
         var rootPath = Path.Combine(Path.GetTempPath(), $"ignore-policy-{Guid.NewGuid():N}");
 
@@ -27,9 +27,9 @@ public sealed class WorkspaceIgnorePolicyServiceTests
 
             var review = _service.ReviewChangedPathsForProtection(rootPath, [".env"]);
 
-            Assert.True(review.HasSecretCandidates);
-            Assert.True(review.HasReviewRequired);
-            Assert.Contains(review.Findings, item => item.RelativePath == ".env");
+            Assert.False(review.HasSecretCandidates);
+            Assert.False(review.HasReviewRequired);
+            Assert.DoesNotContain(review.Findings, item => item.RelativePath == ".env");
         }
         finally
         {

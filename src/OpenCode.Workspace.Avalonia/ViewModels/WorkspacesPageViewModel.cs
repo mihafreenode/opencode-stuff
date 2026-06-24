@@ -478,10 +478,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var draft = await _interactionService.ShowSavePointDialogAsync(suggestion);
         if (draft is null)
         {
+            Services.StartupLog.WriteGlobal("Save Point flow observed dialog cancellation.");
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
             DetailSummary = "Save Point cancelled.";
             return;
         }
+
+        Services.StartupLog.WriteGlobal($"Save Point flow accepted dialog result. Message length: {draft.Message.Length}.");
 
         await RunWorkspaceOperationAsync(
             "Create Save Point",
@@ -699,10 +702,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private void UpdateDetailPanel()
     {
         DetailItems.Clear();
-        DetailActions.Clear();
 
         if (SelectedWorkspace is null)
         {
+            DetailActions.Clear();
             DetailTitle = "No workspace selected";
             DetailSummary = "Select a workspace to inspect repository and runtime details.";
             return;
@@ -723,6 +726,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (SelectedWorkspace.HasError)
         {
             DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
+        }
+
+        RefreshDetailActions();
+    }
+
+    private void RefreshDetailActions()
+    {
+        DetailActions.Clear();
+
+        if (SelectedWorkspace is null)
+        {
+            return;
         }
 
         DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
@@ -1011,11 +1026,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         if (SelectedWorkspace is null)
         {
+            Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' skipped because no workspace is selected.");
             return;
         }
 
         try
         {
+            Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' starting for '{SelectedWorkspace.Name}'.");
             _isWorkspaceActionRunning = true;
             _workspaceActionStatusMessage = initialStatusMessage;
             RaiseWorkspaceActionCommandStates();
@@ -1025,8 +1042,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             }
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = initialStatusMessage });
             DetailSummary = initialStatusMessage;
+            Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' updated UI status to '{initialStatusMessage}'.");
             var sink = new OperationTranscriptSink(this);
             var result = await operation(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot, sink);
+            Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' completed provider call with message '{result.Message}'.");
             ReplaceSelectedWorkspace(result.Snapshot);
             CompleteOperationTranscript(result.Transcript);
             _workspaceActionStatusMessage = result.Message;
@@ -1034,6 +1053,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            Services.StartupLog.WriteGlobalException($"Workspace operation '{operationName}' failed", exception);
             _workspaceActionStatusMessage = exception.Message;
             SelectedWorkspace?.SetOperationFailureState(exception.Message);
             DetailSummary = exception.Message;
@@ -1043,6 +1063,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             _isWorkspaceActionRunning = false;
             RaiseWorkspaceActionCommandStates();
+            RefreshDetailActions();
         }
     }
 

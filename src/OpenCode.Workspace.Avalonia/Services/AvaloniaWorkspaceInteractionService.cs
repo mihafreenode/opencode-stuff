@@ -25,10 +25,14 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync).ShowDialog<ExistingRepositoryImportDraft?>(_owner);
     }
 
-    public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
+    public async Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new SavePointWindow(initialMessage).ShowDialog<SavePointDraft?>(_owner);
+        StartupLog.WriteGlobal("Opening Save Point dialog.");
+        var window = new SavePointWindow(initialMessage);
+        await window.ShowDialog(_owner);
+        StartupLog.WriteGlobal($"Save Point dialog closed. Confirmed: {window.Result is not null}.");
+        return window.Result;
     }
 
     public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)

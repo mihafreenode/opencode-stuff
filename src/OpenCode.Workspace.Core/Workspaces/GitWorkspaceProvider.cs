@@ -77,9 +77,12 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
     }
 
     public async Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => await CreateSavePointAsync(paths, definition, message, beforeCommitAsync: null, log, cancellationToken);
+
+    public async Task<bool> CreateSavePointAsync(WorkspacePaths paths, WorkspaceDefinition definition, string message, Func<CancellationToken, Task>? beforeCommitAsync, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         EnsureProviderType(definition);
-        ValidateSavePointContent(paths.RootPath);
+        await ValidateSavePointContentAsync(paths.RootPath, cancellationToken);
         await RunGitAsync(paths.RootPath, ["add", "-A"], log, cancellationToken);
 
         var status = await TryRunGitAsync(paths.RootPath, ["status", "--porcelain"], cancellationToken);
@@ -87,6 +90,12 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
         {
             log?.Invoke(new CommandLogEntry { Source = "git", Message = "No local changes were available for a Save Point." });
             return false;
+        }
+
+        if (beforeCommitAsync is not null)
+        {
+            await beforeCommitAsync(cancellationToken);
+            await RunGitAsync(paths.RootPath, ["add", "-A"], log, cancellationToken);
         }
 
         var identityName = Environment.UserName;
@@ -450,9 +459,9 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
         return string.Join(", ", parts);
     }
 
-    private void ValidateSavePointContent(string workspaceRoot)
+    private async Task ValidateSavePointContentAsync(string workspaceRoot, CancellationToken cancellationToken)
     {
-        var review = BuildSavePointReview(workspaceRoot);
+        var review = await BuildSavePointReviewAsync(workspaceRoot, cancellationToken);
         if (!review.HasReviewRequired)
         {
             return;
@@ -465,14 +474,15 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
         throw new InvalidOperationException(message);
     }
 
-    private WorkspaceIgnorePolicyReview BuildSavePointReview(string workspaceRoot)
+    private async Task<WorkspaceIgnorePolicyReview> BuildSavePointReviewAsync(string workspaceRoot, CancellationToken cancellationToken)
     {
         try
         {
-            var statusResult = _processRunner.RunAsync(
+            var statusResult = await _processRunner.RunAsync(
                 "git",
                 ["status", "--porcelain", "--untracked-files=all"],
-                workspaceRoot).GetAwaiter().GetResult();
+                workspaceRoot,
+                cancellationToken: cancellationToken);
 
             if (statusResult.IsSuccess)
             {
@@ -490,6 +500,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
                     // the most precise V1 source for changed and untracked content.
                     return _ignorePolicyService.ReviewChangedPathsForProtection(workspaceRoot, changedPaths);
                 }
+
+                return new WorkspaceIgnorePolicyReview();
             }
         }
         catch

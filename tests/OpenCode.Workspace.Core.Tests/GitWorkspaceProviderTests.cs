@@ -225,7 +225,7 @@ public sealed class GitWorkspaceProviderTests
     }
 
     [Fact]
-    public async Task CreateSavePointAsync_WhenGeneratedEnvironmentFileExists_StillThrowsBeforeCommit()
+    public async Task CreateSavePointAsync_WhenGeneratedEnvironmentFileExists_AllowsSavePoint()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
         var rootPath = CreateTempPath();
@@ -250,9 +250,13 @@ public sealed class GitWorkspaceProviderTests
 
             await provider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.CreateSavePointAsync(paths, definition, "Save current work"));
-            Assert.Contains("Workspace Review required", exception.Message, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains(".env", exception.Message, StringComparison.OrdinalIgnoreCase);
+            var created = await provider.CreateSavePointAsync(paths, definition, "Save current work");
+            var headResult = await RunGitAsync(rootPath, "rev-parse", "HEAD");
+            var statusResult = await RunGitAsync(rootPath, "status", "--porcelain");
+
+            Assert.True(created);
+            Assert.True(headResult.IsSuccess);
+            Assert.True(string.IsNullOrWhiteSpace(statusResult.StandardOutput));
         }
         finally
         {

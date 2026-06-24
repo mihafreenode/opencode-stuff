@@ -65,6 +65,7 @@ public sealed class ShellViewModelTests
         var createWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml.cs"));
         var openExistingWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenExistingRepositoryWindow.axaml.cs"));
         var recoveryWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RecoveryConfirmationWindow.axaml.cs"));
+        var savePointWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "SavePointWindow.axaml.cs"));
 
         Assert.DoesNotContain("ValidationMessageTextBlock.", openExistingWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("StatusTextBlock.", openExistingWindow, StringComparison.Ordinal);
@@ -86,6 +87,21 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("SummaryTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ConfirmationTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("FindingsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("MessageTextBox.", savePointWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ValidationMessageTextBlock.", savePointWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SavePointInteractionService_ReadsWindowResultAfterDialogCloses()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var interactionService = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "AvaloniaWorkspaceInteractionService.cs"));
+
+        Assert.Contains("var window = new SavePointWindow(initialMessage);", interactionService, StringComparison.Ordinal);
+        Assert.Contains("await window.ShowDialog(_owner);", interactionService, StringComparison.Ordinal);
+        Assert.Contains("return window.Result;", interactionService, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowDialog<SavePointDraft?>", interactionService, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -671,6 +687,38 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
         Assert.Equal("Save Point cancelled.", page.DetailSummary);
+        Assert.Equal(0, service.CreateSavePointCallCount);
+    }
+
+    [Fact]
+    public async Task SavePointConfirmation_PassesDialogMessageToDesktopShellService()
+    {
+        var interaction = new FakeWorkspaceInteractionService { SavePointDraft = new SavePointDraft { Message = "Edited Save Point message" } };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync();
+
+        Assert.Equal(1, service.CreateSavePointCallCount);
+        Assert.Equal("Edited Save Point message", service.LastSavePointMessage);
+    }
+
+    [Fact]
+    public async Task SavePointSuccess_ReenablesSavePointActionAfterCompletion()
+    {
+        var interaction = new FakeWorkspaceInteractionService { SavePointDraft = new SavePointDraft { Message = "Edited Save Point message" } };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync();
+
+        var savePoint = page.DetailActions.Single(item => item.Label == "Save Point");
+        Assert.True(savePoint.IsEnabled);
+        Assert.Equal(string.Empty, savePoint.DisabledReason);
     }
 
     [Fact]
@@ -1257,6 +1305,8 @@ public sealed class ShellViewModelTests
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
         public Exception? SavePointException { get; init; }
+        public int CreateSavePointCallCount { get; private set; }
+        public string? LastSavePointMessage { get; private set; }
 
         public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
@@ -1332,6 +1382,9 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
+            CreateSavePointCallCount++;
+            LastSavePointMessage = message;
+
             if (SavePointException is not null)
             {
                 throw SavePointException;

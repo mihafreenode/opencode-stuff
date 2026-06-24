@@ -309,7 +309,7 @@ public sealed class WorkspaceIgnorePolicyService
 
             var fullPath = Path.Combine(workspaceRootPath, normalized.Replace('/', Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar));
             var isDirectory = Directory.Exists(fullPath) || normalized.EndsWith("/", StringComparison.Ordinal);
-            if (!enforceSecretPrecedenceForGeneratedFiles && IsGeneratedEnvironmentFile(normalized, isDirectory, fullPath))
+            if (IsGeneratedEnvironmentFile(normalized, isDirectory, fullPath))
             {
                 yield return new WorkspaceContentClassification
                 {

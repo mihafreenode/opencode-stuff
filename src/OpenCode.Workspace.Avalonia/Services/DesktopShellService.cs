@@ -141,15 +141,19 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public async Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
+        StartupLog.WriteGlobal($"DesktopShellService.CreateSavePointAsync called for '{rootPath}'. Message length: {message.Length}.");
         var transcript = CreateTranscript("Create Save Point", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
         var snapshot = currentSnapshot;
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            StartupLog.WriteGlobal("DesktopShellService.CreateSavePointAsync loading workspace snapshot.");
             snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
             append(OperationTranscriptLineKind.Status, "Creating Save Point...");
+            StartupLog.WriteGlobal("DesktopShellService.CreateSavePointAsync invoking WorkspaceOrchestrator.CreateSavePointAsync.");
             var created = await _workspaceOrchestrator.CreateSavePointAsync(snapshot, message, log, cancellationToken);
+            StartupLog.WriteGlobal($"DesktopShellService.CreateSavePointAsync orchestrator returned. Created: {created}.");
             await PersistWorkspaceRecordAsync(snapshot, "Create Save Point", created ? "Created Save Point." : "Save Point skipped because there were no changes to capture.", true, cancellationToken);
             append(OperationTranscriptLineKind.Result, created ? "Completed." : "Skipped.");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
@@ -163,6 +167,7 @@ public sealed class DesktopShellService : IDesktopShellService
         }
         catch (Exception exception)
         {
+            StartupLog.WriteGlobalException("DesktopShellService.CreateSavePointAsync failed", exception);
             if (snapshot is not null)
             {
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Create Save Point");

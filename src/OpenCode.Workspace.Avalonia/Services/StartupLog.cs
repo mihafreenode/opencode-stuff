@@ -1,4 +1,5 @@
 using System.IO;
+using OpenCode.Workspace.AppSupport;
 
 namespace OpenCode.Workspace.Avalonia.Services;
 
@@ -23,4 +24,19 @@ public sealed class StartupLog
 
     public void WriteException(string stage, Exception exception)
         => Write($"{stage}: {exception}");
+
+    public static void WriteGlobal(string message)
+    {
+        try
+        {
+            new StartupLog(WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot()).Write(message);
+        }
+        catch
+        {
+            // Logging must never block the primary UI flow.
+        }
+    }
+
+    public static void WriteGlobalException(string stage, Exception exception)
+        => WriteGlobal($"{stage}: {exception}");
 }

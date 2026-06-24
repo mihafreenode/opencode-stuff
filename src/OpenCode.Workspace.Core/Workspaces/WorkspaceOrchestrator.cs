@@ -689,6 +689,21 @@ public sealed class WorkspaceOrchestrator
 
     public async Task<bool> CreateSavePointAsync(WorkspaceSnapshot snapshot, string message, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
+        if (_workspaceProvider is GitWorkspaceProvider gitWorkspaceProvider)
+        {
+            return await gitWorkspaceProvider.CreateSavePointAsync(
+                snapshot.Paths,
+                snapshot.Definition,
+                message,
+                token =>
+                {
+                    _workspaceTimelineService.Append(snapshot.Paths.TimelinePath, "save-point", "Created Save Point", message);
+                    return Task.CompletedTask;
+                },
+                log,
+                cancellationToken);
+        }
+
         var saved = await _workspaceProvider.CreateSavePointAsync(snapshot.Paths, snapshot.Definition, message, log, cancellationToken);
         if (saved)
         {
