@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Core.Models;
@@ -226,8 +227,8 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
     private static string FormatDuration(TimeSpan duration)
         => duration.TotalMilliseconds >= 1000
-            ? $"{duration.TotalSeconds:F1} s"
-            : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
+            ? $"{duration.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)} s"
+            : $"{Math.Max(1, duration.TotalMilliseconds).ToString("F0", CultureInfo.InvariantCulture)} ms";
 
     private static string ToStatus(bool success, bool warning = false)
         => warning ? "Warning" : success ? "Pass" : "Fail";

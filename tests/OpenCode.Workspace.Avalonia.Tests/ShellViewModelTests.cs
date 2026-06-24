@@ -647,6 +647,152 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task BackupAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-backup-enable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(workspaceRoot, "workspace.yaml"), "workspace:\n  name: smoke\n  image: ubuntu:24.04\nprovider:\n  type: git\nruntime:\n  default: default\nfeatures:\n- core\n");
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "smoke",
+                    RootPath = workspaceRoot,
+                    RepositoryPath = workspaceRoot,
+                    ConfigurationPath = "workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+            };
+
+            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            page.SetInteractionService(new FakeWorkspaceInteractionService());
+            await page.LoadAsync();
+            page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
+
+            var backup = page.DetailActions.Single(item => item.Label == "Backup");
+            Assert.True(backup.IsEnabled);
+            Assert.Equal(string.Empty, backup.DisabledReason);
+        }
+        finally
+        {
+            if (Directory.Exists(workspaceRoot))
+            {
+                Directory.Delete(workspaceRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task BackupStart_EmitsImmediateTranscriptBeforeExportCompletes()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip") };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            BackupResultFactoryAsync = async (_, _, _, cancellationToken) =>
+            {
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceBackupResult
+                {
+                    Snapshot = CreateSnapshot("alpha"),
+                    Message = "Backup created.",
+                    Transcript = new OperationTranscript(),
+                    Export = new WorkspaceBackupExportResult
+                    {
+                        ArchivePath = interaction.BackupArchivePath!,
+                        FileCount = 4,
+                        ArchiveSizeBytes = 2048,
+                        IncludedEntries = [],
+                        ExcludedEntries = [],
+                        Warnings = [],
+                    },
+                };
+            },
+        });
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        var backupTask = ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync();
+        await started.Task;
+
+        Assert.Contains("Preparing backup...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Creating backup archive...", page.OperationLogText, StringComparison.Ordinal);
+
+        release.SetResult();
+        await backupTask;
+    }
+
+    [Fact]
+    public async Task BackupCancellation_StopsBeforeExport()
+    {
+        var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = null };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync();
+
+        Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Equal("Backup cancelled.", page.DetailSummary);
+        Assert.Equal(0, service.BackupCallCount);
+    }
+
+    [Fact]
+    public async Task BackupSuccess_ShowsArchiveSummaryAndWarnings()
+    {
+        var archivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip");
+        var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = archivePath };
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        service.BackupResultFactoryAsync = (_, _, _, _) => Task.FromResult(new WorkspaceBackupResult
+        {
+            Snapshot = CreateSnapshot("alpha"),
+            Message = "Backup created.",
+            Transcript = new OperationTranscript(),
+            Export = new WorkspaceBackupExportResult
+            {
+                ArchivePath = archivePath,
+                FileCount = 6,
+                ArchiveSizeBytes = 4096,
+                IncludedEntries = [new WorkspaceBackupEntry { Path = "workspace.yaml", Reason = "included", SizeBytes = 20 }],
+                ExcludedEntries = [new WorkspaceBackupEntry { Path = "bin/", Reason = "excluded", SizeBytes = 0 }],
+                Warnings = ["secrets/.env: Potential secret content is excluded by default."],
+            },
+        });
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Archive" && item.Value == archivePath);
+        Assert.Contains(page.DetailItems, item => item.Label == "Included files" && item.Value == "6");
+        Assert.Contains(page.DetailItems, item => item.Label == "Archive size" && item.Value.Contains("KB", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Warnings" && item.Value.Contains("Potential secret content", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BackupFailure_IsSurfacedInTranscript()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            BackupException = new InvalidOperationException("Backup export failed."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService { BackupArchivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip") });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync());
+
+        Assert.Contains("Preparing backup...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Backup export failed.", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SavePointStart_EmitsImmediateTranscriptBeforeSaveCompletes()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1472,11 +1618,14 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
+        public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceBackupResult>>? BackupResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
+        public Exception? BackupException { get; init; }
         public Exception? SavePointException { get; init; }
         public Exception? TimelineException { get; init; }
+        public int BackupCallCount { get; private set; }
         public int CreateSavePointCallCount { get; private set; }
         public string? LastSavePointMessage { get; private set; }
         public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -1553,6 +1702,37 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+
+        public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            BackupCallCount++;
+
+            if (BackupException is not null)
+            {
+                throw BackupException;
+            }
+
+            if (BackupResultFactoryAsync is not null)
+            {
+                return BackupResultFactoryAsync(rootPath, archivePath, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceBackupResult
+            {
+                Snapshot = currentSnapshot ?? CreateSnapshot("backup"),
+                Message = "Backup created.",
+                Transcript = new OperationTranscript(),
+                Export = new WorkspaceBackupExportResult
+                {
+                    ArchivePath = archivePath,
+                    FileCount = 3,
+                    ArchiveSizeBytes = 1024,
+                    IncludedEntries = [],
+                    ExcludedEntries = [],
+                    Warnings = [],
+                },
+            });
+        }
 
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
@@ -1699,6 +1879,7 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -1709,6 +1890,7 @@ public sealed class ShellViewModelTests
 
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
+        public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
@@ -1716,6 +1898,9 @@ public sealed class ShellViewModelTests
 
         public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
             => Task.FromResult<ExistingRepositoryImportDraft?>(null);
+
+        public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
+            => Task.FromResult(BackupArchivePath);
 
         public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(SavePointDraft);
@@ -1739,6 +1924,7 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

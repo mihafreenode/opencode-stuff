@@ -14,13 +14,15 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceTimelineService _timelineService;
     private readonly WorkspaceCheckpointService _checkpointService;
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
+    private readonly WorkspaceBackupExportService _workspaceBackupExportService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
         WorkspaceRepository workspaceRepository,
         WorkspaceTimelineService timelineService,
         WorkspaceCheckpointService checkpointService,
-        WorkspaceSavePointMessageService savePointMessageService)
+        WorkspaceSavePointMessageService savePointMessageService,
+        WorkspaceBackupExportService workspaceBackupExportService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
@@ -28,6 +30,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _timelineService = timelineService;
         _checkpointService = checkpointService;
         _savePointMessageService = savePointMessageService;
+        _workspaceBackupExportService = workspaceBackupExportService;
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -132,6 +135,37 @@ public sealed class DesktopShellService : IDesktopShellService
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Start");
             }
 
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Backup", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Applying backup export rules...");
+            var export = await _workspaceBackupExportService.ExportAsync(snapshot, archivePath, logSink, cancellationToken);
+            var message = $"Backup created at '{export.ArchivePath}' with {export.FileCount} file(s).";
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceBackupResult
+            {
+                Snapshot = snapshot,
+                Message = message,
+                Transcript = transcript,
+                Export = export,
+            };
+        }
+        catch (Exception exception)
+        {
             AppendFailureTranscript(exception, append);
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = false;

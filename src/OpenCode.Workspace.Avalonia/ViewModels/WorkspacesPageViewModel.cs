@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using Avalonia.Threading;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -41,6 +43,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RefreshWorkspacesCommand = new AsyncRelayCommand(() => LoadAsync(), () => !IsBusyForWorkspaceActions);
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
+        BackupWorkspaceCommand = new AsyncRelayCommand(BackupWorkspaceAsync, CanBackupSelectedWorkspace);
         CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, CanCreateSavePointSelectedWorkspace);
         StartWorkspaceCommand = new AsyncRelayCommand(StartSelectedWorkspaceAsync, CanStartSelectedWorkspace);
         RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
@@ -59,6 +62,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
+    public AsyncRelayCommand BackupWorkspaceCommand { get; }
     public AsyncRelayCommand CreateSavePointCommand { get; }
     public AsyncRelayCommand StartWorkspaceCommand { get; }
     public AsyncRelayCommand RecoverWorkspaceCommand { get; }
@@ -201,6 +205,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 UpdateDetailPanel();
                 OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
                 ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+                BackupWorkspaceCommand.RaiseCanExecuteChanged();
                 StartWorkspaceCommand.RaiseCanExecuteChanged();
                 RecoverWorkspaceCommand.RaiseCanExecuteChanged();
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
@@ -248,6 +253,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             SelectedWorkspace = null;
@@ -291,6 +297,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
             return;
@@ -371,8 +378,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string FormatDuration(TimeSpan duration)
         => duration.TotalMilliseconds >= 1000
-            ? $"{duration.TotalSeconds:F1} s"
-            : $"{Math.Max(1, duration.TotalMilliseconds):F0} ms";
+            ? $"{duration.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)} s"
+            : $"{Math.Max(1, duration.TotalMilliseconds).ToString("F0", CultureInfo.InvariantCulture)} ms";
 
     private async Task CreateWorkspaceAsync()
     {
@@ -491,6 +498,70 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             "Creating Save Point...",
             (rootPath, snapshot, sink) => _desktopShellService.CreateSavePointAsync(rootPath, draft.Message, snapshot, sink),
             preserveExistingTranscript: true);
+    }
+
+    private async Task BackupWorkspaceAsync()
+    {
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Backup", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing backup..." });
+        DetailSummary = "Preparing backup...";
+
+        var suggestedFileName = BuildBackupArchiveFileName(SelectedWorkspace);
+        var archivePath = await _interactionService.ShowBackupDestinationDialogAsync(suggestedFileName);
+        if (string.IsNullOrWhiteSpace(archivePath))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Backup cancelled.";
+            return;
+        }
+
+        if (!archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            archivePath += ".zip";
+        }
+
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Creating backup archive...";
+            RaiseWorkspaceActionCommandStates();
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Creating backup archive..." });
+            DetailSummary = "Creating backup archive...";
+            var result = await _desktopShellService.BackupWorkspaceAsync(SelectedWorkspace.RootPath, archivePath, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
+            ReplaceSelectedWorkspace(result.Snapshot);
+            CompleteOperationTranscript(result.Transcript);
+            _workspaceActionStatusMessage = result.Message;
+            DetailSummary = result.Message;
+            DetailItems.Clear();
+            DetailItems.Add(new DetailItemViewModel("Archive", result.Export.ArchivePath));
+            DetailItems.Add(new DetailItemViewModel("Included files", result.Export.FileCount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            DetailItems.Add(new DetailItemViewModel("Archive size", WorkspaceBackupExportService.FormatSize(result.Export.ArchiveSizeBytes)));
+            DetailItems.Add(new DetailItemViewModel("Excluded entries", result.Export.ExcludedEntries.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            if (result.Export.Warnings.Count > 0)
+            {
+                DetailItems.Add(new DetailItemViewModel("Warnings", string.Join(Environment.NewLine, result.Export.Warnings)));
+            }
+
+            RefreshDetailActions();
+        }
+        catch (Exception exception)
+        {
+            _workspaceActionStatusMessage = exception.Message;
+            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            DetailSummary = exception.Message;
+            throw;
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            RefreshDetailActions();
+        }
     }
 
     private async Task StartSelectedWorkspaceAsync()
@@ -745,6 +816,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Backup", BuildBackupDescription(SelectedWorkspace), CanBackupSelectedWorkspace(), GetBackupDisabledReason(SelectedWorkspace), BackupWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Save Point", BuildSavePointDescription(SelectedWorkspace), CanCreateSavePointSelectedWorkspace(), GetSavePointDisabledReason(SelectedWorkspace), CreateSavePointCommand));
 
@@ -765,6 +837,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanValidateSelectedWorkspace()
         => SelectedWorkspace is { IsLoading: false };
+
+    private bool CanBackupSelectedWorkspace()
+        => CanBackupWorkspace(SelectedWorkspace);
 
     private bool CanCreateSavePointSelectedWorkspace()
         => CanCreateSavePointWorkspace(SelectedWorkspace);
@@ -793,6 +868,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanCreateSavePointWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
+
+    private string GetBackupDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanBackupWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so backup cannot run.";
 
     private static string BuildValidateDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
@@ -828,6 +908,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : CanCreateSavePointWorkspace(workspace)
                 ? "Capture the current local milestone for recovery using the shared Git-backed Save Point flow."
                 : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
+
+    private string BuildBackupDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanBackupWorkspace(workspace)
+                ? "Export a portable zip backup with workspace config, history, mounts, docs, runtime metadata, and tracked repository content."
+                : "Workspace root or configuration file is missing, so backup cannot run.";
 
     private string GetReprovisionDisabledReason(WorkspaceSummaryViewModel workspace)
     {
@@ -945,6 +1032,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         return CanStartWorkspace(workspace);
     }
 
+    private bool CanBackupWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return CanStartWorkspace(workspace);
+    }
+
+    private static string BuildBackupArchiveFileName(WorkspaceSummaryViewModel workspace)
+        => $"{WorkspacePathBuilder.Slugify(workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip";
+
     private void ReplaceSelectedWorkspace(OpenCode.Workspace.Core.Models.WorkspaceSnapshot snapshot)
     {
         if (SelectedWorkspace is null)
@@ -968,7 +1068,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return "Workspace reprovision failed. See Operation Log panel.";
         }
 
-        var lines = error.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var lines = error.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split(['\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var exitCode = lines.FirstOrDefault(line => line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase));
         return exitCode is null
             ? "Workspace reprovision failed. See Operation Log panel."
@@ -1003,7 +1104,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             void Apply()
             {
-                if (line.Kind is OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment)
+                if (_owner.IsReprovisioning && (line.Kind is OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment))
                 {
                     _owner.ReprovisionStatusMessage = line.Text;
                     _owner.DetailSummary = line.Text;
@@ -1080,6 +1181,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RecoverWorkspaceCommand.RaiseCanExecuteChanged();
         AttachWorkspaceCommand.RaiseCanExecuteChanged();
         ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+        BackupWorkspaceCommand.RaiseCanExecuteChanged();
         ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
     }
 }

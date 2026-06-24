@@ -11,6 +11,14 @@ public sealed class WorkspaceOperationResult
     public required OperationTranscript Transcript { get; init; }
 }
 
+public sealed class WorkspaceBackupResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required WorkspaceBackupExportResult Export { get; init; }
+}
+
 public sealed class WorkspaceRecoveryAssessment
 {
     public required string Title { get; init; }

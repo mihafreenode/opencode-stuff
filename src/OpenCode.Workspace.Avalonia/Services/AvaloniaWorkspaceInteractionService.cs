@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 
@@ -23,6 +24,32 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync).ShowDialog<ExistingRepositoryImportDraft?>(_owner);
+    }
+
+    public async Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_owner.StorageProvider is null)
+        {
+            return null;
+        }
+
+        var file = await _owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Backup workspace",
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = "zip",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Zip archive")
+                {
+                    Patterns = ["*.zip"],
+                    MimeTypes = ["application/zip"],
+                },
+            ],
+        });
+
+        return file?.TryGetLocalPath();
     }
 
     public async Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
