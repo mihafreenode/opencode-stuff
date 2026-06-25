@@ -260,6 +260,48 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OpenExistingRepository_ImportsSelectedDraftAndUpdatesSummary()
+    {
+        var service = new FakeDesktopShellService([]);
+        var interaction = new FakeWorkspaceInteractionService
+        {
+            ExistingRepositoryImportDraft = new ExistingRepositoryImportDraft
+            {
+                RepositoryPath = @"C:\repo\demo",
+                WorkspaceName = "demo-workspace",
+                BranchMode = ExistingGitCheckoutBranchMode.CreateNamedFeatureBranch,
+                NamedBranch = "users/test/demo-feature",
+                ReuseExistingNamedBranch = true,
+            },
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await ((AsyncRelayCommand)page.OpenExistingRepositoryCommand).ExecuteAsync();
+
+        Assert.NotNull(service.LastImportRequest);
+        Assert.Equal(@"C:\repo\demo", service.LastImportRequest!.RepositoryPath);
+        Assert.Equal("demo-workspace", service.LastImportRequest.WorkspaceName);
+        Assert.Equal(ExistingGitCheckoutBranchMode.CreateNamedFeatureBranch, service.LastImportRequest.BranchMode);
+        Assert.Equal("users/test/demo-feature", service.LastImportRequest.NamedBranch);
+        Assert.True(service.LastImportRequest.ReuseExistingNamedBranch);
+        Assert.Contains("Imported existing Git checkout", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OpenExistingRepository_CancelledDialog_DoesNotImport()
+    {
+        var service = new FakeDesktopShellService([]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { ExistingRepositoryImportDraft = null });
+
+        await ((AsyncRelayCommand)page.OpenExistingRepositoryCommand).ExecuteAsync();
+
+        Assert.Null(service.LastImportRequest);
+        Assert.DoesNotContain("Imported existing Git checkout", page.DetailSummary ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SettingsPage_TerminalProfileSetupShowsResult()
     {
         var snapshot = CreateSnapshot("alpha");
@@ -2187,6 +2229,7 @@ public sealed class ShellViewModelTests
         public int StartCallCount { get; private set; }
         public int ReprovisionCallCount { get; private set; }
         public int AcknowledgeOracleNoticeCallCount { get; private set; }
+        public ExistingGitCheckoutImportRequest? LastImportRequest { get; private set; }
         public string? LastSavePointMessage { get; private set; }
         public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> OpenedPaths { get; } = [];
@@ -2325,7 +2368,10 @@ public sealed class ShellViewModelTests
             => Task.FromResult(new GitBranchValidationResult(true, string.Empty, false));
 
         public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(CreateSnapshot(request.WorkspaceName));
+        {
+            LastImportRequest = request;
+            return Task.FromResult(CreateSnapshot(request.WorkspaceName));
+        }
 
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft)
             => new() { Workspace = new WorkspaceMetadata { Name = draft.WorkspaceName, Image = "ubuntu:24.04" }, Provider = new WorkspaceProviderDefinition { Type = "git" }, Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion } };
@@ -2604,6 +2650,7 @@ public sealed class ShellViewModelTests
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
         public CreateWorkspaceDraft? CreateWorkspaceDraft { get; init; }
+        public ExistingRepositoryImportDraft? ExistingRepositoryImportDraft { get; init; }
         public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
         public bool OracleNoticeConfirmed { get; init; } = true;
         public int OracleNoticePromptCount { get; private set; }
@@ -2615,7 +2662,7 @@ public sealed class ShellViewModelTests
             => Task.FromResult(CreateWorkspaceDraft);
 
         public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
-            => Task.FromResult<ExistingRepositoryImportDraft?>(null);
+            => Task.FromResult(ExistingRepositoryImportDraft);
 
         public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
             => Task.FromResult(BackupArchivePath);
