@@ -1,6 +1,7 @@
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Avalonia.Services;
 
@@ -38,6 +39,12 @@ public sealed class WorkspaceRemovalOperationResult
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
     public required WorkspaceRemovalResult Removal { get; init; }
+}
+
+public sealed class WindowsTerminalProfileOperationResult
+{
+    public required string Message { get; init; }
+    public required WindowsTerminalProfileSetupResult Setup { get; init; }
 }
 
 public sealed class WorkspaceRecoveryAssessment

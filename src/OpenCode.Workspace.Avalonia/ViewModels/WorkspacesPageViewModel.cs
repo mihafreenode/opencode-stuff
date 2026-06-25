@@ -303,13 +303,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Clear();
             DetailActions.Clear();
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Attach is not available from this shell yet.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Remove", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Publish", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "No workspace selected.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             return;
         }
 
@@ -408,7 +408,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = $"Creating workspace {draft.WorkspaceName}..." });
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Generating workspace files..." });
         var definition = _desktopShellService.BuildWorkspaceDefinition(draft);
+        if (!await ConfirmOracleSoftwareNoticeIfRequiredAsync(draft.Template, draft.WorkspaceName))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Workspace creation cancelled.";
+            return;
+        }
+
         var snapshot = await _desktopShellService.CreateWorkspaceAsync(draft.WorkspaceRootPath, definition, new OperationTranscriptSink(this));
+        if (_desktopShellService.BuildOracleSoftwareNotice(draft.Template, draft.WorkspaceName) is not null)
+        {
+            snapshot = await _desktopShellService.AcknowledgeOracleSoftwareNoticeAsync(snapshot.Paths.RootPath, snapshot);
+        }
+
         await LoadAsync();
         SelectWorkspace(snapshot.Paths.RootPath);
         DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
@@ -702,6 +714,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private async Task StartSelectedWorkspaceAsync()
     {
+        if (!await ConfirmOracleSoftwareNoticeIfRequiredAsync(SelectedWorkspace?.Snapshot))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Workspace start cancelled.";
+            return;
+        }
+
         await RunWorkspaceOperationAsync(
             "Start",
             "Starting workspace...",
@@ -771,6 +790,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
+        if (!await ConfirmOracleSoftwareNoticeIfRequiredAsync(SelectedWorkspace.Snapshot))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Workspace reprovision cancelled.";
+            return;
+        }
+
         try
         {
             IsReprovisioning = true;
@@ -802,7 +828,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Failure", ReprovisionStatusMessage));
             DetailActions.Clear();
             DetailActions.Add(new ActionItemViewModel("Reprovision", "Retry workspace regeneration and runtime provisioning.", CanReprovisionSelectedWorkspace(), string.Empty, ReprovisionWorkspaceCommand));
-            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Attach is not available from this shell yet.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", "Run portable doctor and platform validation from the Diagnostics page.", true, string.Empty, ValidateSelectedWorkspaceCommand));
         }
         finally
@@ -823,6 +849,41 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         _interactionService = interactionService;
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
         OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task<bool> ConfirmOracleSoftwareNoticeIfRequiredAsync(OpenCode.Workspace.Core.Models.TemplateManifest template, string workspaceName)
+    {
+        if (_interactionService is null)
+        {
+            return true;
+        }
+
+        var prompt = _desktopShellService.BuildOracleSoftwareNotice(template, workspaceName);
+        return prompt is null || await _interactionService.ConfirmOracleSoftwareNoticeAsync(prompt);
+    }
+
+    private async Task<bool> ConfirmOracleSoftwareNoticeIfRequiredAsync(OpenCode.Workspace.Core.Models.WorkspaceSnapshot? snapshot)
+    {
+        if (_interactionService is null || snapshot is null)
+        {
+            return true;
+        }
+
+        var prompt = _desktopShellService.BuildOracleSoftwareNotice(snapshot);
+        if (prompt is null || snapshot.Record.OracleSoftwareNoticeShown)
+        {
+            return true;
+        }
+
+        var confirmed = await _interactionService.ConfirmOracleSoftwareNoticeAsync(prompt);
+        if (!confirmed)
+        {
+            return false;
+        }
+
+        var updated = await _desktopShellService.AcknowledgeOracleSoftwareNoticeAsync(snapshot.Paths.RootPath, snapshot);
+        ReplaceSelectedWorkspace(updated);
+        return true;
     }
 
     private void ToggleOperationLogVisibility()
@@ -1292,13 +1353,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Clear();
             DetailActions.Clear();
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Attach is not available from this shell yet.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Remove", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Publish", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "No workspace selected.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected.", DisabledActionCommand));
         }
     }
 

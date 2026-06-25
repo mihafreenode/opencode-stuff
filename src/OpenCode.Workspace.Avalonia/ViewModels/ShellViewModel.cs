@@ -37,6 +37,7 @@ public sealed class ShellViewModel : ObservableObject
             if (eventArgs.PropertyName == nameof(WorkspacesPageViewModel.SelectedWorkspace))
             {
                 _ = _savePointsPage.RefreshAsync(workspacesPage.SelectedWorkspace);
+                _settingsPage.RefreshWorkspaceContext();
             }
         };
         diagnosticsPage.PropertyChanged += (_, eventArgs) =>
@@ -120,7 +121,7 @@ public sealed class ShellViewModel : ObservableObject
             new TranscriptsPageViewModel(desktopShellService),
             new RemoteTargetsPageViewModel(),
             new DocumentationPageViewModel(documentationShellService),
-            new SettingsPageViewModel(themeCoordinator, appBuildInfo),
+            new SettingsPageViewModel(themeCoordinator, appBuildInfo, desktopShellService, () => workspacesPage.SelectedWorkspace),
             appBuildInfo);
 
         return shell;

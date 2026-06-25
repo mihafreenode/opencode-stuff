@@ -3,6 +3,7 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Avalonia.Services;
 
@@ -17,6 +18,8 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceBackupExportService _workspaceBackupExportService;
     private readonly WorkspacePublishAssessmentService _workspacePublishAssessmentService;
     private readonly WorkspaceRemovalService _workspaceRemovalService;
+    private readonly OracleSoftwareNoticeService _oracleSoftwareNoticeService;
+    private readonly WindowsTerminalProfileSetupService _windowsTerminalProfileSetupService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -26,7 +29,9 @@ public sealed class DesktopShellService : IDesktopShellService
         WorkspaceSavePointMessageService savePointMessageService,
         WorkspaceBackupExportService workspaceBackupExportService,
         WorkspacePublishAssessmentService workspacePublishAssessmentService,
-        WorkspaceRemovalService workspaceRemovalService)
+        WorkspaceRemovalService workspaceRemovalService,
+        OracleSoftwareNoticeService oracleSoftwareNoticeService,
+        WindowsTerminalProfileSetupService windowsTerminalProfileSetupService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
@@ -37,6 +42,8 @@ public sealed class DesktopShellService : IDesktopShellService
         _workspaceBackupExportService = workspaceBackupExportService;
         _workspacePublishAssessmentService = workspacePublishAssessmentService;
         _workspaceRemovalService = workspaceRemovalService;
+        _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
+        _windowsTerminalProfileSetupService = windowsTerminalProfileSetupService;
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -50,6 +57,36 @@ public sealed class DesktopShellService : IDesktopShellService
     public WorkspaceTimeline LoadTimeline(string timelinePath) => _timelineService.Load(timelinePath);
 
     public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => _checkpointService.LoadIndex(checkpointIndexPath);
+
+    public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName)
+        => _oracleSoftwareNoticeService.RequiresAcknowledgement(template)
+            ? _oracleSoftwareNoticeService.BuildPrompt(template, workspaceName)
+            : null;
+
+    public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot)
+        => _oracleSoftwareNoticeService.RequiresAcknowledgement(snapshot)
+            ? _oracleSoftwareNoticeService.BuildPrompt(snapshot)
+            : null;
+
+    public async Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        var updatedRecord = _oracleSoftwareNoticeService.Acknowledge(snapshot.Record);
+        return new WorkspaceSnapshot
+        {
+            Record = updatedRecord,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+    }
 
     public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default)
         => _savePointMessageService.SuggestAsync(rootPath, cancellationToken);
@@ -189,6 +226,17 @@ public sealed class DesktopShellService : IDesktopShellService
             Message = $"Removed '{removal.WorkspaceName}' from the workspace list.",
             Transcript = transcript,
             Removal = removal,
+        };
+    }
+
+    public async Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        var setup = await _windowsTerminalProfileSetupService.EnsureAsync(snapshot.Definition, cancellationToken);
+        return new WindowsTerminalProfileOperationResult
+        {
+            Message = setup.Summary,
+            Setup = setup,
         };
     }
 

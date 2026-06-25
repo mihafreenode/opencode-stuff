@@ -9,7 +9,13 @@ namespace OpenCode.Workspace.Platform.Windows;
 /// Groups Windows-specific host capability checks that are useful both for the UI
 /// and for explicit Windows integration tests.
 /// </summary>
-public sealed class WindowsHostCapabilities
+public interface IWindowsHostCapabilities
+{
+    Task<PrerequisiteCheckResult> CheckWindowsTerminalAsync(CancellationToken cancellationToken = default);
+    string ResolvePreferredTerminalFace(string fontDisplayName);
+}
+
+public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
 {
     private readonly ProcessRunner _processRunner;
 

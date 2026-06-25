@@ -25,18 +25,20 @@ public sealed class WindowsCapabilityIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
     }
 
-    [Fact]
+    [SkippableFact]
     public void NerdFontDetection_ReturnsExplicitAvailabilityState()
     {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Windows font inspection is only available on Windows.");
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var result = capabilities.CheckNerdFont();
 
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
     }
 
-    [Fact]
+    [SkippableFact]
     public void PreferredTerminalFace_ResolvesToActualJetBrainsFontFaceName()
     {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Windows font inspection is only available on Windows.");
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var face = capabilities.ResolvePreferredTerminalFace("JetBrainsMono Nerd Font");
 
@@ -139,6 +141,6 @@ public sealed class WindowsCapabilityIntegrationTests
 
         Assert.EndsWith("attach-workspace.ps1", paths.AttachWrapperScriptPath, StringComparison.OrdinalIgnoreCase);
         Assert.EndsWith("terminal-diagnostics.ps1", paths.TerminalDiagnosticsScriptPath, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith(".opencode\\local\\runtime-state.yaml", paths.RuntimeStatePath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(".opencode/local/runtime-state.yaml", paths.RuntimeStatePath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -4,6 +4,7 @@ using OpenCode.Workspace.Core.Diagnostics;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform.Windows;
 using OpenCode.Workspace.Avalonia.ViewModels;
 
 namespace OpenCode.Workspace.Avalonia.Services;
@@ -32,6 +33,9 @@ public sealed class AvaloniaAppBootstrapper
         var backupExportService = new WorkspaceBackupExportService(ignorePolicyService);
         var publishAssessmentService = new WorkspacePublishAssessmentService(processRunner);
         var removalService = new WorkspaceRemovalService(repository);
+        var oracleSoftwareNoticeService = new OracleSoftwareNoticeService(repository);
+        var windowsHostCapabilities = new WindowsHostCapabilities(processRunner);
+        var windowsTerminalProfileSetupService = new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), windowsHostCapabilities);
         var safetyService = new WorkspaceSafetyService();
         var workspaceProvider = new GitWorkspaceProvider(processRunner, ignorePolicyService);
         var dockerService = new DockerService(processRunner);
@@ -64,7 +68,7 @@ public sealed class AvaloniaAppBootstrapper
             runtimeResolver,
             terminalLauncher);
 
-        var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, savePointMessageService, backupExportService, publishAssessmentService, removalService);
+        var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, savePointMessageService, backupExportService, publishAssessmentService, removalService, oracleSoftwareNoticeService, windowsTerminalProfileSetupService);
         var doctorService = new WorkspaceDoctorService(platformDetector, runtimeResolver, new WorkspaceDiscoveryService(), yamlService, new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), yamlService, platformDetector, runtimeResolver, resolver, composeGenerator, provisioningScriptGenerator);
         var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService);

@@ -236,6 +236,30 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task NonOracleCreate_DoesNotRequireAcknowledgement()
+    {
+        var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"], Services = ["postgres"] };
+        var service = new FakeDesktopShellService([]);
+        var interaction = new FakeWorkspaceInteractionService
+        {
+            OracleNoticeConfirmed = false,
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "general-demo",
+                WorkspaceRootPath = Path.Combine(Path.GetTempPath(), $"general-{Guid.NewGuid():N}"),
+                Template = template,
+            },
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(interaction);
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.Equal(0, interaction.OracleNoticePromptCount);
+        Assert.Contains("created successfully", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SettingsPage_TerminalProfileSetupShowsResult()
     {
         var snapshot = CreateSnapshot("alpha");
@@ -260,6 +284,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Created Windows Terminal profile 'OpenCode Stuff - alpha'.", settings.TerminalProfileStatus);
         Assert.Contains(settings.DetailItems, item => item.Label == "Profile name" && item.Value == "OpenCode Stuff - alpha");
+        Assert.Contains(settings.DetailActions, item => item.Label == "Configure Windows Terminal profile");
     }
 
     [Fact]
@@ -287,6 +312,66 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Windows Terminal profile setup failed.", settings.TerminalProfileStatus);
         Assert.Contains(settings.DetailItems, item => item.Label == "Failure" && item.Value == "Access denied.");
+    }
+
+    [Fact]
+    public async Task OracleStartCancellation_BlocksWorkflow()
+    {
+        var snapshot = CreateOracleSnapshot("oracle-start", oracleNoticeShown: false);
+        var service = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = false });
+        await page.LoadAsync();
+
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Start").Command).ExecuteAsync();
+
+        Assert.Equal(0, service.StartCallCount);
+        Assert.Equal("Workspace start cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task OracleStartAcknowledgement_AllowsWorkflow()
+    {
+        var snapshot = CreateOracleSnapshot("oracle-start", oracleNoticeShown: false);
+        var service = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = true });
+        await page.LoadAsync();
+
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Start").Command).ExecuteAsync();
+
+        Assert.Equal(1, service.StartCallCount);
+        Assert.Equal(1, service.AcknowledgeOracleNoticeCallCount);
+    }
+
+    [Fact]
+    public async Task OracleReprovisionCancellation_BlocksWorkflow()
+    {
+        var snapshot = CreateOracleSnapshot("oracle-reprovision", oracleNoticeShown: false);
+        var service = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = false });
+        await page.LoadAsync();
+
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(0, service.ReprovisionCallCount);
+        Assert.Equal("Workspace reprovision cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task OracleReprovisionAcknowledgement_AllowsWorkflow()
+    {
+        var snapshot = CreateOracleSnapshot("oracle-reprovision", oracleNoticeShown: false);
+        var service = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = true });
+        await page.LoadAsync();
+
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(1, service.ReprovisionCallCount);
+        Assert.Equal(1, service.AcknowledgeOracleNoticeCallCount);
     }
 
     [Fact]
@@ -1995,6 +2080,55 @@ public sealed class ShellViewModelTests
         };
     }
 
+    private static WorkspaceSnapshot CreateOracleSnapshot(string name, bool oracleNoticeShown)
+    {
+        var snapshot = CreateSnapshot(name);
+        return new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = oracleNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+            },
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = snapshot.Definition.Workspace,
+                Provider = snapshot.Definition.Provider,
+                Runtime = snapshot.Definition.Runtime,
+                Features = [OracleWorkspaceFamily.OracleBaseFeatureId],
+                Services = [OracleWorkspaceFamily.OracleDatabaseServiceId],
+                Skills = snapshot.Definition.Skills,
+                Mcp = snapshot.Definition.Mcp,
+                Agent = snapshot.Definition.Agent,
+                Terminal = snapshot.Definition.Terminal,
+            },
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+    }
+
     private sealed class FakeDesktopShellService : IDesktopShellService
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
@@ -2050,6 +2184,9 @@ public sealed class ShellViewModelTests
         public int PublishCallCount { get; private set; }
         public int BackupCallCount { get; private set; }
         public int CreateSavePointCallCount { get; private set; }
+        public int StartCallCount { get; private set; }
+        public int ReprovisionCallCount { get; private set; }
+        public int AcknowledgeOracleNoticeCallCount { get; private set; }
         public string? LastSavePointMessage { get; private set; }
         public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> OpenedPaths { get; } = [];
@@ -2107,6 +2244,7 @@ public sealed class ShellViewModelTests
                     SubjectName = workspaceName,
                     Summary = "Review the Oracle software reminder before continuing with this Oracle workspace.",
                     Facts = ["Oracle software is subject to Oracle licensing terms."],
+                    AcknowledgementLabel = "I understand the Oracle licensing reminder.",
                     ConfirmLabel = "Continue",
                     CancelLabel = "Cancel",
                 }
@@ -2120,6 +2258,7 @@ public sealed class ShellViewModelTests
                     SubjectName = snapshot.Definition.Workspace.Name,
                     Summary = "Review the Oracle software reminder before continuing with this Oracle workspace.",
                     Facts = ["Oracle software is subject to Oracle licensing terms."],
+                    AcknowledgementLabel = "I understand the Oracle licensing reminder.",
                     ConfirmLabel = "Continue",
                     CancelLabel = "Cancel",
                 }
@@ -2127,6 +2266,8 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
         {
+            AcknowledgeOracleNoticeCallCount++;
+
             if (AcknowledgeOracleNoticeAsyncFactory is not null)
             {
                 return AcknowledgeOracleNoticeAsyncFactory(rootPath, currentSnapshot, cancellationToken);
@@ -2193,7 +2334,10 @@ public sealed class ShellViewModelTests
             => Task.FromResult(CreateSnapshot(definition.Workspace.Name));
 
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+        {
+            StartCallCount++;
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
@@ -2336,6 +2480,7 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
+            ReprovisionCallCount++;
             logSink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "Preparing workspace" });
             if (ReprovisionException is not null)
             {
@@ -2461,6 +2606,7 @@ public sealed class ShellViewModelTests
         public CreateWorkspaceDraft? CreateWorkspaceDraft { get; init; }
         public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
         public bool OracleNoticeConfirmed { get; init; } = true;
+        public int OracleNoticePromptCount { get; private set; }
         public bool RemoveConfirmed { get; init; } = true;
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
@@ -2475,7 +2621,10 @@ public sealed class ShellViewModelTests
             => Task.FromResult(BackupArchivePath);
 
         public Task<bool> ConfirmOracleSoftwareNoticeAsync(OracleSoftwareNoticePrompt prompt, CancellationToken cancellationToken = default)
-            => Task.FromResult(OracleNoticeConfirmed);
+        {
+            OracleNoticePromptCount++;
+            return Task.FromResult(OracleNoticeConfirmed);
+        }
 
         public Task<bool> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
             => Task.FromResult(RemoveConfirmed);

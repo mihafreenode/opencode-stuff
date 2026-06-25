@@ -338,7 +338,7 @@
     </DataTemplate>
 
     <DataTemplate DataType="vm:SettingsPageViewModel">
-      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="6">
             <TextBlock Text="Settings" Classes="section-title" />
@@ -354,6 +354,15 @@
         </Border>
 
         <Border Grid.Row="2" Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Windows Terminal" Classes="section-title" />
+            <TextBlock Text="Create or update the managed OpenCode Stuff Windows Terminal profile for the currently selected workspace." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+            <Button Content="Configure Windows Terminal profile" Command="{Binding SetupWindowsTerminalProfileCommand}" HorizontalAlignment="Left" />
+            <TextBlock Text="{Binding TerminalProfileStatus}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="3" Classes="panel">
           <StackPanel Spacing="8">
             <TextBlock Text="App info" Classes="section-title" />
             <TextBlock Text="{Binding AppVersionLine}" />

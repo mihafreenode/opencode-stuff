@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.OracleSoftwareNoticeWindow"
+        Width="720"
+        Height="500"
+        MinWidth="620"
+        MinHeight="360"
+        Title="Oracle Software Notice"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock x:Name="TitleTextBlock" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock x:Name="SummaryTextBlock" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Border Grid.Row="1" BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="14">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Workspace or template" FontWeight="SemiBold" />
+        <TextBlock x:Name="SubjectTextBlock" />
+        <TextBlock Text="Reminder" FontWeight="SemiBold" Margin="0,8,0,0" />
+        <ItemsControl x:Name="FactsItemsControl" />
+      </StackPanel>
+    </Border>
+
+    <CheckBox Grid.Row="2"
+              x:Name="AcknowledgeCheckBox"
+              Checked="AcknowledgeChanged"
+              Unchecked="AcknowledgeChanged"
+              Content="I understand this workspace uses Oracle-provided software and I must review the applicable Oracle licensing terms." />
+
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Text="Continue only if you are allowed to use the Oracle components required by this workspace." VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" x:Name="CancelButton" Content="Cancel" Click="CancelClicked" />
+      <Button Grid.Column="2" x:Name="ConfirmButton" Classes="accent" Content="Continue" IsEnabled="False" Click="ConfirmClicked" />
+    </Grid>
+  </Grid>
+</Window>

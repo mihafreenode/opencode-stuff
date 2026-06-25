@@ -53,6 +53,13 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return file?.TryGetLocalPath();
     }
 
+    public async Task<bool> ConfirmOracleSoftwareNoticeAsync(OracleSoftwareNoticePrompt prompt, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new OracleSoftwareNoticeWindow(prompt);
+        return await window.ShowDialog<bool>(_owner);
+    }
+
     public async Task<bool> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

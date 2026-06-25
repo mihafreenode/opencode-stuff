@@ -12,7 +12,15 @@ namespace OpenCode.Workspace.Platform.Windows;
 /// Uses Windows Terminal fragment extensions so OpenCode Stuff can manage only its
 /// own profile definitions without editing unrelated user terminal profiles.
 /// </summary>
-public sealed class WindowsTerminalProfileManager
+public interface IWindowsTerminalProfileManager
+{
+    string GetFragmentFilePath();
+    void EnsureManagedProfile(WorkspaceDefinition definition, TerminalFontPreferences fontPreferences, string resolvedFace);
+    string GetProfileName(WorkspaceDefinition definition);
+    string? GetConfiguredFontFace(WorkspaceDefinition definition);
+}
+
+public sealed class WindowsTerminalProfileManager : IWindowsTerminalProfileManager
 {
     private const string FragmentDirectoryName = "OpenCodeWorkspaceManager";
     private const string FragmentFileName = "profiles.json";
