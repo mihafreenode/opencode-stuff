@@ -16,7 +16,13 @@
     <StackPanel Grid.Row="1" Spacing="12">
       <StackPanel Spacing="4">
         <TextBlock Text="Template" FontWeight="SemiBold" />
-        <ComboBox x:Name="TemplateComboBox" />
+        <ComboBox x:Name="TemplateComboBox">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
       </StackPanel>
       <StackPanel Spacing="4">
         <TextBlock Text="Workspace name" FontWeight="SemiBold" />

@@ -5,6 +5,7 @@ using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Avalonia.Tests;
 
@@ -62,6 +63,7 @@ public sealed class ShellViewModelTests
     public void DialogCodeBehind_UsesBackingFieldsInsteadOfGeneratedNamedControls()
     {
         var repoRoot = GetRepositoryRoot();
+        var createWindowAxaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml"));
         var createWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml.cs"));
         var openExistingWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenExistingRepositoryWindow.axaml.cs"));
         var recoveryWindow = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RecoveryConfirmationWindow.axaml.cs"));
@@ -82,6 +84,7 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("TemplateSummaryTextBlock.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ValidationMessageTextBlock.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("StatusTextBlock.", createWindow, StringComparison.Ordinal);
+        Assert.Contains("<TextBlock Text=\"{Binding DisplayName}\" />", createWindowAxaml, StringComparison.Ordinal);
 
         Assert.DoesNotContain("TitleTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("SummaryTextBlock.", recoveryWindow, StringComparison.Ordinal);
@@ -158,7 +161,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public void ThemeMode_DefaultsToSystem()
     {
-        var settings = new SettingsPageViewModel(new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo());
+        var settings = CreateSettingsPage();
 
         Assert.Equal(ThemeMode.System, settings.SelectedThemeMode);
     }
@@ -167,7 +170,7 @@ public sealed class ShellViewModelTests
     public void ThemeMode_CanSwitchToLight()
     {
         var coordinator = new ThemeCoordinator(ThemeMode.System);
-        var settings = new SettingsPageViewModel(coordinator, CreateAppBuildInfo());
+        var settings = CreateSettingsPage(coordinator: coordinator);
 
         settings.SelectedThemeMode = ThemeMode.Light;
 
@@ -179,12 +182,111 @@ public sealed class ShellViewModelTests
     public void ThemeMode_CanSwitchToDark()
     {
         var coordinator = new ThemeCoordinator(ThemeMode.System);
-        var settings = new SettingsPageViewModel(coordinator, CreateAppBuildInfo());
+        var settings = CreateSettingsPage(coordinator: coordinator);
 
         settings.SelectedThemeMode = ThemeMode.Dark;
 
         Assert.Equal(ThemeMode.Dark, settings.SelectedThemeMode);
         Assert.Equal(ThemeMode.Dark, coordinator.CurrentMode);
+    }
+
+    [Fact]
+    public async Task OracleCreateCancellation_DoesNotContinue()
+    {
+        var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            OracleNoticeConfirmed = false,
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "oracle-demo",
+                WorkspaceRootPath = Path.Combine(Path.GetTempPath(), $"oracle-demo-{Guid.NewGuid():N}"),
+                Template = template,
+            },
+        });
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Equal("Workspace creation cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task OracleCreateAcknowledgement_AllowsCreate()
+    {
+        var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
+        var service = new FakeDesktopShellService([]);
+        var rootPath = Path.Combine(Path.GetTempPath(), $"oracle-demo-{Guid.NewGuid():N}");
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            OracleNoticeConfirmed = true,
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "oracle-demo",
+                WorkspaceRootPath = rootPath,
+                Template = template,
+            },
+        });
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.Contains("created successfully", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SettingsPage_TerminalProfileSetupShowsResult()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var settings = CreateSettingsPage(new FakeDesktopShellService([snapshot])
+        {
+            WindowsTerminalProfileResult = new WindowsTerminalProfileOperationResult
+            {
+                Message = "Created Windows Terminal profile 'OpenCode Stuff - alpha'.",
+                Setup = new WindowsTerminalProfileSetupResult
+                {
+                    Status = WindowsTerminalProfileSetupStatus.Created,
+                    Summary = "Created Windows Terminal profile 'OpenCode Stuff - alpha'.",
+                    ProfileName = "OpenCode Stuff - alpha",
+                    FragmentPath = "C:\\Users\\test\\profiles.json",
+                    ResolvedFontFace = "JetBrainsMono Nerd Font",
+                    FailureReason = string.Empty,
+                },
+            },
+        }, snapshot);
+
+        await settings.SetupWindowsTerminalProfileCommand.ExecuteAsync();
+
+        Assert.Equal("Created Windows Terminal profile 'OpenCode Stuff - alpha'.", settings.TerminalProfileStatus);
+        Assert.Contains(settings.DetailItems, item => item.Label == "Profile name" && item.Value == "OpenCode Stuff - alpha");
+    }
+
+    [Fact]
+    public async Task SettingsPage_TerminalProfileSetupShowsFailure()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var settings = CreateSettingsPage(new FakeDesktopShellService([snapshot])
+        {
+            WindowsTerminalProfileResult = new WindowsTerminalProfileOperationResult
+            {
+                Message = "Windows Terminal profile setup failed.",
+                Setup = new WindowsTerminalProfileSetupResult
+                {
+                    Status = WindowsTerminalProfileSetupStatus.Failed,
+                    Summary = "Windows Terminal profile setup failed.",
+                    ProfileName = string.Empty,
+                    FragmentPath = "C:\\Users\\test\\profiles.json",
+                    ResolvedFontFace = string.Empty,
+                    FailureReason = "Access denied.",
+                },
+            },
+        }, snapshot);
+
+        await settings.SetupWindowsTerminalProfileCommand.ExecuteAsync();
+
+        Assert.Equal("Windows Terminal profile setup failed.", settings.TerminalProfileStatus);
+        Assert.Contains(settings.DetailItems, item => item.Label == "Failure" && item.Value == "Access denied.");
     }
 
     [Fact]
@@ -1803,6 +1905,13 @@ public sealed class ShellViewModelTests
     private static AppBuildInfo CreateAppBuildInfo()
         => new("/tmp/app", "Debug", "1.0.0", "1.0.0-preview", "abcdef123456", DateTimeOffset.UtcNow.ToString("O"), "1.0.0", "workspace-yaml-v1");
 
+    private static SettingsPageViewModel CreateSettingsPage(FakeDesktopShellService? desktop = null, WorkspaceSnapshot? selectedWorkspace = null, ThemeCoordinator? coordinator = null)
+    {
+        var actualDesktop = desktop ?? new FakeDesktopShellService([selectedWorkspace ?? CreateSnapshot("alpha")]);
+        var actualWorkspace = selectedWorkspace ?? actualDesktop.LoadWorkspaceItemsAsync(false).GetAwaiter().GetResult().Items.First().Snapshot!;
+        return new SettingsPageViewModel(coordinator ?? new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo(), actualDesktop, () => new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = actualWorkspace.Record, Snapshot = actualWorkspace }));
+    }
+
     private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true, bool updateRequired = false, string? lastOperationResult = null, bool? lastOperationSucceeded = true)
     {
         var root = Path.Combine(Path.GetTempPath(), $"oc-avalonia-{name}-{Guid.NewGuid():N}");
@@ -1898,6 +2007,7 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspacePublishResult>>? PublishResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceBackupResult>>? BackupResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
+        public Func<string, WorkspaceSnapshot?, CancellationToken, Task<WorkspaceSnapshot>>? AcknowledgeOracleNoticeAsyncFactory { get; set; }
         public WorkspacePublishAssessment PublishAssessment { get; set; } = new()
         {
             WorkspaceName = "alpha",
@@ -1923,6 +2033,19 @@ public sealed class ShellViewModelTests
         public Exception? BackupException { get; init; }
         public Exception? SavePointException { get; init; }
         public Exception? TimelineException { get; init; }
+        public WindowsTerminalProfileOperationResult WindowsTerminalProfileResult { get; set; } = new()
+        {
+            Message = "Windows Terminal profile 'OpenCode Stuff - alpha' is already configured.",
+            Setup = new WindowsTerminalProfileSetupResult
+            {
+                Status = WindowsTerminalProfileSetupStatus.AlreadyConfigured,
+                Summary = "Windows Terminal profile 'OpenCode Stuff - alpha' is already configured.",
+                ProfileName = "OpenCode Stuff - alpha",
+                FragmentPath = "C:\\Users\\test\\profiles.json",
+                ResolvedFontFace = "JetBrainsMono Nerd Font",
+                FailureReason = string.Empty,
+            },
+        };
         public int RemoveCallCount { get; private set; }
         public int PublishCallCount { get; private set; }
         public int BackupCallCount { get; private set; }
@@ -1975,6 +2098,75 @@ public sealed class ShellViewModelTests
             => _snapshots.Select(item => new WorkspaceReference(item.Definition.Workspace.Name, item.Paths.RootPath))
                 .Concat(_extraItems.Select(item => new WorkspaceReference(item.Record.Name, item.Record.RootPath)))
                 .ToList();
+
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName)
+            => OracleWorkspaceFamily.IsOracleWorkspace(template)
+                ? new OracleSoftwareNoticePrompt
+                {
+                    Title = "Oracle Software Notice",
+                    SubjectName = workspaceName,
+                    Summary = "Review the Oracle software reminder before continuing with this Oracle workspace.",
+                    Facts = ["Oracle software is subject to Oracle licensing terms."],
+                    ConfirmLabel = "Continue",
+                    CancelLabel = "Cancel",
+                }
+                : null;
+
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot)
+            => OracleWorkspaceFamily.IsOracleWorkspace(snapshot.Definition) && !snapshot.Record.OracleSoftwareNoticeShown
+                ? new OracleSoftwareNoticePrompt
+                {
+                    Title = "Oracle Software Notice",
+                    SubjectName = snapshot.Definition.Workspace.Name,
+                    Summary = "Review the Oracle software reminder before continuing with this Oracle workspace.",
+                    Facts = ["Oracle software is subject to Oracle licensing terms."],
+                    ConfirmLabel = "Continue",
+                    CancelLabel = "Cancel",
+                }
+                : null;
+
+        public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+        {
+            if (AcknowledgeOracleNoticeAsyncFactory is not null)
+            {
+                return AcknowledgeOracleNoticeAsyncFactory(rootPath, currentSnapshot, cancellationToken);
+            }
+
+            var snapshot = currentSnapshot ?? CreateSnapshot("oracle");
+            return Task.FromResult(new WorkspaceSnapshot
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = snapshot.Record.Name,
+                    RootPath = snapshot.Record.RootPath,
+                    RepositoryPath = snapshot.Record.RepositoryPath,
+                    ConfigurationPath = snapshot.Record.ConfigurationPath,
+                    SourceType = snapshot.Record.SourceType,
+                    ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                    OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                    SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                    RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                    CreatedUtc = snapshot.Record.CreatedUtc,
+                    LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                    LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                    OracleSoftwareNoticeShown = true,
+                    LastOperationName = snapshot.Record.LastOperationName,
+                    LastOperationResult = snapshot.Record.LastOperationResult,
+                    LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                    LastOperationUtc = snapshot.Record.LastOperationUtc,
+                },
+                Definition = snapshot.Definition,
+                Paths = snapshot.Paths,
+                ConfigurationPath = snapshot.ConfigurationPath,
+                RuntimeState = snapshot.RuntimeState,
+                Safety = snapshot.Safety,
+                Session = snapshot.Session,
+                AppliedState = snapshot.AppliedState,
+                LocalRuntimeState = snapshot.LocalRuntimeState,
+                ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+                UpdateRequired = snapshot.UpdateRequired,
+            });
+        }
 
         public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default)
             => Task.FromResult("Capture current workspace state");
@@ -2032,6 +2224,9 @@ public sealed class ShellViewModelTests
                 },
             });
         }
+
+        public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(WindowsTerminalProfileResult);
 
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(PublishAssessment);
@@ -2238,6 +2433,9 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName) => throw new NotImplementedException();
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot) => throw new NotImplementedException();
+        public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -2246,6 +2444,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -2259,19 +2458,24 @@ public sealed class ShellViewModelTests
 
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
+        public CreateWorkspaceDraft? CreateWorkspaceDraft { get; init; }
         public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
+        public bool OracleNoticeConfirmed { get; init; } = true;
         public bool RemoveConfirmed { get; init; } = true;
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
-            => Task.FromResult<CreateWorkspaceDraft?>(null);
+            => Task.FromResult(CreateWorkspaceDraft);
 
         public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
             => Task.FromResult<ExistingRepositoryImportDraft?>(null);
 
         public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
             => Task.FromResult(BackupArchivePath);
+
+        public Task<bool> ConfirmOracleSoftwareNoticeAsync(OracleSoftwareNoticePrompt prompt, CancellationToken cancellationToken = default)
+            => Task.FromResult(OracleNoticeConfirmed);
 
         public Task<bool> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
             => Task.FromResult(RemoveConfirmed);
@@ -2294,6 +2498,9 @@ public sealed class ShellViewModelTests
         public IReadOnlyList<WorkspaceReference> LoadWorkspaceReferences() => [];
         public WorkspaceTimeline LoadTimeline(string timelinePath) => new();
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
@@ -2302,6 +2509,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
