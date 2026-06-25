@@ -27,6 +27,19 @@ public sealed class WorkspacePublishResult
     public required WorkspacePublishReview Review { get; init; }
 }
 
+public sealed class WorkspaceRemovalPrompt
+{
+    public required string WorkspaceName { get; init; }
+    public required string WorkspaceRoot { get; init; }
+}
+
+public sealed class WorkspaceRemovalOperationResult
+{
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required WorkspaceRemovalResult Removal { get; init; }
+}
+
 public sealed class WorkspaceRecoveryAssessment
 {
     public required string Title { get; init; }

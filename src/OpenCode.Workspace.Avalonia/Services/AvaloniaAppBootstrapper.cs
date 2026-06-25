@@ -31,6 +31,7 @@ public sealed class AvaloniaAppBootstrapper
         var ignorePolicyService = new WorkspaceIgnorePolicyService();
         var backupExportService = new WorkspaceBackupExportService(ignorePolicyService);
         var publishAssessmentService = new WorkspacePublishAssessmentService(processRunner);
+        var removalService = new WorkspaceRemovalService(repository);
         var safetyService = new WorkspaceSafetyService();
         var workspaceProvider = new GitWorkspaceProvider(processRunner, ignorePolicyService);
         var dockerService = new DockerService(processRunner);
@@ -63,7 +64,7 @@ public sealed class AvaloniaAppBootstrapper
             runtimeResolver,
             terminalLauncher);
 
-        var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, savePointMessageService, backupExportService, publishAssessmentService);
+        var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, savePointMessageService, backupExportService, publishAssessmentService, removalService);
         var doctorService = new WorkspaceDoctorService(platformDetector, runtimeResolver, new WorkspaceDiscoveryService(), yamlService, new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), yamlService, platformDetector, runtimeResolver, resolver, composeGenerator, provisioningScriptGenerator);
         var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService);

@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.RemoveWorkspaceWindow"
+        Width="660"
+        Height="320"
+        MinWidth="580"
+        MinHeight="280"
+        Title="Remove Workspace"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Remove Workspace" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="This removes the workspace from the local index only. Workspace files stay on disk in this phase." TextWrapping="Wrap" />
+    </StackPanel>
+
+    <Border Grid.Row="1" BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="14">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Workspace" FontWeight="SemiBold" />
+        <TextBlock x:Name="WorkspaceNameTextBlock" />
+        <TextBlock Text="Root path" FontWeight="SemiBold" Margin="0,8,0,0" />
+        <TextBlock x:Name="WorkspaceRootTextBlock" TextWrapping="Wrap" />
+        <TextBlock Text="Files are not deleted by this action." Foreground="#344054" Margin="0,8,0,0" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Text="Use this when you want to stop showing a workspace in the manager without deleting its repository files." VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
+      <Button Grid.Column="2" Classes="accent" Content="Remove From List" Click="ConfirmClicked" />
+    </Grid>
+  </Grid>
+</Window>

@@ -993,6 +993,82 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task RemoveAction_IsEnabledForSelectedWorkspace()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        var remove = page.DetailActions.Single(item => item.Label == "Remove");
+        Assert.True(remove.IsEnabled);
+        Assert.Equal(string.Empty, remove.DisabledReason);
+    }
+
+    [Fact]
+    public async Task RemoveCancellation_DoesNotRemoveWorkspace()
+    {
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = false });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+        Assert.Equal(2, page.Workspaces.Count);
+        Assert.Equal(0, service.RemoveCallCount);
+        Assert.Equal("Workspace removal cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task RemoveSuccess_RemovesRowAndUpdatesSelection()
+    {
+        var first = CreateSnapshot("alpha");
+        var second = CreateSnapshot("beta");
+        var service = new FakeDesktopShellService([first, second]);
+        service.RemoveResultFactoryAsync = (_, _, _) => Task.FromResult(new WorkspaceRemovalOperationResult
+        {
+            Message = "Removed 'alpha' from the workspace list.",
+            Transcript = new OperationTranscript(),
+            Removal = new WorkspaceRemovalResult
+            {
+                WorkspaceName = "alpha",
+                WorkspaceRoot = first.Paths.RootPath,
+                FilesDeleted = false,
+                Warnings = [],
+                Succeeded = true,
+                FailureReason = string.Empty,
+            },
+        });
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+        Assert.Single(page.Workspaces);
+        Assert.Equal("beta", page.SelectedWorkspace?.Name);
+        Assert.Equal(1, service.RemoveCallCount);
+        Assert.Equal("Removed 'alpha' from the workspace list.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task RemoveFailure_IsSurfacedClearly()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            RemoveException = new InvalidOperationException("Workspace root path is required before removal can run."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync());
+
+        Assert.Contains("Preparing removal...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Workspace root path is required", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SavePointStart_EmitsImmediateTranscriptBeforeSaveCompletes()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1818,6 +1894,7 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
+        public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceRemovalOperationResult>>? RemoveResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspacePublishResult>>? PublishResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceBackupResult>>? BackupResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
@@ -1841,10 +1918,12 @@ public sealed class ShellViewModelTests
         };
         public Exception? ReprovisionException { get; init; }
         public Exception? AttachException { get; init; }
+        public Exception? RemoveException { get; init; }
         public Exception? PublishException { get; init; }
         public Exception? BackupException { get; init; }
         public Exception? SavePointException { get; init; }
         public Exception? TimelineException { get; init; }
+        public int RemoveCallCount { get; private set; }
         public int PublishCallCount { get; private set; }
         public int BackupCallCount { get; private set; }
         public int CreateSavePointCallCount { get; private set; }
@@ -1923,6 +2002,36 @@ public sealed class ShellViewModelTests
 
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+
+        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            RemoveCallCount++;
+
+            if (RemoveException is not null)
+            {
+                throw RemoveException;
+            }
+
+            if (RemoveResultFactoryAsync is not null)
+            {
+                return RemoveResultFactoryAsync(rootPath, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceRemovalOperationResult
+            {
+                Message = "Removed from workspace list.",
+                Transcript = new OperationTranscript(),
+                Removal = new WorkspaceRemovalResult
+                {
+                    WorkspaceName = currentSnapshot?.Definition.Workspace.Name ?? "removed",
+                    WorkspaceRoot = rootPath,
+                    FilesDeleted = false,
+                    Warnings = [],
+                    Succeeded = true,
+                    FailureReason = string.Empty,
+                },
+            });
+        }
 
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(PublishAssessment);
@@ -2136,6 +2245,7 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -2150,6 +2260,7 @@ public sealed class ShellViewModelTests
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
         public string? BackupArchivePath { get; init; } = Path.Combine(Path.GetTempPath(), $"avalonia-backup-{Guid.NewGuid():N}.zip");
+        public bool RemoveConfirmed { get; init; } = true;
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
 
@@ -2161,6 +2272,9 @@ public sealed class ShellViewModelTests
 
         public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
             => Task.FromResult(BackupArchivePath);
+
+        public Task<bool> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
+            => Task.FromResult(RemoveConfirmed);
 
         public Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default)
             => Task.FromResult(PublishConfirmed);
@@ -2187,6 +2301,7 @@ public sealed class ShellViewModelTests
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

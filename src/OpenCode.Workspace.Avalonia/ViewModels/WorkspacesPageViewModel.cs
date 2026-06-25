@@ -43,6 +43,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RefreshWorkspacesCommand = new AsyncRelayCommand(() => LoadAsync(), () => !IsBusyForWorkspaceActions);
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
+        RemoveWorkspaceCommand = new AsyncRelayCommand(RemoveWorkspaceAsync, CanRemoveSelectedWorkspace);
         PublishWorkspaceCommand = new AsyncRelayCommand(PublishWorkspaceAsync, CanPublishSelectedWorkspace);
         BackupWorkspaceCommand = new AsyncRelayCommand(BackupWorkspaceAsync, CanBackupSelectedWorkspace);
         CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, CanCreateSavePointSelectedWorkspace);
@@ -63,6 +64,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
+    public AsyncRelayCommand RemoveWorkspaceCommand { get; }
     public AsyncRelayCommand PublishWorkspaceCommand { get; }
     public AsyncRelayCommand BackupWorkspaceCommand { get; }
     public AsyncRelayCommand CreateSavePointCommand { get; }
@@ -207,6 +209,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 UpdateDetailPanel();
                 OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
                 ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+                RemoveWorkspaceCommand.RaiseCanExecuteChanged();
                 PublishWorkspaceCommand.RaiseCanExecuteChanged();
                 BackupWorkspaceCommand.RaiseCanExecuteChanged();
                 StartWorkspaceCommand.RaiseCanExecuteChanged();
@@ -256,6 +259,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Remove", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Publish", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
@@ -301,6 +305,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Remove", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Publish", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "No workspace selected.", DisabledActionCommand));
             DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
@@ -637,6 +642,64 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
+    private async Task RemoveWorkspaceAsync()
+    {
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        var prompt = new WorkspaceRemovalPrompt
+        {
+            WorkspaceName = SelectedWorkspace.Name,
+            WorkspaceRoot = SelectedWorkspace.RootPath,
+        };
+
+        StartOperationTranscript("Remove", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing removal..." });
+        DetailSummary = "Preparing removal...";
+
+        if (!await _interactionService.ConfirmRemoveWorkspaceAsync(prompt))
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Workspace removal cancelled.";
+            return;
+        }
+
+        var removedRootPath = SelectedWorkspace.RootPath;
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Removing workspace from list...";
+            RaiseWorkspaceActionCommandStates();
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Removing workspace from list..." });
+            DetailSummary = "Removing workspace from list...";
+            var result = await _desktopShellService.RemoveWorkspaceAsync(removedRootPath, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
+            CompleteOperationTranscript(result.Transcript);
+            _workspaceActionStatusMessage = result.Message;
+            RemoveWorkspaceFromList(removedRootPath);
+            DetailSummary = result.Message;
+            if (result.Removal.Warnings.Count > 0)
+            {
+                DetailItems.Clear();
+                DetailItems.Add(new DetailItemViewModel("Warnings", string.Join(Environment.NewLine, result.Removal.Warnings)));
+            }
+        }
+        catch (Exception exception)
+        {
+            _workspaceActionStatusMessage = exception.Message;
+            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            DetailSummary = exception.Message;
+            throw;
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            RefreshDetailActions();
+        }
+    }
+
     private async Task StartSelectedWorkspaceAsync()
     {
         await RunWorkspaceOperationAsync(
@@ -889,6 +952,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Remove", BuildRemoveDescription(SelectedWorkspace), CanRemoveSelectedWorkspace(), GetRemoveDisabledReason(SelectedWorkspace), RemoveWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Publish", BuildPublishDescription(SelectedWorkspace), CanPublishSelectedWorkspace(), GetPublishDisabledReason(SelectedWorkspace), PublishWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Backup", BuildBackupDescription(SelectedWorkspace), CanBackupSelectedWorkspace(), GetBackupDisabledReason(SelectedWorkspace), BackupWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
@@ -911,6 +975,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanValidateSelectedWorkspace()
         => SelectedWorkspace is { IsLoading: false };
+
+    private bool CanRemoveSelectedWorkspace()
+        => CanRemoveWorkspace(SelectedWorkspace);
 
     private bool CanPublishSelectedWorkspace()
         => CanPublishWorkspace(SelectedWorkspace);
@@ -945,6 +1012,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanCreateSavePointWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
+
+    private string GetRemoveDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanRemoveWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace record is unavailable, so removal cannot run.";
 
     private string GetPublishDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -990,6 +1062,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : CanCreateSavePointWorkspace(workspace)
                 ? "Capture the current local milestone for recovery using the shared Git-backed Save Point flow."
                 : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
+
+    private string BuildRemoveDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanRemoveWorkspace(workspace)
+                ? "Remove the workspace from the local index without deleting repository files."
+                : "Workspace record is unavailable, so removal cannot run.";
 
     private string BuildPublishDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1121,6 +1200,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         return CanStartWorkspace(workspace);
     }
 
+    private bool CanRemoveWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return workspace is not null && !string.IsNullOrWhiteSpace(workspace.RootPath);
+    }
+
     private bool CanPublishWorkspace(WorkspaceSummaryViewModel? workspace)
     {
         if (_interactionService is null || IsBusyForWorkspaceActions)
@@ -1168,6 +1257,49 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailItems.Add(new DetailItemViewModel("Ahead", result.Review.AheadCount.ToString(CultureInfo.InvariantCulture)));
         DetailItems.Add(new DetailItemViewModel("Behind", result.Review.BehindCount.ToString(CultureInfo.InvariantCulture)));
         DetailItems.Add(new DetailItemViewModel("Latest commit", string.IsNullOrWhiteSpace(result.Review.LatestCommitSha) ? "Unavailable" : result.Review.LatestCommitSha));
+    }
+
+    private void RemoveWorkspaceFromList(string rootPath)
+    {
+        var removedIndex = Workspaces
+            .Select((item, index) => new { item, index })
+            .FirstOrDefault(pair => string.Equals(pair.item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
+        if (removedIndex is null)
+        {
+            return;
+        }
+
+        WorkspaceSummaryViewModel? nextSelection = null;
+        if (Workspaces.Count > removedIndex.index + 1)
+        {
+            nextSelection = Workspaces[removedIndex.index + 1];
+        }
+        else if (removedIndex.index > 0)
+        {
+            nextSelection = Workspaces[removedIndex.index - 1];
+        }
+
+        Workspaces.RemoveAt(removedIndex.index);
+        RaisePropertyChanged(nameof(HasWorkspaces));
+        RaisePropertyChanged(nameof(ShowEmptyState));
+        SelectedWorkspace = nextSelection;
+        if (SelectedWorkspace is null && Workspaces.Count == 0)
+        {
+            EmptyStateTitle = "No workspaces discovered.";
+            EmptyStateMessage = "OpenCode looks for workspace.yaml,\nworkspace.yml,\n.opencode/profile.yaml,\n.opencode/profile.yml\n\nUse Create Workspace or Open Existing Repository.";
+            DetailTitle = EmptyStateTitle;
+            DetailSummary = EmptyStateMessage;
+            DetailItems.Clear();
+            DetailActions.Clear();
+            DetailActions.Add(new ActionItemViewModel("Open", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Unavailable in Avalonia preview. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Validate", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Remove", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Publish", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Backup", string.Empty, false, "No workspace selected.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Recover", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+            DetailActions.Add(new ActionItemViewModel("Save Point", string.Empty, false, "No workspace selected. Use WPF or CLI for now.", DisabledActionCommand));
+        }
     }
 
     private void ReplaceSelectedWorkspace(OpenCode.Workspace.Core.Models.WorkspaceSnapshot snapshot)
@@ -1306,6 +1438,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RecoverWorkspaceCommand.RaiseCanExecuteChanged();
         AttachWorkspaceCommand.RaiseCanExecuteChanged();
         ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+        RemoveWorkspaceCommand.RaiseCanExecuteChanged();
         PublishWorkspaceCommand.RaiseCanExecuteChanged();
         BackupWorkspaceCommand.RaiseCanExecuteChanged();
         ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();

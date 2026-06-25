@@ -30,7 +30,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var failingOrchestrator = CreateOrchestrator(tempRoot, repository, timelineService, failingRuntime);
             var created = await failingOrchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Odip Analiza"), includeRuntimeInspection: false);
 
-            var failingService = new DesktopShellService(failingOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspacePublishAssessmentService(new ProcessRunner()));
+            var failingService = new DesktopShellService(failingOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository));
             await Assert.ThrowsAsync<InvalidOperationException>(() => failingService.ReprovisionWorkspaceAsync(created.Paths.RootPath));
 
             var failedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
@@ -39,7 +39,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
             var successfulRuntime = new StubContainerRuntime();
             var successfulOrchestrator = CreateOrchestrator(tempRoot, repository, timelineService, successfulRuntime);
-            var successfulService = new DesktopShellService(successfulOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspacePublishAssessmentService(new ProcessRunner()));
+            var successfulService = new DesktopShellService(successfulOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository));
 
             var result = await successfulService.ReprovisionWorkspaceAsync(created.Paths.RootPath);
 

@@ -16,6 +16,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly WorkspaceBackupExportService _workspaceBackupExportService;
     private readonly WorkspacePublishAssessmentService _workspacePublishAssessmentService;
+    private readonly WorkspaceRemovalService _workspaceRemovalService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -24,7 +25,8 @@ public sealed class DesktopShellService : IDesktopShellService
         WorkspaceCheckpointService checkpointService,
         WorkspaceSavePointMessageService savePointMessageService,
         WorkspaceBackupExportService workspaceBackupExportService,
-        WorkspacePublishAssessmentService workspacePublishAssessmentService)
+        WorkspacePublishAssessmentService workspacePublishAssessmentService,
+        WorkspaceRemovalService workspaceRemovalService)
     {
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
@@ -34,6 +36,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _savePointMessageService = savePointMessageService;
         _workspaceBackupExportService = workspaceBackupExportService;
         _workspacePublishAssessmentService = workspacePublishAssessmentService;
+        _workspaceRemovalService = workspaceRemovalService;
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -143,6 +146,50 @@ public sealed class DesktopShellService : IDesktopShellService
             transcript.Succeeded = false;
             throw;
         }
+    }
+
+    public async Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
+        var workspaceName = currentSnapshot?.Definition.Workspace.Name
+            ?? currentSnapshot?.Record.Name
+            ?? record?.Name
+            ?? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var transcript = CreateTranscript("Remove", workspaceName, rootPath, logSink, out var append, out _);
+
+        append(OperationTranscriptLineKind.Status, "Preparing removal...");
+        append(OperationTranscriptLineKind.Comment, $"Selected workspace '{workspaceName}'.");
+        append(OperationTranscriptLineKind.Status, "Removing workspace from list...");
+
+        var removal = await _workspaceRemovalService.RemoveAsync(new WorkspaceRemovalRequest
+        {
+            WorkspaceName = workspaceName,
+            WorkspaceRoot = rootPath,
+            DeleteWorkspaceFiles = false,
+        }, cancellationToken);
+
+        foreach (var warning in removal.Warnings)
+        {
+            append(OperationTranscriptLineKind.Comment, warning);
+        }
+
+        if (!removal.Succeeded)
+        {
+            append(OperationTranscriptLineKind.StandardError, removal.FailureReason);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw new InvalidOperationException(removal.FailureReason);
+        }
+
+        append(OperationTranscriptLineKind.Result, "Completed.");
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = true;
+        return new WorkspaceRemovalOperationResult
+        {
+            Message = $"Removed '{removal.WorkspaceName}' from the workspace list.",
+            Transcript = transcript,
+            Removal = removal,
+        };
     }
 
     public async Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
