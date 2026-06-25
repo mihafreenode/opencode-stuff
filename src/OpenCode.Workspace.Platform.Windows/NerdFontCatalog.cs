@@ -1,4 +1,4 @@
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 /// <summary>
 /// Maps the user-facing recommended Nerd Font names to the actual Windows font

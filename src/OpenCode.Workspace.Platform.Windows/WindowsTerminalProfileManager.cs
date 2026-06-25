@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 /// <summary>
 /// Uses Windows Terminal fragment extensions so OpenCode Stuff can manage only its

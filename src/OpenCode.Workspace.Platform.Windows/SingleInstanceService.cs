@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 public sealed class SingleInstanceService : IDisposable
 {

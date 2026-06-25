@@ -1,7 +1,7 @@
 using System.IO;
-using OpenCode.Workspace.Manager.Services;
+using OpenCode.Workspace.Platform.Windows;
 
-namespace OpenCode.Workspace.Windows.Tests;
+namespace OpenCode.Workspace.Platform.Windows.Tests;
 
 public sealed class TmpReprovisionWorkflowServiceTests
 {

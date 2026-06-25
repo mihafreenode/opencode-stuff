@@ -1,4 +1,4 @@
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 /// <summary>
 /// Generates a small, deterministic terminal profile snippet for contributors who
@@ -15,7 +15,7 @@ public sealed class TerminalProfileGenerator
             $"  \"colorScheme\": \"{colorScheme}\",",
             $"  \"font\": {{ \"face\": \"{fontFace}\" }},",
             "  \"suppressApplicationTitle\": false",
-            "}",
+            "}"
         });
     }
 }

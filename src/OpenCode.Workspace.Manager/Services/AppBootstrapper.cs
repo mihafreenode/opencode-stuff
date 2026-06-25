@@ -4,6 +4,7 @@ using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform.Windows;
 using OpenCode.Workspace.Manager.ViewModels;
 
 namespace OpenCode.Workspace.Manager.Services;

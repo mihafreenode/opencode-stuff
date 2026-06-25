@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -21,7 +20,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenCode.Workspace.AppSupport\OpenCode.Workspace.AppSupport.csproj" />
     <ProjectReference Include="..\..\src\OpenCode.Workspace.Core\OpenCode.Workspace.Core.csproj" />
-    <ProjectReference Include="..\..\src\OpenCode.Workspace.Manager\OpenCode.Workspace.Manager.csproj" />
     <ProjectReference Include="..\..\src\OpenCode.Workspace.Platform.Windows\OpenCode.Workspace.Platform.Windows.csproj" />
   </ItemGroup>
 

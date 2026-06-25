@@ -1,13 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
-namespace OpenCode.Workspace.Windows.Tests;
+namespace OpenCode.Workspace.Platform.Windows.Tests;
 
 public sealed class AttachDiagnosticsLoggingTests
 {

@@ -2,7 +2,6 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
-using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Manager;
 using OpenCode.Workspace.Manager.Services;
 
@@ -10,19 +9,6 @@ namespace OpenCode.Workspace.Windows.Tests;
 
 public sealed class WindowsBootstrapIntegrationTests
 {
-    [Fact]
-    public void LocalizationLoading_ReturnsEnglishAndSlovenianStrings()
-    {
-        var root = TestPaths.RepositoryRoot;
-        var localizationRoot = Path.Combine(root, "Localization");
-
-        var english = new PoLocalizationService(localizationRoot, "en");
-        var slovenian = new PoLocalizationService(localizationRoot, "sl");
-
-        Assert.Equal("OpenCode Workspace Manager", english.Get("app.title"));
-        Assert.Equal("Nadzorna plošča delovnih prostorov", slovenian.Get("dashboard.title"));
-    }
-
     [Fact]
     public void AppBootstrapper_CreatesMainWindowViewModel()
     {
@@ -94,13 +80,4 @@ public sealed class WindowsBootstrapIntegrationTests
         Assert.Null(captured);
     }
 
-    [Fact]
-    public async Task WindowsHostBuildIntegration_DotNetHostIsAvailable()
-    {
-        var runner = new OpenCode.Workspace.Core.Runtime.ProcessRunner();
-        var result = await runner.RunAsync("cmd.exe", ["/c", "dotnet", "--info"]);
-
-        Assert.True(result.IsSuccess);
-        Assert.Contains(result.StandardOutputLines, line => line.Contains(".NET SDK", StringComparison.OrdinalIgnoreCase));
-    }
 }

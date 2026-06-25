@@ -3,7 +3,7 @@ using System.IO;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 /// <summary>
 /// Groups Windows-specific host capability checks that are useful both for the UI

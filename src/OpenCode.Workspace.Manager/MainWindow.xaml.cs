@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using System.Windows.Input;
 using System.Windows.Media;
+using OpenCode.Workspace.Platform.Windows;
 using OpenCode.Workspace.Manager.Services;
 using OpenCode.Workspace.Manager.ViewModels;
 

@@ -3,7 +3,7 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 public sealed class TmpReprovisionWorkflowService
 {
@@ -58,7 +58,7 @@ public sealed class TmpReprovisionWorkflowService
             TimeSpan.FromHours(2));
     }
 
-    internal static string ResolveRepositoryRoot(string applicationBasePath)
+    public static string ResolveRepositoryRoot(string applicationBasePath)
     {
         var current = new DirectoryInfo(applicationBasePath);
         while (current is not null)
@@ -74,7 +74,7 @@ public sealed class TmpReprovisionWorkflowService
         throw new InvalidOperationException("The tmp reprovision workflow is a developer helper and only works from a repository checkout.");
     }
 
-    internal static string EnsureProjectGenerated(string repositoryRoot, Action<CommandLogEntry>? log = null)
+    public static string EnsureProjectGenerated(string repositoryRoot, Action<CommandLogEntry>? log = null)
     {
         var projectRoot = Path.Combine(repositoryRoot, ".tmp", "ReprovisionWorkspace");
         Directory.CreateDirectory(projectRoot);

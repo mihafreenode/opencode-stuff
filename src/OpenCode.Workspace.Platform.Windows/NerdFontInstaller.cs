@@ -1,6 +1,6 @@
 using OpenCode.Workspace.Core.Runtime;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 /// <summary>
 /// Installs a supported set of Nerd Fonts from the official Nerd Fonts GitHub

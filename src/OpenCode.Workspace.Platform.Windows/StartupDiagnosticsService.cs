@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace OpenCode.Workspace.Manager.Services;
+namespace OpenCode.Workspace.Platform.Windows;
 
 public sealed class StartupDiagnosticsService
 {

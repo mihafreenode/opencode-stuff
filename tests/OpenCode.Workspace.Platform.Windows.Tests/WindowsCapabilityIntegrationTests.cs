@@ -1,9 +1,9 @@
 using System.IO;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
-using OpenCode.Workspace.Manager.Services;
+using OpenCode.Workspace.Platform.Windows;
 
-namespace OpenCode.Workspace.Windows.Tests;
+namespace OpenCode.Workspace.Platform.Windows.Tests;
 
 public sealed class WindowsCapabilityIntegrationTests
 {
