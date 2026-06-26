@@ -21,3 +21,10 @@ coverage/
 
 # Runtime smoke validation artifacts
 artifacts/oracle-runtime-smoke/
+
+# Local desktop publish outputs
+artifacts/opencode-stuff-win-x64/
+artifacts/opencode-stuff-linux-x64/
+artifacts/opencode-stuff-macos-arm64/
+artifacts/*.zip
+artifacts/*.tar.gz
