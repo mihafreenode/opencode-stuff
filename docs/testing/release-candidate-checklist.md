@@ -104,3 +104,173 @@ Verify backup behavior:
 - Prerequisite diagnostics reviewed
 - Known limitations recorded
 - Ready to tag release candidate
+
+## Execution Record
+
+Release candidate status: `NOT READY`
+
+Metadata:
+
+- Commit hash: `13811ec8f2f7f6e582af0f836b82c68b65153af9`
+- Validation date: `2026-06-26T10:51:17+02:00`
+- Validator: `OpenCode assistant`
+- Host OS/version: `Microsoft Windows NT 10.0.19045.0` for packaged Windows validation, `Linux 6.18.33.1-microsoft-standard-WSL2` for local build/test orchestration
+- Packaged application version: `1.0.0.0`
+- Packaged application build info: `1.0.0+13811ec8f2f7f6e582af0f836b82c68b65153af9`
+- Package filenames:
+  - `opencode-stuff-win-x64.zip`
+  - `opencode-stuff-linux-x64.tar.gz`
+  - `opencode-stuff-macos-arm64.tar.gz`
+
+SHA-256:
+
+- `opencode-stuff-win-x64.zip`: `e7b65645bb0ccd24fced962335d1cb56fdea4ede50cea112c14144805fe48763`
+- `opencode-stuff-linux-x64.tar.gz`: `9bec255654a3c54eb44e5ceae35a8572787547c25682353662bdff1252043533`
+- `opencode-stuff-macos-arm64.tar.gz`: `12aa11ac2bdd617f89877629b4e65c44d06f33b8945090835ec225c4bd865874`
+
+### Windows Package Smoke
+
+Status: `PASS`
+
+Evidence:
+
+- zip extracted into a clean Windows temp folder
+- `OpenCode.Workspace.Avalonia.exe` exists in the extracted package
+- `catalog/`, `Localization/`, and `docs/` are present
+- required platform assemblies are present
+- release package verified without `.pdb` files
+- extracted app launched successfully from temp folder
+- main window title is `opencode stuff`
+- startup completed without depending on repository working directory
+- existing workspace index load completed successfully
+- missing-index startup completed successfully without crashing
+- build/version info is discoverable from Windows file version metadata
+
+### Upgrade Compatibility
+
+Status: `FAIL`
+
+Evidence:
+
+- existing `%LOCALAPPDATA%\OpenCode.Workspace.Manager` is preserved
+- existing `workspaces.json` continues to load
+- existing startup log and tutorial-state files remain present
+- existing settings and history consumption were not fully exercised through the packaged GUI in this pass
+
+Blocking note:
+
+- no existing user data appears orphaned, but upgrade compatibility is not fully signed off until packaged GUI workflow validation is completed manually
+
+### Cross-Platform Package Verification
+
+Status: `PASS`
+
+Windows:
+
+- archive extracts
+- executable exists
+- expected platform files exist
+- startup verified
+
+Linux:
+
+- archive extracts
+- executable exists
+- expected packaged files exist
+- GUI startup not exercised in this environment
+
+macOS:
+
+- archive extracts
+- executable exists
+- expected packaged files exist
+- GUI startup not exercised in this environment
+
+### First Workspace Workflow
+
+Status: `FAIL`
+
+Not completed in this pass:
+
+- create workspace from packaged GUI
+- verify friendly template names interactively
+- start
+- attach
+- save point
+- backup
+- remove from list
+- relaunch and verify resulting state
+
+Blocking note:
+
+- the repo now has a manual checklist, but this packaged GUI workflow still needs manual execution and recording
+
+### Recovery Workflow
+
+Status: `FAIL`
+
+Not completed in this pass:
+
+- damage managed runtime files
+- run packaged Recover flow
+- verify preserved user file and regenerated runtime files
+
+### Publish Workflow
+
+Status: `FAIL`
+
+Not completed in this pass:
+
+- local bare remote setup
+- packaged Save Point and Publish flow
+- remote branch verification from packaged GUI
+
+### Prerequisites And Diagnostics
+
+Status: `FAIL`
+
+Validated:
+
+- packaged app does not crash when the workspace index is missing
+- shared doctor/discovery backend returns actionable output
+- existing Windows app-data path remains in use
+
+Not fully validated from the packaged desktop surface:
+
+- Git
+- Docker
+- Docker Compose
+- Windows Terminal
+- fonts / Nerd Font
+- OpenCode CLI
+- template catalog
+- runtime platform
+- host architecture
+
+Blocking note:
+
+- prerequisite handling is likely correct in shared services, but the packaged GUI checklist still needs manual execution and recording
+
+### Archive Checks
+
+Status: `FAIL`
+
+Validated:
+
+- release package excludes debug symbol files
+
+Not completed in this pass:
+
+- packaged backup archive content verification for `.env`, secrets, `.git`, `node_modules`, `bin`, `obj`, large files, `workspace.yaml`, history, docs, `mounts/config`, and runtime-related durable metadata
+
+### Sign-Off Result
+
+Status: `FAIL`
+
+Summary:
+
+- package smoke passed
+- cross-platform package integrity passed
+- full build/test validation is green
+- packaged GUI workflow checklist execution is still pending
+- release tag must wait for manual checklist completion and recorded results

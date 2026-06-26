@@ -1,0 +1,3 @@
+e7b65645bb0ccd24fced962335d1cb56fdea4ede50cea112c14144805fe48763  artifacts/opencode-stuff-win-x64.zip
+9bec255654a3c54eb44e5ceae35a8572787547c25682353662bdff1252043533  artifacts/opencode-stuff-linux-x64.tar.gz
+12aa11ac2bdd617f89877629b4e65c44d06f33b8945090835ec225c4bd865874  artifacts/opencode-stuff-macos-arm64.tar.gz
