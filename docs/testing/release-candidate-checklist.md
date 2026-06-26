@@ -155,6 +155,7 @@ Evidence:
 - existing `%LOCALAPPDATA%\OpenCode.Workspace.Manager` is preserved
 - existing `workspaces.json` continues to load
 - existing startup log and tutorial-state files remain present
+- existing discovery log remains present
 - existing settings and history consumption were not fully exercised through the packaged GUI in this pass
 
 Blocking note:
@@ -188,32 +189,79 @@ macOS:
 
 ### First Workspace Workflow
 
-Status: `FAIL`
+Status: `PASS`
 
-Not completed in this pass:
+Workspace under test:
 
-- create workspace from packaged GUI
-- verify friendly template names interactively
-- start
-- attach
-- save point
-- backup
-- remove from list
-- relaunch and verify resulting state
+- name: `rc-first-workspace`
+- root path: `C:\Users\miha.pirnat\AppData\Local\Temp\opencode-rc-workspaces`
 
-Blocking note:
+Verified in packaged app:
 
-- the repo now has a manual checklist, but this packaged GUI workflow still needs manual execution and recording
+- `Create Workspace`: `PASS`
+- friendly template naming: `PASS`
+  - visible template name: `Data Processing`
+  - visible template summary: `Data workspace with PostgreSQL and pgAdmin examples enabled.`
+- `Start workspace`: `PASS`
+  - workspace record updated to `LastOperationName=Start`
+  - workspace record updated to `LastOperationResult=Provisioned and started workspace.`
+  - Docker containers started:
+    - `rc-first-workspace-workspace`
+    - `rc-first-workspace-postgres-1`
+    - `rc-first-workspace-pgadmin-1`
+- `Attach`: `PASS`
+  - startup log recorded `Workspace operation 'Attach' completed provider call with message 'Attach launched for 'rc-first-workspace'.'`
+  - existing Windows Terminal process remained active with title `OpenCode`
+- `Save Point`: `PASS`
+  - packaged dialog opened and accepted message `RC save point before packaged backup and publish`
+  - startup log recorded `Workspace operation 'Create Save Point' completed provider call with message 'Save Point created.'`
+- `Backup`: `PASS`
+  - packaged save dialog opened as `Backup workspace`
+  - packaged shell reported `Backup created at 'C:\Users\miha.pirnat\OneDrive - Kopa, racunalniski inzeniring d.d\Dokumenti\rc-first-workspace-20260626-124909.zip' with 23 file(s).`
+  - manifest path reported as `C:\Users\miha.pirnat\OneDrive - Kopa, racunalniski inzeniring d.d\Dokumenti\rc-first-workspace-20260626-124909-backup-manifest.yaml`
+- `Remove from list`: `PASS`
+  - packaged shell reported `Removed 'rc-first-workspace' from the workspace list.`
+- `Relaunch and verify expected state`: `PASS`
+  - after relaunch, `rc-first-workspace` was no longer present in `workspaces.json`
+  - workspace root still existed on disk
+
+Notes:
+
+- stable packaged UI automation names/IDs were required to finish this section reliably
+- `Start` and `Attach` remain slower than ideal, but both completed successfully in the packaged flow
 
 ### Recovery Workflow
 
 Status: `FAIL`
 
-Not completed in this pass:
+Failure point:
+
+- after Section A removed `rc-first-workspace` from the list, the packaged app was used to re-import the same disposable workspace root for recovery testing
+- packaged `Open Existing Repository` inspection reported:
+  - `The selected folder is not a Git checkout.`
+  - `Repository inspection failed.`
+
+Recorded evidence:
+
+- workspace root still exists: `C:\Users\miha.pirnat\AppData\Local\Temp\opencode-rc-workspaces`
+- `.git` exists at that path
+- `workspace.yaml` exists at that path
+- Windows host `git status --short --branch` at that path succeeds and reports:
+  - `## workspace/rc-first-workspace-20260626-1030`
+- packaged import dialog UIA dump shows:
+  - `The selected folder is not a Git checkout.`
+  - `Repository inspection failed.`
+
+Smallest likely remaining blocker:
+
+- packaged existing-checkout inspection is falsely classifying a valid packaged-created workspace root as not being a Git checkout after remove-from-list/relaunch
+
+Further recovery checks were not run after this failure:
 
 - damage managed runtime files
-- run packaged Recover flow
-- verify preserved user file and regenerated runtime files
+- packaged Recover
+- preserved user file hash verification
+- regenerated runtime file verification
 
 ### Publish Workflow
 
@@ -234,6 +282,7 @@ Validated:
 - packaged app does not crash when the workspace index is missing
 - shared doctor/discovery backend returns actionable output
 - existing Windows app-data path remains in use
+- packaged UI shows diagnostics navigation and doctor/validation actions
 
 Not fully validated from the packaged desktop surface:
 
@@ -258,6 +307,13 @@ Status: `FAIL`
 Validated:
 
 - release package excludes debug symbol files
+- created workspace contains expected durable structure at the chosen root:
+  - `workspace.yaml`
+  - `docs/`
+  - `history/`
+  - `mounts/`
+  - `artifacts/`
+  - `.opencode/`
 
 Not completed in this pass:
 

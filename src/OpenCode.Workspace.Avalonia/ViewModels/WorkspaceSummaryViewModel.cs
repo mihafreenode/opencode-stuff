@@ -8,6 +8,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
 {
     private string? _runtimeStatusLabelOverride;
     private string? _lastActivityOverride;
+    private bool _isSelected;
 
     public WorkspaceSummaryViewModel(WorkspaceShellItem item)
     {
@@ -92,6 +93,19 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             ? "Loaded"
             : $"Loaded ({Snapshot.LocalRuntimeState.ResolvedPlatform})";
     public string RuntimeTarget => IsLoading ? "Loading..." : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
+    public string SafeWorkspaceName => BuildSafeWorkspaceToken(Name);
+    public string RowAutomationId => $"WorkspaceRow_{SafeWorkspaceName}";
+    public string RowAutomationName => $"WorkspaceRow_{SafeWorkspaceName}";
+    public string TitleAutomationId => $"WorkspaceTitle_{SafeWorkspaceName}";
+    public string TitleAutomationName => $"WorkspaceTitle_{SafeWorkspaceName}";
+    public string SelectedMarkerAutomationId => "WorkspaceRow_Selected";
+    public string SelectedMarkerAutomationName => "WorkspaceRow_Selected";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
 
     public void SetReprovisioningState(string message)
     {
@@ -121,6 +135,22 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
 
     private string DisplayNameFromRecord()
         => string.IsNullOrWhiteSpace(Record.Name) ? Record.RootPath : Record.Name;
+
+    private static string BuildSafeWorkspaceToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "unnamed";
+        }
+
+        var builder = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            builder.Append(char.IsLetterOrDigit(character) ? character : '_');
+        }
+
+        return builder.ToString();
+    }
 
     private void RaiseWorkspaceDisplayChanged()
     {

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpenCode.Workspace.Avalonia.ViewModels"
+        xmlns:automation="using:Avalonia.Automation"
         x:Class="OpenCode.Workspace.Avalonia.MainWindow"
         Title="opencode stuff"
         Width="1480"
@@ -86,9 +87,23 @@
                         IsVisible="{Binding HasWorkspaces}">
                 <ListBox.ItemTemplate>
                   <DataTemplate>
-                    <Border Classes="list-row" Margin="0,0,0,10">
+                    <Border Classes="list-row"
+                            Margin="0,0,0,10"
+                            automation:AutomationProperties.AutomationId="{Binding RowAutomationId}"
+                            automation:AutomationProperties.Name="{Binding RowAutomationName}">
                       <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
-                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   automation:AutomationProperties.AutomationId="{Binding TitleAutomationId}"
+                                   automation:AutomationProperties.Name="{Binding TitleAutomationName}" />
+                        <TextBlock Text="Selected"
+                                   IsVisible="{Binding IsSelected}"
+                                   Opacity="0.01"
+                                   Width="1"
+                                   Height="1"
+                                   automation:AutomationProperties.AutomationId="{Binding SelectedMarkerAutomationId}"
+                                   automation:AutomationProperties.Name="{Binding SelectedMarkerAutomationName}" />
                         <Border Grid.Column="1" Classes="status-chip">
                           <TextBlock Text="{Binding ProtectionLabel}" />
                         </Border>
@@ -453,7 +468,11 @@
               <DataTemplate>
                 <Border Classes="panel-subtle" Margin="0,0,0,8" MinHeight="86">
                   <StackPanel Spacing="6">
-                    <Button Content="{Binding Label}" Command="{Binding Command}" IsEnabled="{Binding IsEnabled}" />
+                    <Button Content="{Binding Label}"
+                            Command="{Binding Command}"
+                            IsEnabled="{Binding IsEnabled}"
+                            automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                            automation:AutomationProperties.Name="{Binding AutomationName}" />
                     <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDescription}" />
                     <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowDisabledReason}" />
                   </StackPanel>

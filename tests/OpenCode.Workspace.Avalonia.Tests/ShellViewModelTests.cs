@@ -438,8 +438,8 @@ public sealed class ShellViewModelTests
 
         Assert.Collection(
             page.Workspaces,
-            first => Assert.Equal("alpha", first.Name),
-            second => Assert.Equal("beta", second.Name));
+            first => Assert.Equal("beta", first.Name),
+            second => Assert.Equal("alpha", second.Name));
     }
 
     [Fact]
@@ -449,6 +449,16 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         page.SelectedWorkspace = page.Workspaces.Last();
+
+        Assert.Equal("alpha", page.DetailTitle);
+        Assert.Contains(page.DetailItems, item => item.Label == "Repository path" && item.Value.Contains("alpha", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SelectedWorkspace_DefaultsToMostRecentlyOpenedWorkspace()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
+        await page.LoadAsync();
 
         Assert.Equal("beta", page.DetailTitle);
         Assert.Contains(page.DetailItems, item => item.Label == "Repository path" && item.Value.Contains("beta", StringComparison.Ordinal));
@@ -1304,6 +1314,7 @@ public sealed class ShellViewModelTests
         page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
 
         await page.LoadAsync();
+        page.SelectedWorkspace = page.Workspaces.Single(item => item.Name == "alpha");
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
         Assert.Single(page.Workspaces);
@@ -2068,9 +2079,24 @@ public sealed class ShellViewModelTests
         var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
         workspacesPage.SelectedWorkspace = workspacesPage.Workspaces.Last();
 
-        Assert.Equal("Workspace: beta", shell.StatusBarWorkspace);
+        Assert.Equal("Workspace: alpha", shell.StatusBarWorkspace);
         Assert.Contains("Branch:", shell.StatusBarBranch, StringComparison.Ordinal);
         Assert.Contains("Protection:", shell.StatusBarProtection, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkspaceLoad_OrdersMostRecentlyOpenedWorkspaceFirst()
+    {
+        var older = CreateSnapshot("older", lastOpenedUtc: DateTimeOffset.UtcNow.AddHours(-2), createdUtc: DateTimeOffset.UtcNow.AddHours(-2));
+        var recent = CreateSnapshot("recent", lastOpenedUtc: DateTimeOffset.UtcNow, createdUtc: DateTimeOffset.UtcNow);
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([older, recent]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("recent", page.Workspaces[0].Name);
+        Assert.Equal("older", page.Workspaces[1].Name);
+        Assert.Equal("recent", page.SelectedWorkspace?.Name);
     }
 
     [Fact]
@@ -2129,8 +2155,17 @@ public sealed class ShellViewModelTests
         return new SettingsPageViewModel(coordinator ?? new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo(), actualDesktop, new FakeHostCapabilities(), () => new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = actualWorkspace.Record, Snapshot = actualWorkspace }));
     }
 
-    private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true, bool updateRequired = false, string? lastOperationResult = null, bool? lastOperationSucceeded = true)
+    private static WorkspaceSnapshot CreateSnapshot(
+        string name,
+        bool includeRuntimeState = true,
+        bool updateRequired = false,
+        string? lastOperationResult = null,
+        bool? lastOperationSucceeded = true,
+        DateTimeOffset? lastOpenedUtc = null,
+        DateTimeOffset? createdUtc = null)
     {
+        var effectiveLastOpenedUtc = lastOpenedUtc ?? DateTimeOffset.UtcNow;
+        var effectiveCreatedUtc = createdUtc ?? effectiveLastOpenedUtc;
         var root = Path.Combine(Path.GetTempPath(), $"oc-avalonia-{name}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         Directory.CreateDirectory(Path.Combine(root, "mounts", "config"));
@@ -2146,8 +2181,8 @@ public sealed class ShellViewModelTests
                 Name = name,
                 RootPath = root,
                 RepositoryPath = root,
-                LastOpenedUtc = DateTimeOffset.UtcNow,
-                CreatedUtc = DateTimeOffset.UtcNow,
+                LastOpenedUtc = effectiveLastOpenedUtc,
+                CreatedUtc = effectiveCreatedUtc,
                 LastOperationResult = lastOperationResult ?? "Loaded workspace.",
                 LastOperationSucceeded = lastOperationSucceeded,
             },

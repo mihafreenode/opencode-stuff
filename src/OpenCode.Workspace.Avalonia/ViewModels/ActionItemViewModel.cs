@@ -64,5 +64,34 @@ public sealed class ActionItemViewModel : ObservableObject
 
     public bool ShowDisabledReason => !IsEnabled && !string.IsNullOrWhiteSpace(DisabledReason);
 
+    public string AutomationId => Label switch
+    {
+        "Attach" => "WorkspaceAction_Attach",
+        "Save Point" => "WorkspaceAction_SavePoint",
+        "Backup" => "WorkspaceAction_Backup",
+        "Recover" => "WorkspaceAction_Recover",
+        "Publish" => "WorkspaceAction_Publish",
+        "Remove" => "WorkspaceAction_RemoveFromList",
+        _ => $"WorkspaceAction_{BuildSafeToken(Label)}",
+    };
+
+    public string AutomationName => AutomationId;
+
     public ICommand Command { get; }
+
+    private static string BuildSafeToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Unnamed";
+        }
+
+        var builder = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            builder.Append(char.IsLetterOrDigit(character) ? character : '_');
+        }
+
+        return builder.ToString();
+    }
 }

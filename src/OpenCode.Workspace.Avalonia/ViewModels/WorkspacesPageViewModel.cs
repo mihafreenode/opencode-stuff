@@ -4,6 +4,7 @@ using System.IO;
 using Avalonia.Threading;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
+using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
@@ -210,6 +211,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             if (SetProperty(ref _selectedWorkspace, value))
             {
+                UpdateWorkspaceSelectionState();
                 UpdateDetailPanel();
                 OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
                 OpenWorkspaceFolderCommand.RaiseCanExecuteChanged();
@@ -228,6 +230,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
+        var preferredSelectedRootPath = SelectedWorkspace?.RootPath;
         SetLoadingState();
         Workspaces.Clear();
         try
@@ -244,7 +247,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 }
             }, cancellationToken);
             WorkspaceLoadReport = loadResult.Report;
-            foreach (var item in loadResult.Items.OrderBy(item => string.IsNullOrWhiteSpace(item.Record.Name) ? item.Record.RootPath : item.Record.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var item in loadResult.Items.OrderBy(item => item, WorkspaceDisplayComparer.Instance))
             {
                 ApplyWorkspaceItem(new WorkspaceSummaryViewModel(item));
             }
@@ -284,11 +287,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (!HasLoadError)
         {
-            if (SelectedWorkspace is null)
+            if (string.IsNullOrWhiteSpace(preferredSelectedRootPath))
             {
                 SelectedWorkspace = Workspaces.FirstOrDefault();
             }
             else
+            {
+                SelectedWorkspace = Workspaces.FirstOrDefault(item => string.Equals(item.RootPath, preferredSelectedRootPath, StringComparison.OrdinalIgnoreCase))
+                    ?? Workspaces.FirstOrDefault();
+            }
+
+            if (SelectedWorkspace is not null)
             {
                 UpdateDetailPanel();
             }
@@ -349,6 +358,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (existingIndex is null)
         {
             Workspaces.Add(summary);
+            SortWorkspaces();
             RaisePropertyChanged(nameof(HasWorkspaces));
             if (SelectedWorkspace is null)
             {
@@ -361,9 +371,106 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var wasSelected = ReferenceEquals(SelectedWorkspace, existingIndex.item)
             || string.Equals(SelectedWorkspace?.RootPath, summary.RootPath, StringComparison.OrdinalIgnoreCase);
         Workspaces[existingIndex.index] = summary;
+        SortWorkspaces();
         if (wasSelected)
         {
-            SelectedWorkspace = summary;
+            SelectedWorkspace = Workspaces.FirstOrDefault(item => string.Equals(item.RootPath, summary.RootPath, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private void UpdateWorkspaceSelectionState()
+    {
+        foreach (var workspace in Workspaces)
+        {
+            workspace.IsSelected = ReferenceEquals(workspace, SelectedWorkspace)
+                || string.Equals(workspace.RootPath, SelectedWorkspace?.RootPath, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void SortWorkspaces()
+    {
+        if (Workspaces.Count < 2)
+        {
+            return;
+        }
+
+        var selectedRootPath = SelectedWorkspace?.RootPath;
+        var ordered = Workspaces.OrderBy(item => item, WorkspaceDisplayComparer.Instance).ToList();
+        var changed = false;
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            if (!ReferenceEquals(Workspaces[index], ordered[index]))
+            {
+                changed = true;
+                break;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Workspaces.Clear();
+        foreach (var item in ordered)
+        {
+            Workspaces.Add(item);
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedRootPath))
+        {
+            SelectedWorkspace = Workspaces.FirstOrDefault(item => string.Equals(item.RootPath, selectedRootPath, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private sealed class WorkspaceDisplayComparer : IComparer<WorkspaceShellItem>, IComparer<WorkspaceSummaryViewModel>
+    {
+        public static WorkspaceDisplayComparer Instance { get; } = new();
+
+        public int Compare(WorkspaceShellItem? left, WorkspaceShellItem? right)
+            => CompareRecords(left?.Record, right?.Record);
+
+        public int Compare(WorkspaceSummaryViewModel? left, WorkspaceSummaryViewModel? right)
+            => CompareRecords(left?.Record, right?.Record);
+
+        private static int CompareRecords(WorkspaceRecord? left, WorkspaceRecord? right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return 1;
+            }
+
+            if (right is null)
+            {
+                return -1;
+            }
+
+            var lastOpened = right.LastOpenedUtc.CompareTo(left.LastOpenedUtc);
+            if (lastOpened != 0)
+            {
+                return lastOpened;
+            }
+
+            var created = right.CreatedUtc.CompareTo(left.CreatedUtc);
+            if (created != 0)
+            {
+                return created;
+            }
+
+            var name = StringComparer.OrdinalIgnoreCase.Compare(
+                string.IsNullOrWhiteSpace(left.Name) ? left.RootPath : left.Name,
+                string.IsNullOrWhiteSpace(right.Name) ? right.RootPath : right.Name);
+            if (name != 0)
+            {
+                return name;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.RootPath, right.RootPath);
         }
     }
 

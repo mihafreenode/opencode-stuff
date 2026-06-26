@@ -33,7 +33,9 @@ public sealed class WorkspaceDiscoveryReportService
         var indexStartedUtc = DateTimeOffset.UtcNow;
         var indexStopwatch = Stopwatch.StartNew();
         var records = _workspaceOrchestrator.LoadWorkspaceRecords()
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(item => item.LastOpenedUtc)
+            .ThenByDescending(item => item.CreatedUtc)
+            .ThenBy(item => string.IsNullOrWhiteSpace(item.Name) ? item.RootPath : item.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         indexStopwatch.Stop();
         timings.Add(new WorkspaceLoadTiming
