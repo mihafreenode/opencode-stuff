@@ -8,7 +8,7 @@ public sealed class TmpReprovisionWorkflowServiceTests
     [Fact]
     public void ResolveRepositoryRoot_FindsRepositoryFromNestedOutputPath()
     {
-        var nestedPath = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Manager", "bin", "Debug", "net10.0-windows");
+        var nestedPath = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Avalonia", "bin", "Debug", "net10.0");
 
         var repositoryRoot = TmpReprovisionWorkflowService.ResolveRepositoryRoot(nestedPath);
 

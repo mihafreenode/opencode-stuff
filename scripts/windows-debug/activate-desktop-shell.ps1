@@ -18,8 +18,8 @@ public static class NativeMethods
 }
 "@
 
-function Get-VisibleManagerProcess {
-    Get-Process OpenCode.Workspace.Manager -ErrorAction SilentlyContinue |
+function Get-VisibleDesktopShellProcess {
+    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
         Sort-Object StartTime |
         Where-Object { $_.MainWindowHandle -ne 0 } |
         Select-Object -Last 1
@@ -28,7 +28,7 @@ function Get-VisibleManagerProcess {
 $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))
 $process = $null
 do {
-    $process = Get-VisibleManagerProcess
+    $process = Get-VisibleDesktopShellProcess
     if ($process) {
         break
     }
@@ -37,13 +37,13 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if (-not $process) {
-    Write-Warning "No OpenCode Workspace Manager window is available to activate."
+    Write-Warning "No OpenCode desktop shell window is available to activate."
     exit 0
 }
 
 $handle = [IntPtr]$process.MainWindowHandle
 if ($handle -eq [IntPtr]::Zero) {
-    Write-Warning "Manager process exists but MainWindowHandle is null."
+    Write-Warning "Desktop shell process exists but MainWindowHandle is null."
     $process | Select-Object Id, ProcessName, StartTime | Format-List
     exit 0
 }

@@ -2,31 +2,38 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="OpenCode.Workspace.Avalonia.RemoveWorkspaceWindow"
         Width="660"
-        Height="320"
+        Height="420"
         MinWidth="580"
-        MinHeight="280"
+        MinHeight="360"
         Title="Remove Workspace"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
     <StackPanel Spacing="6">
       <TextBlock Text="Remove Workspace" FontSize="22" FontWeight="SemiBold" />
-      <TextBlock Text="This removes the workspace from the local index only. Workspace files stay on disk in this phase." TextWrapping="Wrap" />
+      <TextBlock Text="Choose whether to remove only the local registration, clean Docker resources, or delete workspace files after permission repair." TextWrapping="Wrap" />
     </StackPanel>
 
     <Border Grid.Row="1" BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="14">
-      <StackPanel Spacing="8">
+      <StackPanel Spacing="10">
         <TextBlock Text="Workspace" FontWeight="SemiBold" />
         <TextBlock x:Name="WorkspaceNameTextBlock" />
         <TextBlock Text="Root path" FontWeight="SemiBold" Margin="0,8,0,0" />
         <TextBlock x:Name="WorkspaceRootTextBlock" TextWrapping="Wrap" />
-        <TextBlock Text="Files are not deleted by this action." Foreground="#344054" Margin="0,8,0,0" TextWrapping="Wrap" />
+        <StackPanel Margin="0,10,0,0" Spacing="8">
+          <RadioButton x:Name="RegistrationOnlyRadioButton" GroupName="RemovalChoice" IsChecked="True" Checked="RegistrationOnlyChecked" Content="Remove from list only" />
+          <TextBlock Margin="24,0,0,0" Text="Keep files on disk and leave Docker resources untouched." TextWrapping="Wrap" />
+          <RadioButton x:Name="DockerResourcesRadioButton" GroupName="RemovalChoice" Checked="DockerResourcesChecked" Content="Remove Docker resources" />
+          <TextBlock Margin="24,0,0,0" Text="Stop the workspace and remove managed Docker resources before unregistering it." TextWrapping="Wrap" />
+          <RadioButton x:Name="DeleteFilesRadioButton" GroupName="RemovalChoice" Checked="DeleteFilesChecked" Content="Delete workspace files" />
+          <TextBlock Margin="24,0,0,0" Text="Repair container-owned permissions, clean Docker resources, and delete the local workspace folder." TextWrapping="Wrap" />
+        </StackPanel>
       </StackPanel>
     </Border>
 
     <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-      <TextBlock Text="Use this when you want to stop showing a workspace in the manager without deleting its repository files." VerticalAlignment="Center" TextWrapping="Wrap" />
+      <TextBlock Text="Use registration-only when you want to hide a workspace from the manager without touching its local files." VerticalAlignment="Center" TextWrapping="Wrap" />
       <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
-      <Button Grid.Column="2" Classes="accent" Content="Remove From List" Click="ConfirmClicked" />
+      <Button Grid.Column="2" Classes="accent" Content="Continue" Click="ConfirmClicked" />
     </Grid>
   </Grid>
 </Window>

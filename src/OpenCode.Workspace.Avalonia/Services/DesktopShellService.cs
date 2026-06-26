@@ -16,6 +16,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceCheckpointService _checkpointService;
     private readonly WorkspaceSavePointMessageService _savePointMessageService;
     private readonly WorkspaceBackupExportService _workspaceBackupExportService;
+    private readonly WorkspaceBackupManifestService _workspaceBackupManifestService;
     private readonly WorkspacePublishAssessmentService _workspacePublishAssessmentService;
     private readonly WorkspaceRemovalService _workspaceRemovalService;
     private readonly OracleSoftwareNoticeService _oracleSoftwareNoticeService;
@@ -28,6 +29,7 @@ public sealed class DesktopShellService : IDesktopShellService
         WorkspaceCheckpointService checkpointService,
         WorkspaceSavePointMessageService savePointMessageService,
         WorkspaceBackupExportService workspaceBackupExportService,
+        WorkspaceBackupManifestService workspaceBackupManifestService,
         WorkspacePublishAssessmentService workspacePublishAssessmentService,
         WorkspaceRemovalService workspaceRemovalService,
         OracleSoftwareNoticeService oracleSoftwareNoticeService,
@@ -40,6 +42,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _checkpointService = checkpointService;
         _savePointMessageService = savePointMessageService;
         _workspaceBackupExportService = workspaceBackupExportService;
+        _workspaceBackupManifestService = workspaceBackupManifestService;
         _workspacePublishAssessmentService = workspacePublishAssessmentService;
         _workspaceRemovalService = workspaceRemovalService;
         _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
@@ -137,6 +140,73 @@ public sealed class DesktopShellService : IDesktopShellService
         return await _workspaceOrchestrator.CreateWorkspaceAsync(rootPath, definition, log, cancellationToken, includeRuntimeInspection: false);
     }
 
+    public async Task<WorkspaceOperationResult> PrepareWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Prepare", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+
+            var wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
+            var wasUpdated = false;
+            var wasStarted = false;
+
+            if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+            {
+                if (wasRunning)
+                {
+                    append(OperationTranscriptLineKind.Status, "Stopping workspace before update...");
+                    await _workspaceOrchestrator.StopAsync(snapshot, log, cancellationToken);
+                    snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+                }
+
+                append(OperationTranscriptLineKind.Status, "Preparing workspace runtime...");
+                await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
+                wasUpdated = true;
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+                wasStarted = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
+                await PersistWorkspaceRecordAsync(snapshot, "Prepare", "Prepared workspace runtime.", true, cancellationToken, DateTimeOffset.UtcNow);
+            }
+            else
+            {
+                if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+                {
+                    append(OperationTranscriptLineKind.Status, "Starting workspace runtime...");
+                    await _workspaceOrchestrator.StartAsync(snapshot, log, cancellationToken);
+                    wasStarted = true;
+                }
+
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+                await PersistWorkspaceRecordAsync(snapshot, "Prepare", wasStarted ? "Started workspace runtime." : "Workspace runtime already ready.", true, cancellationToken, wasUpdated ? DateTimeOffset.UtcNow : null);
+            }
+
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            var message = wasUpdated
+                ? $"Workspace '{snapshot.Definition.Workspace.Name}' was prepared and is ready to open."
+                : wasStarted
+                    ? $"Workspace '{snapshot.Definition.Workspace.Name}' is running and ready to open."
+                    : $"Workspace '{snapshot.Definition.Workspace.Name}' is already ready to open.";
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = message, Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Prepare");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
     public async Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var transcript = CreateTranscript("Start", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
@@ -185,7 +255,45 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
-    public async Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Create Checkpoint", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Creating checkpoint...");
+            var checkpoint = await _workspaceOrchestrator.CreateCheckpointAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(snapshot, "Create Checkpoint", $"Created checkpoint '{checkpoint.Id}'.", true, cancellationToken);
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceCheckpointOperationResult
+            {
+                Snapshot = snapshot,
+                Message = $"Checkpoint '{checkpoint.Id}' created.",
+                Transcript = transcript,
+                Checkpoint = checkpoint,
+            };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Create Checkpoint");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
         var workspaceName = currentSnapshot?.Definition.Workspace.Name
@@ -196,13 +304,36 @@ public sealed class DesktopShellService : IDesktopShellService
 
         append(OperationTranscriptLineKind.Status, "Preparing removal...");
         append(OperationTranscriptLineKind.Comment, $"Selected workspace '{workspaceName}'.");
+        if (choice is WorkspaceRemovalChoice.DockerResources or WorkspaceRemovalChoice.DeleteFiles)
+        {
+            append(OperationTranscriptLineKind.Status, "Removing Docker resources...");
+            if (currentSnapshot is null)
+            {
+                currentSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            }
+
+            await _workspaceOrchestrator.RemoveDockerResourcesAsync(currentSnapshot, cancellationToken: cancellationToken);
+        }
+
+        if (choice == WorkspaceRemovalChoice.DeleteFiles)
+        {
+            append(OperationTranscriptLineKind.Status, "Repairing file permissions before deletion...");
+            currentSnapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            await _workspaceOrchestrator.RepairWorkspaceFilePermissionsAsync(currentSnapshot, cancellationToken: cancellationToken);
+            append(OperationTranscriptLineKind.Status, "Deleting workspace files...");
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+
         append(OperationTranscriptLineKind.Status, "Removing workspace from list...");
 
         var removal = await _workspaceRemovalService.RemoveAsync(new WorkspaceRemovalRequest
         {
             WorkspaceName = workspaceName,
             WorkspaceRoot = rootPath,
-            DeleteWorkspaceFiles = false,
+            DeleteWorkspaceFiles = choice == WorkspaceRemovalChoice.DeleteFiles,
         }, cancellationToken);
 
         foreach (var warning in removal.Warnings)
@@ -223,7 +354,12 @@ public sealed class DesktopShellService : IDesktopShellService
         transcript.Succeeded = true;
         return new WorkspaceRemovalOperationResult
         {
-            Message = $"Removed '{removal.WorkspaceName}' from the workspace list.",
+            Message = choice switch
+            {
+                WorkspaceRemovalChoice.DeleteFiles => $"Deleted workspace '{removal.WorkspaceName}' and removed it from the workspace list.",
+                WorkspaceRemovalChoice.DockerResources => $"Removed Docker resources for '{removal.WorkspaceName}' and unregistered it from the workspace list.",
+                _ => $"Removed '{removal.WorkspaceName}' from the workspace list.",
+            },
             Transcript = transcript,
             Removal = removal,
         };
@@ -305,6 +441,8 @@ public sealed class DesktopShellService : IDesktopShellService
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
             append(OperationTranscriptLineKind.Status, "Applying backup export rules...");
             var export = await _workspaceBackupExportService.ExportAsync(snapshot, archivePath, logSink, cancellationToken);
+            append(OperationTranscriptLineKind.Status, "Writing backup manifest...");
+            var manifest = _workspaceBackupManifestService.WriteAndEmbedManifest(snapshot, export, archivePath, DateTimeOffset.UtcNow);
             var message = $"Backup created at '{export.ArchivePath}' with {export.FileCount} file(s).";
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
@@ -314,6 +452,7 @@ public sealed class DesktopShellService : IDesktopShellService
                 Message = message,
                 Transcript = transcript,
                 Export = export,
+                Manifest = manifest,
             };
         }
         catch (Exception exception)

@@ -8,6 +8,6 @@ param(
 $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$delegate = Join-Path $scriptRoot "windows-debug\rebuild-and-launch-manager.ps1"
+$delegate = Join-Path $scriptRoot "windows-debug\rebuild-and-launch-desktop-shell.ps1"
 
 & $delegate -Configuration $Configuration -Language $Language -TimeoutSeconds $TimeoutSeconds

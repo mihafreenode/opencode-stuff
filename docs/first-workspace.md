@@ -2,9 +2,7 @@
 
 This guide is for first-time use.
 
-On Windows, Avalonia is now the primary desktop application path.
-
-Use the legacy WPF shell only if you need a still-unported advanced workflow.
+On Windows, Avalonia is the desktop application path.
 
 If WSL, Docker Desktop, SSH access, and Git credentials are already working, you should be able to create a workspace, open it, start the runtime, and begin working without extra setup.
 

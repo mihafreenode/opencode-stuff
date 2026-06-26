@@ -1,15 +1,10 @@
 # Desktop Shell
 
-`opencode stuff` now has two desktop shells:
-
-- `OpenCode Workspace Avalonia`: the primary Windows desktop shell and the cross-platform desktop shell
-- `OpenCode Workspace Manager`: the legacy Windows WPF fallback shell
+`opencode stuff` uses the Avalonia desktop shell on Windows, macOS, and Linux.
 
 ## Current Recommendation
 
-Use the Avalonia shell on Windows as the default desktop application path.
-
-Use the WPF shell only when you still need an advanced workflow that has not yet been migrated.
+Use the Avalonia shell on Windows as the desktop application path.
 
 Avalonia now covers the full Level A workflow set as well as the portable desktop shell for:
 
@@ -43,18 +38,7 @@ Theme modes:
 - `Light`
 - `Dark`
 
-## Remaining Gaps
-
-The primary remaining Windows desktop work is now Level B rather than Level A parity:
-
-- Save Point write flow
-- timeline actions
-- backup/export
-- publish
-- advanced Git recovery
-- Oracle/demo workflows
-
-Unavailable or unfinished actions should still explain why they are unavailable instead of being hidden or faked.
+Deferred convenience UX should be implemented natively in Avalonia or documented explicitly.
 
 ## Diagnostics
 
@@ -78,4 +62,4 @@ It stores local runtime resolution state and can be regenerated.
 
 CLI diagnostics remain the primary automation and scripting surface.
 
-The desktop shells are for inspection, interactive workflow, and troubleshooting.
+The desktop shell is for inspection, interactive workflow, and troubleshooting.

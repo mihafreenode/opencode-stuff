@@ -60,11 +60,19 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return await window.ShowDialog<bool>(_owner);
     }
 
-    public async Task<bool> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
+    public async Task<bool> ConfirmCheckpointAsync(WorkspaceCheckpointPrompt prompt, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new CheckpointWindow(prompt);
+        return await window.ShowDialog<bool>(_owner);
+    }
+
+    public async Task<WorkspaceRemovalDecision?> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var window = new RemoveWorkspaceWindow(prompt);
-        return await window.ShowDialog<bool>(_owner);
+        await window.ShowDialog(_owner);
+        return window.Result;
     }
 
     public async Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default)

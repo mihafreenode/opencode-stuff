@@ -12,7 +12,7 @@
 - Existing workspace imports preserve repository-owned `workspace.yaml` / `workspace.yml`.
 - Recovery preserves user-owned files and canonical config.
 - Attach uses the shared Windows Terminal launcher and runtime diagnostics path.
-- WPF is now fallback/maintenance only.
+- The legacy WPF desktop shell was removed.
 
 Validation summary:
 
@@ -24,4 +24,4 @@ Validation summary:
 Migration note:
 
 - Existing users can launch Avalonia as the default desktop application on Windows.
-- Use WPF only if you still require an advanced workflow that has not yet been migrated.
+- Use Avalonia as the Windows desktop application.

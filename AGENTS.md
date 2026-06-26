@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository contains `OpenCode Workspace Manager`, a Windows WPF application for durable workspaces. It creates, provisions, manages, protects, and launches local OpenCode workspaces using disposable Ubuntu LTS runtimes.
+This repository contains `OpenCode Workspace Manager`, an Avalonia desktop application for durable workspaces. It creates, provisions, manages, protects, and launches local OpenCode workspaces using disposable Ubuntu LTS runtimes.
 
 This file captures the working guidance for contributors and coding agents so the repository remains understandable without external conversation history.
 
@@ -23,7 +23,6 @@ When publishing the GitHub repository, set:
 - Topics:
   - `opencode`
   - `docker`
-  - `wpf`
   - `ubuntu`
   - `workspace`
   - `ai`
@@ -70,7 +69,7 @@ Primary user-facing workspace states:
 
 Status guidance:
 
-- use a native WPF colored status indicator, not emoji or font-dependent glyphs
+- use a native colored status indicator, not emoji or font-dependent glyphs
 - the colored dot is the primary signal, text is secondary
 - keep the same status component consistent across cards, details, and future summaries or filters
 
@@ -86,7 +85,8 @@ Interaction guidance:
 Projects:
 
 - `src/OpenCode.Workspace.Core/`: portable models, catalog loading, generation, diagnostics, orchestration
-- `src/OpenCode.Workspace.Manager/`: WPF shell and Windows-specific behavior
+- `src/OpenCode.Workspace.Avalonia/`: desktop shell
+- `src/OpenCode.Workspace.Platform.Windows/`: Windows-specific behavior
 
 Key principle:
 
@@ -503,7 +503,7 @@ If prerequisites are missing, tests must skip with explicit reasons rather than 
 Windows validation rules:
 
 - when running from WSL, do not treat Linux `dotnet` results as a substitute for Windows results
-- for WPF, Windows Desktop runtime validation, packaging, screenshots, and Windows capability tests, execute `dotnet` through Windows PowerShell
+- for Windows Desktop runtime validation, packaging, screenshots, and Windows capability tests, execute `dotnet` through Windows PowerShell
 - from WSL, convert the working directory with `WINPWD=$(wslpath -w "$PWD")` and run Windows validation with `powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.Manager.slnx"`
 - report Linux and Windows results separately
 - if Windows executables fail from WSL with `cannot execute binary file: Exec format error`, verify `cat /proc/sys/fs/binfmt_misc/WSLInterop` before assuming a `PATH` problem
@@ -517,7 +517,7 @@ Validate features from the environment that actually owns them.
 
 Examples:
 
-- WPF -> Windows
+- Avalonia desktop shell -> Windows
 - Windows Terminal -> Windows
 - Docker Desktop -> Windows
 - SQL Developer -> Windows
@@ -525,7 +525,7 @@ Examples:
 - Linux container behavior -> container
 - Browser UI -> browser
 
-When runtime validation involves Docker Desktop, Oracle containers, Windows Terminal, or WPF behavior, prefer Windows-host validation.
+When runtime validation involves Docker Desktop, Oracle containers, Windows Terminal, or desktop-shell behavior, prefer Windows-host validation.
 
 When validating runtime behavior from WSL, first check whether Docker is reachable from the current shell:
 
@@ -640,7 +640,7 @@ Start here:
 
 ## Build Guidance
 
-WPF and Windows-specific artifacts must be built on the Windows host .NET SDK.
+Windows desktop artifacts must be built on the Windows host .NET SDK.
 
 Example from WSL:
 
@@ -649,11 +649,11 @@ WINPWD=$(wslpath -w "$PWD")
 powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet build OpenCode.Workspace.Manager.slnx"
 ```
 
-Do not attempt to build WPF inside Linux containers.
+Do not attempt to build the Windows desktop shell inside Linux containers.
 
 ## Windows GUI Debugging from WSL
 
-OpenCode Workspace Manager is a Windows WPF application, while many automation and development workflows run from WSL.
+OpenCode Workspace Manager is a Windows desktop application, while many automation and development workflows run from WSL.
 
 ### Preferred approach
 
@@ -665,11 +665,11 @@ instead of ad-hoc PowerShell commands or temporary scripts.
 
 Examples:
 
-- `launch-manager.ps1`
-- `activate-manager.ps1`
-- `inspect-manager.ps1`
-- `screenshot-manager.ps1`
-- `kill-manager.ps1`
+- `launch-desktop-shell.ps1`
+- `activate-desktop-shell.ps1`
+- `inspect-desktop-shell.ps1`
+- `screenshot-desktop-shell.ps1`
+- `kill-desktop-shell.ps1`
 
 ### Why
 
@@ -678,7 +678,7 @@ WSL to PowerShell automation has several common failure modes:
 - PowerShell variable expansion inside quoted shell commands
 - here-string parsing issues
 - `MainWindowHandle` not immediately available
-- WPF windows appearing before initialization completes
+- desktop windows appearing before initialization completes
 - single-instance activation redirecting launches
 - UI Automation timing issues
 - foreground window restrictions
@@ -688,9 +688,9 @@ Repository scripts provide a stable, reusable interface and avoid repeated debug
 
 ### Rebuild then launch rule
 
-When the task requires validating a fresh Windows WPF build:
+When the task requires validating a fresh Windows desktop build:
 
-1. stop all running `OpenCode.Workspace.Manager` instances first
+1. stop all running `OpenCode.Workspace.Avalonia` instances first
 2. wait for the requested build to finish successfully
 3. only then launch the app
 
@@ -749,7 +749,7 @@ Treat sync-over-async in startup code as a high-priority defect.
 For walkthrough documentation:
 
 1. prefer real screenshots
-2. use `screenshot-manager.ps1` when possible
+2. use `screenshot-desktop-shell.ps1` when possible
 3. manual screenshots are acceptable
 4. never generate fake screenshots
 5. clearly mark placeholders as `TODO`
@@ -883,7 +883,7 @@ When validating from WSL:
 - reproduce issue
 - inspect `startup-diagnostics.log`
 - inspect exception logs
-- only then use `activate-manager.ps1` or UI automation helpers
+- only then use `activate-desktop-shell.ps1` or UI automation helpers
 
 The goal is to find the product defect, not to prove a click occurred.
 

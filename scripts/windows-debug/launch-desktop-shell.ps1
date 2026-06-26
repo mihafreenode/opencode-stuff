@@ -17,13 +17,13 @@ function Resolve-AbsolutePath {
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $PathValue))
 }
 
-function Get-ManagerProcesses {
-    Get-Process OpenCode.Workspace.Manager -ErrorAction SilentlyContinue |
+function Get-DesktopShellProcesses {
+    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
         Sort-Object StartTime
 }
 
-function Get-VisibleManagerProcess {
-    Get-ManagerProcesses |
+function Get-VisibleDesktopShellProcess {
+    Get-DesktopShellProcesses |
         Where-Object { $_.MainWindowHandle -ne 0 } |
         Select-Object -Last 1
 }
@@ -42,8 +42,8 @@ function Get-BuildConfiguration {
 }
 
 function Resolve-DefaultAppPath {
-    $debugPath = Resolve-AbsolutePath "src/OpenCode.Workspace.Manager/bin/Debug/net10.0-windows/OpenCode.Workspace.Manager.exe"
-    $releasePath = Resolve-AbsolutePath "src/OpenCode.Workspace.Manager/bin/Release/net10.0-windows/OpenCode.Workspace.Manager.exe"
+    $debugPath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Debug/net10.0/OpenCode.Workspace.Avalonia.exe"
+    $releasePath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Release/net10.0/OpenCode.Workspace.Avalonia.exe"
 
     $candidates = @()
     if (Test-Path $debugPath) {
@@ -122,7 +122,7 @@ Write-Output "InformationalVersion: $($fileVersionInfo.ProductVersion)"
 Write-Output "GitCommitSha: $gitCommitSha"
 Write-Output "BuildTimestamp: $($appFile.LastWriteTime.ToString('O'))"
 
-$beforeIds = @(Get-ManagerProcesses | ForEach-Object { $_.Id })
+$beforeIds = @(Get-DesktopShellProcesses | ForEach-Object { $_.Id })
 $env:OPENCODE_WORKSPACE_MANAGER_LANGUAGE = $Language
 $started = Start-Process -FilePath $resolvedAppPath -WorkingDirectory $resolvedWorkingDirectory -PassThru
 
@@ -131,7 +131,7 @@ $selected = $null
 do {
     Start-Sleep -Milliseconds 300
 
-    $candidate = Get-ManagerProcesses |
+    $candidate = Get-DesktopShellProcesses |
         Where-Object { $_.Id -notin $beforeIds -and $_.MainWindowHandle -ne 0 } |
         Select-Object -Last 1
 
@@ -140,7 +140,7 @@ do {
         break
     }
 
-    $visibleExisting = Get-VisibleManagerProcess
+    $visibleExisting = Get-VisibleDesktopShellProcess
     if ($visibleExisting) {
         $selected = $visibleExisting
         break
@@ -148,7 +148,7 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if (-not $selected) {
-    Write-Warning "Manager process started but no visible window appeared within $TimeoutSeconds seconds."
+    Write-Warning "Desktop shell process started but no visible window appeared within $TimeoutSeconds seconds."
     $started.Refresh()
     $started | Select-Object Id, ProcessName, StartTime | Format-List
     exit 0

@@ -5,10 +5,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-$candidates = @(Get-Process OpenCode.Workspace.Manager -ErrorAction SilentlyContinue)
+$candidates = @(Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue)
 
 if ($candidates.Count -eq 0) {
-    Write-Warning "No OpenCode Workspace Manager processes are running."
+    Write-Warning "No OpenCode desktop shell processes are running."
     exit 0
 }
 
@@ -25,7 +25,7 @@ $targets = foreach ($process in $candidates) {
 }
 
 if (-not $targets) {
-    Write-Warning "No manager processes matched the repo-scoped filter. Use -AllInstances to stop all of them."
+    Write-Warning "No desktop-shell processes matched the repo-scoped filter. Use -AllInstances to stop all of them."
     exit 0
 }
 

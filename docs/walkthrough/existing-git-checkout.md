@@ -1,6 +1,6 @@
 # Use With An Existing Git Checkout
 
-Use this workflow when you already have a project checked out locally and want OpenCode Workspace Manager to work there safely.
+Use this workflow when you already have a project checked out locally and want OpenCode Stuff to work there safely.
 
 ## Why Use This Workflow
 
@@ -104,8 +104,6 @@ After you finish, you can:
 
 The app helps you work safely inside the checkout, but it does not pretend to replace Git review.
 
-## Help And Tutorial
+## Help
 
-The app keeps the quick tutorial available from the Help menu.
-
-![Help menu showing Quick Tutorial](images/existing-checkout-07-help-quick-tutorial.png)
+Use the built-in documentation page and walkthrough docs for onboarding help.

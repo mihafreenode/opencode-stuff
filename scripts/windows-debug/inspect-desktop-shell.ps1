@@ -4,15 +4,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Get-ManagerProcesses {
-    Get-Process OpenCode.Workspace.Manager -ErrorAction SilentlyContinue |
+function Get-DesktopShellProcesses {
+    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
         Sort-Object StartTime
 }
 
 $deadline = (Get-Date).AddSeconds([Math]::Max(0, $TimeoutSeconds))
 $processes = @()
 do {
-    $processes = @(Get-ManagerProcesses)
+    $processes = @(Get-DesktopShellProcesses)
     if ($processes.Count -gt 0) {
         break
     }
@@ -21,7 +21,7 @@ do {
 } while ((Get-Date) -lt $deadline)
 
 if ($processes.Count -eq 0) {
-    Write-Warning "No OpenCode Workspace Manager processes are running."
+    Write-Warning "No OpenCode desktop shell processes are running."
     exit 0
 }
 

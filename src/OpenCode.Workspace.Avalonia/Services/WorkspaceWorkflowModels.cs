@@ -18,6 +18,15 @@ public sealed class WorkspaceBackupResult
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
     public required WorkspaceBackupExportResult Export { get; init; }
+    public required WorkspaceBackupManifestResult Manifest { get; init; }
+}
+
+public sealed class WorkspaceCheckpointOperationResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required WorkspaceCheckpointRecord Checkpoint { get; init; }
 }
 
 public sealed class WorkspacePublishResult
@@ -32,6 +41,18 @@ public sealed class WorkspaceRemovalPrompt
 {
     public required string WorkspaceName { get; init; }
     public required string WorkspaceRoot { get; init; }
+}
+
+public enum WorkspaceRemovalChoice
+{
+    RegistrationOnly,
+    DockerResources,
+    DeleteFiles,
+}
+
+public sealed class WorkspaceRemovalDecision
+{
+    public required WorkspaceRemovalChoice Choice { get; init; }
 }
 
 public sealed class WorkspaceRemovalOperationResult
@@ -52,6 +73,14 @@ public sealed class WorkspaceRecoveryAssessment
     public required string Title { get; init; }
     public required string Summary { get; init; }
     public required IReadOnlyList<string> Findings { get; init; }
+    public required string ConfirmationMessage { get; init; }
+}
+
+public sealed class WorkspaceCheckpointPrompt
+{
+    public required string WorkspaceName { get; init; }
+    public required string WorkspaceRoot { get; init; }
+    public required string Summary { get; init; }
     public required string ConfirmationMessage { get; init; }
 }
 

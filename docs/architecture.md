@@ -14,7 +14,7 @@ Git provides the persistence engine underneath. Generated runtime artifacts and 
 
 ## Goal
 
-OpenCode Workspace Manager creates and operates durable local workspaces on Windows by combining a canonical YAML definition, Git-backed persistence, and generated runtime artifacts.
+OpenCode Stuff creates and operates durable local workspaces on Windows by combining a canonical YAML definition, Git-backed persistence, and generated runtime artifacts.
 
 The design optimizes for:
 
@@ -26,18 +26,14 @@ The design optimizes for:
 
 ## High-Level Design
 
-The product is now split into four projects:
+The product is now split into these projects:
 
 - `OpenCode.Workspace.Core`: portable domain and generation logic
 - `OpenCode.Workspace.AppSupport`: minimal framework-neutral shell support
-- `OpenCode.Workspace.Manager`: WPF fallback shell plus Windows-only runtime behavior
 - `OpenCode.Workspace.Avalonia`: cross-platform desktop shell and primary Windows desktop path
+- `OpenCode.Workspace.Platform*`: host-specific platform integrations
 
-This separation exists so the durable workspace logic stays portable while the shells remain free to evolve independently.
-
-The Avalonia shell is now the primary Windows implementation.
-
-The WPF shell remains available only for fallback and maintenance while the remaining Level B workflows are migrated or retired.
+This separation keeps durable workspace logic portable while platform and shell behavior remain explicit.
 
 ## Canonical Vs Generated Artifacts
 

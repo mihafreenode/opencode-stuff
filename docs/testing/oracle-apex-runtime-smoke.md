@@ -36,7 +36,7 @@ If Windows Docker Desktop is reachable, continue runtime validation through Wind
 
 Use the Windows host as the authoritative validation path for:
 
-- WPF application behavior
+- desktop-shell behavior on Windows
 - Docker Desktop orchestration
 - Oracle runtime smoke tests
 - Windows Terminal integration

@@ -4,7 +4,6 @@
     <Project Path="src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj" />
     <Project Path="src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj" />
     <Project Path="src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj" />
-    <Project Path="src/OpenCode.Workspace.Manager/OpenCode.Workspace.Manager.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform/OpenCode.Workspace.Platform.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.Linux/OpenCode.Workspace.Platform.Linux.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.MacOS/OpenCode.Workspace.Platform.MacOS.csproj" />
@@ -17,6 +16,5 @@
     <Project Path="tests/OpenCode.Workspace.Platform.Linux.Tests/OpenCode.Workspace.Platform.Linux.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.MacOS.Tests/OpenCode.Workspace.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.Windows.Tests/OpenCode.Workspace.Platform.Windows.Tests.csproj" />
-    <Project Path="tests/OpenCode.Workspace.Windows.Tests/OpenCode.Workspace.Windows.Tests.csproj" />
   </Folder>
 </Solution>

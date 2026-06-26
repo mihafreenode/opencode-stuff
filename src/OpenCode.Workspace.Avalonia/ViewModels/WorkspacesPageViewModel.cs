@@ -42,11 +42,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         OpenExistingRepositoryCommand = new AsyncRelayCommand(OpenExistingRepositoryAsync, () => _interactionService is not null && !IsBusyForWorkspaceActions);
         RefreshWorkspacesCommand = new AsyncRelayCommand(() => LoadAsync(), () => !IsBusyForWorkspaceActions);
         OpenSelectedWorkspaceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync, () => SelectedWorkspace is not null);
+        OpenWorkspaceFolderCommand = new AsyncRelayCommand(OpenSelectedWorkspaceFolderAsync, () => SelectedWorkspace is not null);
         ValidateSelectedWorkspaceCommand = new AsyncRelayCommand(ValidateSelectedWorkspaceInternalAsync, () => SelectedWorkspace is not null);
         RemoveWorkspaceCommand = new AsyncRelayCommand(RemoveWorkspaceAsync, CanRemoveSelectedWorkspace);
         PublishWorkspaceCommand = new AsyncRelayCommand(PublishWorkspaceAsync, CanPublishSelectedWorkspace);
         BackupWorkspaceCommand = new AsyncRelayCommand(BackupWorkspaceAsync, CanBackupSelectedWorkspace);
         CreateSavePointCommand = new AsyncRelayCommand(CreateSavePointAsync, CanCreateSavePointSelectedWorkspace);
+        CreateCheckpointCommand = new AsyncRelayCommand(CreateCheckpointAsync, CanCreateCheckpointSelectedWorkspace);
         StartWorkspaceCommand = new AsyncRelayCommand(StartSelectedWorkspaceAsync, CanStartSelectedWorkspace);
         RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
         AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
@@ -63,11 +65,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand OpenExistingRepositoryCommand { get; }
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
     public AsyncRelayCommand OpenSelectedWorkspaceCommand { get; }
+    public AsyncRelayCommand OpenWorkspaceFolderCommand { get; }
     public AsyncRelayCommand ValidateSelectedWorkspaceCommand { get; }
     public AsyncRelayCommand RemoveWorkspaceCommand { get; }
     public AsyncRelayCommand PublishWorkspaceCommand { get; }
     public AsyncRelayCommand BackupWorkspaceCommand { get; }
     public AsyncRelayCommand CreateSavePointCommand { get; }
+    public AsyncRelayCommand CreateCheckpointCommand { get; }
     public AsyncRelayCommand StartWorkspaceCommand { get; }
     public AsyncRelayCommand RecoverWorkspaceCommand { get; }
     public AsyncRelayCommand AttachWorkspaceCommand { get; }
@@ -208,10 +212,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 UpdateDetailPanel();
                 OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+                OpenWorkspaceFolderCommand.RaiseCanExecuteChanged();
                 ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
                 RemoveWorkspaceCommand.RaiseCanExecuteChanged();
                 PublishWorkspaceCommand.RaiseCanExecuteChanged();
                 BackupWorkspaceCommand.RaiseCanExecuteChanged();
+                CreateCheckpointCommand.RaiseCanExecuteChanged();
                 StartWorkspaceCommand.RaiseCanExecuteChanged();
                 RecoverWorkspaceCommand.RaiseCanExecuteChanged();
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
@@ -461,6 +467,36 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
+        if (!await ConfirmOracleSoftwareNoticeIfRequiredAsync(SelectedWorkspace.Snapshot))
+        {
+            StartOperationTranscript("Open Workspace", SelectedWorkspace.Name);
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Workspace open cancelled.";
+            return;
+        }
+
+        StartOperationTranscript("Open Workspace", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing workspace..." });
+        DetailSummary = "Preparing workspace...";
+        await RunWorkspaceOperationAsync(
+            "Open Workspace",
+            "Preparing workspace...",
+            (rootPath, snapshot, sink) => _desktopShellService.PrepareWorkspaceAsync(rootPath, snapshot, sink),
+            preserveExistingTranscript: true);
+        await RunWorkspaceOperationAsync(
+            "Open Workspace",
+            "Launching terminal attach...",
+            (rootPath, snapshot, sink) => _desktopShellService.AttachWorkspaceAsync(rootPath, snapshot, sink),
+            preserveExistingTranscript: true);
+    }
+
+    private async Task OpenSelectedWorkspaceFolderAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
         await _desktopShellService.OpenPathAsync(SelectedWorkspace.RootPath);
     }
 
@@ -522,6 +558,53 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             preserveExistingTranscript: true);
     }
 
+    private async Task CreateCheckpointAsync()
+    {
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Create Checkpoint", SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing checkpoint..." });
+        DetailSummary = "Preparing checkpoint...";
+
+        var confirmed = await _interactionService.ConfirmCheckpointAsync(new WorkspaceCheckpointPrompt
+        {
+            WorkspaceName = SelectedWorkspace.Name,
+            WorkspaceRoot = SelectedWorkspace.RootPath,
+            Summary = "Checkpoint captures tracked changes and durable untracked files for stronger local recovery than a normal Save Point.",
+            ConfirmationMessage = "Create a checkpoint now?",
+        });
+
+        if (!confirmed)
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            DetailSummary = "Checkpoint creation cancelled.";
+            return;
+        }
+
+        await RunWorkspaceOperationAsync(
+            "Create Checkpoint",
+            "Creating checkpoint...",
+            async (rootPath, snapshot, sink) =>
+            {
+                var result = await _desktopShellService.CreateCheckpointAsync(rootPath, snapshot, sink);
+                DetailItems.Clear();
+                DetailItems.Add(new DetailItemViewModel("Checkpoint", result.Checkpoint.Id));
+                DetailItems.Add(new DetailItemViewModel("Branch", string.IsNullOrWhiteSpace(result.Checkpoint.CurrentBranch) ? "Unavailable" : result.Checkpoint.CurrentBranch));
+                DetailItems.Add(new DetailItemViewModel("Commit", string.IsNullOrWhiteSpace(result.Checkpoint.CurrentCommitSha) ? "Unavailable" : result.Checkpoint.CurrentCommitSha));
+                DetailItems.Add(new DetailItemViewModel("Untracked files", result.Checkpoint.UntrackedFiles.Count.ToString(CultureInfo.InvariantCulture)));
+                return new WorkspaceOperationResult
+                {
+                    Snapshot = result.Snapshot,
+                    Message = result.Message,
+                    Transcript = result.Transcript,
+                };
+            },
+            preserveExistingTranscript: true);
+    }
+
     private async Task BackupWorkspaceAsync()
     {
         if (SelectedWorkspace is null || _interactionService is null)
@@ -564,6 +647,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Included files", result.Export.FileCount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             DetailItems.Add(new DetailItemViewModel("Archive size", WorkspaceBackupExportService.FormatSize(result.Export.ArchiveSizeBytes)));
             DetailItems.Add(new DetailItemViewModel("Excluded entries", result.Export.ExcludedEntries.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            DetailItems.Add(new DetailItemViewModel("Manifest", result.Manifest.ManifestPath));
+            DetailItems.Add(new DetailItemViewModel("Manifest warnings", result.Manifest.WarningCount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             if (result.Export.Warnings.Count > 0)
             {
                 DetailItems.Add(new DetailItemViewModel("Warnings", string.Join(Environment.NewLine, result.Export.Warnings)));
@@ -671,7 +756,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing removal..." });
         DetailSummary = "Preparing removal...";
 
-        if (!await _interactionService.ConfirmRemoveWorkspaceAsync(prompt))
+        var decision = await _interactionService.ConfirmRemoveWorkspaceAsync(prompt);
+        if (decision is null)
         {
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
             DetailSummary = "Workspace removal cancelled.";
@@ -682,11 +768,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         try
         {
             _isWorkspaceActionRunning = true;
-            _workspaceActionStatusMessage = "Removing workspace from list...";
+            _workspaceActionStatusMessage = decision.Choice switch
+            {
+                WorkspaceRemovalChoice.DeleteFiles => "Deleting workspace files...",
+                WorkspaceRemovalChoice.DockerResources => "Removing Docker resources...",
+                _ => "Removing workspace from list...",
+            };
             RaiseWorkspaceActionCommandStates();
-            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Removing workspace from list..." });
-            DetailSummary = "Removing workspace from list...";
-            var result = await _desktopShellService.RemoveWorkspaceAsync(removedRootPath, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = _workspaceActionStatusMessage });
+            DetailSummary = _workspaceActionStatusMessage;
+            var result = await _desktopShellService.RemoveWorkspaceAsync(removedRootPath, decision.Choice, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
             CompleteOperationTranscript(result.Transcript);
             _workspaceActionStatusMessage = result.Message;
             RemoveWorkspaceFromList(removedRootPath);
@@ -1008,7 +1099,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Open Workspace", "Prepare the workspace if needed and launch the attach session.", CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), OpenSelectedWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenWorkspaceFolderCommand));
         DetailActions.Add(new ActionItemViewModel("Start", BuildStartDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), StartWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
@@ -1018,6 +1110,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Backup", BuildBackupDescription(SelectedWorkspace), CanBackupSelectedWorkspace(), GetBackupDisabledReason(SelectedWorkspace), BackupWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Save Point", BuildSavePointDescription(SelectedWorkspace), CanCreateSavePointSelectedWorkspace(), GetSavePointDisabledReason(SelectedWorkspace), CreateSavePointCommand));
+        DetailActions.Add(new ActionItemViewModel("Checkpoint", BuildCheckpointDescription(SelectedWorkspace), CanCreateCheckpointSelectedWorkspace(), GetCheckpointDisabledReason(SelectedWorkspace), CreateCheckpointCommand));
 
         RaisePropertyChanged(nameof(SelectedWorkspace));
     }
@@ -1049,6 +1142,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private bool CanCreateSavePointSelectedWorkspace()
         => CanCreateSavePointWorkspace(SelectedWorkspace);
 
+    private bool CanCreateCheckpointSelectedWorkspace()
+        => CanCreateCheckpointWorkspace(SelectedWorkspace);
+
     private string GetValidateDisabledReason(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
             ? "Workspace details are still loading. Validation will be available when background checks finish."
@@ -1073,6 +1169,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanCreateSavePointWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so Save Point creation cannot run.";
+
+    private string GetCheckpointDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanCreateCheckpointWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so checkpoint creation cannot run.";
 
     private string GetRemoveDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1128,8 +1229,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanRemoveWorkspace(workspace)
-                ? "Remove the workspace from the local index without deleting repository files."
+                ? "Remove the workspace from the local index, clean Docker resources, or delete workspace files after permission repair."
                 : "Workspace record is unavailable, so removal cannot run.";
+
+    private string BuildCheckpointDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanCreateCheckpointWorkspace(workspace)
+                ? "Capture tracked changes and durable untracked files for stronger local recovery than a normal Save Point."
+                : "Workspace root or configuration file is missing, so checkpoint creation cannot run.";
 
     private string BuildPublishDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1252,6 +1360,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private bool CanCreateSavePointWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        return CanStartWorkspace(workspace);
+    }
+
+    private bool CanCreateCheckpointWorkspace(WorkspaceSummaryViewModel? workspace)
     {
         if (_interactionService is null || IsBusyForWorkspaceActions)
         {
@@ -1494,7 +1612,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
         OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
         RefreshWorkspacesCommand.RaiseCanExecuteChanged();
+        OpenSelectedWorkspaceCommand.RaiseCanExecuteChanged();
+        OpenWorkspaceFolderCommand.RaiseCanExecuteChanged();
         CreateSavePointCommand.RaiseCanExecuteChanged();
+        CreateCheckpointCommand.RaiseCanExecuteChanged();
         StartWorkspaceCommand.RaiseCanExecuteChanged();
         RecoverWorkspaceCommand.RaiseCanExecuteChanged();
         AttachWorkspaceCommand.RaiseCanExecuteChanged();

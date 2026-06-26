@@ -63,8 +63,22 @@ public sealed class WorkspaceAssetClassificationServiceTests
                 UpdateRequired = false,
             };
 
-            var manifest = _service.BuildBackupManifest(snapshot, DateTimeOffset.Parse("2026-06-18T10:00:00Z"));
+            var manifest = _service.BuildBackupManifest(
+                snapshot,
+                DateTimeOffset.Parse("2026-06-18T10:00:00Z"),
+                archiveFileName: "demo-backup.zip",
+                archiveSizeBytes: 4096,
+                includedFileCount: 4,
+                excludedFileCount: 1,
+                warnings: ["secrets/.env: excluded"]);
 
+            Assert.Equal("demo-backup.zip", manifest.ArchiveFileName);
+            Assert.Equal(4096, manifest.ArchiveSizeBytes);
+            Assert.Equal("demo", manifest.WorkspaceId);
+            Assert.Equal(snapshot.Paths.TimelinePath, manifest.TimelinePath);
+            Assert.Equal(4, manifest.IncludedFileCount);
+            Assert.Equal(1, manifest.ExcludedFileCount);
+            Assert.Contains("secrets/.env: excluded", manifest.Warnings);
             Assert.Contains("workspace.yaml", manifest.SourceOfTruthLocations);
             Assert.Contains(manifest.OwnershipNotes, note => note.Contains("User work is the durable asset", StringComparison.Ordinal));
             Assert.Contains("full workspace snapshot", manifest.Warning, StringComparison.OrdinalIgnoreCase);

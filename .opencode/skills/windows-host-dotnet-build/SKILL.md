@@ -9,7 +9,7 @@ Build or create the project with the Windows-hosted `dotnet` installation instea
 ## When this applies
 
 - The project targets `net*-windows`
-- The project sets `<UseWPF>true</UseWPF>`
+- The desktop shell no longer depends on WPF.
 - The project sets `<UseWindowsForms>true</UseWindowsForms>`
 - The user asks for a WPF or WinForms app
 - A Linux `dotnet` command would fail because desktop targets or `Microsoft.WindowsDesktop.App` are unavailable

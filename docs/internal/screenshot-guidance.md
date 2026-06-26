@@ -1,6 +1,6 @@
 # Screenshot Guidance
 
-Use `screenshot-manager.ps1` for the WPF app when possible.
+Use `screenshot-desktop-shell.ps1` for the desktop shell when possible.
 
 For other Windows windows such as Windows Terminal or SQL Developer:
 
@@ -32,7 +32,7 @@ For Oracle demo documentation screenshots:
 
 1. prepare the exact target state first
 2. keep the existing window and connection state in place
-3. capture the WPF app with `scripts/windows-debug/screenshot-manager.ps1` when the target is the manager window
+3. capture the desktop shell with `scripts/windows-debug/screenshot-desktop-shell.ps1` when the target is the app window
 4. capture Windows Terminal or SQL Developer by targeting the existing visible window
 5. use single-quoted PowerShell script blocks from WSL/bash when a command contains `$_`
 6. save directly to the final `artifacts/screenshots/` or docs image path

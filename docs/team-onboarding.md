@@ -22,7 +22,7 @@ Run Tutorial
 Start Learning
 ```
 
-On Windows, use the Avalonia desktop app as the default onboarding and workspace-management shell. Keep the legacy WPF shell only for fallback while non-Level-A workflows are still being migrated.
+On Windows, use the Avalonia desktop app as the onboarding and workspace-management shell.
 
 ## Connecting to a Workspace Session
 

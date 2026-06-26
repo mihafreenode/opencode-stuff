@@ -106,7 +106,6 @@ powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode
 
 Use Windows PowerShell for:
 
-- WPF
 - Windows Desktop runtime validation
 - packaging
 - screenshots

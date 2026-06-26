@@ -9,9 +9,9 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $solutionPath = Join-Path $repoRoot "OpenCode.Workspace.Manager.slnx"
-$appPath = Join-Path $repoRoot "src\OpenCode.Workspace.Manager\bin\$Configuration\net10.0-windows\OpenCode.Workspace.Manager.exe"
-$killScript = Join-Path $PSScriptRoot "kill-manager.ps1"
-$launchScript = Join-Path $PSScriptRoot "launch-manager.ps1"
+$appPath = Join-Path $repoRoot "src\OpenCode.Workspace.Avalonia\bin\$Configuration\net10.0\OpenCode.Workspace.Avalonia.exe"
+$killScript = Join-Path $PSScriptRoot "kill-desktop-shell.ps1"
+$launchScript = Join-Path $PSScriptRoot "launch-desktop-shell.ps1"
 
 & $killScript
 

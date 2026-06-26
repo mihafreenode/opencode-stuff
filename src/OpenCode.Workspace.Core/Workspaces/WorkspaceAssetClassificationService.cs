@@ -132,7 +132,14 @@ public sealed class WorkspaceAssetClassificationService
         };
     }
 
-    public WorkspaceBackupManifest BuildBackupManifest(WorkspaceSnapshot snapshot, DateTimeOffset exportedUtc)
+    public WorkspaceBackupManifest BuildBackupManifest(
+        WorkspaceSnapshot snapshot,
+        DateTimeOffset exportedUtc,
+        string? archiveFileName = null,
+        long archiveSizeBytes = 0,
+        int? includedFileCount = null,
+        int excludedFileCount = 0,
+        IReadOnlyList<string>? warnings = null)
     {
         var items = DiscoverWorkspaceItems(snapshot.Paths.RootPath)
             .Select(item => Classify(item.Path, item.IsDirectory))
@@ -141,10 +148,21 @@ public sealed class WorkspaceAssetClassificationService
 
         return new WorkspaceBackupManifest
         {
+            ArchiveFileName = archiveFileName ?? string.Empty,
             ExportedUtc = exportedUtc,
+            ArchiveSizeBytes = archiveSizeBytes,
             WorkspaceName = snapshot.Definition.Workspace.Name,
+            WorkspaceId = string.IsNullOrWhiteSpace(snapshot.Definition.Workspace.Id)
+                ? WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)
+                : snapshot.Definition.Workspace.Id,
             WorkspaceRoot = snapshot.Paths.RootPath,
             ConfigurationPath = snapshot.ConfigurationPath,
+            TimelinePath = snapshot.Paths.TimelinePath,
+            LatestSavePointUtc = snapshot.Safety.LocalRecovery.LatestSavePointUtc,
+            LatestCheckpointUtc = snapshot.Safety.LocalRecovery.LatestCheckpointUtc,
+            IncludedFileCount = includedFileCount ?? items.Count(item => !item.IsDirectory),
+            ExcludedFileCount = excludedFileCount,
+            Warnings = warnings?.ToList() ?? [],
             SourceOfTruthLocations =
             [
                 snapshot.ConfigurationPath,

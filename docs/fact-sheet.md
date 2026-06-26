@@ -16,7 +16,7 @@ The practical goal is simple:
 2. open a workspace
 3. start working
 
-On Windows, the primary desktop application is now the Avalonia shell. The legacy WPF shell remains available only as fallback/maintenance while advanced workflows are still being migrated.
+On Windows, the desktop application is the Avalonia shell.
 
 ## Key Concepts
 

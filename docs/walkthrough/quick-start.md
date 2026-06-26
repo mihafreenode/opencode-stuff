@@ -2,13 +2,13 @@
 
 ## First 5 Minutes
 
-1. Open OpenCode Workspace Manager.
+1. Open OpenCode Stuff.
 2. Create a new workspace or use an existing Git checkout.
 3. Open the workspace from the list.
 4. Wait for the runtime to validate and attach.
 5. Create a Save Point before a big change.
 
-![OpenCode Workspace Manager main window](images/main-window.png)
+![OpenCode Stuff desktop shell main window](images/main-window.png)
 
 ### Runtime Attached
 
@@ -24,12 +24,9 @@ This is where real work happens: repository analysis, implementation steps, edit
 
 ![OpenCode actively working inside a workspace](images/opencode-terminal-working.png)
 
-## Quick Tutorial In The App
+## Help
 
-The app can show a short first-run tutorial.
-
-- Start it from the first-run prompt.
-- Reopen it later from `Help > Quick Tutorial`.
+Use the shipped documentation pages and walkthrough docs if you need onboarding help.
 
 ## Existing Projects
 
