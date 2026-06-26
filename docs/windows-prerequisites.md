@@ -163,6 +163,10 @@ Once the checks pass, continue with:
 - [First Workspace Guide](first-workspace.md)
 - [WSL Windows Interop Troubleshooting](troubleshooting/wsl-windows-interop.md)
 
+## Compatibility Note
+
+The Avalonia desktop shell still uses `%LOCALAPPDATA%\OpenCode.Workspace.Manager` for its local workspace index and startup logs so existing user state stays intact.
+
 ## Docker Desktop And WSL Integration
 
 Docker Desktop can be installed and running while Ubuntu integration is still disabled.

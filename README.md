@@ -49,6 +49,28 @@ The Avalonia shell also keeps the recent reliability and ownership guarantees:
 
 Use Avalonia as the default Windows desktop application.
 
+## Packaged App
+
+Release packages publish the Avalonia desktop shell as:
+
+- `opencode-stuff-win-x64.zip`
+- `opencode-stuff-linux-x64.tar.gz`
+- `opencode-stuff-macos-arm64.tar.gz`
+
+Run the packaged app from the extracted folder. The package includes the desktop executable, platform integrations, bundled catalog, localization files, and user-facing docs.
+
+Windows prerequisites for normal first use:
+
+- Git
+- Docker Desktop with Docker Compose and WSL integration
+- Windows Terminal
+- .NET 10 Desktop Runtime
+
+App-data compatibility note:
+
+- the desktop shell still uses `LocalApplicationData/OpenCode.Workspace.Manager`
+- this is intentional to preserve existing workspace index and local state until a dedicated migration is implemented
+
 ## Desktop Status
 
 Avalonia is the Windows workspace manager.
@@ -71,7 +93,7 @@ It is a workspace manager first, not a Docker launcher and not a single-template
 
 Templates are a starting point, not the long-term source of truth.
 
-When a repository already contains workspace configuration, the desktop shells load that repository-owned configuration instead of starting from application defaults.
+When a repository already contains workspace configuration, the desktop shell loads that repository-owned configuration instead of starting from application defaults.
 
 Supported repository configuration paths are:
 

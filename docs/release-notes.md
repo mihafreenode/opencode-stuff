@@ -13,6 +13,8 @@
 - Recovery preserves user-owned files and canonical config.
 - Attach uses the shared Windows Terminal launcher and runtime diagnostics path.
 - The legacy WPF desktop shell was removed.
+- Release packaging now targets the Avalonia desktop shell for Windows, Linux, and macOS.
+- Existing app-data remains under `OpenCode.Workspace.Manager` for compatibility until a dedicated migration is implemented.
 
 Validation summary:
 

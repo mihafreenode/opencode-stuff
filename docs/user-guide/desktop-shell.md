@@ -2,6 +2,16 @@
 
 `opencode stuff` uses the Avalonia desktop shell on Windows, macOS, and Linux.
 
+## Packaged Run
+
+Extract the published archive and run the desktop executable from the extracted folder:
+
+- Windows: `OpenCode.Workspace.Avalonia.exe`
+- Linux: `OpenCode.Workspace.Avalonia`
+- macOS: `OpenCode.Workspace.Avalonia`
+
+The packaged app does not need the repository source tree to start. It expects bundled `catalog/`, `Localization/`, `docs/`, and the normal user app-data directory.
+
 ## Current Recommendation
 
 Use the Avalonia shell on Windows as the desktop application path.
@@ -52,6 +62,18 @@ It can:
 
 The output is presented as readable checklist items with status and next steps.
 
+Expected prerequisite checks include:
+
+- Git
+- Docker
+- Docker Compose
+- Windows Terminal when running on Windows
+- platform/runtime detection
+- host architecture
+- bundled catalog availability
+
+Missing prerequisites should produce actionable messages instead of crashes.
+
 ## Runtime-State Note
 
 `.opencode/local/` is machine-local and ignored by Git.
@@ -63,3 +85,7 @@ It stores local runtime resolution state and can be regenerated.
 CLI diagnostics remain the primary automation and scripting surface.
 
 The desktop shell is for inspection, interactive workflow, and troubleshooting.
+
+## Compatibility Note
+
+The Avalonia shell still reads and writes the historical app-data folder `OpenCode.Workspace.Manager` so existing local workspace indexes and user state remain intact.

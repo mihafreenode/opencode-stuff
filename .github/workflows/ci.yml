@@ -103,6 +103,8 @@ jobs:
           -c Release
           -r ${{ matrix.runtime }}
           --self-contained false
+          -p:DebugSymbols=false
+          -p:DebugType=None
           -o ${{ matrix.publish_dir }}
 
       - name: Verify publish output on Windows
