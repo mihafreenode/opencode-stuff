@@ -64,7 +64,7 @@ function Resolve-DefaultAppPath {
 function Resolve-RepositoryRoot {
     $current = Get-Location
     while ($null -ne $current) {
-        if (Test-Path (Join-Path $current.Path "OpenCode.Workspace.Manager.slnx")) {
+        if (Test-Path (Join-Path $current.Path "OpenCode.Workspace.slnx")) {
             return $current.Path
         }
 

@@ -504,7 +504,7 @@ Windows validation rules:
 
 - when running from WSL, do not treat Linux `dotnet` results as a substitute for Windows results
 - for Windows Desktop runtime validation, packaging, screenshots, and Windows capability tests, execute `dotnet` through Windows PowerShell
-- from WSL, convert the working directory with `WINPWD=$(wslpath -w "$PWD")` and run Windows validation with `powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.Manager.slnx"`
+- from WSL, convert the working directory with `WINPWD=$(wslpath -w "$PWD")` and run Windows validation with `powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.slnx"`
 - report Linux and Windows results separately
 - if Windows executables fail from WSL with `cannot execute binary file: Exec format error`, verify `cat /proc/sys/fs/binfmt_misc/WSLInterop` before assuming a `PATH` problem
 - WSL interop troubleshooting is documented in `docs/troubleshooting/wsl-windows-interop.md`
@@ -646,7 +646,7 @@ Example from WSL:
 
 ```bash
 WINPWD=$(wslpath -w "$PWD")
-powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet build OpenCode.Workspace.Manager.slnx"
+powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet build OpenCode.Workspace.slnx"
 ```
 
 Do not attempt to build the Windows desktop shell inside Linux containers.

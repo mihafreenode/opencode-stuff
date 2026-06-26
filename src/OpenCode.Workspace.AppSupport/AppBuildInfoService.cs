@@ -54,7 +54,7 @@ public sealed class AppBuildInfoService
         var current = new DirectoryInfo(applicationBasePath);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.Manager.slnx")))
+            if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.slnx")))
             {
                 return current.FullName;
             }

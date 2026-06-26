@@ -286,7 +286,7 @@ public static class OracleRuntimeSmokeCli
         var current = new DirectoryInfo(startPath);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.Manager.slnx")))
+            if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.slnx")))
             {
                 return current.FullName;
             }

@@ -101,7 +101,7 @@ When Windows-specific validation is required, run it through Windows PowerShell 
 
 ```bash
 WINPWD=$(wslpath -w "$PWD")
-powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.Manager.slnx"
+powershell.exe -NoProfile -Command "Set-Location '$WINPWD'; dotnet test OpenCode.Workspace.slnx"
 ```
 
 Use Windows PowerShell for:

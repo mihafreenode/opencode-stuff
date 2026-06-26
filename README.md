@@ -25,6 +25,8 @@ Current desktop split:
 - `src/OpenCode.Workspace.Avalonia/`: cross-platform Avalonia shell and primary Windows desktop path
 - `src/OpenCode.Workspace.Platform*/`: host-specific platform integrations
 
+Repository solution file: `OpenCode.Workspace.slnx`
+
 The Avalonia shell now covers the full Level A Windows workflow set:
 
 - Create Workspace

@@ -23,7 +23,7 @@ public sealed class TmpReprovisionWorkflowServiceTests
 
         try
         {
-            File.Copy(Path.Combine(TestPaths.RepositoryRoot, "OpenCode.Workspace.Manager.slnx"), Path.Combine(tempRoot, "OpenCode.Workspace.Manager.slnx"));
+            File.Copy(Path.Combine(TestPaths.RepositoryRoot, "OpenCode.Workspace.slnx"), Path.Combine(tempRoot, "OpenCode.Workspace.slnx"));
 
             var projectPath = TmpReprovisionWorkflowService.EnsureProjectGenerated(tempRoot);
             var programPath = Path.Combine(Path.GetDirectoryName(projectPath)!, "Program.cs");

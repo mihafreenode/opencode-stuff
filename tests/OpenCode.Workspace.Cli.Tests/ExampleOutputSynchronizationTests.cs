@@ -147,7 +147,7 @@ public sealed class ExampleOutputSynchronizationTests
         var sourceRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
         if (Directory.Exists(Path.Combine(sourceRoot, "docs"))
             && Directory.Exists(Path.Combine(sourceRoot, "src"))
-            && File.Exists(Path.Combine(sourceRoot, "OpenCode.Workspace.Manager.slnx")))
+            && File.Exists(Path.Combine(sourceRoot, "OpenCode.Workspace.slnx")))
         {
             return sourceRoot;
         }
@@ -159,7 +159,7 @@ public sealed class ExampleOutputSynchronizationTests
             {
                 if (Directory.Exists(Path.Combine(current, "docs"))
                     && Directory.Exists(Path.Combine(current, "src"))
-                    && File.Exists(Path.Combine(current, "OpenCode.Workspace.Manager.slnx")))
+                    && File.Exists(Path.Combine(current, "OpenCode.Workspace.slnx")))
                 {
                     return current;
                 }

@@ -16,7 +16,7 @@ internal static class TestPaths
     private static string ResolveRepositoryRoot([CallerFilePath] string sourceFilePath = "")
     {
         var sourceRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
-        if (File.Exists(Path.Combine(sourceRoot, "OpenCode.Workspace.Manager.slnx"))
+        if (File.Exists(Path.Combine(sourceRoot, "OpenCode.Workspace.slnx"))
             && File.Exists(Path.Combine(sourceRoot, "AGENTS.md")))
         {
             return sourceRoot;
@@ -27,7 +27,7 @@ internal static class TestPaths
             var current = new DirectoryInfo(candidate);
             while (current is not null)
             {
-                if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.Manager.slnx"))
+                if (File.Exists(Path.Combine(current.FullName, "OpenCode.Workspace.slnx"))
                     && File.Exists(Path.Combine(current.FullName, "AGENTS.md")))
                 {
                     return current.FullName;

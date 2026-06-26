@@ -6,10 +6,11 @@ namespace OpenCode.Workspace.Avalonia.Tests;
 public sealed class WorkspaceDiscoveryParityTests
 {
     [Fact]
-    public void SharedResolver_UsesSameWorkspaceManagerDataRootAsWpf()
+    public void SharedResolver_PreservesExistingWorkspaceManagerDataRootForCompatibility()
     {
         var dataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
 
+        // Preserve the original app-data root until user-data migration exists.
         Assert.EndsWith("OpenCode.Workspace.Manager", dataRoot, StringComparison.Ordinal);
         Assert.Equal(Path.Combine(dataRoot, "workspaces.json"), WorkspaceAppDataPaths.GetWorkspaceIndexPath());
     }
