@@ -4,7 +4,7 @@ namespace OpenCode.Workspace.Core.Catalog;
 
 /// <summary>
 /// Expands a template into a concrete workspace definition without involving any
-/// WPF view model code. This keeps the template model portable and testable.
+/// desktop-shell view model code. This keeps the template model portable and testable.
 /// </summary>
 public sealed class TemplateExpander
 {

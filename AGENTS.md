@@ -386,10 +386,10 @@ Real interactive attach and focus behavior is a manual validation step.
 
 ### Process-Global State
 
-Windows and WPF tests may interact with process-global resources including:
+Windows desktop tests may interact with process-global resources including:
 
 - `Application.Current`
-- WPF `Dispatcher`
+- UI dispatchers
 - Windows Terminal configuration
 - Docker Desktop
 - Fonts and Windows capabilities
@@ -397,9 +397,9 @@ Windows and WPF tests may interact with process-global resources including:
 
 Tests must not assume a clean process-global state and must restore any state they modify.
 
-### WPF Testing
+### Desktop UI Testing
 
-When creating a real WPF `Application` in tests:
+When creating a real desktop `Application` in tests:
 
 - explicitly close created windows
 - call `Application.Shutdown()` when appropriate
@@ -469,7 +469,7 @@ These must validate the canonical model and generation pipeline without dependin
 
 - Docker Desktop
 - Windows Terminal
-- WPF
+- desktop UI frameworks
 - Windows-only APIs
 
 Focus areas:
@@ -494,7 +494,7 @@ These validate Windows-specific behavior such as:
 - Nerd Font detection
 - terminal profile generation
 - localization loading
-- app bootstrap and WPF startup
+- app bootstrap and desktop-shell startup
 - Docker orchestration helpers
 - attach command generation
 
@@ -790,7 +790,7 @@ If a user action appears to do nothing:
 - do not immediately add more click simulation
 - first determine whether the application threw an exception
 
-Many WPF issues manifest as:
+Many desktop UI issues manifest as:
 
 - button appears clickable
 - command executes

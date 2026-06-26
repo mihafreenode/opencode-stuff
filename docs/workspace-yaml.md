@@ -115,7 +115,7 @@ Workspace persistence provider settings.
 
 **WSL vs Docker**
 
-Use a WSL workspace if your workflow depends on Windows tools such as PowerShell, Visual Studio, MSBuild, WPF, or MSIX packaging.
+Use a WSL workspace if your workflow depends on Windows tools such as PowerShell, Visual Studio, MSBuild, or MSIX packaging.
 
 Use a Docker workspace when portability, reproducibility, and Linux-based development or automation are the primary goals.
 

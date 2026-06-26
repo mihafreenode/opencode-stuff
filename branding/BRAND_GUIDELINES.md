@@ -174,7 +174,7 @@ Tone:
 - off-white satchel outline with muted slate internal details
 - orange remains the single bright accent
 
-## Status / Accent Guidance For WPF UI
+## Status / Accent Guidance For Desktop UI
 
 Orange should be used only for:
 

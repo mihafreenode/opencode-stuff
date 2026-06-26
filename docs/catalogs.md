@@ -70,4 +70,4 @@ Avoid encoding:
 - Windows-only paths
 - local machine assumptions
 - Docker container IDs
-- WPF UI state
+- desktop UI state
