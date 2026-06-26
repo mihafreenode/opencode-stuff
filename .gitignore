@@ -1,6 +1,10 @@
 # Build outputs
 bin/
 obj/
+**/bin/
+**/obj/
+**/bin-*/
+**/obj-*/
 
 # User and IDE state
 .vs/
