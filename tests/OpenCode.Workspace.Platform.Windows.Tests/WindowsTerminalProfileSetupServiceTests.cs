@@ -5,7 +5,7 @@ namespace OpenCode.Workspace.Platform.Windows.Tests;
 
 public sealed class WindowsTerminalProfileSetupServiceTests
 {
-    [Fact]
+    [SkippableFact]
     public async Task EnsureAsync_ReturnsUnavailableWhenWindowsTerminalMissing()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "Windows-only test.");
@@ -19,7 +19,7 @@ public sealed class WindowsTerminalProfileSetupServiceTests
         Assert.Equal("Windows Terminal not installed.", result.Summary);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EnsureAsync_ReturnsAlreadyConfiguredWhenFontMatches()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "Windows-only test.");
@@ -34,7 +34,7 @@ public sealed class WindowsTerminalProfileSetupServiceTests
         Assert.Equal(0, profileManager.EnsureCallCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EnsureAsync_ReturnsCreatedWhenProfileDoesNotExistYet()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "Windows-only test.");
@@ -50,7 +50,7 @@ public sealed class WindowsTerminalProfileSetupServiceTests
         Assert.Equal("CaskaydiaCove Nerd Font", result.ResolvedFontFace);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EnsureAsync_ReturnsUpdatedWhenFontChanges()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "Windows-only test.");
@@ -65,7 +65,7 @@ public sealed class WindowsTerminalProfileSetupServiceTests
         Assert.Equal(1, profileManager.EnsureCallCount);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EnsureAsync_ReturnsFailedWhenProfileWriteThrows()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "Windows-only test.");
