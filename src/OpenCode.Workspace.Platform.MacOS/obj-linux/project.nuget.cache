@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "cW6O+y6Uvlc=",
+  "success": true,
+  "projectFilePath": "/mnt/c/Users/miha.pirnat/source/repos/opencode-stuff/src/OpenCode.Workspace.Platform.MacOS/OpenCode.Workspace.Platform.MacOS.csproj",
+  "expectedPackageFiles": [
+    "/home/miha/.nuget/packages/yamldotnet/16.3.0/yamldotnet.16.3.0.nupkg.sha512"
+  ],
+  "logs": []
+}

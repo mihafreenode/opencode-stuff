@@ -4,6 +4,9 @@ using OpenCode.Workspace.Core.Diagnostics;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform;
+using OpenCode.Workspace.Platform.Linux;
+using OpenCode.Workspace.Platform.MacOS;
 using OpenCode.Workspace.Platform.Windows;
 using OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -34,7 +37,13 @@ public sealed class AvaloniaAppBootstrapper
         var publishAssessmentService = new WorkspacePublishAssessmentService(processRunner);
         var removalService = new WorkspaceRemovalService(repository);
         var oracleSoftwareNoticeService = new OracleSoftwareNoticeService(repository);
-        var windowsHostCapabilities = new WindowsHostCapabilities(processRunner);
+        var commandProbe = new ProcessRunnerCommandProbe(processRunner);
+        var hostCapabilities = new HostCapabilitiesFactory(
+            () => new WindowsHostCapabilities(commandProbe),
+            () => new LinuxHostCapabilities(commandProbe),
+            () => new MacHostCapabilities(commandProbe))
+            .CreateForCurrentPlatform();
+        var windowsHostCapabilities = new WindowsHostCapabilities(commandProbe);
         var windowsTerminalProfileSetupService = new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), windowsHostCapabilities);
         var safetyService = new WorkspaceSafetyService();
         var workspaceProvider = new GitWorkspaceProvider(processRunner, ignorePolicyService);
@@ -71,7 +80,7 @@ public sealed class AvaloniaAppBootstrapper
         var desktopShellService = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, savePointMessageService, backupExportService, publishAssessmentService, removalService, oracleSoftwareNoticeService, windowsTerminalProfileSetupService);
         var doctorService = new WorkspaceDoctorService(platformDetector, runtimeResolver, new WorkspaceDiscoveryService(), yamlService, new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), yamlService, platformDetector, runtimeResolver, resolver, composeGenerator, provisioningScriptGenerator);
-        var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService);
+        var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService, hostCapabilities);
         var templateShellService = new TemplateCatalogShellService(catalogProvider);
         var documentationShellService = new DocumentationShellService(applicationBasePath, desktopShellService);
         var appBuildInfo = new AppBuildInfoService(applicationBasePath).GetCurrent();
@@ -79,6 +88,7 @@ public sealed class AvaloniaAppBootstrapper
         return ShellViewModel.Create(
             desktopShellService,
             diagnosticsShellService,
+            hostCapabilities,
             templateShellService,
             documentationShellService,
             themeCoordinator,

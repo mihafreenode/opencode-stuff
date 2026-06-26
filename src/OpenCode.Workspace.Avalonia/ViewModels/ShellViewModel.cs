@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
+using OpenCode.Workspace.Platform;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -104,6 +105,7 @@ public sealed class ShellViewModel : ObservableObject
     public static ShellViewModel Create(
         IDesktopShellService desktopShellService,
         IDiagnosticsShellService diagnosticsShellService,
+        IHostCapabilities hostCapabilities,
         ITemplateCatalogShellService templateCatalogShellService,
         IDocumentationShellService documentationShellService,
         IThemeCoordinator themeCoordinator,
@@ -121,7 +123,7 @@ public sealed class ShellViewModel : ObservableObject
             new TranscriptsPageViewModel(desktopShellService),
             new RemoteTargetsPageViewModel(),
             new DocumentationPageViewModel(documentationShellService),
-            new SettingsPageViewModel(themeCoordinator, appBuildInfo, desktopShellService, () => workspacesPage.SelectedWorkspace),
+            new SettingsPageViewModel(themeCoordinator, appBuildInfo, desktopShellService, hostCapabilities, () => workspacesPage.SelectedWorkspace),
             appBuildInfo);
 
         return shell;
@@ -131,6 +133,7 @@ public sealed class ShellViewModel : ObservableObject
     {
         await _workspacesPage.LoadAsync(cancellationToken);
         await _savePointsPage.RefreshAsync(_workspacesPage.SelectedWorkspace, cancellationToken);
+        await _settingsPage.LoadHostCapabilitiesAsync(cancellationToken);
         _diagnosticsPage.RefreshWorkspaceLoadSummary();
         RefreshStatusBar();
     }

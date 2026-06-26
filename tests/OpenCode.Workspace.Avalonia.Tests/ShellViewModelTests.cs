@@ -5,6 +5,7 @@ using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform;
 using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Avalonia.Tests;
@@ -126,6 +127,7 @@ public sealed class ShellViewModelTests
         _ = ShellViewModel.Create(
             desktop,
             new FakeDiagnosticsShellService(),
+            new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
             new FakeDocumentationShellService(),
             new ThemeCoordinator(ThemeMode.System),
@@ -354,6 +356,17 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Windows Terminal profile setup failed.", settings.TerminalProfileStatus);
         Assert.Contains(settings.DetailItems, item => item.Label == "Failure" && item.Value == "Access denied.");
+    }
+
+    [Fact]
+    public async Task SettingsPage_LoadHostCapabilities_AddsPlatformDetails()
+    {
+        var settings = CreateSettingsPage();
+
+        await settings.LoadHostCapabilitiesAsync();
+
+        Assert.Contains(settings.DetailItems, item => item.Label == "Host platform" && item.Value == "Windows");
+        Assert.Contains(settings.DetailItems, item => item.Label == "Managed terminal profile support" && item.Value.Contains("supported", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -602,6 +615,7 @@ public sealed class ShellViewModelTests
         await page.RunDoctorCommand.ExecuteAsync();
 
         Assert.NotEmpty(page.DoctorItems);
+        Assert.Contains(page.DoctorItems, item => item.Title == "Git");
         Assert.Contains(page.DoctorItems, item => item.Title == "Docker Engine");
         Assert.Equal("Workspace can run on this machine.", page.StatusMessage);
     }
@@ -2017,6 +2031,7 @@ public sealed class ShellViewModelTests
         return ShellViewModel.Create(
             desktop,
             new FakeDiagnosticsShellService(),
+            new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
             new FakeDocumentationShellService(),
             new ThemeCoordinator(ThemeMode.System),
@@ -2036,7 +2051,7 @@ public sealed class ShellViewModelTests
     {
         var actualDesktop = desktop ?? new FakeDesktopShellService([selectedWorkspace ?? CreateSnapshot("alpha")]);
         var actualWorkspace = selectedWorkspace ?? actualDesktop.LoadWorkspaceItemsAsync(false).GetAwaiter().GetResult().Items.First().Snapshot!;
-        return new SettingsPageViewModel(coordinator ?? new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo(), actualDesktop, () => new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = actualWorkspace.Record, Snapshot = actualWorkspace }));
+        return new SettingsPageViewModel(coordinator ?? new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo(), actualDesktop, new FakeHostCapabilities(), () => new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = actualWorkspace.Record, Snapshot = actualWorkspace }));
     }
 
     private static WorkspaceSnapshot CreateSnapshot(string name, bool includeRuntimeState = true, bool updateRequired = false, string? lastOperationResult = null, bool? lastOperationSucceeded = true)
@@ -2736,6 +2751,9 @@ public sealed class ShellViewModelTests
 
     private sealed class FakeDiagnosticsShellService : IDiagnosticsShellService
     {
+        public Task<HostCapabilityReport> DetectHostCapabilitiesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(FakeHostCapabilities.CreateReport());
+
         public Task<WorkspaceDoctorResult> RunDoctorAsync(string workspacePath, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceDoctorResult
             {
@@ -2799,6 +2817,43 @@ public sealed class ShellViewModelTests
                     IsSuccess = true,
                     Summary = $"{targetPlatform} validation passed.",
                 });
+    }
+
+    private sealed class FakeHostCapabilities : IHostCapabilities
+    {
+        public PlatformKind Platform => PlatformKind.Windows;
+
+        public Task<HostCapabilityReport> DetectAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(CreateReport());
+
+        public static HostCapabilityReport CreateReport()
+            => new()
+            {
+                Platform = PlatformKind.Windows,
+                Architecture = "X64",
+                Sections =
+                [
+                    new HostCapabilitySection
+                    {
+                        Id = "tools",
+                        DisplayName = "Tools",
+                        Entries =
+                        [
+                            new HostCapabilityEntry { Id = "tool.git", DisplayName = "Git", Status = HostCapabilityStatus.Available, Summary = "Git is available." },
+                            new HostCapabilityEntry { Id = "terminal.profile-support", DisplayName = "Windows Terminal profile support", Status = HostCapabilityStatus.Available, Summary = "Managed Windows Terminal profiles are supported." },
+                        ],
+                    },
+                    new HostCapabilitySection
+                    {
+                        Id = "fonts",
+                        DisplayName = "Fonts",
+                        Entries =
+                        [
+                            new HostCapabilityEntry { Id = "font.nerd-fonts", DisplayName = "Nerd Fonts", Status = HostCapabilityStatus.Available, Summary = "Nerd Fonts are available." },
+                        ],
+                    },
+                ],
+            };
     }
 
     private sealed class FakeTemplateCatalogShellService : ITemplateCatalogShellService

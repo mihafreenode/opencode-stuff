@@ -1,5 +1,6 @@
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
+using OpenCode.Workspace.Platform;
 using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
@@ -8,15 +9,18 @@ public sealed class SettingsPageViewModel : PageViewModel
 {
     private readonly IThemeCoordinator _themeCoordinator;
     private readonly IDesktopShellService _desktopShellService;
+    private readonly IHostCapabilities _hostCapabilities;
     private readonly Func<WorkspaceSummaryViewModel?> _selectedWorkspaceProvider;
     private ThemeMode _selectedThemeMode;
     private string _terminalProfileStatus = string.Empty;
+    private HostCapabilityReport? _hostCapabilityReport;
 
-    public SettingsPageViewModel(IThemeCoordinator themeCoordinator, AppBuildInfo appBuildInfo, IDesktopShellService desktopShellService, Func<WorkspaceSummaryViewModel?> selectedWorkspaceProvider)
+    public SettingsPageViewModel(IThemeCoordinator themeCoordinator, AppBuildInfo appBuildInfo, IDesktopShellService desktopShellService, IHostCapabilities hostCapabilities, Func<WorkspaceSummaryViewModel?> selectedWorkspaceProvider)
         : base("Settings", "Theme selection and basic app information.")
     {
         _themeCoordinator = themeCoordinator;
         _desktopShellService = desktopShellService;
+        _hostCapabilities = hostCapabilities;
         _selectedWorkspaceProvider = selectedWorkspaceProvider;
         AppVersionLine = $"Version: {appBuildInfo.AssemblyVersion} ({appBuildInfo.InformationalVersion})";
         AppBuildLine = $"Build: {appBuildInfo.BuildConfiguration} | Commit: {appBuildInfo.GitCommitSha}";
@@ -62,6 +66,12 @@ public sealed class SettingsPageViewModel : PageViewModel
         RefreshTerminalProfileDetails();
     }
 
+    public async Task LoadHostCapabilitiesAsync(CancellationToken cancellationToken = default)
+    {
+        _hostCapabilityReport = await _hostCapabilities.DetectAsync(cancellationToken);
+        RefreshTerminalProfileDetails();
+    }
+
     private bool CanSetupWindowsTerminalProfile()
         => _selectedWorkspaceProvider() is { HasSnapshot: true };
 
@@ -82,6 +92,15 @@ public sealed class SettingsPageViewModel : PageViewModel
     {
         DetailItems.Clear();
         DetailItems.Add(new DetailItemViewModel("Runtime-state", RuntimeStateExplanation));
+        if (_hostCapabilityReport is not null)
+        {
+            DetailItems.Add(new DetailItemViewModel("Host platform", _hostCapabilityReport.Platform.ToString()));
+            DetailItems.Add(new DetailItemViewModel("Host architecture", _hostCapabilityReport.Architecture));
+            DetailItems.Add(new DetailItemViewModel("Git", _hostCapabilityReport.FindEntry("tool.git")?.Summary ?? "Not detected yet"));
+            DetailItems.Add(new DetailItemViewModel("Managed terminal profile support", _hostCapabilityReport.FindEntry("terminal.profile-support")?.Summary ?? "Not detected yet"));
+            DetailItems.Add(new DetailItemViewModel("Nerd Fonts", _hostCapabilityReport.FindEntry("font.nerd-fonts")?.Summary ?? "Not detected yet"));
+        }
+
         var workspace = _selectedWorkspaceProvider();
         DetailItems.Add(new DetailItemViewModel("Selected workspace", workspace?.Name ?? "No workspace selected"));
         DetailItems.Add(new DetailItemViewModel("Windows Terminal profile", string.IsNullOrWhiteSpace(TerminalProfileStatus) ? "Not run yet" : TerminalProfileStatus));

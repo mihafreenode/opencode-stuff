@@ -1,7 +1,9 @@
 using System.Drawing.Text;
 using System.IO;
+using System.Runtime.Versioning;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Platform;
 
 namespace OpenCode.Workspace.Platform.Windows;
 
@@ -15,20 +17,109 @@ public interface IWindowsHostCapabilities
     string ResolvePreferredTerminalFace(string fontDisplayName);
 }
 
-public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
+public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCapabilities
 {
-    private readonly ProcessRunner _processRunner;
+    private readonly ICommandProbe _commandProbe;
 
     public WindowsHostCapabilities(ProcessRunner processRunner)
+        : this(new ProcessRunnerCommandProbe(processRunner))
     {
-        _processRunner = processRunner;
+    }
+
+    public WindowsHostCapabilities(ICommandProbe commandProbe)
+    {
+        _commandProbe = commandProbe;
+    }
+
+    public PlatformKind Platform => PlatformKind.Windows;
+
+    public async Task<HostCapabilityReport> DetectAsync(CancellationToken cancellationToken = default)
+    {
+        var windowsTerminal = await CheckWindowsTerminalAsync(cancellationToken);
+        var dockerDesktop = await CheckDockerDesktopAsync(cancellationToken);
+        var wslAvailable = await IsWslAvailableAsync(cancellationToken);
+
+        var sections = new List<HostCapabilitySection>
+        {
+            new()
+            {
+                Id = "fonts",
+                DisplayName = "Fonts",
+                Entries =
+                [
+                    DetectWindowsFont("font.jetbrains-mono", "JetBrains Mono", "JetBrainsMono Nerd Font"),
+                    DetectWindowsFont("font.nerd-fonts", "Nerd Fonts", "JetBrainsMono Nerd Font"),
+                    DetectWindowsFont("font.cascadia-code", "Cascadia Code", "Cascadia Code"),
+                ],
+            },
+            new()
+            {
+                Id = "terminals",
+                DisplayName = "Terminals",
+                Entries =
+                [
+                    ToCapabilityEntry("terminal.windows-terminal", "Windows Terminal", windowsTerminal),
+                ],
+            },
+            new()
+            {
+                Id = "containers",
+                DisplayName = "Container runtime",
+                Entries =
+                [
+                    ToCapabilityEntry("container.docker", "Docker Desktop", dockerDesktop),
+                    await DetectCommandCapabilityAsync("container.podman", "Podman", "where", ["podman"], cancellationToken),
+                ],
+            },
+            new()
+            {
+                Id = "tools",
+                DisplayName = "Tools",
+                Entries =
+                [
+                    await DetectCommandCapabilityAsync("tool.git", "Git", "where", ["git"], cancellationToken),
+                    new HostCapabilityEntry
+                    {
+                        Id = "tool.wsl",
+                        DisplayName = "WSL",
+                        Status = wslAvailable ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+                        Summary = wslAvailable ? "WSL is available." : "WSL was not detected.",
+                    },
+                    new HostCapabilityEntry
+                    {
+                        Id = "terminal.profile-support",
+                        DisplayName = "Windows Terminal profile support",
+                        Status = windowsTerminal.IsAvailable ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+                        Summary = windowsTerminal.IsAvailable
+                            ? "Managed Windows Terminal profiles are supported."
+                            : "Managed Windows Terminal profiles are unavailable until Windows Terminal is installed.",
+                    },
+                ],
+            },
+            new()
+            {
+                Id = "package-managers",
+                DisplayName = "Package managers",
+                Entries =
+                [
+                    await DetectCommandCapabilityAsync("package.winget", "winget", "where", ["winget"], cancellationToken),
+                ],
+            },
+        };
+
+        return new HostCapabilityReport
+        {
+            Platform = Platform,
+            Architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+            Sections = sections,
+        };
     }
 
     public async Task<PrerequisiteCheckResult> CheckDockerDesktopAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            var result = await _processRunner.RunAsync("cmd.exe", ["/c", "docker", "info"], cancellationToken: cancellationToken);
+            var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "docker", "info"], cancellationToken);
             return result.IsSuccess
                 ? PrerequisiteCheckResult.Available("Docker Desktop is reachable.")
                 : PrerequisiteCheckResult.Unavailable("Docker Desktop not installed or not running.");
@@ -43,7 +134,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
     {
         try
         {
-            var result = await _processRunner.RunAsync("cmd.exe", ["/c", "where", "wt"], cancellationToken: cancellationToken);
+            var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "where", "wt"], cancellationToken);
             return result.IsSuccess
                 ? PrerequisiteCheckResult.Available("Windows Terminal command is available.")
                 : PrerequisiteCheckResult.Unavailable("Windows Terminal not installed or App Execution Alias disabled.");
@@ -62,8 +153,12 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
             return PrerequisiteCheckResult.Unavailable($"The selected Nerd Font '{fontDisplayName}' is not recognized by OpenCode Stuff.");
         }
 
-        using var fonts = new InstalledFontCollection();
-        var found = fonts.Families.Any(family => definition.CandidateFaceNames.Any(candidate => string.Equals(family.Name, candidate, StringComparison.OrdinalIgnoreCase)));
+        if (!OperatingSystem.IsWindows())
+        {
+            return PrerequisiteCheckResult.Unavailable("Windows font inspection is only available on Windows.");
+        }
+
+        var found = HasInstalledWindowsFont(definition.CandidateFaceNames);
         if (found)
         {
             return PrerequisiteCheckResult.Available($"Detected configured Nerd Font '{fontDisplayName}'.");
@@ -86,10 +181,14 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
             return fontDisplayName;
         }
 
-        using var fonts = new InstalledFontCollection();
+        if (!OperatingSystem.IsWindows())
+        {
+            return definition.CandidateFaceNames[0];
+        }
+
         foreach (var candidate in definition.CandidateFaceNames)
         {
-            if (fonts.Families.Any(family => string.Equals(family.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+            if (HasInstalledWindowsFont([candidate]))
             {
                 return candidate;
             }
@@ -128,6 +227,73 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities
             Path.Combine("C:\\", "sqldeveloper", "sqldeveloper.exe"),
             Path.Combine("C:\\", "sqldeveloper", "sqldeveloper64W.exe"),
         ];
+    }
+
+    private async Task<HostCapabilityEntry> DetectCommandCapabilityAsync(string id, string displayName, string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        var result = await _commandProbe.RunAsync(fileName, arguments, cancellationToken);
+        return new HostCapabilityEntry
+        {
+            Id = id,
+            DisplayName = displayName,
+            Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+            Summary = result.IsSuccess ? $"{displayName} is available." : $"{displayName} was not detected.",
+            Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
+        };
+    }
+
+    private static HostCapabilityEntry ToCapabilityEntry(string id, string displayName, PrerequisiteCheckResult result)
+        => new()
+        {
+            Id = id,
+            DisplayName = displayName,
+            Status = result.IsAvailable ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+            Summary = result.Reason,
+        };
+
+    private async Task<bool> IsWslAvailableAsync(CancellationToken cancellationToken)
+        => (await _commandProbe.RunAsync("cmd.exe", ["/c", "where", "wsl"], cancellationToken)).IsSuccess;
+
+    private HostCapabilityEntry DetectWindowsFont(string id, string displayName, string fontDisplayName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new HostCapabilityEntry
+            {
+                Id = id,
+                DisplayName = displayName,
+                Status = HostCapabilityStatus.Unavailable,
+                Summary = "Windows font inspection is only available on Windows.",
+            };
+        }
+
+        if (NerdFontCatalog.FindByDisplayName(fontDisplayName) is null)
+        {
+            var installed = HasInstalledWindowsFont([fontDisplayName]);
+            return new HostCapabilityEntry
+            {
+                Id = id,
+                DisplayName = displayName,
+                Status = installed ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+                Summary = installed ? $"{displayName} is available." : $"{displayName} was not detected.",
+            };
+        }
+
+        var result = CheckNerdFont(fontDisplayName);
+        return new HostCapabilityEntry
+        {
+            Id = id,
+            DisplayName = displayName,
+            Status = result.IsAvailable ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+            Summary = result.Reason,
+        };
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool HasInstalledWindowsFont(IReadOnlyList<string> candidateFaceNames)
+    {
+        using var fonts = new InstalledFontCollection();
+        return fonts.Families.Any(family => candidateFaceNames.Any(candidate => string.Equals(family.Name, candidate, StringComparison.OrdinalIgnoreCase)));
     }
 }
 

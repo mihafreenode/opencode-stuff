@@ -3,6 +3,7 @@ using System.Globalization;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Platform;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -123,7 +124,17 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
         }
 
         var result = await _diagnosticsShellService.RunDoctorAsync(SelectedWorkspaceTarget.RootPath);
+        var hostCapabilities = await _diagnosticsShellService.DetectHostCapabilitiesAsync();
         DoctorItems.Clear();
+        DoctorItems.Add(new DiagnosticItemViewModel("Host platform", "Pass", hostCapabilities.Platform.ToString(), string.Empty, hostCapabilities.Architecture));
+        foreach (var section in hostCapabilities.Sections)
+        {
+            foreach (var entry in section.Entries)
+            {
+                DoctorItems.Add(new DiagnosticItemViewModel(entry.DisplayName, ToStatus(entry.Status), entry.Summary, ResultGuidance(entry.Status == HostCapabilityStatus.Available, $"Review {section.DisplayName.ToLowerInvariant()} support on this host."), entry.Details));
+            }
+        }
+
         var host = result.HostPlatform;
         var docker = host?.Docker;
         DoctorItems.Add(new DiagnosticItemViewModel("Host OS", "Pass", host?.OperatingSystem.ToString() ?? "Unknown", string.Empty, host?.HostDescription));
@@ -232,6 +243,15 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
     private static string ToStatus(bool success, bool warning = false)
         => warning ? "Warning" : success ? "Pass" : "Fail";
+
+    private static string ToStatus(HostCapabilityStatus status)
+        => status switch
+        {
+            HostCapabilityStatus.Available => "Pass",
+            HostCapabilityStatus.Warning => "Warning",
+            HostCapabilityStatus.Unknown => "Warning",
+            _ => "Fail",
+        };
 
     private static string ResultGuidance(bool success, string nextStep)
         => success ? string.Empty : nextStep;

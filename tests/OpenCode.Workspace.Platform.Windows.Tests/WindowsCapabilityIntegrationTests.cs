@@ -1,6 +1,7 @@
 using System.IO;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Platform;
 using OpenCode.Workspace.Platform.Windows;
 
 namespace OpenCode.Workspace.Platform.Windows.Tests;
@@ -23,6 +24,20 @@ public sealed class WindowsCapabilityIntegrationTests
         var result = await capabilities.CheckWindowsTerminalAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
+    }
+
+    [Fact]
+    public async Task DetectAsync_ReturnsStructuredCapabilityReport()
+    {
+        var capabilities = (IHostCapabilities)new WindowsHostCapabilities(new ProcessRunner());
+
+        var report = await capabilities.DetectAsync();
+
+        Assert.Equal(PlatformKind.Windows, report.Platform);
+        Assert.NotEmpty(report.Sections);
+        Assert.NotNull(report.FindEntry("terminal.windows-terminal"));
+        Assert.NotNull(report.FindEntry("tool.git"));
+        Assert.NotNull(report.FindEntry("terminal.profile-support"));
     }
 
     [SkippableFact]
