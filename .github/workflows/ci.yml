@@ -8,7 +8,6 @@ name: CI
       - main
     tags:
       - "v*"
-    # Only run CI when source, tests, build inputs, or workflow files change.
     paths:
       - "src/**"
       - "tests/**"
@@ -19,7 +18,6 @@ name: CI
       - "*.sln"
       - "*.slnx"
   pull_request:
-    # Match push filtering so PR validation stays focused and cheap.
     paths:
       - "src/**"
       - "tests/**"
@@ -30,7 +28,6 @@ name: CI
       - "*.sln"
       - "*.slnx"
 
-# Cancel older runs on the same branch so stale commits stop consuming minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,109 +36,124 @@ permissions:
   contents: write
 
 jobs:
-  linux-validation:
-    name: Linux Validation
-    # Fast portable validation runs first and gates the Windows job.
-    runs-on: ubuntu-latest
+  desktop-ci:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows CI
+            runs_on: windows-latest
+            runtime: win-x64
+            publish_dir: artifacts/opencode-stuff-win-x64
+            package_path: artifacts/opencode-stuff-win-x64.zip
+            artifact_name: opencode-stuff-win-x64
+            executable_path: artifacts/opencode-stuff-win-x64/OpenCode.Workspace.Avalonia.exe
+            package_kind: zip
+            platform_test_project: tests/OpenCode.Workspace.Platform.Windows.Tests/OpenCode.Workspace.Platform.Windows.Tests.csproj
+          - name: Linux CI
+            runs_on: ubuntu-latest
+            runtime: linux-x64
+            publish_dir: artifacts/opencode-stuff-linux-x64
+            package_path: artifacts/opencode-stuff-linux-x64.tar.gz
+            artifact_name: opencode-stuff-linux-x64
+            executable_path: artifacts/opencode-stuff-linux-x64/OpenCode.Workspace.Avalonia
+            package_kind: tar.gz
+            platform_test_project: tests/OpenCode.Workspace.Platform.Linux.Tests/OpenCode.Workspace.Platform.Linux.Tests.csproj
+          - name: macOS CI
+            runs_on: macos-latest
+            runtime: osx-arm64
+            publish_dir: artifacts/opencode-stuff-macos-arm64
+            package_path: artifacts/opencode-stuff-macos-arm64.tar.gz
+            artifact_name: opencode-stuff-macos-arm64
+            executable_path: artifacts/opencode-stuff-macos-arm64/OpenCode.Workspace.Avalonia
+            package_kind: tar.gz
+            platform_test_project: tests/OpenCode.Workspace.Platform.MacOS.Tests/OpenCode.Workspace.Platform.MacOS.Tests.csproj
     env:
       DOTNET_NOLOGO: true
-      # Allow Linux restore/build even though the solution
-      # includes a Windows app.
       EnableWindowsTargeting: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.204
 
-      - name: Restore
+      - name: Restore solution
         run: dotnet restore OpenCode.Workspace.Manager.slnx
 
-      - name: Build
-        run: >-
-          dotnet build OpenCode.Workspace.Manager.slnx
-          -c Release
-          --no-restore
+      - name: Build solution
+        run: dotnet build OpenCode.Workspace.Manager.slnx -c Release --no-restore
 
-      - name: Run portable/core tests
-        working-directory: tests/OpenCode.Workspace.Core.Tests
+      - name: Run Core tests
+        run: dotnet test tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj -c Release --no-build -m:1
+
+      - name: Run Avalonia tests
+        run: dotnet test tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj -c Release --no-build
+
+      - name: Run platform tests
+        run: dotnet test ${{ matrix.platform_test_project }} -c Release --no-build
+
+      - name: Publish Avalonia desktop app
+        run: >-
+          dotnet publish src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj
+          -c Release
+          -r ${{ matrix.runtime }}
+          --self-contained false
+          -o ${{ matrix.publish_dir }}
+
+      - name: Verify publish output on Windows
+        if: matrix.package_kind == 'zip'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${{ matrix.publish_dir }}")) {
+            throw "Publish output directory missing: ${{ matrix.publish_dir }}"
+          }
+
+          if (-not (Test-Path "${{ matrix.executable_path }}")) {
+            throw "Published executable missing: ${{ matrix.executable_path }}"
+          }
+
+      - name: Verify publish output on Unix
+        if: matrix.package_kind == 'tar.gz'
         shell: bash
         run: |
-          dotnet test \
-            OpenCode.Workspace.Core.Tests.csproj \
-            -c Release \
-            --no-build
+          test -d "${{ matrix.publish_dir }}"
+          test -f "${{ matrix.executable_path }}"
 
-  windows-build:
-    name: Windows Build
-    # Only spend Windows minutes after Linux validation has passed.
-    needs: linux-validation
-    runs-on: windows-latest
-    env:
-      DOTNET_NOLOGO: true
-    # Future stage: add MSIX packaging after launcher output is validated.
-    # Future stage: add code signing once certificate handling is decided.
+      - name: Package Windows artifact
+        if: matrix.package_kind == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ matrix.publish_dir }}/*" -DestinationPath "${{ matrix.package_path }}" -Force
+
+      - name: Package Unix artifact
+        if: matrix.package_kind == 'tar.gz'
+        shell: bash
+        run: |
+          tar -C artifacts -czf "${{ matrix.package_path }}" "$(basename "${{ matrix.publish_dir }}")"
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.package_path }}
+
+  release-artifacts:
+    name: Attach Release Artifacts
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: desktop-ci
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v5
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
         with:
-          dotnet-version: 10.0.204
-
-      - name: Restore
-        run: dotnet restore OpenCode.Workspace.Manager.slnx
-
-      - name: Build
-        run: >-
-          dotnet build OpenCode.Workspace.Manager.slnx
-          -c Release
-          --no-restore
-
-      - name: Run Windows tests
-        shell: pwsh
-        timeout-minutes: 10
-        run: |
-          dotnet test `
-            tests/OpenCode.Workspace.Windows.Tests/OpenCode.Workspace.Windows.Tests.csproj `
-            -c Release `
-            --no-build `
-            --logger "console;verbosity=detailed" `
-            --blame-hang `
-            --blame-hang-timeout 2m `
-            --blame-hang-dump-type mini
-
-      - name: Publish launcher
-        shell: pwsh
-        run: |
-          dotnet publish `
-            src/OpenCode.Workspace.Manager/OpenCode.Workspace.Manager.csproj `
-            -c Release `
-            -r win-x64 `
-            --self-contained false `
-            -o artifacts/win-x64
-
-      - name: Package published launcher
-        shell: pwsh
-        run: |
-          # Ship a simple downloadable archive until MSIX packaging is added.
-          Compress-Archive `
-            -Path artifacts/win-x64/* `
-            -DestinationPath artifacts/opencode-stuff-win-x64.zip `
-            -Force
-
-      - name: Upload launcher artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: opencode-stuff-win-x64
-          path: artifacts/opencode-stuff-win-x64.zip
+          path: release-artifacts
 
       - name: Prepare release metadata
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         id: release-metadata
         shell: bash
         run: |
@@ -149,22 +161,22 @@ jobs:
           {
             echo "name=OpenCode Stuff $version"
             echo "body<<EOF"
-            echo "Initial public release."
+            echo "Cross-platform Avalonia desktop release."
             echo
             echo "Includes:"
-            echo "- Workspace Launcher"
-            echo "- Ubuntu (WSL2) integration"
-            echo "- Docker workspace support"
-            echo "- Workspace catalog support"
-            echo "- Terminal integration"
-            echo "- Documentation and setup guides"
+            echo "- Windows desktop package"
+            echo "- Linux desktop package"
+            echo "- macOS desktop package"
+            echo "- Shared workspace, diagnostics, and platform integrations"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Attach zip to GitHub Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.release-metadata.outputs.name }}
           body: ${{ steps.release-metadata.outputs.body }}
-          files: artifacts/opencode-stuff-win-x64.zip
+          files: |
+            release-artifacts/opencode-stuff-win-x64/opencode-stuff-win-x64.zip
+            release-artifacts/opencode-stuff-linux-x64/opencode-stuff-linux-x64.tar.gz
+            release-artifacts/opencode-stuff-macos-arm64/opencode-stuff-macos-arm64.tar.gz
