@@ -283,6 +283,59 @@ public sealed class ExistingGitCheckoutImportTests
         }
     }
 
+    [Fact]
+    public async Task InspectExistingGitCheckoutAsync_AllowsValidWorkspaceRootAfterRemovalFromIndex()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var rootPath = CreateTempPath();
+        var appDataRoot = CreateTempPath();
+        try
+        {
+            Directory.CreateDirectory(rootPath);
+            await RunGitAsync(rootPath, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(rootPath, "README.md"), "demo\n");
+            File.WriteAllText(Path.Combine(rootPath, "workspace.yaml"), new WorkspaceYamlService().Write(new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "Recovered Workspace", Image = "ubuntu:24.04" },
+                Provider = new WorkspaceProviderDefinition { Type = "git" },
+                Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+                Features = ["core"],
+                Services = [],
+                Skills = [],
+                Mcp = [],
+            }));
+            await RunGitAsync(rootPath, "add", "-A");
+            await RunGitAsync(rootPath, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var repository = new WorkspaceRepository(appDataRoot);
+            repository.Save(new WorkspaceRecord
+            {
+                Name = "Recovered Workspace",
+                RootPath = rootPath,
+                RepositoryPath = rootPath,
+                CreatedUtc = DateTimeOffset.UtcNow,
+                LastOpenedUtc = DateTimeOffset.UtcNow,
+            });
+            repository.Delete(rootPath);
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var plan = await orchestrator.InspectExistingGitCheckoutAsync(rootPath, "Recovered Workspace");
+
+            Assert.True(plan.Repository.IsRepository);
+            Assert.Equal(rootPath, plan.RepositoryPath);
+            Assert.Equal(WorkspaceDiscoveryStatus.Found, plan.DiscoveryResult.Status);
+        }
+        finally
+        {
+            DeleteTempPath(rootPath);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
     [Theory]
     [InlineData("workspace.yml")]
     [InlineData(".opencode/profile.yaml")]

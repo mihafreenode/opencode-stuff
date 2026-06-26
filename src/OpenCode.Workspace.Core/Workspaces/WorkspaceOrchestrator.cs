@@ -437,7 +437,9 @@ public sealed class WorkspaceOrchestrator
         var inspection = await gitProvider.RepositoryService.InspectAsync(repositoryRoot, cancellationToken);
         if (!inspection.IsRepository)
         {
-            throw new InvalidOperationException("The selected folder is not a Git checkout.");
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(inspection.ProbeFailureDetails)
+                ? "The selected folder is not a Git checkout."
+                : inspection.ProbeFailureDetails);
         }
 
         var folderName = string.IsNullOrWhiteSpace(workspaceName)
@@ -479,7 +481,9 @@ public sealed class WorkspaceOrchestrator
         var inspection = await repositoryService.InspectAsync(request.RepositoryPath, cancellationToken);
         if (!inspection.IsRepository)
         {
-            throw new InvalidOperationException("The selected folder is not a Git checkout.");
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(inspection.ProbeFailureDetails)
+                ? "The selected folder is not a Git checkout."
+                : inspection.ProbeFailureDetails);
         }
 
         var selectedBranch = inspection.CurrentBranch;

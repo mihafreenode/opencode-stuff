@@ -178,6 +178,73 @@ public sealed class WorkspaceDiscoveryIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task InspectExistingGitCheckoutAsync_UsesSelectedRootInsteadOfParentDirectory()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var parentRoot = CreateTempPath("workspace-discovery-parent-root");
+        var repositoryRoot = Path.Combine(parentRoot, "child-repo");
+        var appDataRoot = CreateTempPath("workspace-discovery-selected-root-appdata");
+
+        try
+        {
+            Directory.CreateDirectory(repositoryRoot);
+            await RunGitAsync(repositoryRoot, "init", "-b", "main");
+            File.WriteAllText(Path.Combine(repositoryRoot, "README.md"), "demo\n");
+            await RunGitAsync(repositoryRoot, "add", "-A");
+            await RunGitAsync(repositoryRoot, "-c", "user.name=Test User", "-c", "user.email=test@local.workspace", "commit", "-m", "Initial");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var plan = await orchestrator.InspectExistingGitCheckoutAsync(repositoryRoot, "Child Repo");
+
+            Assert.True(plan.Repository.IsRepository);
+            Assert.Equal(repositoryRoot, plan.RepositoryPath);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.InspectExistingGitCheckoutAsync(parentRoot, "Parent"));
+            Assert.Contains(parentRoot, exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempPath(parentRoot);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public async Task InspectExistingGitCheckoutAsync_FailureReportsPathAndProbeCommand()
+    {
+        if (!CanRunGit())
+        {
+            return;
+        }
+
+        var repositoryRoot = CreateTempPath("workspace-discovery-invalid-selected-root");
+        var appDataRoot = CreateTempPath("workspace-discovery-invalid-selected-appdata");
+
+        try
+        {
+            Directory.CreateDirectory(repositoryRoot);
+            File.WriteAllText(Path.Combine(repositoryRoot, "README.md"), "not a repo\n");
+
+            var orchestrator = CreateOrchestrator(appDataRoot);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.InspectExistingGitCheckoutAsync(repositoryRoot, "Not Repo"));
+
+            Assert.Contains("The selected folder is not a Git checkout.", exception.Message, StringComparison.Ordinal);
+            Assert.Contains(repositoryRoot, exception.Message, StringComparison.Ordinal);
+            Assert.Contains("git rev-parse --is-inside-work-tree", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Working-directory exit code:", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempPath(repositoryRoot);
+            DeleteTempPath(appDataRoot);
+        }
+    }
+
     private static WorkspaceDefinition CreateDefinition(string workspaceName)
         => new()
         {

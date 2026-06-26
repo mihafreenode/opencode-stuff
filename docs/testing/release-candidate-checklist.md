@@ -234,12 +234,23 @@ Notes:
 
 Status: `FAIL`
 
-Failure point:
+Validated before failure:
 
-- after Section A removed `rc-first-workspace` from the list, the packaged app was used to re-import the same disposable workspace root for recovery testing
-- packaged `Open Existing Repository` inspection reported:
-  - `The selected folder is not a Git checkout.`
-  - `Repository inspection failed.`
+- after Section A removed `rc-first-workspace` from the list, the packaged app successfully re-imported the same workspace root
+- packaged `Open Existing Repository` inspection now succeeds and reports:
+  - `Branch: workspace/rc-first-workspace-20260626-1030`
+  - `Status: Branch workspace/rc-first-workspace-20260626-1030`
+  - `Configuration: Found`
+  - `Path: workspace.yaml`
+- the packaged shell selected the imported workspace and showed `Imported existing Git checkout 'rc-first-workspace'.`
+- a preserved user file was created before recovery:
+  - path: `C:\Users\miha.pirnat\AppData\Local\Temp\opencode-rc-workspaces\docs\preserve-me.txt`
+  - SHA-256 before recovery: `D213FAC2FAB84E18965D8A90D60015572DFE1D46A46461B4B301E60ED6DF919D`
+- managed runtime files were damaged before recovery:
+  - deleted: `.opencode\local\runtime-state.yaml`
+  - deleted: `compose.yaml`
+- packaged `Recover` completed and reported:
+  - `Workspace operation 'Recover' completed provider call with message 'Workspace 'rc-first-workspace' runtime was repaired.'`
 
 Recorded evidence:
 
@@ -248,20 +259,19 @@ Recorded evidence:
 - `workspace.yaml` exists at that path
 - Windows host `git status --short --branch` at that path succeeds and reports:
   - `## workspace/rc-first-workspace-20260626-1030`
-- packaged import dialog UIA dump shows:
-  - `The selected folder is not a Git checkout.`
-  - `Repository inspection failed.`
+- preserved user file SHA-256 after recovery: `D213FAC2FAB84E18965D8A90D60015572DFE1D46A46461B4B301E60ED6DF919D`
+- `compose.yaml` exists after recovery and was regenerated
+- `.opencode\local\runtime-state.yaml` is still missing after recovery
 
 Smallest likely remaining blocker:
 
-- packaged existing-checkout inspection is falsely classifying a valid packaged-created workspace root as not being a Git checkout after remove-from-list/relaunch
+- recovery reports success without regenerating all damaged managed runtime files, specifically `.opencode\local\runtime-state.yaml`
 
 Further recovery checks were not run after this failure:
 
-- damage managed runtime files
-- packaged Recover
-- preserved user file hash verification
-- regenerated runtime file verification
+- publish workflow
+- prerequisite diagnostics capture
+- backup archive include/exclude verification
 
 ### Publish Workflow
 

@@ -15,13 +15,14 @@ public sealed class GitRepositoryService
 
     public async Task<GitRepositoryInspection> InspectAsync(string repositoryRoot, CancellationToken cancellationToken = default)
     {
-        var isRepository = await IsRepositoryAsync(repositoryRoot, cancellationToken);
-        if (!isRepository)
+        var probe = await ProbeRepositoryAsync(repositoryRoot, cancellationToken);
+        if (!probe.IsRepository)
         {
             return new GitRepositoryInspection
             {
                 IsRepository = false,
                 StatusSummary = "Git is not initialized.",
+                ProbeFailureDetails = DescribeRepositoryProbeFailure(probe),
             };
         }
 
@@ -211,8 +212,72 @@ public sealed class GitRepositoryService
 
     public async Task<bool> IsRepositoryAsync(string repositoryRoot, CancellationToken cancellationToken = default)
     {
-        var result = await TryRunGitAsync(repositoryRoot, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
-        return result.IsSuccess && string.Equals(result.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        var probe = await ProbeRepositoryAsync(repositoryRoot, cancellationToken);
+        return probe.IsRepository;
+    }
+
+    public async Task<GitRepositoryProbe> ProbeRepositoryAsync(string repositoryRoot, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = string.IsNullOrWhiteSpace(repositoryRoot)
+            ? string.Empty
+            : Path.GetFullPath(repositoryRoot.Trim());
+        var primary = await TryRunGitAsync(normalizedPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
+        var primarySucceeded = primary.IsSuccess && string.Equals(primary.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        ProcessResult? explicitPathCheck = null;
+        var explicitSucceeded = false;
+        if (!primarySucceeded && !string.IsNullOrWhiteSpace(normalizedPath) && Directory.Exists(normalizedPath))
+        {
+            explicitPathCheck = await _processRunner.RunAsync("git", ["-C", normalizedPath, "rev-parse", "--is-inside-work-tree"], cancellationToken: cancellationToken);
+            explicitSucceeded = explicitPathCheck.IsSuccess && string.Equals(explicitPathCheck.StandardOutput.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return new GitRepositoryProbe(
+            normalizedPath,
+            primarySucceeded || explicitSucceeded,
+            !string.IsNullOrWhiteSpace(normalizedPath) && (Directory.Exists(Path.Combine(normalizedPath, ".git")) || File.Exists(Path.Combine(normalizedPath, ".git"))),
+            !string.IsNullOrWhiteSpace(normalizedPath) && (File.Exists(Path.Combine(normalizedPath, "workspace.yaml")) || File.Exists(Path.Combine(normalizedPath, "workspace.yml"))),
+            primary,
+            explicitPathCheck);
+    }
+
+    public static string DescribeRepositoryProbeFailure(GitRepositoryProbe probe)
+    {
+        var lines = new List<string>
+        {
+            $"The selected folder is not a Git checkout.",
+            $"Path: {probe.RepositoryPath}",
+            $".git present: {probe.GitDirectoryExists}",
+            $"workspace.yaml present: {probe.WorkspaceConfigurationExists}",
+            $"Working-directory probe: {probe.WorkingDirectoryCheck.Command}",
+            $"Working-directory exit code: {probe.WorkingDirectoryCheck.ExitCode}",
+        };
+
+        if (!string.IsNullOrWhiteSpace(probe.WorkingDirectoryCheck.StandardOutput))
+        {
+            lines.Add($"Working-directory stdout: {probe.WorkingDirectoryCheck.StandardOutput.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(probe.WorkingDirectoryCheck.StandardError))
+        {
+            lines.Add($"Working-directory stderr: {probe.WorkingDirectoryCheck.StandardError.Trim()}");
+        }
+
+        if (probe.ExplicitPathCheck is not null)
+        {
+            lines.Add($"Explicit-path probe: {probe.ExplicitPathCheck.Command}");
+            lines.Add($"Explicit-path exit code: {probe.ExplicitPathCheck.ExitCode}");
+            if (!string.IsNullOrWhiteSpace(probe.ExplicitPathCheck.StandardOutput))
+            {
+                lines.Add($"Explicit-path stdout: {probe.ExplicitPathCheck.StandardOutput.Trim()}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(probe.ExplicitPathCheck.StandardError))
+            {
+                lines.Add($"Explicit-path stderr: {probe.ExplicitPathCheck.StandardError.Trim()}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private async Task<bool> BranchExistsInternalAsync(string repositoryRoot, string branchName, CancellationToken cancellationToken)
@@ -314,6 +379,15 @@ public sealed record GitRepositoryInspection(
     bool IsSafeWorkingCopy = false,
     bool IsWorkspaceBranch = false,
     List<string>? ConflictingFiles = null,
-    List<string>? ChangedPaths = null);
+    List<string>? ChangedPaths = null,
+    string ProbeFailureDetails = "");
+
+public sealed record GitRepositoryProbe(
+    string RepositoryPath,
+    bool IsRepository,
+    bool GitDirectoryExists,
+    bool WorkspaceConfigurationExists,
+    ProcessResult WorkingDirectoryCheck,
+    ProcessResult? ExplicitPathCheck);
 
 public sealed record GitBranchValidationResult(bool IsValid, string Message, bool BranchExists);
