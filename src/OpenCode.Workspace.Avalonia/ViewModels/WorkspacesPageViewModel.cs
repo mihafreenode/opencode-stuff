@@ -11,6 +11,8 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 
 public sealed class WorkspacesPageViewModel : PageViewModel
 {
+    private const string DeleteWorkspaceFilesUnavailableMessage = "Delete workspace files is not available in this version. Use File Explorer or terminal after creating a backup.";
+
     private readonly IDesktopShellService _desktopShellService;
     private readonly IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest> _templates;
     private WorkspaceSummaryViewModel? _selectedWorkspace;
@@ -54,6 +56,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
         AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
+        RetryWorkspaceCommand = new AsyncRelayCommand(RetrySelectedWorkspaceAsync, CanRetrySelectedWorkspace);
         CopyOperationLogCommand = new AsyncRelayCommand(CopyOperationLogAsync, () => HasOperationLog && _clipboardService is not null);
         ClearOperationLogCommand = new RelayCommand(ClearOperationLog, () => HasOperationLog);
         ToggleOperationLogVisibilityCommand = new RelayCommand(ToggleOperationLogVisibility);
@@ -77,6 +80,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand RecoverWorkspaceCommand { get; }
     public AsyncRelayCommand AttachWorkspaceCommand { get; }
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
+    public AsyncRelayCommand RetryWorkspaceCommand { get; }
     public AsyncRelayCommand CopyOperationLogCommand { get; }
     public RelayCommand ClearOperationLogCommand { get; }
     public RelayCommand ToggleOperationLogVisibilityCommand { get; }
@@ -224,6 +228,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 RecoverWorkspaceCommand.RaiseCanExecuteChanged();
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
                 ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
+                RetryWorkspaceCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -583,18 +588,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         StartOperationTranscript("Open Workspace", SelectedWorkspace.Name);
-        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing workspace..." });
-        DetailSummary = "Preparing workspace...";
-        await RunWorkspaceOperationAsync(
-            "Open Workspace",
-            "Preparing workspace...",
-            (rootPath, snapshot, sink) => _desktopShellService.PrepareWorkspaceAsync(rootPath, snapshot, sink),
-            preserveExistingTranscript: true);
-        await RunWorkspaceOperationAsync(
-            "Open Workspace",
-            "Launching terminal attach...",
-            (rootPath, snapshot, sink) => _desktopShellService.AttachWorkspaceAsync(rootPath, snapshot, sink),
-            preserveExistingTranscript: true);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Checking workspace..." });
+        DetailSummary = "Checking workspace...";
+
+        try
+        {
+            await RunWorkspaceOperationAsync(
+                "Open Workspace",
+                "Checking workspace...",
+                (rootPath, snapshot, sink) => _desktopShellService.OpenWorkspaceAsync(rootPath, snapshot, sink),
+                preserveExistingTranscript: true);
+        }
+        catch
+        {
+        }
     }
 
     private async Task OpenSelectedWorkspaceFolderAsync()
@@ -643,7 +650,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
             DetailSummary = exception.Message;
-            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            SelectedWorkspace.SetOperationFailureState(exception.Message, "Create Save Point");
             throw;
         }
 
@@ -737,6 +744,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             archivePath += ".zip";
         }
 
+        var backupFailed = false;
         try
         {
             _isWorkspaceActionRunning = true;
@@ -765,8 +773,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            backupFailed = true;
             _workspaceActionStatusMessage = exception.Message;
-            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            SelectedWorkspace?.SetOperationFailureState(exception.Message, "Backup");
             DetailSummary = exception.Message;
             throw;
         }
@@ -774,7 +783,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             _isWorkspaceActionRunning = false;
             RaiseWorkspaceActionCommandStates();
-            RefreshDetailActions();
+            if (backupFailed)
+            {
+                UpdateDetailPanel();
+            }
+            else
+            {
+                RefreshDetailActions();
+            }
         }
     }
 
@@ -790,13 +806,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailSummary = "Preparing publish...";
 
         WorkspacePublishAssessment assessment;
+        var publishFailed = false;
         try
         {
             assessment = await _desktopShellService.AssessWorkspacePublishAsync(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
         }
         catch (Exception exception)
         {
-            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            SelectedWorkspace.SetOperationFailureState(exception.Message, "Publish");
             DetailSummary = exception.Message;
             throw;
         }
@@ -833,8 +850,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            publishFailed = true;
             _workspaceActionStatusMessage = exception.Message;
-            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            SelectedWorkspace.SetOperationFailureState(exception.Message, "Publish");
             DetailSummary = exception.Message;
             throw;
         }
@@ -842,7 +860,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             _isWorkspaceActionRunning = false;
             RaiseWorkspaceActionCommandStates();
-            RefreshDetailActions();
+            if (publishFailed)
+            {
+                UpdateDetailPanel();
+            }
+            else
+            {
+                RefreshDetailActions();
+            }
         }
     }
 
@@ -853,27 +878,35 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
+        var selectedWorkspace = SelectedWorkspace;
+        var removedRootPath = selectedWorkspace.RootPath;
+
         var prompt = new WorkspaceRemovalPrompt
         {
-            WorkspaceName = SelectedWorkspace.Name,
-            WorkspaceRoot = SelectedWorkspace.RootPath,
+            WorkspaceName = selectedWorkspace.Name,
+            WorkspaceRoot = selectedWorkspace.RootPath,
+            DeleteWorkspaceFilesSupported = false,
+            DeleteWorkspaceFilesUnavailableReason = DeleteWorkspaceFilesUnavailableMessage,
         };
 
-        StartOperationTranscript("Remove", SelectedWorkspace.Name);
+        StartOperationTranscript("Remove", selectedWorkspace.Name);
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing removal..." });
         DetailSummary = "Preparing removal...";
-
-        var decision = await _interactionService.ConfirmRemoveWorkspaceAsync(prompt);
-        if (decision is null)
-        {
-            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
-            DetailSummary = "Workspace removal cancelled.";
-            return;
-        }
-
-        var removedRootPath = SelectedWorkspace.RootPath;
         try
         {
+            var decision = await _interactionService.ConfirmRemoveWorkspaceAsync(prompt);
+            if (decision is null)
+            {
+                AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+                DetailSummary = "Workspace removal cancelled.";
+                return;
+            }
+
+            if (decision.Choice == WorkspaceRemovalChoice.DeleteFiles)
+            {
+                throw new InvalidOperationException(DeleteWorkspaceFilesUnavailableMessage);
+            }
+
             _isWorkspaceActionRunning = true;
             _workspaceActionStatusMessage = decision.Choice switch
             {
@@ -884,7 +917,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             RaiseWorkspaceActionCommandStates();
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = _workspaceActionStatusMessage });
             DetailSummary = _workspaceActionStatusMessage;
-            var result = await _desktopShellService.RemoveWorkspaceAsync(removedRootPath, decision.Choice, SelectedWorkspace.Snapshot, new OperationTranscriptSink(this));
+            var result = await _desktopShellService.RemoveWorkspaceAsync(removedRootPath, decision.Choice, selectedWorkspace.Snapshot, new OperationTranscriptSink(this));
             CompleteOperationTranscript(result.Transcript);
             _workspaceActionStatusMessage = result.Message;
             RemoveWorkspaceFromList(removedRootPath);
@@ -897,10 +930,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            Services.StartupLog.WriteGlobalException("Workspace operation 'Remove' failed", exception);
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
             _workspaceActionStatusMessage = exception.Message;
-            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            selectedWorkspace.SetOperationFailureState(exception.Message, "Remove");
             DetailSummary = exception.Message;
-            throw;
         }
         finally
         {
@@ -946,7 +981,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
             DetailSummary = exception.Message;
-            SelectedWorkspace.SetOperationFailureState(exception.Message);
+            SelectedWorkspace.SetOperationFailureState(exception.Message, "Recover");
             throw;
         }
 
@@ -974,11 +1009,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Preparing attach..." });
         DetailSummary = "Preparing attach...";
 
-        await RunWorkspaceOperationAsync(
-            "Attach",
-            "Validating runtime...",
-            (rootPath, snapshot, sink) => _desktopShellService.AttachWorkspaceAsync(rootPath, snapshot, sink),
-            preserveExistingTranscript: true);
+        try
+        {
+            await RunWorkspaceOperationAsync(
+                "Attach",
+                "Preparing attach...",
+                (rootPath, snapshot, sink) => _desktopShellService.AttachWorkspaceAsync(rootPath, snapshot, sink),
+                preserveExistingTranscript: true);
+        }
+        catch
+        {
+        }
     }
 
     private async Task ReprovisionSelectedWorkspaceAsync()
@@ -1018,21 +1059,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         catch (Exception exception)
         {
             var selectedWorkspaceRootPath = SelectedWorkspace?.RootPath ?? string.Empty;
-            ReprovisionStatusMessage = GetActionableReprovisionFailure(exception.Message);
-            SelectedWorkspace?.SetOperationFailureState(ReprovisionStatusMessage);
-            DetailSummary = ReprovisionStatusMessage;
+            ReprovisionStatusMessage = exception.Message;
+            SelectedWorkspace?.SetOperationFailureState(exception.Message, "Reprovision");
+            DetailSummary = exception.Message;
             DetailItems.Clear();
             DetailItems.Add(new DetailItemViewModel("Root path", selectedWorkspaceRootPath));
-            DetailItems.Add(new DetailItemViewModel("Failure", ReprovisionStatusMessage));
-            DetailActions.Clear();
-            DetailActions.Add(new ActionItemViewModel("Reprovision", "Retry workspace regeneration and runtime provisioning.", CanReprovisionSelectedWorkspace(), string.Empty, ReprovisionWorkspaceCommand));
-            DetailActions.Add(new ActionItemViewModel("Attach", string.Empty, false, "Attach is not available from this shell yet.", DisabledActionCommand));
-            DetailActions.Add(new ActionItemViewModel("Validate", "Run portable doctor and platform validation from the Diagnostics page.", true, string.Empty, ValidateSelectedWorkspaceCommand));
         }
         finally
         {
             IsReprovisioning = false;
             ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
+            RetryWorkspaceCommand.RaiseCanExecuteChanged();
+            UpdateDetailPanel();
         }
     }
 
@@ -1178,7 +1216,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         DetailTitle = SelectedWorkspace.Name;
-        DetailSummary = BuildWorkspaceSummary(SelectedWorkspace);
+        var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
+        DetailSummary = failureGuidance?.Summary ?? BuildWorkspaceSummary(SelectedWorkspace);
         DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
         DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
@@ -1194,6 +1233,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
         }
 
+        if (failureGuidance is not null)
+        {
+            DetailItems.Add(new DetailItemViewModel("Reason", failureGuidance.Reason));
+            DetailItems.Add(new DetailItemViewModel("Recommended action", failureGuidance.RecommendedAction));
+        }
+
         RefreshDetailActions();
     }
 
@@ -1206,10 +1251,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        DetailActions.Add(new ActionItemViewModel("Open Workspace", "Prepare the workspace if needed and launch the attach session.", CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), OpenSelectedWorkspaceCommand));
+        var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
+        if (failureGuidance?.CanRetry == true)
+        {
+            DetailActions.Add(new ActionItemViewModel("Retry", BuildRetryDescription(SelectedWorkspace), CanRetrySelectedWorkspace(), GetRetryDisabledReason(SelectedWorkspace), RetryWorkspaceCommand));
+        }
+
+        DetailActions.Add(new ActionItemViewModel("Open Workspace", BuildOpenDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetOpenDisabledReason(SelectedWorkspace), OpenSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenWorkspaceFolderCommand));
-        DetailActions.Add(new ActionItemViewModel("Start", BuildStartDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), StartWorkspaceCommand));
-        DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Remove", BuildRemoveDescription(SelectedWorkspace), CanRemoveSelectedWorkspace(), GetRemoveDisabledReason(SelectedWorkspace), RemoveWorkspaceCommand));
@@ -1218,12 +1267,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Reprovision", BuildReprovisionDescription(SelectedWorkspace), CanReprovisionSelectedWorkspace(), GetReprovisionDisabledReason(SelectedWorkspace), ReprovisionWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Save Point", BuildSavePointDescription(SelectedWorkspace), CanCreateSavePointSelectedWorkspace(), GetSavePointDisabledReason(SelectedWorkspace), CreateSavePointCommand));
         DetailActions.Add(new ActionItemViewModel("Checkpoint", BuildCheckpointDescription(SelectedWorkspace), CanCreateCheckpointSelectedWorkspace(), GetCheckpointDisabledReason(SelectedWorkspace), CreateCheckpointCommand));
+        DetailActions.Add(new ActionItemViewModel("Start", BuildStartDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetStartDisabledReason(SelectedWorkspace), StartWorkspaceCommand));
+        DetailActions.Add(new ActionItemViewModel("Attach", BuildAttachDescription(SelectedWorkspace), CanAttachSelectedWorkspace(), GetAttachDisabledReason(SelectedWorkspace), AttachWorkspaceCommand));
 
         RaisePropertyChanged(nameof(SelectedWorkspace));
     }
 
     private bool CanReprovisionSelectedWorkspace()
         => SelectedWorkspace is { HasSnapshot: true } && !IsReprovisioning;
+
+    private bool CanRetrySelectedWorkspace()
+        => CanRetryWorkspace(SelectedWorkspace);
 
     private bool CanStartSelectedWorkspace()
         => CanStartWorkspace(SelectedWorkspace);
@@ -1235,7 +1289,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => CanAttachWorkspace(SelectedWorkspace);
 
     private bool CanValidateSelectedWorkspace()
-        => SelectedWorkspace is { IsLoading: false };
+        => CanValidateWorkspace(SelectedWorkspace);
 
     private bool CanRemoveSelectedWorkspace()
         => CanRemoveWorkspace(SelectedWorkspace);
@@ -1257,10 +1311,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ? "Workspace details are still loading. Validation will be available when background checks finish."
             : string.Empty;
 
+    private string GetRetryDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanRetryWorkspace(workspace) ? string.Empty : "Retry is not available for the current workspace state.";
+
     private string GetStartDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanStartWorkspace(workspace) ? string.Empty : "Workspace root or configuration file is missing, so start cannot run.";
+
+    private string GetOpenDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanStartWorkspace(workspace) ? string.Empty : "Workspace root or configuration file is missing, so Open Workspace cannot run.";
 
     private string GetRecoverDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1311,6 +1375,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                     ? "Runtime state is missing. Start will regenerate runtime files and bring the workspace online."
                     : "Start the workspace runtime and provision it if generated files are out of date.";
 
+    private string BuildOpenDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : workspace.Snapshot?.AppliedState is null
+                ? "Provision the workspace, start containers, and open the terminal session."
+                : workspace.Snapshot?.RuntimeState == OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running
+                    ? "Open the running workspace terminal session."
+                    : workspace.Snapshot?.RuntimeState == OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Stopped
+                        ? "Start the workspace runtime and open the terminal session."
+                        : workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.UpdateRequired == true
+                            ? "Runtime files need repair before the workspace can open."
+                            : "Open the workspace and let OpenCode decide what needs to run.";
+
     private string BuildRecoverDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
@@ -1322,7 +1399,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanAttachWorkspace(workspace)
-                ? "Launch a terminal attach session after validating runtime readiness."
+                ? "Advanced action: attach to an already running workspace terminal session."
                 : "Workspace root or configuration file is missing, so attach cannot run.";
 
     private string BuildSavePointDescription(WorkspaceSummaryViewModel workspace)
@@ -1397,8 +1474,22 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         return "Regenerate runtime files, validate compose, and reprovision the workspace runtime.";
     }
 
+    private string BuildRetryDescription(WorkspaceSummaryViewModel workspace)
+    {
+        var operationName = GetRetryOperationName(workspace);
+        return string.IsNullOrWhiteSpace(operationName)
+            ? "Retry the last failed workspace action."
+            : $"Retry the last failed workspace action: {operationName}.";
+    }
+
     private string BuildWorkspaceSummary(WorkspaceSummaryViewModel workspace)
     {
+        var failureGuidance = TryBuildFailureGuidance(workspace);
+        if (failureGuidance is not null)
+        {
+            return failureGuidance.Summary;
+        }
+
         if (IsReprovisioning)
         {
             return string.IsNullOrWhiteSpace(ReprovisionStatusMessage) ? "Reprovision in progress." : ReprovisionStatusMessage;
@@ -1439,10 +1530,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return false;
         }
 
-        var relativeConfigurationPath = string.IsNullOrWhiteSpace(workspace.Record.ConfigurationPath)
-            ? "workspace.yaml"
-            : workspace.Record.ConfigurationPath.Replace('/', Path.DirectorySeparatorChar);
-        var fullConfigurationPath = Path.Combine(workspace.RootPath, relativeConfigurationPath);
+        var fullConfigurationPath = WorkspaceRecordPathResolver.GetWorkspaceConfigurationPath(workspace.Record);
         return File.Exists(fullConfigurationPath);
     }
 
@@ -1454,6 +1542,30 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         return CanStartWorkspace(workspace);
+    }
+
+    private bool CanRetryWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (workspace is null || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        if (!HasFailureMessage(workspace))
+        {
+            return false;
+        }
+
+        return GetRetryOperationName(workspace) switch
+        {
+            "Open Workspace" => CanStartWorkspace(workspace),
+            "Start" => CanStartWorkspace(workspace),
+            "Attach" => CanAttachWorkspace(workspace),
+            "Recover" => CanRecoverWorkspace(workspace),
+            "Reprovision" => workspace.HasSnapshot,
+            "Prepare" => CanStartWorkspace(workspace),
+            _ => false,
+        };
     }
 
     private bool CanAttachWorkspace(WorkspaceSummaryViewModel? workspace)
@@ -1515,6 +1627,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         return CanStartWorkspace(workspace);
     }
+
+    private static bool CanValidateWorkspace(WorkspaceSummaryViewModel? workspace)
+        => workspace is { IsLoading: false };
 
     private static string BuildBackupArchiveFileName(WorkspaceSummaryViewModel workspace)
         => $"{WorkspacePathBuilder.Slugify(workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip";
@@ -1604,19 +1719,174 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
-    private static string GetActionableReprovisionFailure(string error)
+    private async Task RetrySelectedWorkspaceAsync()
     {
-        if (string.IsNullOrWhiteSpace(error))
+        if (SelectedWorkspace is null)
         {
-            return "Workspace reprovision failed. See Operation Log panel.";
+            return;
         }
 
-        var lines = error.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Split(['\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var exitCode = lines.FirstOrDefault(line => line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase));
-        return exitCode is null
-            ? "Workspace reprovision failed. See Operation Log panel."
-            : $"Workspace reprovision failed. {exitCode}. See Operation Log panel.";
+        switch (GetRetryOperationName(SelectedWorkspace))
+        {
+            case "Open Workspace":
+            case "Prepare":
+                await OpenSelectedWorkspaceAsync();
+                break;
+            case "Start":
+                await StartSelectedWorkspaceAsync();
+                break;
+            case "Attach":
+                await AttachSelectedWorkspaceAsync();
+                break;
+            case "Recover":
+                await RecoverSelectedWorkspaceAsync();
+                break;
+            case "Reprovision":
+                await ReprovisionSelectedWorkspaceAsync();
+                break;
+        }
+    }
+
+    private WorkspaceFailureGuidance? TryBuildFailureGuidance(WorkspaceSummaryViewModel? workspace)
+    {
+        if (workspace is null || workspace.IsLoading)
+        {
+            return null;
+        }
+
+        var failureMessage = GetFailureMessage(workspace);
+        if (string.IsNullOrWhiteSpace(failureMessage))
+        {
+            return null;
+        }
+
+        var reason = ExtractFailureReason(failureMessage);
+        var canRetry = CanRetryWorkspace(workspace);
+        var canRecover = CanRecoverWorkspace(workspace);
+        var canDiagnose = CanValidateWorkspace(workspace);
+        var canCleanup = CanRemoveWorkspace(workspace);
+        return new WorkspaceFailureGuidance(
+            BuildFailureHeadline(workspace.FailedOperationName, reason),
+            reason,
+            BuildRecommendedAction(workspace, reason, canRetry, canRecover, canDiagnose, canCleanup),
+            WorkspaceFailureSeverity.Error,
+            canRetry,
+            canRecover,
+            canDiagnose,
+            canCleanup);
+    }
+
+    private static bool HasFailureMessage(WorkspaceSummaryViewModel? workspace)
+        => !string.IsNullOrWhiteSpace(GetFailureMessage(workspace));
+
+    private static string? GetFailureMessage(WorkspaceSummaryViewModel? workspace)
+    {
+        if (workspace is null || workspace.IsLoading)
+        {
+            return null;
+        }
+
+        return (workspace.Record.LastOperationSucceeded == false || !string.IsNullOrWhiteSpace(workspace.FailedOperationName)) && !string.IsNullOrWhiteSpace(workspace.LastActivity)
+            ? workspace.LastActivity
+            : null;
+    }
+
+    private static string? GetRetryOperationName(WorkspaceSummaryViewModel? workspace)
+        => HasFailureMessage(workspace) ? workspace?.FailedOperationName : null;
+
+    private static string ExtractFailureReason(string failureMessage)
+    {
+        foreach (var rawLine in failureMessage.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (rawLine.StartsWith("Command:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("Likely causes:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("Suggested actions:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("Host port details:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("This workspace docker compose ps:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("Running containers:", StringComparison.OrdinalIgnoreCase)
+                || rawLine.StartsWith("- ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            return rawLine;
+        }
+
+        return "See Operation Log for the full failure details.";
+    }
+
+    private static string BuildFailureHeadline(string? operationName, string reason)
+    {
+        if (reason.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Workspace could not start.";
+        }
+
+        return operationName switch
+        {
+            "Attach" => "Workspace could not open terminal session.",
+            "Open Workspace" or "Prepare" or "Start" or "Recover" or "Reprovision" => "Workspace could not be prepared.",
+            _ => "Workspace action failed.",
+        };
+    }
+
+    private string BuildRecommendedAction(WorkspaceSummaryViewModel workspace, string reason, bool canRetry, bool canRecover, bool canDiagnose, bool canCleanup)
+    {
+        if (reason.Contains("not running", StringComparison.OrdinalIgnoreCase) && CanStartWorkspace(workspace))
+        {
+            return "Open Workspace.";
+        }
+
+        if (reason.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase) && canRecover)
+        {
+            return "Run Recover Workspace.";
+        }
+
+        if (reason.Contains("Run Diagnostics", StringComparison.OrdinalIgnoreCase) && canDiagnose)
+        {
+            return "Run Diagnostics.";
+        }
+
+        if (reason.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+        {
+            if (canRetry)
+            {
+                return "Retry after stopping the conflicting container.";
+            }
+
+            if (canDiagnose)
+            {
+                return "Run Diagnostics to inspect the conflict.";
+            }
+        }
+
+        if (canRetry)
+        {
+            return "Retry.";
+        }
+
+        if (canRecover)
+        {
+            return "Run Recover Workspace.";
+        }
+
+        if (canDiagnose)
+        {
+            return "Run Diagnostics.";
+        }
+
+        if (CanStartWorkspace(workspace))
+        {
+            return "Open Workspace.";
+        }
+
+        if (canCleanup)
+        {
+            return "Remove the workspace from the list or clean Docker resources.";
+        }
+
+        return "Open the workspace folder and review the operation log.";
     }
 
     private static string FormatOperationTranscriptLine(OperationTranscriptLine line)
@@ -1647,10 +1917,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             void Apply()
             {
+                if (line.Kind is OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment)
+                {
+                    _owner.DetailSummary = line.Text;
+                }
+
                 if (_owner.IsReprovisioning && (line.Kind is OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment))
                 {
                     _owner.ReprovisionStatusMessage = line.Text;
-                    _owner.DetailSummary = line.Text;
                     _owner.SelectedWorkspace?.SetReprovisioningState(line.Text);
                 }
                 _owner.AppendOperationTranscriptLine(line);
@@ -1673,6 +1947,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' skipped because no workspace is selected.");
             return;
         }
+
+        var operationFailed = false;
 
         try
         {
@@ -1697,9 +1973,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
+            operationFailed = true;
             Services.StartupLog.WriteGlobalException($"Workspace operation '{operationName}' failed", exception);
             _workspaceActionStatusMessage = exception.Message;
-            SelectedWorkspace?.SetOperationFailureState(exception.Message);
+            SelectedWorkspace?.SetOperationFailureState(exception.Message, operationName);
             DetailSummary = exception.Message;
             throw;
         }
@@ -1707,7 +1984,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             _isWorkspaceActionRunning = false;
             RaiseWorkspaceActionCommandStates();
-            RefreshDetailActions();
+            if (operationFailed)
+            {
+                UpdateDetailPanel();
+            }
+            else
+            {
+                RefreshDetailActions();
+            }
         }
     }
 
@@ -1731,5 +2015,23 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         PublishWorkspaceCommand.RaiseCanExecuteChanged();
         BackupWorkspaceCommand.RaiseCanExecuteChanged();
         ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
+        RetryWorkspaceCommand.RaiseCanExecuteChanged();
+    }
+
+    private sealed record WorkspaceFailureGuidance(
+        string Summary,
+        string Reason,
+        string RecommendedAction,
+        WorkspaceFailureSeverity Severity,
+        bool CanRetry,
+        bool CanRecover,
+        bool CanDiagnose,
+        bool CanCleanup);
+
+    private enum WorkspaceFailureSeverity
+    {
+        Info,
+        Warning,
+        Error,
     }
 }

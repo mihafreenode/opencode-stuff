@@ -20,7 +20,13 @@ public sealed class AsyncRelayCommand : ICommand
 
     public async void Execute(object? parameter)
     {
-        await ExecuteAsync();
+        try
+        {
+            await ExecuteAsync();
+        }
+        catch
+        {
+        }
     }
 
     public async Task ExecuteAsync()

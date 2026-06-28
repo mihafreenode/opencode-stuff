@@ -685,15 +685,17 @@ public sealed class WorkspaceOrchestrator
 
     public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
-        var generatedArtifacts = await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
         Log(log, "app", $"Preparing workspace '{snapshot.Definition.Workspace.Name}'.");
         var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before provisioning.");
         await ValidateWorkspaceRunningAsync(snapshot, log, cancellationToken);
 
         await ProvisionRunningWorkspaceAsync(snapshot, log, cancellationToken);
-        _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts.Artifacts));
         await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        var finalArtifacts = WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata);
+        _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(finalArtifacts));
     }
 
     public async Task AttachAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)

@@ -9,6 +9,13 @@ namespace OpenCode.Workspace.Avalonia.Services;
 
 public sealed class DesktopShellService : IDesktopShellService
 {
+    private static readonly TimeSpan OpenWorkspaceLoadTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan OpenWorkspaceStartTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan OpenWorkspaceProvisionTimeout = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan OpenWorkspaceAttachTimeout = TimeSpan.FromMinutes(2);
+
+    private const string DeleteWorkspaceFilesUnavailableMessage = "Delete workspace files is not available in this version. Use File Explorer or terminal after creating a backup.";
+
     private readonly WorkspaceOrchestrator _workspaceOrchestrator;
     private readonly WorkspaceDiscoveryReportService _workspaceDiscoveryReportService;
     private readonly WorkspaceRepository _workspaceRepository;
@@ -21,6 +28,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceRemovalService _workspaceRemovalService;
     private readonly OracleSoftwareNoticeService _oracleSoftwareNoticeService;
     private readonly WindowsTerminalProfileSetupService _windowsTerminalProfileSetupService;
+    private readonly WorkspaceLaunchPlanResolver _workspaceLaunchPlanResolver;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -47,6 +55,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _workspaceRemovalService = workspaceRemovalService;
         _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
         _windowsTerminalProfileSetupService = windowsTerminalProfileSetupService;
+        _workspaceLaunchPlanResolver = new WorkspaceLaunchPlanResolver();
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -138,6 +147,104 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
         return await _workspaceOrchestrator.CreateWorkspaceAsync(rootPath, definition, log, cancellationToken, includeRuntimeInspection: false);
+    }
+
+    public async Task<WorkspaceOperationResult> OpenWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Open Workspace", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Checking workspace...");
+            for (var phaseIndex = 0; phaseIndex < 4; phaseIndex++)
+            {
+                snapshot = await LoadOpenWorkspaceSnapshotAsync(rootPath, snapshot, append, log, cancellationToken);
+                var plan = _workspaceLaunchPlanResolver.Resolve(snapshot);
+                LogOpenContext(log, snapshot, plan, phaseIndex);
+
+                if (plan.NeedsRecover)
+                {
+                    throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+                }
+
+                if (plan.TerminalUnavailable)
+                {
+                    throw new InvalidOperationException("Terminal launch is unavailable. Run Diagnostics.");
+                }
+
+                if (plan.NeedsProvision)
+                {
+                    await RunOpenPhaseAsync(
+                        snapshot,
+                        append,
+                        log,
+                        "Provisioning runtime...",
+                        OpenWorkspaceProvisionTimeout,
+                        token => _workspaceOrchestrator.ProvisionAsync(snapshot, log, token),
+                        cancellationToken);
+                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                    continue;
+                }
+
+                if (plan.NeedsStart)
+                {
+                    await RunOpenPhaseAsync(
+                        snapshot,
+                        append,
+                        log,
+                        "Starting containers...",
+                        OpenWorkspaceStartTimeout,
+                        token => _workspaceOrchestrator.StartAsync(snapshot, log, token),
+                        cancellationToken);
+                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                    continue;
+                }
+
+                if (plan.NeedsDiagnostics)
+                {
+                    throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+                }
+
+                if (!plan.CanAttach)
+                {
+                    throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+                }
+
+                await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: false);
+                await RunOpenPhaseAsync(
+                    snapshot,
+                    append,
+                    log,
+                    "Opening terminal...",
+                    OpenWorkspaceAttachTimeout,
+                    token => _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, log, token),
+                    cancellationToken);
+                snapshot = await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+                await PersistWorkspaceRecordAsync(snapshot, "Open Workspace", "Opened workspace terminal session.", true, cancellationToken);
+                append(OperationTranscriptLineKind.Result, "Ready.");
+                transcript.CompletedUtc = DateTimeOffset.UtcNow;
+                transcript.Succeeded = true;
+                return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' is open.", Transcript = transcript };
+            }
+
+            throw new InvalidOperationException("Workspace open did not reach a terminal-ready state. Run Recover Workspace.");
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                log?.Invoke(new CommandLogEntry { Source = "app", Message = exception.ToString() });
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Open Workspace");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
     }
 
     public async Task<WorkspaceOperationResult> PrepareWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
@@ -295,74 +402,96 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public async Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
-        var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
+        var record = _workspaceRepository.LoadAll().FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(WorkspaceRecordPathResolver.GetWorkspaceRoot(item), rootPath, StringComparison.OrdinalIgnoreCase));
         var workspaceName = currentSnapshot?.Definition.Workspace.Name
             ?? currentSnapshot?.Record.Name
             ?? record?.Name
             ?? Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var transcript = CreateTranscript("Remove", workspaceName, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot;
 
-        append(OperationTranscriptLineKind.Status, "Preparing removal...");
-        append(OperationTranscriptLineKind.Comment, $"Selected workspace '{workspaceName}'.");
-        if (choice is WorkspaceRemovalChoice.DockerResources or WorkspaceRemovalChoice.DeleteFiles)
+        try
         {
-            append(OperationTranscriptLineKind.Status, "Removing Docker resources...");
-            if (currentSnapshot is null)
+            if (choice == WorkspaceRemovalChoice.DeleteFiles)
             {
-                currentSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+                throw new InvalidOperationException(DeleteWorkspaceFilesUnavailableMessage);
             }
 
-            await _workspaceOrchestrator.RemoveDockerResourcesAsync(currentSnapshot, cancellationToken: cancellationToken);
-        }
+            append(OperationTranscriptLineKind.Status, "Preparing removal...");
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{workspaceName}' at '{rootPath}'.");
 
-        if (choice == WorkspaceRemovalChoice.DeleteFiles)
-        {
-            append(OperationTranscriptLineKind.Status, "Repairing file permissions before deletion...");
-            currentSnapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
-            await _workspaceOrchestrator.RepairWorkspaceFilePermissionsAsync(currentSnapshot, cancellationToken: cancellationToken);
-            append(OperationTranscriptLineKind.Status, "Deleting workspace files...");
-            if (Directory.Exists(rootPath))
+            var configurationPath = snapshot?.Paths.WorkspaceYamlPath
+                ?? (record is null ? Path.Combine(rootPath, "workspace.yaml") : WorkspaceRecordPathResolver.GetWorkspaceConfigurationPath(record));
+
+            if (!File.Exists(configurationPath))
             {
-                Directory.Delete(rootPath, recursive: true);
+                throw new InvalidOperationException($"Workspace '{workspaceName}' configuration file was not found before removal could start. Probed path: '{configurationPath}'.");
             }
+
+            if (choice == WorkspaceRemovalChoice.DockerResources)
+            {
+                append(OperationTranscriptLineKind.Status, "Removing Docker resources...");
+                if (snapshot is null)
+                {
+                    snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+                }
+
+                await _workspaceOrchestrator.RemoveDockerResourcesAsync(snapshot, cancellationToken: cancellationToken);
+            }
+
+            append(OperationTranscriptLineKind.Status, "Removing workspace from list...");
+
+            var removal = await _workspaceRemovalService.RemoveAsync(new WorkspaceRemovalRequest
+            {
+                WorkspaceName = workspaceName,
+                WorkspaceRoot = rootPath,
+                DeleteWorkspaceFiles = false,
+            }, cancellationToken);
+
+            foreach (var warning in removal.Warnings)
+            {
+                append(OperationTranscriptLineKind.Comment, warning);
+            }
+
+            if (!removal.Succeeded)
+            {
+                append(OperationTranscriptLineKind.StandardError, removal.FailureReason);
+                transcript.CompletedUtc = DateTimeOffset.UtcNow;
+                transcript.Succeeded = false;
+                throw new InvalidOperationException(removal.FailureReason);
+            }
+
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceRemovalOperationResult
+            {
+                Message = choice switch
+                {
+                    WorkspaceRemovalChoice.DockerResources => $"Removed Docker resources for '{removal.WorkspaceName}' and unregistered it from the workspace list.",
+                    _ => $"Removed '{removal.WorkspaceName}' from the workspace list.",
+                },
+                Transcript = transcript,
+                Removal = removal,
+            };
         }
-
-        append(OperationTranscriptLineKind.Status, "Removing workspace from list...");
-
-        var removal = await _workspaceRemovalService.RemoveAsync(new WorkspaceRemovalRequest
+        catch (Exception exception)
         {
-            WorkspaceName = workspaceName,
-            WorkspaceRoot = rootPath,
-            DeleteWorkspaceFiles = choice == WorkspaceRemovalChoice.DeleteFiles,
-        }, cancellationToken);
+            if (snapshot?.Record is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Remove");
+            }
+            else if (record is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(record, exception.Message, cancellationToken, "Remove");
+            }
 
-        foreach (var warning in removal.Warnings)
-        {
-            append(OperationTranscriptLineKind.Comment, warning);
-        }
-
-        if (!removal.Succeeded)
-        {
-            append(OperationTranscriptLineKind.StandardError, removal.FailureReason);
+            AppendFailureTranscript(exception, append);
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = false;
-            throw new InvalidOperationException(removal.FailureReason);
+            throw;
         }
-
-        append(OperationTranscriptLineKind.Result, "Completed.");
-        transcript.CompletedUtc = DateTimeOffset.UtcNow;
-        transcript.Succeeded = true;
-        return new WorkspaceRemovalOperationResult
-        {
-            Message = choice switch
-            {
-                WorkspaceRemovalChoice.DeleteFiles => $"Deleted workspace '{removal.WorkspaceName}' and removed it from the workspace list.",
-                WorkspaceRemovalChoice.DockerResources => $"Removed Docker resources for '{removal.WorkspaceName}' and unregistered it from the workspace list.",
-                _ => $"Removed '{removal.WorkspaceName}' from the workspace list.",
-            },
-            Transcript = transcript,
-            Removal = removal,
-        };
     }
 
     public async Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
@@ -594,12 +723,29 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Preparing attach...");
-            append(OperationTranscriptLineKind.Status, "Validating runtime...");
             snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
-            await _workspaceOrchestrator.AttachAsync(snapshot, log, cancellationToken);
+            var plan = _workspaceLaunchPlanResolver.Resolve(snapshot);
+            LogOpenContext(log, snapshot, plan);
+
+            if (plan.NeedsRecover)
+            {
+                throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+            }
+
+            if (plan.NeedsDiagnostics)
+            {
+                throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+            }
+
+            if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+            {
+                throw new InvalidOperationException("Workspace is not running. Start it first.");
+            }
+
+            append(OperationTranscriptLineKind.Status, "Opening terminal...");
+            await _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, log, cancellationToken);
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             await PersistWorkspaceRecordAsync(snapshot, "Attach", "Opened workspace attach session.", true, cancellationToken);
-            append(OperationTranscriptLineKind.Status, "Launching terminal...");
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
@@ -837,5 +983,114 @@ public sealed class DesktopShellService : IDesktopShellService
         append = appender;
         log = entry => appender(MapLineKind(entry), entry.Message);
         return transcript;
+    }
+
+    private static void LogOpenContext(Action<CommandLogEntry>? log, WorkspaceSnapshot snapshot, WorkspaceLaunchPlan plan)
+        => LogOpenContext(log, snapshot, plan, null);
+
+    private static void LogOpenContext(Action<CommandLogEntry>? log, WorkspaceSnapshot snapshot, WorkspaceLaunchPlan plan, int? phaseIndex)
+    {
+        var prefix = phaseIndex is null
+            ? $"[open:{snapshot.Definition.Workspace.Name}]"
+            : $"[open:{snapshot.Definition.Workspace.Name}:phase-{phaseIndex.Value + 1}]";
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Workspace root: {snapshot.Paths.RootPath}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Compose file: {snapshot.Paths.ComposePath}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Runtime-state path: {snapshot.Paths.RuntimeStatePath}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Applied-state path: {snapshot.Paths.AppliedStatePath}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Attach script path: {snapshot.Paths.AttachWrapperScriptPath}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Runtime target: {snapshot.ResolvedRuntimePlan?.TargetPlatform ?? snapshot.LocalRuntimeState?.ResolvedPlatform ?? "Unavailable"}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Template id: unavailable" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Selected service: {plan.PrimaryServiceName}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Launch plan: provision={plan.NeedsProvision}, start={plan.NeedsStart}, attach={plan.CanAttach}, recover={plan.NeedsRecover}, diagnostics={plan.NeedsDiagnostics}, terminalUnavailable={plan.TerminalUnavailable}" });
+    }
+
+    private async Task<WorkspaceSnapshot> LoadOpenWorkspaceSnapshotAsync(string rootPath, WorkspaceSnapshot? currentSnapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+        => currentSnapshot ?? await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+
+    private async Task<WorkspaceSnapshot> ReloadSnapshotAfterOpenPhaseAsync(string rootPath, WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+        => await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+
+    private async Task<WorkspaceSnapshot> LoadSnapshotWithTimingAsync(string rootPath, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken, bool includeRuntimeInspection, bool includeSessionInspection, TimeSpan timeout)
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{Path.GetFileName(rootPath)}] Loading workspace snapshot. includeRuntimeInspection={includeRuntimeInspection} includeSessionInspection={includeSessionInspection}" });
+        var snapshot = await RunOpenTimedAsync(
+            cancellationToken,
+            timeout,
+            token => _workspaceOrchestrator.LoadSnapshotAsync(rootPath, token, includeRuntimeInspection: includeRuntimeInspection, includeSessionInspection: includeSessionInspection),
+            $"Workspace open snapshot load timed out after {timeout.TotalMinutes:F0} minutes.");
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}] Workspace snapshot loaded in {(DateTimeOffset.UtcNow - startedAt).TotalSeconds:F1}s." });
+        return snapshot;
+    }
+
+    private async Task EnsureOpenRuntimeArtifactsReadyAsync(WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken, bool reportStatus)
+    {
+        if (reportStatus)
+        {
+            append(OperationTranscriptLineKind.Status, "Writing runtime state...");
+        }
+
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}] Verifying runtime-state and applied-state after runtime phase." });
+
+        if (!File.Exists(snapshot.Paths.RuntimeStatePath))
+        {
+            await RunOpenTimedAsync(
+                cancellationToken,
+                OpenWorkspaceLoadTimeout,
+                token => _workspaceOrchestrator.EnsureRuntimeStateCurrentAsync(snapshot, log, token),
+                "Workspace runtime-state update timed out.");
+        }
+
+        if (!File.Exists(snapshot.Paths.RuntimeStatePath) || !File.Exists(snapshot.Paths.AppliedStatePath))
+        {
+            throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+        }
+
+        if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath) || !File.Exists(snapshot.Paths.ComposePath))
+        {
+            throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+        }
+
+        if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+        }
+    }
+
+    private async Task RunOpenPhaseAsync(WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, string statusText, TimeSpan timeout, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+    {
+        append(OperationTranscriptLineKind.Status, statusText);
+        var startedAt = DateTimeOffset.UtcNow;
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}] Starting phase '{statusText}' with timeout {timeout}." });
+        await RunOpenTimedAsync(cancellationToken, timeout, operation, $"Open Workspace phase '{statusText}' timed out.");
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}] Completed phase '{statusText}' in {(DateTimeOffset.UtcNow - startedAt).TotalSeconds:F1}s." });
+    }
+
+    private static async Task RunOpenTimedAsync(CancellationToken cancellationToken, TimeSpan timeout, Func<CancellationToken, Task> operation, string timeoutMessage)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        try
+        {
+            await operation(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(timeoutMessage);
+        }
+    }
+
+    private static async Task<T> RunOpenTimedAsync<T>(CancellationToken cancellationToken, TimeSpan timeout, Func<CancellationToken, Task<T>> operation, string timeoutMessage)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        try
+        {
+            return await operation(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(timeoutMessage);
+        }
     }
 }

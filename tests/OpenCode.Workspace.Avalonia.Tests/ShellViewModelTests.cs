@@ -21,7 +21,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public void MainWindowHeader_UsesTrimmedBrandBannerMarkup()
+    public void MainWindowHeader_UsesScaledCompositeBrandBanner()
     {
         var repoRoot = GetRepositoryRoot();
         var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
@@ -33,20 +33,25 @@ public sealed class ShellViewModelTests
         var headerImageEnd = axaml.IndexOf("/>", headerImageStart, StringComparison.Ordinal);
         var headerImageMarkup = axaml.Substring(headerImageStart, headerImageEnd - headerImageStart);
 
-        Assert.Contains("Assets/opencode-stuff-satchel-icon.png", axaml, StringComparison.Ordinal);
+        Assert.Contains("Assets/opencode-stuff-satchel-icon.ico", axaml, StringComparison.Ordinal);
         Assert.Contains("Assets/opencode-stuff-header-brand-ui.png", axaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Icon=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png\"", axaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Assets/opencode-stuff-satchel-transparent.png", axaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Workspaces\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Runtime\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Status\"", axaml, StringComparison.Ordinal);
-        Assert.Contains("Height=\"112\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"{DynamicResource HeaderHeight}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Height=\"{DynamicResource HeaderLogoHeight}\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Stretch=\"Uniform\"", axaml, StringComparison.Ordinal);
         Assert.Contains("RenderOptions.BitmapInterpolationMode=\"HighQuality\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("THERE IS NO MAGIC. ONLY ", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"STUFF.\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assets/opencode-stuff-satchel-transparent.png", headerImageMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("BorderThickness", headerImageMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("BorderBrush", headerImageMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("Background", headerImageMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("Avalonia Preview", axaml, StringComparison.Ordinal);
+        Assert.Contains("opencode-stuff-satchel-icon.ico", project, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-header-brand-ui.png", project, StringComparison.Ordinal);
         Assert.DoesNotContain("Assets\\opencode-stuff-header-brand.png", project, StringComparison.Ordinal);
         Assert.DoesNotContain("opencode-stuff-header-brand-trimmed.png", project, StringComparison.Ordinal);
@@ -58,6 +63,32 @@ public sealed class ShellViewModelTests
         Assert.Contains("opencode-stuff-header-brand-ui.png", brandGuidelines, StringComparison.Ordinal);
         Assert.Contains("ImageMagick trim", brandGuidelines, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-satchel-icon.png", brandGuidelines, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WindowsShellIcon_UsesCanonicalIcoForMainWindowAndExecutable()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
+        var project = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenCode.Workspace.Avalonia.csproj"));
+        var iconHelper = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "AppWindowIcons.cs"));
+
+        Assert.Contains("Icon=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("<ApplicationIcon>..\\..\\docs\\images\\opencode-stuff-satchel-icon.ico</ApplicationIcon>", project, StringComparison.Ordinal);
+        Assert.Contains("<Link>Assets\\opencode-stuff-satchel-icon.ico</Link>", project, StringComparison.Ordinal);
+        Assert.Contains("avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico", iconHelper, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspaceInteractionService_AssignsAppIconToOwnedDialogs()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var interactionService = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "AvaloniaWorkspaceInteractionService.cs"));
+
+        Assert.Contains("AppWindowIcons.Apply(window, _owner);", interactionService, StringComparison.Ordinal);
+        Assert.DoesNotContain("return new CreateWorkspaceWindow(templates).ShowDialog<CreateWorkspaceDraft?>(_owner);", interactionService, StringComparison.Ordinal);
+        Assert.DoesNotContain("return new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync).ShowDialog<ExistingRepositoryImportDraft?>(_owner);", interactionService, StringComparison.Ordinal);
+        Assert.DoesNotContain("return new RecoveryConfirmationWindow(assessment).ShowDialog<bool>(_owner);", interactionService, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -82,7 +113,6 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("TemplateComboBox.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspaceNameTextBox.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspacePathTextBox.", createWindow, StringComparison.Ordinal);
-        Assert.DoesNotContain("TemplateSummaryTextBlock.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ValidationMessageTextBlock.", createWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("StatusTextBlock.", createWindow, StringComparison.Ordinal);
         Assert.Contains("<TextBlock Text=\"{Binding DisplayName}\" />", createWindowAxaml, StringComparison.Ordinal);
@@ -94,6 +124,33 @@ public sealed class ShellViewModelTests
 
         Assert.DoesNotContain("MessageTextBox.", savePointWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ValidationMessageTextBlock.", savePointWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateWorkspaceWindow_UsesDesktopWizardLayout()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml"));
+        var codeBehind = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "CreateWorkspaceWindow.axaml.cs"));
+
+        Assert.Contains("Width=\"820\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"{DynamicResource CreateWorkspaceDialogMinWidth}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"{DynamicResource CreateWorkspaceDialogMinHeight}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceFolderPreviewTextBlock", axaml, StringComparison.Ordinal);
+        Assert.Contains("Text=\"Location\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Template information", axaml, StringComparison.Ordinal);
+        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"dialog-footer\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("BuildValidationState", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BuildWorkspaceFolderPreview", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BuildWorkspaceRootPath", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SuggestedStartLocation = startLocation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Select parent folder", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Workspace will be created here.", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Workspace folder already exists.", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_createButton.IsEnabled", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -850,7 +907,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task AttachStart_EmitsImmediateTranscriptBeforeLauncherCompletes()
+    public async Task AttachStart_EmitsImmediateAttachTranscriptBeforeLauncherCompletes()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -869,7 +926,7 @@ public sealed class ShellViewModelTests
         await started.Task;
 
         Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Validating runtime...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Validating runtime...", page.OperationLogText, StringComparison.Ordinal);
 
         release.SetResult();
         await attachTask;
@@ -884,10 +941,68 @@ public sealed class ShellViewModelTests
         });
 
         await page.LoadAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Attach").Command).ExecuteAsync());
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Attach").Command).ExecuteAsync();
 
         Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Windows Terminal launch failed.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace could not open terminal session.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Windows Terminal launch failed.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OpenWorkspace_UsesSingleOpenAction()
+    {
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+
+        await page.LoadAsync();
+        await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(1, service.OpenWorkspaceCallCount);
+        Assert.Equal(0, service.AttachCallCount);
+        Assert.Contains("Open Workspace", page.DetailActions.Select(item => item.Label));
+    }
+
+    [Fact]
+    public async Task OpenWorkspaceFailure_IsSurfacedWithoutThrowing()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            OpenWorkspaceException = new InvalidOperationException("Runtime files need repair. Run Recover Workspace."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Runtime files need repair. Run Recover Workspace.", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Recover Workspace.");
+    }
+
+    [Fact]
+    public async Task OpenWorkspace_UpdatesDetailSummaryFromOpenProgress()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            OpenWorkspaceResultFactoryAsync = async (_, sink, cancellationToken) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Provisioning runtime..." });
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceOperationResult { Snapshot = CreateSnapshot("alpha"), Message = "opened", Transcript = new OperationTranscript() };
+            },
+        });
+
+        await page.LoadAsync();
+        var openTask = page.OpenSelectedWorkspaceCommand.ExecuteAsync();
+        await started.Task;
+
+        Assert.Equal("Provisioning runtime...", page.DetailSummary);
+
+        release.SetResult();
+        await openTask;
     }
 
     [Fact]
@@ -1089,7 +1204,8 @@ public sealed class ShellViewModelTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync());
 
         Assert.Contains("Preparing backup...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Backup export failed.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace action failed.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Backup export failed.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1289,7 +1405,8 @@ public sealed class ShellViewModelTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync());
 
         Assert.Contains("Preparing publish...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Authentication failed while publishing.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace action failed.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Authentication failed while publishing.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1318,6 +1435,21 @@ public sealed class ShellViewModelTests
         Assert.Equal(2, page.Workspaces.Count);
         Assert.Equal(0, service.RemoveCallCount);
         Assert.Equal("Workspace removal cancelled.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task RemoveDialog_LayoutPreservesDefaultAndCancelBehavior()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RemoveWorkspaceWindow.axaml"));
+
+        Assert.Contains("RegistrationOnlyRadioButton", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsChecked=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("DeleteFilesRadioButton", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"False\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("DeleteFilesUnavailableTextBlock", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1354,7 +1486,28 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task RemoveFailure_IsSurfacedClearly()
+    public async Task RemoveDockerResourcesFailure_IsSurfacedWithoutCrashing()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            RemoveException = new InvalidOperationException("Docker cleanup failed because Docker is unavailable."),
+        });
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            RemoveConfirmed = true,
+            RemoveChoice = WorkspaceRemovalChoice.DockerResources,
+        });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+        Assert.Contains("Preparing removal...", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("Docker cleanup failed because Docker is unavailable.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RemoveFailure_IsSurfacedClearlyWithoutThrowing()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
         {
@@ -1363,10 +1516,91 @@ public sealed class ShellViewModelTests
         page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
 
         await page.LoadAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync());
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
         Assert.Contains("Preparing removal...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("Workspace root path is required", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RemoveDialogFailure_IsSurfacedClearlyWithoutThrowing()
+    {
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            RemoveDialogException = new InvalidOperationException("Remove dialog failed to open."),
+        });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+        Assert.Equal(0, service.RemoveCallCount);
+        Assert.Contains("Remove dialog failed to open.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RemoveUnsupportedDeleteChoice_IsRejectedBeforeRemovalStarts()
+    {
+        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            RemoveConfirmed = true,
+            RemoveChoice = WorkspaceRemovalChoice.DeleteFiles,
+        });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+        Assert.Equal(0, service.RemoveCallCount);
+        Assert.Contains("Delete workspace files is not available in this version", page.DetailSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Removing workspace from list...", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RemoveFromList_UsesSelectedNestedWorkspaceRoot()
+    {
+        var baseRoot = Path.Combine(Path.GetTempPath(), $"avalonia-remove-root-{Guid.NewGuid():N}");
+        var workspaceRoot = Path.Combine(baseRoot, "rc-first-workspace");
+        Directory.CreateDirectory(workspaceRoot);
+        try
+        {
+            var recordOnlyItem = new WorkspaceShellItem
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = "rc-first-workspace",
+                    RootPath = baseRoot,
+                    RepositoryPath = baseRoot,
+                    ConfigurationPath = "rc-first-workspace/workspace.yaml",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    LastOpenedUtc = DateTimeOffset.UtcNow,
+                },
+                ErrorMessage = "workspace.yaml missing",
+            };
+
+            var service = new FakeDesktopShellService([], [recordOnlyItem]);
+            var page = new WorkspacesPageViewModel(service);
+            page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true, RemoveChoice = WorkspaceRemovalChoice.RegistrationOnly });
+
+            await page.LoadAsync();
+
+            Assert.Equal(workspaceRoot, page.SelectedWorkspace?.RootPath);
+
+            await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
+
+            Assert.Equal(workspaceRoot, service.LastRemoveRootPath);
+        }
+        finally
+        {
+            if (Directory.Exists(baseRoot))
+            {
+                Directory.Delete(baseRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -1397,7 +1631,8 @@ public sealed class ShellViewModelTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => page.CreateCheckpointCommand.ExecuteAsync());
 
         Assert.Contains("Creating checkpoint...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Checkpoint review required.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace action failed.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Checkpoint review required.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1416,7 +1651,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task OpenWorkspace_PreparesThenAttaches()
+    public async Task OpenWorkspace_DelegatesToUnifiedOpenFlow()
     {
         var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
@@ -1425,8 +1660,9 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
 
-        Assert.Equal(1, service.PrepareCallCount);
-        Assert.Equal(1, service.AttachCallCount);
+        Assert.Equal(1, service.OpenWorkspaceCallCount);
+        Assert.Equal(0, service.PrepareCallCount);
+        Assert.Equal(0, service.AttachCallCount);
     }
 
     [Fact]
@@ -1688,7 +1924,8 @@ public sealed class ShellViewModelTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Save Point").Command).ExecuteAsync());
 
         Assert.Contains("Preparing Save Point...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains("Save Point validation failed.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace action failed.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Save Point validation failed.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1944,10 +2181,13 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await page.ReprovisionWorkspaceCommand.ExecuteAsync();
 
-        Assert.Equal("Workspace reprovision failed. Exit code: 127. See Operation Log panel.", page.ReprovisionStatusMessage);
+        Assert.Contains("Command: docker exec odip-analiza-workspace", page.ReprovisionStatusMessage, StringComparison.Ordinal);
         Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
-        Assert.Equal("Workspace reprovision failed. Exit code: 127. See Operation Log panel.", page.SelectedWorkspace?.LastActivity);
-        Assert.Contains(page.DetailItems, item => item.Label == "Failure");
+        Assert.Contains("/workspace/.env: line 17", page.SelectedWorkspace?.LastActivity, StringComparison.Ordinal);
+        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Retry", StringComparison.Ordinal));
+        Assert.Contains(page.DetailActions, item => item.Label == "Retry" && item.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
@@ -1967,7 +2207,20 @@ public sealed class ShellViewModelTests
 
         Assert.DoesNotContain("docker exec odip-analiza-workspace", page.DetailSummary, StringComparison.Ordinal);
         Assert.DoesNotContain("/workspace/.env: line 17", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Contains("See Operation Log panel.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task FailedWorkspaceState_OffersEnabledRecommendedAction()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationName: "Attach", lastOperationResult: "Workspace is not running. Start it first.", lastOperationSucceeded: false)]);
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        Assert.Equal("Workspace could not open terminal session.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Open Workspace.");
+        Assert.Contains(page.DetailActions, item => item.Label == "Open Workspace" && item.IsEnabled);
     }
 
     [Fact]
@@ -2086,6 +2339,25 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void RemoveWorkspaceWindow_UsesDesktopDialogLayout()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RemoveWorkspaceWindow.axaml"));
+
+        Assert.Contains("Width=\"740\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"{DynamicResource WorkspaceDialogWideMinWidth}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"{DynamicResource WorkspaceDialogTallMinHeight}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"dialog-footer\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("RegistrationOnlyBorder", axaml, StringComparison.Ordinal);
+        Assert.Contains("DockerResourcesBorder", axaml, StringComparison.Ordinal);
+        Assert.Contains("DeleteFilesBorder", axaml, StringComparison.Ordinal);
+        Assert.Contains("Destructive", axaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StartingNewOperation_ClearsPreviousVisibleLog()
     {
         var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
@@ -2199,6 +2471,7 @@ public sealed class ShellViewModelTests
         string name,
         bool includeRuntimeState = true,
         bool updateRequired = false,
+        string? lastOperationName = null,
         string? lastOperationResult = null,
         bool? lastOperationSucceeded = true,
         DateTimeOffset? lastOpenedUtc = null,
@@ -2223,6 +2496,7 @@ public sealed class ShellViewModelTests
                 RepositoryPath = root,
                 LastOpenedUtc = effectiveLastOpenedUtc,
                 CreatedUtc = effectiveCreatedUtc,
+                LastOperationName = lastOperationName,
                 LastOperationResult = lastOperationResult ?? "Loaded workspace.",
                 LastOperationSucceeded = lastOperationSucceeded,
             },
@@ -2343,6 +2617,7 @@ public sealed class ShellViewModelTests
         public Func<bool, Action<WorkspaceLoadProgressUpdate>?, CancellationToken, Task<WorkspaceLoadResult>>? LoadWorkspaceItemsAsyncFactory { get; init; }
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
+        public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? OpenWorkspaceResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? PrepareResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceCheckpointOperationResult>>? CheckpointResultFactoryAsync { get; set; }
@@ -2370,6 +2645,7 @@ public sealed class ShellViewModelTests
             BehindCount = 0,
         };
         public Exception? ReprovisionException { get; init; }
+        public Exception? OpenWorkspaceException { get; init; }
         public Exception? AttachException { get; init; }
         public Exception? RemoveException { get; init; }
         public Exception? PublishException { get; init; }
@@ -2391,11 +2667,13 @@ public sealed class ShellViewModelTests
             },
         };
         public int RemoveCallCount { get; private set; }
+        public string? LastRemoveRootPath { get; private set; }
         public int PublishCallCount { get; private set; }
         public int BackupCallCount { get; private set; }
         public int CreateSavePointCallCount { get; private set; }
         public int CreateCheckpointCallCount { get; private set; }
         public int StartCallCount { get; private set; }
+        public int OpenWorkspaceCallCount { get; private set; }
         public int AttachCallCount { get; private set; }
         public int PrepareCallCount { get; private set; }
         public int ReprovisionCallCount { get; private set; }
@@ -2550,6 +2828,23 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateSnapshot(definition.Workspace.Name));
 
+        public Task<WorkspaceOperationResult> OpenWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            OpenWorkspaceCallCount++;
+
+            if (OpenWorkspaceException is not null)
+            {
+                throw OpenWorkspaceException;
+            }
+
+            if (OpenWorkspaceResultFactoryAsync is not null)
+            {
+                return OpenWorkspaceResultFactoryAsync(rootPath, logSink, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("opened"), Message = "opened", Transcript = new OperationTranscript() });
+        }
+
         public Task<WorkspaceOperationResult> PrepareWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
             PrepareCallCount++;
@@ -2602,6 +2897,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {
             RemoveCallCount++;
+            LastRemoveRootPath = rootPath;
 
             if (RemoveException is not null)
             {
@@ -2857,6 +3153,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new NotImplementedException();
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> OpenWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> PrepareWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -2883,6 +3180,7 @@ public sealed class ShellViewModelTests
         public int OracleNoticePromptCount { get; private set; }
         public bool RemoveConfirmed { get; init; } = true;
         public WorkspaceRemovalChoice RemoveChoice { get; init; } = WorkspaceRemovalChoice.RegistrationOnly;
+        public Exception? RemoveDialogException { get; init; }
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
 
@@ -2905,7 +3203,14 @@ public sealed class ShellViewModelTests
             => Task.FromResult(CheckpointConfirmed);
 
         public Task<WorkspaceRemovalDecision?> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default)
-            => Task.FromResult(RemoveConfirmed ? new WorkspaceRemovalDecision { Choice = RemoveChoice } : null);
+        {
+            if (RemoveDialogException is not null)
+            {
+                throw RemoveDialogException;
+            }
+
+            return Task.FromResult(RemoveConfirmed ? new WorkspaceRemovalDecision { Choice = RemoveChoice } : null);
+        }
 
         public Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default)
             => Task.FromResult(PublishConfirmed);
@@ -2934,6 +3239,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> OpenWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> PrepareWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

@@ -1,6 +1,7 @@
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -8,6 +9,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
 {
     private string? _runtimeStatusLabelOverride;
     private string? _lastActivityOverride;
+    private string? _failedOperationNameOverride;
     private bool _isSelected;
 
     public WorkspaceSummaryViewModel(WorkspaceShellItem item)
@@ -23,7 +25,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     public bool HasError => !HasSnapshot && !IsLoading;
     public string ErrorMessage => string.IsNullOrWhiteSpace(Item.ErrorMessage) ? "Workspace could not be loaded." : Item.ErrorMessage;
     public string Name => HasSnapshot ? Snapshot!.Definition.Workspace.Name : DisplayNameFromRecord();
-    public string RootPath => HasSnapshot ? Snapshot!.Paths.RootPath : Record.RootPath;
+    public string RootPath => HasSnapshot ? Snapshot!.Paths.RootPath : WorkspaceRecordPathResolver.GetWorkspaceRoot(Record);
     public string RepositoryPath => HasSnapshot
         ? string.IsNullOrWhiteSpace(Snapshot!.Record.RepositoryPath) ? Snapshot.Paths.RootPath : Snapshot.Record.RepositoryPath
         : string.IsNullOrWhiteSpace(Record.RepositoryPath) ? Record.RootPath : Record.RepositoryPath;
@@ -100,6 +102,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     public string TitleAutomationName => $"WorkspaceTitle_{SafeWorkspaceName}";
     public string SelectedMarkerAutomationId => "WorkspaceRow_Selected";
     public string SelectedMarkerAutomationName => "WorkspaceRow_Selected";
+    public string? FailedOperationName => _failedOperationNameOverride ?? Record.LastOperationName;
 
     public bool IsSelected
     {
@@ -114,22 +117,24 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         RaiseWorkspaceDisplayChanged();
     }
 
-    public void SetOperationFailureState(string message)
+    public void SetOperationFailureState(string message, string? operationName = null)
     {
         _runtimeStatusLabelOverride = "Error";
         _lastActivityOverride = message;
+        _failedOperationNameOverride = operationName;
         RaiseWorkspaceDisplayChanged();
     }
 
     public void ClearTransientOperationState()
     {
-        if (_runtimeStatusLabelOverride is null && _lastActivityOverride is null)
+        if (_runtimeStatusLabelOverride is null && _lastActivityOverride is null && _failedOperationNameOverride is null)
         {
             return;
         }
 
         _runtimeStatusLabelOverride = null;
         _lastActivityOverride = null;
+        _failedOperationNameOverride = null;
         RaiseWorkspaceDisplayChanged();
     }
 

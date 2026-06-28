@@ -1,53 +1,110 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         x:Class="OpenCode.Workspace.Avalonia.CreateWorkspaceWindow"
-        Width="640"
-        Height="420"
-        MinWidth="560"
-        MinHeight="360"
+        Width="820"
+        Height="660"
+        MinWidth="{DynamicResource CreateWorkspaceDialogMinWidth}"
+        MinHeight="{DynamicResource CreateWorkspaceDialogMinHeight}"
         Title="Create Workspace"
         WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="{DynamicResource WorkspaceDialogContentSpacing}" Margin="{DynamicResource WorkspaceDialogMargin}">
     <StackPanel Spacing="6">
-      <TextBlock Text="Create Workspace" FontSize="22" FontWeight="SemiBold" />
-      <TextBlock Text="Choose a template, workspace name, and destination folder." TextWrapping="Wrap" />
+      <TextBlock Text="Create Workspace" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Create Workspace" />
+      <TextBlock Text="Choose a template, workspace name, and parent location." TextWrapping="Wrap" />
     </StackPanel>
 
-    <StackPanel Grid.Row="1" Spacing="12">
-      <StackPanel Spacing="4">
-        <TextBlock Text="Template" FontWeight="SemiBold" />
-        <ComboBox x:Name="TemplateComboBox">
-          <ComboBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding DisplayName}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
-      </StackPanel>
-      <StackPanel Spacing="4">
-        <TextBlock Text="Workspace name" FontWeight="SemiBold" />
-        <TextBox x:Name="WorkspaceNameTextBox" />
-      </StackPanel>
-      <StackPanel Spacing="4">
-        <TextBlock Text="Destination folder" FontWeight="SemiBold" />
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-          <TextBox x:Name="WorkspacePathTextBox" />
-          <Button Grid.Column="1" Content="Browse" Click="BrowseWorkspaceFolder" />
-        </Grid>
-      </StackPanel>
-      <Border BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="12">
-        <StackPanel Spacing="6">
-          <TextBlock Text="Template summary" FontWeight="SemiBold" />
-          <TextBlock x:Name="TemplateSummaryTextBlock" TextWrapping="Wrap" />
+    <Border Grid.Row="1" Classes="panel-subtle">
+      <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogTopSpacing}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Template" FontWeight="SemiBold" />
+          <ComboBox x:Name="TemplateComboBox" automation:AutomationProperties.Name="Create workspace template">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding DisplayName}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </StackPanel>
-      </Border>
-      <TextBlock x:Name="ValidationMessageTextBlock" Foreground="#B42318" TextWrapping="Wrap" />
-    </StackPanel>
 
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-      <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
-      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
-      <Button Grid.Column="2" Content="Create" Classes="accent" Click="CreateClicked" />
-    </Grid>
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Workspace name" FontWeight="SemiBold" />
+            <TextBox x:Name="WorkspaceNameTextBox" automation:AutomationProperties.Name="Create workspace name" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Text="Workspace folder" FontWeight="SemiBold" />
+            <Border Classes="summary-inline">
+              <TextBlock x:Name="WorkspaceFolderPreviewTextBlock" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+            </Border>
+          </StackPanel>
+        </Grid>
+
+        <StackPanel Spacing="4">
+          <TextBlock Text="Location" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox x:Name="WorkspacePathTextBox" HorizontalAlignment="Stretch" automation:AutomationProperties.Name="Create workspace location" />
+            <Button Grid.Column="1" Content="Browse" Click="BrowseWorkspaceFolder" automation:AutomationProperties.Name="Browse workspace location" />
+          </Grid>
+        </StackPanel>
+
+        <TextBlock x:Name="ValidationMessageTextBlock" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="panel" MinHeight="{DynamicResource CreateWorkspaceDialogInfoMinHeight}">
+      <Grid RowDefinitions="Auto,*" RowSpacing="10">
+        <TextBlock Text="Template information" Classes="section-title" />
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="{DynamicResource WorkspaceDialogContentSpacing}">
+            <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+              <TextBlock Text="Template" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock x:Name="TemplateDisplayNameTextBlock" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+              <TextBlock Text="Description" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock x:Name="TemplateDescriptionTextBlock" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+              <TextBlock Text="Features" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock x:Name="TemplateFeaturesTextBlock" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+              <TextBlock Text="Services" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock x:Name="TemplateServicesTextBlock" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+              <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+                <TextBlock Text="Container image" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock x:Name="TemplateImageTextBlock" TextWrapping="Wrap" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+                <TextBlock Text="Documentation" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock x:Name="TemplateDocumentationTextBlock" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Spacing="{DynamicResource CreateWorkspaceDialogSectionSpacing}">
+              <TextBlock Text="What will be created" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock x:Name="TemplateReviewTextBlock" TextWrapping="Wrap" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="3" Classes="dialog-footer">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+        <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
+        <Button Grid.Column="1" Content="Cancel" IsCancel="True" Click="CancelClicked" automation:AutomationProperties.Name="Cancel create workspace" />
+        <Button Grid.Column="2" x:Name="CreateButton" Content="Create" IsDefault="True" Classes="accent" Click="CreateClicked" automation:AutomationProperties.Name="Create workspace confirm" />
+      </Grid>
+    </Border>
   </Grid>
 </Window>
