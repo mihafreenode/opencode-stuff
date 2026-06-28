@@ -41,6 +41,8 @@ public sealed class WorkspaceRemovalPrompt
 {
     public required string WorkspaceName { get; init; }
     public required string WorkspaceRoot { get; init; }
+    public bool DeleteWorkspaceFilesSupported { get; init; }
+    public string DeleteWorkspaceFilesUnavailableReason { get; init; } = string.Empty;
 }
 
 public enum WorkspaceRemovalChoice
@@ -74,6 +76,14 @@ public sealed class WorkspaceRecoveryAssessment
     public required string Summary { get; init; }
     public required IReadOnlyList<string> Findings { get; init; }
     public required string ConfirmationMessage { get; init; }
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string StatusSummary { get; init; } = string.Empty;
+    public IReadOnlyList<string> RecoverActions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> DetectedProblems { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> WillNotChange { get; init; } = Array.Empty<string>();
+    public string ManualActionSummary { get; init; } = string.Empty;
+    public IReadOnlyList<string> ManualActions { get; init; } = Array.Empty<string>();
+    public string AdvancedDetails { get; init; } = string.Empty;
 }
 
 public sealed class WorkspaceCheckpointPrompt

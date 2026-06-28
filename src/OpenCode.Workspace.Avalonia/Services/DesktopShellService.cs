@@ -638,39 +638,152 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
         var findings = new List<string>();
+        var detectedProblems = new List<string>();
         if (snapshot.UpdateRequired || snapshot.AppliedState is null)
         {
             findings.Add("Generated runtime files are out of date and need repair.");
+            detectedProblems.Add("Runtime files need repair");
         }
 
         if (snapshot.LocalRuntimeState is null)
         {
             findings.Add("Local runtime state is missing and will be regenerated.");
+            detectedProblems.Add("Runtime metadata is missing");
         }
 
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
         {
             findings.Add($"Workspace runtime is currently {snapshot.RuntimeState}.");
+            detectedProblems.Add($"Workspace is currently {snapshot.RuntimeState.ToString().ToLowerInvariant()}");
         }
 
         if (!string.IsNullOrWhiteSpace(snapshot.Record.LastOperationResult) && snapshot.Record.LastOperationSucceeded == false)
         {
             findings.Add($"Last operation failed: {snapshot.Record.LastOperationResult}");
+            var problem = ExtractRecoveryProblem(snapshot.Record.LastOperationResult!);
+            if (!string.IsNullOrWhiteSpace(problem))
+            {
+                detectedProblems.Add(problem);
+            }
         }
 
         if (findings.Count == 0)
         {
             findings.Add("No blocking issues were detected, but recovery can still revalidate generated files and runtime state.");
+            detectedProblems.Add("No blocking issues were detected");
         }
+
+        var manualActionSummary = BuildRecoveryManualActionSummary(snapshot.Record.LastOperationResult);
+        var manualActions = BuildRecoveryManualActions(snapshot.Record.LastOperationResult);
 
         return new WorkspaceRecoveryAssessment
         {
-            Title = $"Recover {snapshot.Definition.Workspace.Name}",
+            Title = "Recover Workspace",
             Summary = "Recovery validates generated files, repairs Docker compose state, and refreshes runtime readiness without deleting user work.",
             Findings = findings,
             ConfirmationMessage = "Run workspace recovery now?",
+            WorkspaceName = snapshot.Definition.Workspace.Name,
+            StatusSummary = BuildRecoveryStatusSummary(snapshot),
+            RecoverActions =
+            [
+                "Regenerate runtime files",
+                "Refresh Docker Compose state",
+                "Rebuild runtime metadata",
+                "Validate generated scripts",
+                "Keep your project files",
+            ],
+            DetectedProblems = detectedProblems.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            WillNotChange =
+            [
+                "Delete project files",
+                "Modify Git history",
+                "Delete documents",
+                "Remove untracked work",
+            ],
+            ManualActionSummary = manualActionSummary,
+            ManualActions = manualActions,
+            AdvancedDetails = BuildRecoveryAdvancedDetails(snapshot, findings),
         };
     }
+
+    private static string BuildRecoveryStatusSummary(WorkspaceSnapshot snapshot)
+    {
+        var lastFailure = snapshot.Record.LastOperationSucceeded == false ? snapshot.Record.LastOperationResult : null;
+        return lastFailure?.Contains("could not start", StringComparison.OrdinalIgnoreCase) == true
+            ? "Workspace could not start"
+            : "Workspace needs repair";
+    }
+
+    private static string ExtractRecoveryProblem(string failureText)
+    {
+        foreach (var line in failureText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+            {
+                return line;
+            }
+
+            if (!line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Likely causes:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Suggested actions:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Host port details:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("This workspace docker compose ps:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Running containers:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                return line;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string BuildRecoveryManualActionSummary(string? failureText)
+    {
+        if (string.IsNullOrWhiteSpace(failureText))
+        {
+            return string.Empty;
+        }
+
+        return failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase)
+            ? ExtractRecoveryProblem(failureText)
+            : string.Empty;
+    }
+
+    private static IReadOnlyList<string> BuildRecoveryManualActions(string? failureText)
+    {
+        if (string.IsNullOrWhiteSpace(failureText) || !failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<string>();
+        }
+
+        var actions = new List<string> { "Stop the other workspace" };
+        if (failureText.Contains("1521", StringComparison.OrdinalIgnoreCase))
+        {
+            actions.Add("Change the Oracle port");
+        }
+
+        return actions;
+    }
+
+    private static string BuildRecoveryAdvancedDetails(WorkspaceSnapshot snapshot, IReadOnlyList<string> findings)
+        => string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                $"Workspace root: {snapshot.Paths.RootPath}",
+                $"Compose path: {snapshot.Paths.ComposePath}",
+                $"Runtime-state path: {snapshot.Paths.RuntimeStatePath}",
+                $"Applied-state path: {snapshot.Paths.AppliedStatePath}",
+                $"Attach script path: {snapshot.Paths.AttachWrapperScriptPath}",
+                "Primary service: workspace",
+                $"Runtime target: {snapshot.ResolvedRuntimePlan?.TargetPlatform ?? snapshot.LocalRuntimeState?.ResolvedPlatform ?? "Unavailable"}",
+                $"Runtime state: {snapshot.RuntimeState}",
+                $"Update required: {snapshot.UpdateRequired}",
+                string.Empty,
+                "Diagnostics:",
+            }.Concat(findings));
 
     public async Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {

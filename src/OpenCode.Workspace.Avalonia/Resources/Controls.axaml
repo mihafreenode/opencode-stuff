@@ -80,7 +80,7 @@
     <Setter Property="BorderBrush" Value="#2B3442" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="10" />
-    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Padding" Value="{DynamicResource HeaderStatPadding}" />
   </Style>
 
   <Style Selector="TextBlock.section-title">
@@ -91,5 +91,59 @@
   <Style Selector="ComboBox">
     <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.dialog-footer">
+    <Setter Property="Background" Value="{DynamicResource ShellFooterBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="{DynamicResource WorkspaceDialogFooterPadding}" />
+  </Style>
+
+  <Style Selector="Border.summary-inline">
+    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+
+  <Style Selector="Border.option-card">
+    <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+
+  <Style Selector="Border.option-card-selected">
+    <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Padding" Value="15" />
+  </Style>
+
+  <Style Selector="Border.option-card-danger">
+    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Border.option-card-danger-selected">
+    <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Padding" Value="15" />
+  </Style>
+
+  <Style Selector="Border.warning-chip">
+    <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="8,3" />
+  </Style>
+
+  <Style Selector="RadioButton.option-selector">
+    <Setter Property="VerticalAlignment" Value="Top" />
   </Style>
 </Styles>

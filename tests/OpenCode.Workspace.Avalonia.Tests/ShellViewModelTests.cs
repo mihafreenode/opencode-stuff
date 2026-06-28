@@ -118,9 +118,13 @@ public sealed class ShellViewModelTests
         Assert.Contains("<TextBlock Text=\"{Binding DisplayName}\" />", createWindowAxaml, StringComparison.Ordinal);
 
         Assert.DoesNotContain("TitleTextBlock.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkspaceNameTextBlock.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("StatusTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("SummaryTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ConfirmationTextBlock.", recoveryWindow, StringComparison.Ordinal);
-        Assert.DoesNotContain("FindingsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("RecoverActionsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("DetectedProblemsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("WillNotItemsControl.", recoveryWindow, StringComparison.Ordinal);
 
         Assert.DoesNotContain("MessageTextBox.", savePointWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ValidationMessageTextBlock.", savePointWindow, StringComparison.Ordinal);
@@ -151,6 +155,29 @@ public sealed class ShellViewModelTests
         Assert.Contains("Workspace will be created here.", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Workspace folder already exists.", codeBehind, StringComparison.Ordinal);
         Assert.Contains("_createButton.IsEnabled", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecoveryConfirmationWindow_UsesDecisionFocusedLayout()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RecoveryConfirmationWindow.axaml"));
+        var codeBehind = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "RecoveryConfirmationWindow.axaml.cs"));
+
+        Assert.Contains("Text=\"Workspace\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Recover will:", axaml, StringComparison.Ordinal);
+        Assert.Contains("Detected problems", axaml, StringComparison.Ordinal);
+        Assert.Contains("Recover will NOT:", axaml, StringComparison.Ordinal);
+        Assert.Contains("Possible manual action", axaml, StringComparison.Ordinal);
+        Assert.Contains("Header=\"Show Details\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("MaxHeight=\"170\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("BuildListItems", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("DefaultRecoverActions", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("DefaultWillNotItems", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ManualActionBorder", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("AdvancedDetailsTextBlock", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]

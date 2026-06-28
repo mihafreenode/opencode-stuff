@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
 
 namespace OpenCode.Workspace.Avalonia;
@@ -10,6 +11,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
     }
 
     private void InitializeComponent()

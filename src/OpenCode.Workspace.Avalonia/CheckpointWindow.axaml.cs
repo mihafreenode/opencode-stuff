@@ -25,6 +25,7 @@ public partial class CheckpointWindow : Window
     public CheckpointWindow(WorkspaceCheckpointPrompt prompt)
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
         _titleTextBlock = this.FindControl<TextBlock>("TitleTextBlock") ?? throw new InvalidOperationException("TitleTextBlock was not found.");
         _summaryTextBlock = this.FindControl<TextBlock>("SummaryTextBlock") ?? throw new InvalidOperationException("SummaryTextBlock was not found.");
         _confirmationTextBlock = this.FindControl<TextBlock>("ConfirmationTextBlock") ?? throw new InvalidOperationException("ConfirmationTextBlock was not found.");

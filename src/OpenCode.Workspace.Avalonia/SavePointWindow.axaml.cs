@@ -18,6 +18,7 @@ public partial class SavePointWindow : Window
     public SavePointWindow(string initialMessage)
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
         _messageTextBox = this.FindControl<TextBox>("MessageTextBox") ?? throw new InvalidOperationException("MessageTextBox was not found.");
         _validationMessageTextBlock = this.FindControl<TextBlock>("ValidationMessageTextBlock") ?? throw new InvalidOperationException("ValidationMessageTextBlock was not found.");
         _messageTextBox.Text = initialMessage;

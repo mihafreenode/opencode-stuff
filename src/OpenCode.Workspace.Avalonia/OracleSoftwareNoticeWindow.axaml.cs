@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using OpenCode.Workspace.AppSupport;
+using OpenCode.Workspace.Avalonia.Services;
 
 namespace OpenCode.Workspace.Avalonia;
 
@@ -27,6 +28,7 @@ public partial class OracleSoftwareNoticeWindow : Window
     public OracleSoftwareNoticeWindow(OracleSoftwareNoticePrompt prompt)
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
         (this.FindControl<TextBlock>("TitleTextBlock") ?? throw new InvalidOperationException("TitleTextBlock was not found.")).Text = prompt.Title;
         (this.FindControl<TextBlock>("SummaryTextBlock") ?? throw new InvalidOperationException("SummaryTextBlock was not found.")).Text = prompt.Summary;
         (this.FindControl<TextBlock>("SubjectTextBlock") ?? throw new InvalidOperationException("SubjectTextBlock was not found.")).Text = prompt.SubjectName;

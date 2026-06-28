@@ -8,7 +8,7 @@
         Height="920"
         MinWidth="1200"
         MinHeight="760"
-        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.png"
+        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico"
         Background="{DynamicResource AppBackgroundBrush}">
   <Window.DataTemplates>
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
@@ -421,34 +421,38 @@
   </Window.DataTemplates>
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="220,*,340">
-    <Border Grid.ColumnSpan="3" Background="{DynamicResource ShellHeaderBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,14" MinHeight="136">
-      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="20" VerticalAlignment="Center">
+    <Border Grid.ColumnSpan="3"
+            Background="{DynamicResource ShellHeaderBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="{DynamicResource HeaderPadding}"
+            MinHeight="{DynamicResource HeaderHeight}">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource HeaderColumnSpacing}" VerticalAlignment="Center">
         <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png"
-               Height="112"
-               MaxWidth="760"
-               Stretch="Uniform"
-               HorizontalAlignment="Left"
-               VerticalAlignment="Center"
-               Margin="0,4,0,2"
-               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                 Height="{DynamicResource HeaderLogoHeight}"
+                 MaxWidth="760"
+                 Stretch="Uniform"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Center"
+                 RenderOptions.BitmapInterpolationMode="HighQuality" />
         <Border Grid.Column="1" />
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{DynamicResource HeaderStatSpacing}" VerticalAlignment="Center">
           <Border Classes="header-stat">
-            <StackPanel Spacing="2">
-              <TextBlock Text="Workspaces" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
-              <TextBlock Text="{Binding HeaderWorkspaceCount}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            <StackPanel Spacing="{DynamicResource HeaderStatTextSpacing}">
+              <TextBlock Text="Workspaces" FontSize="{DynamicResource HeaderStatLabelFontSize}" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderWorkspaceCount}" FontSize="{DynamicResource HeaderWorkspaceCountFontSize}" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
             </StackPanel>
           </Border>
           <Border Classes="header-stat">
-            <StackPanel Spacing="2">
-              <TextBlock Text="Runtime" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
-              <TextBlock Text="{Binding HeaderRuntimeSummary}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrandHeaderTextBrush}" />
+            <StackPanel Spacing="{DynamicResource HeaderStatTextSpacing}">
+              <TextBlock Text="Runtime" FontSize="{DynamicResource HeaderStatLabelFontSize}" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderRuntimeSummary}" FontSize="{DynamicResource HeaderStatValueFontSize}" FontWeight="SemiBold" Foreground="{DynamicResource BrandHeaderTextBrush}" />
             </StackPanel>
           </Border>
           <Border Classes="header-stat">
-            <StackPanel Spacing="2">
-              <TextBlock Text="Status" FontSize="11" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
-              <TextBlock Text="{Binding HeaderStatusSummary}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+            <StackPanel Spacing="{DynamicResource HeaderStatTextSpacing}">
+              <TextBlock Text="Status" FontSize="{DynamicResource HeaderStatLabelFontSize}" Foreground="{DynamicResource BrandHeaderMutedBrush}" />
+              <TextBlock Text="{Binding HeaderStatusSummary}" FontSize="{DynamicResource HeaderStatValueFontSize}" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
             </StackPanel>
           </Border>
         </StackPanel>

@@ -43,7 +43,8 @@ public sealed class WorkspaceRemovalService
 
         var warnings = new List<string>();
         var existing = _workspaceRepository.LoadAll()
-            .FirstOrDefault(record => string.Equals(record.RootPath, request.WorkspaceRoot, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(record => string.Equals(record.RootPath, request.WorkspaceRoot, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(WorkspaceRecordPathResolver.GetWorkspaceRoot(record), request.WorkspaceRoot, StringComparison.OrdinalIgnoreCase));
 
         if (existing is null)
         {
@@ -51,7 +52,7 @@ public sealed class WorkspaceRemovalService
         }
         else
         {
-            _workspaceRepository.Delete(request.WorkspaceRoot);
+            _workspaceRepository.Delete(existing.RootPath);
         }
 
         return Task.FromResult(new WorkspaceRemovalResult

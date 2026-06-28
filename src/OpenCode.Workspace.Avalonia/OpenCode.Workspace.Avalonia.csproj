@@ -5,6 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\docs\images\opencode-stuff-satchel-icon.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -26,6 +27,9 @@
   <ItemGroup>
     <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-icon.png">
       <Link>Assets\opencode-stuff-satchel-icon.png</Link>
+    </AvaloniaResource>
+    <AvaloniaResource Include="..\..\docs\images\opencode-stuff-satchel-icon.ico">
+      <Link>Assets\opencode-stuff-satchel-icon.ico</Link>
     </AvaloniaResource>
     <AvaloniaResource Include="..\..\docs\images\opencode-stuff-header-brand-ui.png">
       <Link>Assets\opencode-stuff-header-brand-ui.png</Link>

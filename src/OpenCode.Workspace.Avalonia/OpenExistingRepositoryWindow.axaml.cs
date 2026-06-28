@@ -37,6 +37,7 @@ public partial class OpenExistingRepositoryWindow : Window
         Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync)
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
         _inspectRepositoryAsync = inspectRepositoryAsync;
         _validateBranchAsync = validateBranchAsync;
         _repositoryPathTextBox = this.FindControl<TextBox>("RepositoryPathTextBox") ?? throw new InvalidOperationException("RepositoryPathTextBox was not found.");

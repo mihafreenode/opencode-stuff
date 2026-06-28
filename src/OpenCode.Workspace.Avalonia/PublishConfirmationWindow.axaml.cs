@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using OpenCode.Workspace.AppSupport;
+using OpenCode.Workspace.Avalonia.Services;
 
 namespace OpenCode.Workspace.Avalonia;
 
@@ -39,6 +40,7 @@ public partial class PublishConfirmationWindow : Window
     public PublishConfirmationWindow(WorkspacePublishAssessment assessment)
     {
         InitializeComponent();
+        AppWindowIcons.Apply(this);
         _titleTextBlock = this.FindControl<TextBlock>("TitleTextBlock") ?? throw new InvalidOperationException("TitleTextBlock was not found.");
         _summaryTextBlock = this.FindControl<TextBlock>("SummaryTextBlock") ?? throw new InvalidOperationException("SummaryTextBlock was not found.");
         _confirmationTextBlock = this.FindControl<TextBlock>("ConfirmationTextBlock") ?? throw new InvalidOperationException("ConfirmationTextBlock was not found.");

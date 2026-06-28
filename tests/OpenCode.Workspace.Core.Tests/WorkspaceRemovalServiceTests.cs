@@ -135,4 +135,54 @@ public sealed class WorkspaceRemovalServiceTests
             if (Directory.Exists(appDataRoot)) Directory.Delete(appDataRoot, true);
         }
     }
+
+    [Fact]
+    public void WorkspaceRecordPathResolver_DerivesNestedWorkspaceRootAndConfigurationPath()
+    {
+        var baseRoot = Path.Combine(Path.GetTempPath(), $"oc-record-root-{Guid.NewGuid():N}");
+        var record = new WorkspaceRecord
+        {
+            Name = "rc-first-workspace",
+            RootPath = baseRoot,
+            RepositoryPath = baseRoot,
+            ConfigurationPath = Path.Combine("rc-first-workspace", "workspace.yaml").Replace(Path.DirectorySeparatorChar, '/'),
+            CreatedUtc = DateTimeOffset.UtcNow,
+            LastOpenedUtc = DateTimeOffset.UtcNow,
+        };
+
+        Assert.Equal(Path.Combine(baseRoot, "rc-first-workspace"), WorkspaceRecordPathResolver.GetWorkspaceRoot(record));
+        Assert.Equal(Path.Combine(baseRoot, "rc-first-workspace", "workspace.yaml"), WorkspaceRecordPathResolver.GetWorkspaceConfigurationPath(record));
+    }
+
+    [Fact]
+    public void WorkspaceRecordPathResolver_FallsBackToNamedChildWorkspace_WhenLegacyRootPointsToParentFolder()
+    {
+        var baseRoot = Path.Combine(Path.GetTempPath(), $"oc-record-legacy-{Guid.NewGuid():N}");
+        var childRoot = Path.Combine(baseRoot, "rc-first-workspace");
+        Directory.CreateDirectory(childRoot);
+        File.WriteAllText(Path.Combine(childRoot, "workspace.yaml"), "workspace: {}\n");
+
+        try
+        {
+            var record = new WorkspaceRecord
+            {
+                Name = "rc-first-workspace",
+                RootPath = baseRoot,
+                RepositoryPath = baseRoot,
+                ConfigurationPath = "workspace.yaml",
+                CreatedUtc = DateTimeOffset.UtcNow,
+                LastOpenedUtc = DateTimeOffset.UtcNow,
+            };
+
+            Assert.Equal(childRoot, WorkspaceRecordPathResolver.GetWorkspaceRoot(record));
+            Assert.Equal(Path.Combine(childRoot, "workspace.yaml"), WorkspaceRecordPathResolver.GetWorkspaceConfigurationPath(record));
+        }
+        finally
+        {
+            if (Directory.Exists(baseRoot))
+            {
+                Directory.Delete(baseRoot, recursive: true);
+            }
+        }
+    }
 }

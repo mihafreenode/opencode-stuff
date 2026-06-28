@@ -18,13 +18,17 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new CreateWorkspaceWindow(templates).ShowDialog<CreateWorkspaceDraft?>(_owner);
+        var window = new CreateWorkspaceWindow(templates);
+        AppWindowIcons.Apply(window, _owner);
+        return window.ShowDialog<CreateWorkspaceDraft?>(_owner);
     }
 
     public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync).ShowDialog<ExistingRepositoryImportDraft?>(_owner);
+        var window = new OpenExistingRepositoryWindow(inspectRepositoryAsync, validateBranchAsync);
+        AppWindowIcons.Apply(window, _owner);
+        return window.ShowDialog<ExistingRepositoryImportDraft?>(_owner);
     }
 
     public async Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
@@ -57,6 +61,7 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     {
         cancellationToken.ThrowIfCancellationRequested();
         var window = new OracleSoftwareNoticeWindow(prompt);
+        AppWindowIcons.Apply(window, _owner);
         return await window.ShowDialog<bool>(_owner);
     }
 
@@ -64,6 +69,7 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     {
         cancellationToken.ThrowIfCancellationRequested();
         var window = new CheckpointWindow(prompt);
+        AppWindowIcons.Apply(window, _owner);
         return await window.ShowDialog<bool>(_owner);
     }
 
@@ -71,6 +77,7 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     {
         cancellationToken.ThrowIfCancellationRequested();
         var window = new RemoveWorkspaceWindow(prompt);
+        AppWindowIcons.Apply(window, _owner);
         await window.ShowDialog(_owner);
         return window.Result;
     }
@@ -79,6 +86,7 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     {
         cancellationToken.ThrowIfCancellationRequested();
         var window = new PublishConfirmationWindow(assessment);
+        AppWindowIcons.Apply(window, _owner);
         return await window.ShowDialog<bool>(_owner);
     }
 
@@ -87,6 +95,7 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         cancellationToken.ThrowIfCancellationRequested();
         StartupLog.WriteGlobal("Opening Save Point dialog.");
         var window = new SavePointWindow(initialMessage);
+        AppWindowIcons.Apply(window, _owner);
         await window.ShowDialog(_owner);
         StartupLog.WriteGlobal($"Save Point dialog closed. Confirmed: {window.Result is not null}.");
         return window.Result;
@@ -95,6 +104,8 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
     public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new RecoveryConfirmationWindow(assessment).ShowDialog<bool>(_owner);
+        var window = new RecoveryConfirmationWindow(assessment);
+        AppWindowIcons.Apply(window, _owner);
+        return window.ShowDialog<bool>(_owner);
     }
 }

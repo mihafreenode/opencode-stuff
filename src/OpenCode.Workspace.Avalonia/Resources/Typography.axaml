@@ -3,4 +3,12 @@
   <x:Double x:Key="FontTitle">28</x:Double>
   <x:Double x:Key="FontSection">20</x:Double>
   <x:Double x:Key="FontBody">13</x:Double>
+
+  <x:Double x:Key="HeaderExpandedLogoHeight">60</x:Double>
+  <x:Double x:Key="HeaderCompactLogoHeight">44</x:Double>
+  <x:Double x:Key="HeaderLogoHeight">60</x:Double>
+
+  <x:Double x:Key="HeaderStatLabelFontSize">10</x:Double>
+  <x:Double x:Key="HeaderStatValueFontSize">13</x:Double>
+  <x:Double x:Key="HeaderWorkspaceCountFontSize">16</x:Double>
 </ResourceDictionary>

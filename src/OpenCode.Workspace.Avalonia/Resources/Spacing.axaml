@@ -4,4 +4,32 @@
   <x:Double x:Key="Space3">12</x:Double>
   <x:Double x:Key="Space4">16</x:Double>
   <x:Double x:Key="Space5">20</x:Double>
+
+  <x:Double x:Key="HeaderExpandedHeight">84</x:Double>
+  <x:Double x:Key="HeaderCompactHeight">64</x:Double>
+  <x:Double x:Key="HeaderHeight">84</x:Double>
+
+  <x:Double x:Key="HeaderExpandedVerticalPadding">10</x:Double>
+  <x:Double x:Key="HeaderCompactVerticalPadding">6</x:Double>
+  <x:Double x:Key="HeaderVerticalPadding">10</x:Double>
+
+  <x:Double x:Key="HeaderExpandedHorizontalPadding">20</x:Double>
+  <x:Double x:Key="HeaderCompactHorizontalPadding">16</x:Double>
+  <x:Double x:Key="HeaderHorizontalPadding">20</x:Double>
+
+  <x:Double x:Key="HeaderColumnSpacing">20</x:Double>
+  <x:Double x:Key="HeaderStatSpacing">10</x:Double>
+  <x:Double x:Key="HeaderStatTextSpacing">1</x:Double>
+
+  <Thickness x:Key="HeaderPadding">20,10</Thickness>
+  <Thickness x:Key="HeaderStatPadding">10,6</Thickness>
+
+  <x:Double x:Key="WorkspaceDialogWideMinWidth">720</x:Double>
+  <x:Double x:Key="WorkspaceDialogTallMinHeight">540</x:Double>
+  <x:Double x:Key="WorkspaceDialogContentSpacing">16</x:Double>
+  <x:Double x:Key="WorkspaceDialogSectionSpacing">12</x:Double>
+  <x:Double x:Key="WorkspaceDialogOptionSpacing">14</x:Double>
+  <x:Double x:Key="WorkspaceDialogLabelWidth">120</x:Double>
+  <Thickness x:Key="WorkspaceDialogMargin">24</Thickness>
+  <Thickness x:Key="WorkspaceDialogFooterPadding">0,16,0,0</Thickness>
 </ResourceDictionary>

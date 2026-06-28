@@ -1,39 +1,100 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
         x:Class="OpenCode.Workspace.Avalonia.RemoveWorkspaceWindow"
-        Width="660"
-        Height="420"
-        MinWidth="580"
-        MinHeight="360"
+        Width="740"
+        Height="540"
+        MinWidth="{DynamicResource WorkspaceDialogWideMinWidth}"
+        MinHeight="{DynamicResource WorkspaceDialogTallMinHeight}"
         Title="Remove Workspace"
         WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="{DynamicResource WorkspaceDialogContentSpacing}" Margin="{DynamicResource WorkspaceDialogMargin}">
     <StackPanel Spacing="6">
-      <TextBlock Text="Remove Workspace" FontSize="22" FontWeight="SemiBold" />
-      <TextBlock Text="Choose whether to remove only the local registration, clean Docker resources, or delete workspace files after permission repair." TextWrapping="Wrap" />
+      <TextBlock Text="Remove Workspace" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Remove Workspace" />
+      <TextBlock Text="Choose what should be removed." TextWrapping="Wrap" />
+      <TextBlock Text="Your workspace files remain untouched unless you explicitly choose Delete workspace." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
     </StackPanel>
 
-    <Border Grid.Row="1" BorderBrush="#D6D9DF" BorderThickness="1" CornerRadius="10" Padding="14">
-      <StackPanel Spacing="10">
-        <TextBlock Text="Workspace" FontWeight="SemiBold" />
-        <TextBlock x:Name="WorkspaceNameTextBlock" />
-        <TextBlock Text="Root path" FontWeight="SemiBold" Margin="0,8,0,0" />
-        <TextBlock x:Name="WorkspaceRootTextBlock" TextWrapping="Wrap" />
-        <StackPanel Margin="0,10,0,0" Spacing="8">
-          <RadioButton x:Name="RegistrationOnlyRadioButton" GroupName="RemovalChoice" IsChecked="True" Checked="RegistrationOnlyChecked" Content="Remove from list only" />
-          <TextBlock Margin="24,0,0,0" Text="Keep files on disk and leave Docker resources untouched." TextWrapping="Wrap" />
-          <RadioButton x:Name="DockerResourcesRadioButton" GroupName="RemovalChoice" Checked="DockerResourcesChecked" Content="Remove Docker resources" />
-          <TextBlock Margin="24,0,0,0" Text="Stop the workspace and remove managed Docker resources before unregistering it." TextWrapping="Wrap" />
-          <RadioButton x:Name="DeleteFilesRadioButton" GroupName="RemovalChoice" Checked="DeleteFilesChecked" Content="Delete workspace files" />
-          <TextBlock Margin="24,0,0,0" Text="Repair container-owned permissions, clean Docker resources, and delete the local workspace folder." TextWrapping="Wrap" />
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="{DynamicResource WorkspaceDialogContentSpacing}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Workspace" FontWeight="SemiBold" />
+          <Border Classes="summary-inline">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8" ColumnSpacing="12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="Workspace" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Column="1" x:Name="WorkspaceNameTextBlock" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="1" Text="Location" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" x:Name="WorkspaceRootTextBlock" TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="{DynamicResource WorkspaceDialogSectionSpacing}">
+          <TextBlock Text="Removal options" FontWeight="SemiBold" />
+
+          <Border x:Name="RegistrationOnlyBorder" Classes="option-card,option-card-selected">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+              <RadioButton x:Name="RegistrationOnlyRadioButton"
+                           Classes="option-selector"
+                           GroupName="RemovalChoice"
+                           IsChecked="True"
+                           Checked="RegistrationOnlyChecked"
+                           automation:AutomationProperties.Name="Remove from list only" />
+              <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Text="Remove from list only" FontWeight="SemiBold" />
+                <TextBlock Text="Removes the workspace from OpenCode Stuff. Files and Docker resources remain untouched." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border x:Name="DockerResourcesBorder" Classes="option-card">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+              <RadioButton x:Name="DockerResourcesRadioButton"
+                           Classes="option-selector"
+                           GroupName="RemovalChoice"
+                           Checked="DockerResourcesChecked"
+                           automation:AutomationProperties.Name="Remove Docker resources" />
+              <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Text="Remove Docker resources" FontWeight="SemiBold" />
+                <TextBlock Text="Stops the workspace and removes managed Docker containers and related runtime resources. Workspace files remain on disk." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border x:Name="DeleteFilesBorder" Classes="option-card,option-card-danger">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                <RadioButton x:Name="DeleteFilesRadioButton"
+                             Classes="option-selector"
+                             GroupName="RemovalChoice"
+                             IsEnabled="False"
+                             Checked="DeleteFilesChecked"
+                             automation:AutomationProperties.Name="Delete workspace" />
+                <StackPanel Grid.Column="1" Spacing="6">
+                  <TextBlock Text="Delete workspace" FontWeight="SemiBold" />
+                  <TextBlock Text="Deletes the workspace from this computer after permission repair and Docker cleanup. This cannot be undone without a backup." TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock x:Name="DeleteFilesUnavailableTextBlock" TextWrapping="Wrap" Foreground="{DynamicResource WarningBrush}" />
+                </StackPanel>
+                <Border Grid.Column="2" Classes="warning-chip" VerticalAlignment="Top">
+                  <TextBlock Text="Destructive" Foreground="{DynamicResource WarningBrush}" FontWeight="SemiBold" />
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </StackPanel>
-    </Border>
+    </ScrollViewer>
 
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-      <TextBlock Text="Use registration-only when you want to hide a workspace from the manager without touching its local files." VerticalAlignment="Center" TextWrapping="Wrap" />
-      <Button Grid.Column="1" Content="Cancel" Click="CancelClicked" />
-      <Button Grid.Column="2" Classes="accent" Content="Continue" Click="ConfirmClicked" />
-    </Grid>
+    <Border Grid.Row="2" Classes="dialog-footer">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+        <TextBlock Text="Buttons remain available while content scrolls on smaller screens." VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+        <Button Grid.Column="1" Content="Cancel" IsCancel="True" Click="CancelClicked" automation:AutomationProperties.Name="Cancel remove workspace" />
+        <Button Grid.Column="2" Classes="accent" Content="Continue" IsDefault="True" Click="ConfirmClicked" automation:AutomationProperties.Name="Continue remove workspace" />
+      </Grid>
+    </Border>
   </Grid>
 </Window>
