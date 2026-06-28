@@ -638,39 +638,48 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
         var findings = new List<string>();
-        var detectedProblems = new List<string>();
+        var currentProblems = new List<string>();
+        var previousFailureContext = new List<string>();
         if (snapshot.UpdateRequired || snapshot.AppliedState is null)
         {
             findings.Add("Generated runtime files are out of date and need repair.");
-            detectedProblems.Add("Runtime files need repair");
+            currentProblems.Add("Runtime files need repair");
         }
 
         if (snapshot.LocalRuntimeState is null)
         {
             findings.Add("Local runtime state is missing and will be regenerated.");
-            detectedProblems.Add("Runtime metadata is missing");
+            currentProblems.Add("Runtime metadata is missing");
         }
 
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
         {
             findings.Add($"Workspace runtime is currently {snapshot.RuntimeState}.");
-            detectedProblems.Add($"Workspace is currently {snapshot.RuntimeState.ToString().ToLowerInvariant()}");
+            currentProblems.Add($"Workspace is currently {snapshot.RuntimeState.ToString().ToLowerInvariant()}");
+        }
+
+        if (snapshot.RuntimeState == WorkspaceRuntimeState.Unknown)
+        {
+            currentProblems.Add("Docker availability could not be confirmed");
         }
 
         if (!string.IsNullOrWhiteSpace(snapshot.Record.LastOperationResult) && snapshot.Record.LastOperationSucceeded == false)
         {
             findings.Add($"Last operation failed: {snapshot.Record.LastOperationResult}");
-            var problem = ExtractRecoveryProblem(snapshot.Record.LastOperationResult!);
-            if (!string.IsNullOrWhiteSpace(problem))
+            foreach (var problem in BuildPreviousFailureContext(snapshot.Record.LastOperationResult!))
             {
-                detectedProblems.Add(problem);
+                previousFailureContext.Add(problem);
             }
         }
 
         if (findings.Count == 0)
         {
             findings.Add("No blocking issues were detected, but recovery can still revalidate generated files and runtime state.");
-            detectedProblems.Add("No blocking issues were detected");
+        }
+
+        if (currentProblems.Count == 0)
+        {
+            currentProblems.Add("No live blocking issues detected");
         }
 
         var manualActionSummary = BuildRecoveryManualActionSummary(snapshot.Record.LastOperationResult);
@@ -692,7 +701,8 @@ public sealed class DesktopShellService : IDesktopShellService
                 "Validate generated scripts",
                 "Keep your project files",
             ],
-            DetectedProblems = detectedProblems.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            CurrentProblems = currentProblems.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            PreviousFailureContext = previousFailureContext.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             WillNotChange =
             [
                 "Delete project files",
@@ -703,6 +713,7 @@ public sealed class DesktopShellService : IDesktopShellService
             ManualActionSummary = manualActionSummary,
             ManualActions = manualActions,
             AdvancedDetails = BuildRecoveryAdvancedDetails(snapshot, findings),
+            LastCheckedAt = DateTimeOffset.Now,
         };
     }
 
@@ -714,13 +725,15 @@ public sealed class DesktopShellService : IDesktopShellService
             : "Workspace needs repair";
     }
 
-    private static string ExtractRecoveryProblem(string failureText)
+    private static IReadOnlyList<string> BuildPreviousFailureContext(string failureText)
     {
+        var items = new List<string>();
         foreach (var line in failureText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (line.Contains("already in use", StringComparison.OrdinalIgnoreCase))
             {
-                return line;
+                items.Add(line);
+                continue;
             }
 
             if (!line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase)
@@ -732,11 +745,11 @@ public sealed class DesktopShellService : IDesktopShellService
                 && !line.StartsWith("Running containers:", StringComparison.OrdinalIgnoreCase)
                 && !line.StartsWith("- ", StringComparison.Ordinal))
             {
-                return line;
+                items.Add(line);
             }
         }
 
-        return string.Empty;
+        return items;
     }
 
     private static string BuildRecoveryManualActionSummary(string? failureText)
@@ -747,7 +760,7 @@ public sealed class DesktopShellService : IDesktopShellService
         }
 
         return failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase)
-            ? ExtractRecoveryProblem(failureText)
+            ? BuildPreviousFailureContext(failureText).FirstOrDefault() ?? string.Empty
             : string.Empty;
     }
 

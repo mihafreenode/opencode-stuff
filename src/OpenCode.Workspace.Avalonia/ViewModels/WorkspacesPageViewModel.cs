@@ -971,21 +971,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Assessing recovery..." });
         DetailSummary = "Assessing recovery...";
 
-        WorkspaceRecoveryAssessment assessment;
-        try
+        var assessment = new WorkspaceRecoveryAssessment
         {
-            assessment = await _desktopShellService.AssessWorkspaceRecoveryAsync(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot);
-        }
-        catch (Exception exception)
-        {
-            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
-            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
-            DetailSummary = exception.Message;
-            SelectedWorkspace.SetOperationFailureState(exception.Message, "Recover");
-            throw;
-        }
+            Title = "Recover Workspace",
+            Summary = "Checking current state...",
+            Findings = Array.Empty<string>(),
+            ConfirmationMessage = "Run workspace recovery now?",
+            WorkspaceName = SelectedWorkspace.Name,
+            StatusSummary = "Checking current state...",
+        };
 
-        if (!await _interactionService.ConfirmRecoveryAsync(assessment))
+        if (!await _interactionService.ConfirmRecoveryAsync(
+                assessment,
+                token => _desktopShellService.AssessWorkspaceRecoveryAsync(SelectedWorkspace.RootPath, null, token)))
         {
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
             DetailSummary = "Recovery cancelled.";

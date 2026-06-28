@@ -123,7 +123,8 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("SummaryTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("ConfirmationTextBlock.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("RecoverActionsItemsControl.", recoveryWindow, StringComparison.Ordinal);
-        Assert.DoesNotContain("DetectedProblemsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("CurrentProblemsItemsControl.", recoveryWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviousFailureItemsControl.", recoveryWindow, StringComparison.Ordinal);
         Assert.DoesNotContain("WillNotItemsControl.", recoveryWindow, StringComparison.Ordinal);
 
         Assert.DoesNotContain("MessageTextBox.", savePointWindow, StringComparison.Ordinal);
@@ -166,13 +167,18 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("Text=\"Workspace\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Recover will:", axaml, StringComparison.Ordinal);
-        Assert.Contains("Detected problems", axaml, StringComparison.Ordinal);
+        Assert.Contains("Current problems", axaml, StringComparison.Ordinal);
+        Assert.Contains("Previous failure context", axaml, StringComparison.Ordinal);
         Assert.Contains("Recover will NOT:", axaml, StringComparison.Ordinal);
         Assert.Contains("Possible manual action", axaml, StringComparison.Ordinal);
         Assert.Contains("Header=\"Show Details\"", axaml, StringComparison.Ordinal);
         Assert.Contains("MaxHeight=\"170\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Refresh\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("LastCheckedTextBlock", axaml, StringComparison.Ordinal);
         Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
         Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("RefreshAssessmentAsync", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("DispatcherTimer", codeBehind, StringComparison.Ordinal);
         Assert.Contains("BuildListItems", codeBehind, StringComparison.Ordinal);
         Assert.Contains("DefaultRecoverActions", codeBehind, StringComparison.Ordinal);
         Assert.Contains("DefaultWillNotItems", codeBehind, StringComparison.Ordinal);
@@ -3245,7 +3251,7 @@ public sealed class ShellViewModelTests
         public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(SavePointDraft);
 
-        public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
+        public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
             => Task.FromResult(true);
     }
 

@@ -101,10 +101,10 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return window.Result;
     }
 
-    public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, CancellationToken cancellationToken = default)
+    public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var window = new RecoveryConfirmationWindow(assessment);
+        var window = new RecoveryConfirmationWindow(assessment, refreshAssessmentAsync);
         AppWindowIcons.Apply(window, _owner);
         return window.ShowDialog<bool>(_owner);
     }
