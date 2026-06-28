@@ -20,8 +20,10 @@ public sealed class LinuxHostCapabilitiesTests
             "sh -lc command -v wezterm" => Failure(),
             "sh -lc command -v xterm" => Success("/usr/bin/xterm\n"),
             "sh -lc command -v docker" => Success("/usr/bin/docker\n"),
+            "sh -lc docker compose version" => Success("Docker Compose version v2.38.1\n"),
             "sh -lc command -v podman" => Failure(),
             "sh -lc command -v git" => Success("/usr/bin/git\n"),
+            "sh -lc command -v opencode" => Success("/usr/local/bin/opencode\n"),
             "sh -lc command -v apt" => Success("/usr/bin/apt\n"),
             "sh -lc command -v dnf" => Failure(),
             "sh -lc command -v pacman" => Failure(),
@@ -35,6 +37,8 @@ public sealed class LinuxHostCapabilitiesTests
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("font.nerd-fonts")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("terminal.gnome")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("container.docker")?.Status);
+        Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("container.docker-compose")?.Status);
+        Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("tool.opencode-cli")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("package.apt")?.Status);
         Assert.Equal(HostCapabilityStatus.Unavailable, report.FindEntry("terminal.profile-support")?.Status);
     }

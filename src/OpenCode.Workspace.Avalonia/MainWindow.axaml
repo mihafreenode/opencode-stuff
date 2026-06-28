@@ -162,14 +162,44 @@
 
         <ScrollViewer Grid.Row="4">
           <StackPanel Spacing="12">
-            <TextBlock Text="Doctor" Classes="section-title" />
-            <ListBox ItemsSource="{Binding DoctorItems}" SelectedItem="{Binding SelectedDoctorItem}" BorderThickness="0" Background="Transparent">
-              <ListBox.ItemTemplate>
+            <TextBlock Text="Required Prerequisites" Classes="section-title" />
+            <ItemsControl ItemsSource="{Binding RequiredDoctorItems}">
+              <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Border Classes="panel-subtle" Margin="0,0,0,8">
                     <StackPanel Spacing="6">
                       <DockPanel>
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <TextBlock Text="{Binding Title}"
+                                   FontWeight="SemiBold"
+                                   DockPanel.Dock="Left"
+                                   automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                   automation:AutomationProperties.Name="{Binding AutomationName}" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding StatusLabel}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding SuggestedAction}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasSuggestedAction}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Doctor" Classes="section-title" />
+            <ListBox ItemsSource="{Binding DoctorItems}" SelectedItem="{Binding SelectedDoctorItem}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8"
+                          automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                          automation:AutomationProperties.Name="{Binding AutomationName}">
+                    <StackPanel Spacing="6">
+                      <DockPanel>
+                        <TextBlock Text="{Binding Title}"
+                                   FontWeight="SemiBold"
+                                   DockPanel.Dock="Left"
+                                   automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                   automation:AutomationProperties.Name="{Binding AutomationName}" />
                         <Border DockPanel.Dock="Right" Classes="status-chip">
                           <TextBlock Text="{Binding StatusLabel}" />
                         </Border>

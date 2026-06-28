@@ -50,6 +50,7 @@ public sealed class LinuxHostCapabilities : IHostCapabilities
                 Entries =
                 [
                     await DetectCommandAsync("container.docker", "Docker", "docker", cancellationToken),
+                    await DetectShellCheckAsync("container.docker-compose", "Docker Compose", "docker compose version", "Docker Compose is available through docker compose.", "Docker Compose was not detected through docker compose.", cancellationToken),
                     await DetectCommandAsync("container.podman", "Podman", "podman", cancellationToken),
                 ],
             },
@@ -60,6 +61,7 @@ public sealed class LinuxHostCapabilities : IHostCapabilities
                 Entries =
                 [
                     await DetectCommandAsync("tool.git", "Git", "git", cancellationToken),
+                    await DetectCommandAsync("tool.opencode-cli", "OpenCode CLI", "opencode", cancellationToken),
                     new HostCapabilityEntry
                     {
                         Id = "terminal.profile-support",
@@ -130,6 +132,19 @@ public sealed class LinuxHostCapabilities : IHostCapabilities
             DisplayName = displayName,
             Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
             Summary = result.IsSuccess ? $"{displayName} is available." : $"{displayName} was not found on PATH.",
+            Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
+        };
+    }
+
+    private async Task<HostCapabilityEntry> DetectShellCheckAsync(string id, string displayName, string shellCheck, string successSummary, string failureSummary, CancellationToken cancellationToken)
+    {
+        var result = await _commandProbe.RunAsync("sh", ["-lc", shellCheck], cancellationToken);
+        return new HostCapabilityEntry
+        {
+            Id = id,
+            DisplayName = displayName,
+            Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+            Summary = result.IsSuccess ? successSummary : failureSummary,
             Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
         };
     }

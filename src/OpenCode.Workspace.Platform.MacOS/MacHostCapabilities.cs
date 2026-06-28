@@ -50,6 +50,7 @@ public sealed class MacHostCapabilities : IHostCapabilities
                 Entries =
                 [
                     await DetectTerminalAsync("container.docker", "Docker", "command -v docker", cancellationToken),
+                    await DetectTerminalAsync("container.docker-compose", "Docker Compose", "docker compose version", cancellationToken, "Docker Compose is available through docker compose.", "Docker Compose was not detected through docker compose."),
                     await DetectTerminalAsync("container.podman", "Podman", "command -v podman", cancellationToken),
                 ],
             },
@@ -60,6 +61,7 @@ public sealed class MacHostCapabilities : IHostCapabilities
                 Entries =
                 [
                     await DetectTerminalAsync("tool.git", "Git", "command -v git", cancellationToken),
+                    await DetectTerminalAsync("tool.opencode-cli", "OpenCode CLI", "command -v opencode", cancellationToken),
                     new HostCapabilityEntry
                     {
                         Id = "terminal.profile-support",
@@ -104,7 +106,7 @@ public sealed class MacHostCapabilities : IHostCapabilities
         };
     }
 
-    private async Task<HostCapabilityEntry> DetectTerminalAsync(string id, string displayName, string shellCheck, CancellationToken cancellationToken)
+    private async Task<HostCapabilityEntry> DetectTerminalAsync(string id, string displayName, string shellCheck, CancellationToken cancellationToken, string? successSummary = null, string? failureSummary = null)
     {
         var result = await _commandProbe.RunAsync("sh", ["-lc", shellCheck], cancellationToken);
         return new HostCapabilityEntry
@@ -112,7 +114,7 @@ public sealed class MacHostCapabilities : IHostCapabilities
             Id = id,
             DisplayName = displayName,
             Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
-            Summary = result.IsSuccess ? $"{displayName} is available." : $"{displayName} was not detected.",
+            Summary = result.IsSuccess ? successSummary ?? $"{displayName} is available." : failureSummary ?? $"{displayName} was not detected.",
             Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
         };
     }

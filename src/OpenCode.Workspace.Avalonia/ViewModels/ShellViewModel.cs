@@ -142,6 +142,7 @@ public sealed class ShellViewModel : ObservableObject
     {
         _workspacesPage.SetClipboardService(clipboardService);
         _savePointsPage.SetClipboardService(clipboardService);
+        _diagnosticsPage.SetClipboardService(clipboardService);
     }
 
     public void SetInteractionService(IWorkspaceInteractionService interactionService)

@@ -68,6 +68,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
                 Entries =
                 [
                     ToCapabilityEntry("container.docker", "Docker Desktop", dockerDesktop),
+                    await DetectDockerComposeCapabilityAsync(cancellationToken),
                     await DetectCommandCapabilityAsync("container.podman", "Podman", "where", ["podman"], cancellationToken),
                 ],
             },
@@ -78,6 +79,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
                 Entries =
                 [
                     await DetectCommandCapabilityAsync("tool.git", "Git", "where", ["git"], cancellationToken),
+                    await DetectCommandCapabilityAsync("tool.opencode-cli", "OpenCode CLI", "where", ["opencode"], cancellationToken),
                     new HostCapabilityEntry
                     {
                         Id = "tool.wsl",
@@ -238,6 +240,19 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
             DisplayName = displayName,
             Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
             Summary = result.IsSuccess ? $"{displayName} is available." : $"{displayName} was not detected.",
+            Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
+        };
+    }
+
+    private async Task<HostCapabilityEntry> DetectDockerComposeCapabilityAsync(CancellationToken cancellationToken)
+    {
+        var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "docker", "compose", "version"], cancellationToken);
+        return new HostCapabilityEntry
+        {
+            Id = "container.docker-compose",
+            DisplayName = "Docker Compose",
+            Status = result.IsSuccess ? HostCapabilityStatus.Available : HostCapabilityStatus.Unavailable,
+            Summary = result.IsSuccess ? "Docker Compose is available through docker compose." : "Docker Compose was not detected through docker compose.",
             Details = result.IsSuccess ? result.StandardOutput.Trim() : string.IsNullOrWhiteSpace(result.FailureMessage) ? result.StandardError : result.FailureMessage,
         };
     }

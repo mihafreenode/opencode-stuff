@@ -39,7 +39,7 @@ public sealed class AvaloniaAppBootstrapper
             windowsTerminalProfileSetupService);
         var doctorService = new WorkspaceDoctorService(services.PlatformDetector, services.RuntimeResolver, new WorkspaceDiscoveryService(), new WorkspaceYamlService(), new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), new WorkspaceYamlService(), services.PlatformDetector, services.RuntimeResolver, new WorkspaceResolver(services.CatalogProvider.LoadFeatures(), services.CatalogProvider.LoadServices(), services.CatalogProvider.LoadCapabilities(), services.CatalogProvider.LoadKnowledgePacks()), new ComposeGenerator(), new ProvisioningScriptGenerator());
-        var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService, hostCapabilities);
+        var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService, hostCapabilities, services.CatalogProvider);
         var templateShellService = new TemplateCatalogShellService(services.CatalogProvider);
         var documentationShellService = new DocumentationShellService(applicationBasePath, desktopShellService);
         var appBuildInfo = new AppBuildInfoService(applicationBasePath).GetCurrent();

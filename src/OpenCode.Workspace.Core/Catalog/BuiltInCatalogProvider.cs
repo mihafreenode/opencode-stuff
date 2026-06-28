@@ -25,6 +25,8 @@ public sealed class BuiltInCatalogProvider
             .Build();
     }
 
+    public string CatalogRootPath => _catalogRootPath;
+
     public IReadOnlyList<FeatureManifest> LoadFeatures() => LoadAll<FeatureManifest>("features");
     public IReadOnlyList<CapabilityManifest> LoadCapabilities() => LoadAll<CapabilityManifest>("capabilities");
     public IReadOnlyList<KnowledgePackManifest> LoadKnowledgePacks() => LoadAll<KnowledgePackManifest>("knowledge-packs");

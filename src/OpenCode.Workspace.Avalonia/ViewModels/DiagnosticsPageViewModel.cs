@@ -11,6 +11,7 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 {
     private readonly IDiagnosticsShellService _diagnosticsShellService;
     private readonly Func<WorkspaceLoadReport> _workspaceLoadReportProvider;
+    private IClipboardService? _clipboardService;
     private WorkspaceReference? _selectedWorkspaceTarget;
     private string _statusMessage;
     private DiagnosticItemViewModel? _selectedDoctorItem;
@@ -35,6 +36,7 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     }
 
     public ObservableCollection<WorkspaceReference> WorkspaceTargets { get; }
+    public ObservableCollection<DiagnosticItemViewModel> RequiredDoctorItems { get; } = [];
     public ObservableCollection<DiagnosticItemViewModel> DoctorItems { get; } = [];
     public ObservableCollection<DiagnosticItemViewModel> ValidationItems { get; } = [];
     public AsyncRelayCommand RunDoctorCommand { get; }
@@ -125,20 +127,49 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
 
         var result = await _diagnosticsShellService.RunDoctorAsync(SelectedWorkspaceTarget.RootPath);
         var hostCapabilities = await _diagnosticsShellService.DetectHostCapabilitiesAsync();
+        var templateCatalog = _diagnosticsShellService.GetTemplateCatalogStatus();
+        RequiredDoctorItems.Clear();
         DoctorItems.Clear();
-        DoctorItems.Add(new DiagnosticItemViewModel("Host platform", "Pass", hostCapabilities.Platform.ToString(), string.Empty, hostCapabilities.Architecture));
+
+        AddRequiredHostDiagnostic("Diagnostic_Git", "Git", hostCapabilities.FindEntry("tool.git"), "Install Git before using Save Points, Publish, and Recovery.");
+        AddRequiredHostDiagnostic("Diagnostic_Docker", hostCapabilities.FindEntry("container.docker")?.DisplayName ?? "Docker", hostCapabilities.FindEntry("container.docker"), "Install Docker Desktop or Docker Engine and ensure docker is available.");
+        AddRequiredHostDiagnostic("Diagnostic_DockerCompose", "Docker Compose", hostCapabilities.FindEntry("container.docker-compose"), "Install or enable docker compose before running packaged workspaces.");
+        AddRequiredHostDiagnostic("Diagnostic_WindowsTerminal", "Windows Terminal", hostCapabilities.FindEntry("terminal.windows-terminal"), "Install Windows Terminal or enable its App Execution Alias before attach validation.");
+        AddRequiredHostDiagnostic("Diagnostic_NerdFont", "Nerd Font", hostCapabilities.FindEntry("font.nerd-fonts"), "Install a supported Nerd Font such as JetBrainsMono Nerd Font.");
+        AddRequiredHostDiagnostic("Diagnostic_OpenCodeCli", "OpenCode CLI", hostCapabilities.FindEntry("tool.opencode-cli"), "Install the OpenCode CLI and ensure opencode is available on PATH.");
+        AddRequiredDoctorItem(new DiagnosticItemViewModel(
+            "Template catalog",
+            ToStatus(templateCatalog.IsAvailable),
+            templateCatalog.IsAvailable ? $"Loaded {templateCatalog.TemplateCount} packaged template manifest(s)." : "The packaged template catalog did not load any templates.",
+            ResultGuidance(templateCatalog.IsAvailable, "Verify the packaged catalog folder exists and includes template manifests."),
+            $"Catalog root: {templateCatalog.CatalogRootPath}{Environment.NewLine}{templateCatalog.Detail}",
+            "Diagnostic_TemplateCatalog"));
+        AddRequiredDoctorItem(new DiagnosticItemViewModel("Host architecture", "Pass", hostCapabilities.Architecture, string.Empty, hostCapabilities.Platform.ToString(), "Diagnostic_HostArchitecture"));
+        AddRequiredDoctorItem(new DiagnosticItemViewModel(
+            "Runtime platform",
+            ToStatus(!string.IsNullOrWhiteSpace(result.RuntimeState?.ResolvedPlatform ?? result.HostPlatform?.NativeContainerPlatform), string.IsNullOrWhiteSpace(result.RuntimeState?.ResolvedPlatform ?? result.HostPlatform?.NativeContainerPlatform)),
+            result.RuntimeState?.ResolvedPlatform ?? result.HostPlatform?.NativeContainerPlatform ?? "Unavailable",
+            ResultGuidance(!string.IsNullOrWhiteSpace(result.RuntimeState?.ResolvedPlatform ?? result.HostPlatform?.NativeContainerPlatform), "Run the workspace once or regenerate runtime state so the runtime platform can be recorded."),
+            $"Requested native target: {result.HostPlatform?.NativeContainerPlatform ?? "unknown"}",
+            "Diagnostic_RuntimePlatform"));
+
         foreach (var section in hostCapabilities.Sections)
         {
             foreach (var entry in section.Entries)
             {
+                if (IsDedicatedDiagnostic(entry.Id))
+                {
+                    continue;
+                }
+
                 DoctorItems.Add(new DiagnosticItemViewModel(entry.DisplayName, ToStatus(entry.Status), entry.Summary, ResultGuidance(entry.Status == HostCapabilityStatus.Available, $"Review {section.DisplayName.ToLowerInvariant()} support on this host."), entry.Details));
             }
         }
 
         var host = result.HostPlatform;
         var docker = host?.Docker;
+        DoctorItems.Add(new DiagnosticItemViewModel("Host platform", "Pass", hostCapabilities.Platform.ToString(), string.Empty, hostCapabilities.Architecture));
         DoctorItems.Add(new DiagnosticItemViewModel("Host OS", "Pass", host?.OperatingSystem.ToString() ?? "Unknown", string.Empty, host?.HostDescription));
-        DoctorItems.Add(new DiagnosticItemViewModel("Architecture", "Pass", host?.Architecture.ToString() ?? "Unknown", string.Empty, $"Native target {host?.NativeContainerPlatform ?? "unknown"}"));
         DoctorItems.Add(new DiagnosticItemViewModel("Docker CLI", ToStatus(docker?.CliAvailable == true), docker?.CliAvailable == true ? "Docker CLI is available." : "Docker CLI is not available.", ResultGuidance(docker?.CliAvailable == true, "Install Docker Desktop or Docker Engine and ensure docker is on PATH."), docker?.DiagnosticSummary));
         DoctorItems.Add(new DiagnosticItemViewModel("Docker Engine", ToStatus(docker?.EngineReachable == true), docker?.EngineReachable == true ? "Docker engine is reachable." : "Docker engine is not reachable.", ResultGuidance(docker?.EngineReachable == true, "Start Docker Desktop or the Docker daemon."), docker?.DiagnosticSummary));
         DoctorItems.Add(new DiagnosticItemViewModel("Buildx support", ToStatus(docker?.BuildxAvailable == true), docker?.BuildxAvailable == true ? BuildSupportedPlatformsSummary(docker!.SupportedPlatforms) : "Docker Buildx support is unavailable.", ResultGuidance(docker?.BuildxAvailable == true, "Enable Docker Buildx before validating multi-platform runtime targets."), docker?.DiagnosticSummary));
@@ -219,7 +250,17 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Run Doctor", "Refresh the current workspace doctor summary.", SelectedWorkspaceTarget is not null, string.Empty, RunDoctorCommand));
         DetailActions.Add(new ActionItemViewModel("Validate linux/amd64", "Validate direct or fallback amd64 runtime readiness.", SelectedWorkspaceTarget is not null, string.Empty, ValidateAmd64Command));
         DetailActions.Add(new ActionItemViewModel("Validate linux/arm64", "Validate ARM64 build and execution readiness.", SelectedWorkspaceTarget is not null, string.Empty, ValidateArm64Command));
+        DetailActions.Add(new ActionItemViewModel("Copy Doctor Evidence", "Copy evidence-friendly packaged doctor output.", HasDoctorResults && _clipboardService is not null, BuildDoctorCopyDisabledReason(), new AsyncRelayCommand(CopyDoctorEvidenceAsync, () => HasDoctorResults && _clipboardService is not null)));
     }
+
+    public void SetClipboardService(IClipboardService clipboardService)
+    {
+        _clipboardService = clipboardService;
+        UpdateActionPanel();
+    }
+
+    public string GetDoctorEvidenceText()
+        => string.Join(Environment.NewLine + Environment.NewLine, DoctorItems.Select(item => item.EvidenceText));
 
     public void RefreshWorkspaceLoadSummary()
     {
@@ -244,12 +285,37 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
     private static string ToStatus(bool success, bool warning = false)
         => warning ? "Warning" : success ? "Pass" : "Fail";
 
+    private void AddRequiredHostDiagnostic(string automationId, string title, HostCapabilityEntry? entry, string nextStep)
+    {
+        if (entry is null)
+        {
+            AddRequiredDoctorItem(new DiagnosticItemViewModel(title, "Unknown", $"{title} status was not reported on this host.", nextStep, "The current host capability provider did not return this diagnostic row.", automationId));
+            return;
+        }
+
+        AddRequiredDoctorItem(new DiagnosticItemViewModel(title, ToStatus(entry.Status), entry.Summary, ResultGuidance(entry.Status == HostCapabilityStatus.Available, nextStep), entry.Details, automationId));
+    }
+
+    private void AddRequiredDoctorItem(DiagnosticItemViewModel item)
+    {
+        RequiredDoctorItems.Add(item);
+        DoctorItems.Add(item);
+    }
+
+    private static bool IsDedicatedDiagnostic(string entryId)
+        => entryId is "tool.git"
+            or "container.docker"
+            or "container.docker-compose"
+            or "terminal.windows-terminal"
+            or "font.nerd-fonts"
+            or "tool.opencode-cli";
+
     private static string ToStatus(HostCapabilityStatus status)
         => status switch
         {
             HostCapabilityStatus.Available => "Pass",
             HostCapabilityStatus.Warning => "Warning",
-            HostCapabilityStatus.Unknown => "Warning",
+            HostCapabilityStatus.Unknown => "Unknown",
             _ => "Fail",
         };
 
@@ -260,4 +326,14 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
         => supportedPlatforms.Count == 0
             ? "Docker Buildx is available."
             : $"Docker Buildx supports {string.Join(", ", supportedPlatforms)}.";
+
+    private string BuildDoctorCopyDisabledReason()
+        => !HasDoctorResults
+            ? "Run Doctor first to capture packaged diagnostics evidence."
+            : _clipboardService is null
+                ? "Clipboard is unavailable."
+                : string.Empty;
+
+    private Task CopyDoctorEvidenceAsync()
+        => _clipboardService is null ? Task.CompletedTask : _clipboardService.SetTextAsync(GetDoctorEvidenceText());
 }

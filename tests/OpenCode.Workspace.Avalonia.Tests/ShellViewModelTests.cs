@@ -625,9 +625,29 @@ public sealed class ShellViewModelTests
         await page.RunDoctorCommand.ExecuteAsync();
 
         Assert.NotEmpty(page.DoctorItems);
-        Assert.Contains(page.DoctorItems, item => item.Title == "Git");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_Git" && item.Title == "Git");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_DockerCompose" && item.Title == "Docker Compose");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_NerdFont" && item.Title == "Nerd Font");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_OpenCodeCli" && item.Title == "OpenCode CLI");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_TemplateCatalog" && item.Title == "Template catalog");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_HostArchitecture" && item.Title == "Host architecture");
+        Assert.Contains(page.DoctorItems, item => item.AutomationId == "Diagnostic_RuntimePlatform" && item.Title == "Runtime platform");
         Assert.Contains(page.DoctorItems, item => item.Title == "Docker Engine");
         Assert.Equal("Workspace can run on this machine.", page.StatusMessage);
+    }
+
+    [Fact]
+    public async Task DoctorEvidenceText_IncludesStableDiagnosticsRows()
+    {
+        var page = new DiagnosticsPageViewModel(new FakeDiagnosticsShellService(), [new WorkspaceReference("alpha", "/workspace/alpha")]);
+
+        await page.RunDoctorCommand.ExecuteAsync();
+
+        var evidence = page.GetDoctorEvidenceText();
+        Assert.Contains("Diagnostic_Git: Git", evidence, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic_DockerCompose: Docker Compose", evidence, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic_TemplateCatalog: Template catalog", evidence, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic_RuntimePlatform: Runtime platform", evidence, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -690,6 +710,16 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Docker CLI", page.DetailTitle);
         Assert.Contains(page.DetailItems, item => item.Label == "Status");
+    }
+
+    [Fact]
+    public void DiagnosticsItems_ExposeStableAutomationNames()
+    {
+        var item = new DiagnosticItemViewModel("Git", "Pass", "Git is available.", string.Empty, automationId: "Diagnostic_Git");
+
+        Assert.Equal("Diagnostic_Git", item.AutomationId);
+        Assert.Equal("Diagnostic_Git", item.AutomationName);
+        Assert.Contains("Status: Pass", item.EvidenceText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2046,6 +2076,16 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void MainWindow_DiagnosticsRows_ExposeStableAutomationBindings()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
+
+        Assert.Contains("automation:AutomationProperties.AutomationId=\"{Binding AutomationId}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("automation:AutomationProperties.Name=\"{Binding AutomationName}\"", axaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task StartingNewOperation_ClearsPreviousVisibleLog()
     {
         var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
@@ -2932,6 +2972,14 @@ public sealed class ShellViewModelTests
         public Task<HostCapabilityReport> DetectHostCapabilitiesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(FakeHostCapabilities.CreateReport());
 
+        public TemplateCatalogDiagnosticResult GetTemplateCatalogStatus()
+            => new()
+            {
+                CatalogRootPath = "/app/catalog",
+                TemplateCount = 2,
+                Detail = "Loaded 2 template manifest(s) from the packaged catalog.",
+            };
+
         public Task<WorkspaceDoctorResult> RunDoctorAsync(string workspacePath, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceDoctorResult
             {
@@ -3018,6 +3066,7 @@ public sealed class ShellViewModelTests
                         Entries =
                         [
                             new HostCapabilityEntry { Id = "tool.git", DisplayName = "Git", Status = HostCapabilityStatus.Available, Summary = "Git is available." },
+                            new HostCapabilityEntry { Id = "tool.opencode-cli", DisplayName = "OpenCode CLI", Status = HostCapabilityStatus.Available, Summary = "OpenCode CLI is available.", Details = "C:/Users/test/AppData/Local/Microsoft/WindowsApps/opencode.exe" },
                             new HostCapabilityEntry { Id = "terminal.profile-support", DisplayName = "Windows Terminal profile support", Status = HostCapabilityStatus.Available, Summary = "Managed Windows Terminal profiles are supported." },
                         ],
                     },
@@ -3028,6 +3077,27 @@ public sealed class ShellViewModelTests
                         Entries =
                         [
                             new HostCapabilityEntry { Id = "font.nerd-fonts", DisplayName = "Nerd Fonts", Status = HostCapabilityStatus.Available, Summary = "Nerd Fonts are available." },
+                            new HostCapabilityEntry { Id = "font.cascadia-code", DisplayName = "Cascadia Code", Status = HostCapabilityStatus.Available, Summary = "Cascadia Code is available." },
+                        ],
+                    },
+                    new HostCapabilitySection
+                    {
+                        Id = "terminals",
+                        DisplayName = "Terminals",
+                        Entries =
+                        [
+                            new HostCapabilityEntry { Id = "terminal.windows-terminal", DisplayName = "Windows Terminal", Status = HostCapabilityStatus.Available, Summary = "Windows Terminal command is available." },
+                        ],
+                    },
+                    new HostCapabilitySection
+                    {
+                        Id = "containers",
+                        DisplayName = "Container runtime",
+                        Entries =
+                        [
+                            new HostCapabilityEntry { Id = "container.docker", DisplayName = "Docker Desktop", Status = HostCapabilityStatus.Available, Summary = "Docker Desktop is reachable." },
+                            new HostCapabilityEntry { Id = "container.docker-compose", DisplayName = "Docker Compose", Status = HostCapabilityStatus.Available, Summary = "Docker Compose is available through docker compose.", Details = "Docker Compose version v2.38.1" },
+                            new HostCapabilityEntry { Id = "container.podman", DisplayName = "Podman", Status = HostCapabilityStatus.Unavailable, Summary = "Podman was not detected." },
                         ],
                     },
                 ],

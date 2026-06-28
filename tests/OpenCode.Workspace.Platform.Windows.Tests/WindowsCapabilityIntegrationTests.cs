@@ -37,6 +37,8 @@ public sealed class WindowsCapabilityIntegrationTests
         Assert.NotEmpty(report.Sections);
         Assert.NotNull(report.FindEntry("terminal.windows-terminal"));
         Assert.NotNull(report.FindEntry("tool.git"));
+        Assert.NotNull(report.FindEntry("container.docker-compose"));
+        Assert.NotNull(report.FindEntry("tool.opencode-cli"));
         Assert.NotNull(report.FindEntry("terminal.profile-support"));
     }
 

@@ -15,8 +15,10 @@ public sealed class MacHostCapabilitiesTests
             "sh -lc test -d '/Applications/iTerm.app'" => Failure(),
             "sh -lc command -v wezterm" => Success("/opt/homebrew/bin/wezterm\n"),
             "sh -lc command -v docker" => Success("/usr/local/bin/docker\n"),
+            "sh -lc docker compose version" => Success("Docker Compose version v2.38.1\n"),
             "sh -lc command -v podman" => Failure(),
             "sh -lc command -v git" => Success("/usr/bin/git\n"),
+            "sh -lc command -v opencode" => Success("/usr/local/bin/opencode\n"),
             "sh -lc command -v brew" => Success("/opt/homebrew/bin/brew\n"),
             _ => Failure($"Unhandled command: {command}"),
         }));
@@ -27,6 +29,8 @@ public sealed class MacHostCapabilitiesTests
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("font.jetbrains-mono")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("terminal.terminal-app")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("terminal.wezterm")?.Status);
+        Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("container.docker-compose")?.Status);
+        Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("tool.opencode-cli")?.Status);
         Assert.Equal(HostCapabilityStatus.Available, report.FindEntry("package.brew")?.Status);
         Assert.Equal(HostCapabilityStatus.Unavailable, report.FindEntry("terminal.profile-support")?.Status);
     }
