@@ -38,16 +38,22 @@
 
 ### Validation Snapshot
 
-- Core: `387/387`
-- Avalonia: `97/97`
-- Platform.Windows: `19 passed, 7 skipped`
+- Core: `390/390`
+- Avalonia: `104/104`
+- Platform.Windows: `26/26`
 - Platform.Linux: `2/2`
 - Platform.MacOS: `2/2`
 - CLI: `20/20`
-- cross-platform publish verified for `win-x64`, `linux-x64`, and `osx-arm64`
+- clean Windows-host `Release` build verified on commit `4d8b9cfd365f5feb6377a55010a7c8d20044ab83`
+- fresh extracted Windows package verified from `opencode-stuff-win-x64.zip`
+- packaged smoke verified:
+  - launch
+  - existing workspace list load
+  - Diagnostics page
+  - required `Diagnostic_*` rows
+  - `Create Workspace` dialog
 
 ### Known Limitations
 
-- manual packaged GUI release checklist execution is still required before tagging the release
-- full packaged desktop workflow automation is not yet implemented
+- full packaged desktop workflow automation is not yet implemented; release sign-off still depends on manual packaged GUI checks
 - some deferred convenience UX remains intentionally out of scope for this release candidate

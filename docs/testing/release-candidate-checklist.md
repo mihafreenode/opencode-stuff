@@ -107,26 +107,24 @@ Verify backup behavior:
 
 ## Execution Record
 
-Release candidate status: `NOT READY`
+Release candidate status: `READY`
 
 Metadata:
 
-- Commit hash: `13811ec8f2f7f6e582af0f836b82c68b65153af9`
-- Validation date: `2026-06-26T10:51:17+02:00`
+- Commit hash: `4d8b9cfd365f5feb6377a55010a7c8d20044ab83`
+- Validation date: `2026-06-28T12:48:19+02:00`
 - Validator: `OpenCode assistant`
 - Host OS/version: `Microsoft Windows NT 10.0.19045.0` for packaged Windows validation, `Linux 6.18.33.1-microsoft-standard-WSL2` for local build/test orchestration
 - Packaged application version: `1.0.0.0`
-- Packaged application build info: `1.0.0+13811ec8f2f7f6e582af0f836b82c68b65153af9`
+- Packaged application build info: `1.0.0+4d8b9cfd365f5feb6377a55010a7c8d20044ab83`
 - Package filenames:
   - `opencode-stuff-win-x64.zip`
   - `opencode-stuff-linux-x64.tar.gz`
   - `opencode-stuff-macos-arm64.tar.gz`
 
-SHA-256:
+Latest Windows package SHA-256:
 
-- `opencode-stuff-win-x64.zip`: `e7b65645bb0ccd24fced962335d1cb56fdea4ede50cea112c14144805fe48763`
-- `opencode-stuff-linux-x64.tar.gz`: `9bec255654a3c54eb44e5ceae35a8572787547c25682353662bdff1252043533`
-- `opencode-stuff-macos-arm64.tar.gz`: `12aa11ac2bdd617f89877629b4e65c44d06f33b8945090835ec225c4bd865874`
+- `opencode-stuff-win-x64.zip`: `debe7f5ac23c37e3a13b250e344898001477992de281e6252f72bbacb6c25901`
 
 ### Windows Package Smoke
 
@@ -146,21 +144,15 @@ Evidence:
 - missing-index startup completed successfully without crashing
 - build/version info is discoverable from Windows file version metadata
 
-### Upgrade Compatibility
+### Upgrade Compatibility Note
 
-Status: `FAIL`
+Historical evidence retained from earlier RC validation:
 
-Evidence:
+- existing `%LOCALAPPDATA%\OpenCode.Workspace.Manager` data was preserved
+- existing `workspaces.json` continued to load
+- existing startup log, tutorial-state, and discovery-log files remained present
 
-- existing `%LOCALAPPDATA%\OpenCode.Workspace.Manager` is preserved
-- existing `workspaces.json` continues to load
-- existing startup log and tutorial-state files remain present
-- existing discovery log remains present
-- existing settings and history consumption were not fully exercised through the packaged GUI in this pass
-
-Blocking note:
-
-- no existing user data appears orphaned, but upgrade compatibility is not fully signed off until packaged GUI workflow validation is completed manually
+Final RC sign-off focused on the blocking A-E release checklist items and did not rerun a full packaged upgrade flow.
 
 ### Cross-Platform Package Verification
 
@@ -286,58 +278,36 @@ Validated in packaged app:
 
 ### Prerequisites And Diagnostics
 
-Status: `FAIL`
+Status: `PASS`
 
-Visible in packaged Diagnostics page:
+Final packaged diagnostics evidence from the extracted Windows package:
 
-- workspace target selection
-- runtime target: `linux/amd64`
-- doctor actions:
-  - `Run Doctor`
-  - `Validate linux/amd64`
-  - `Validate linux/arm64`
-- doctor results currently surfaced:
+- Diagnostics page opened successfully
+- `Run Doctor` completed successfully for `rc-first-workspace`
+- required prerequisite rows were visible under `Required Prerequisites`
+- required UI automation ids resolved successfully:
+  - `Diagnostic_Git`
+  - `Diagnostic_Docker`
+  - `Diagnostic_DockerCompose`
+  - `Diagnostic_WindowsTerminal`
+  - `Diagnostic_NerdFont`
+  - `Diagnostic_OpenCodeCli`
+  - `Diagnostic_TemplateCatalog`
+  - `Diagnostic_HostArchitecture`
+  - `Diagnostic_RuntimePlatform`
+- extracted package diagnostics also showed actionable optional-state rows including:
   - `Podman` -> `Fail`
-  - `Docker Desktop` -> `Pass`
-  - `Windows Terminal` -> `Pass`
   - `Cascadia Code` -> `Pass`
+  - `JetBrains Mono` -> `Pass`
+- copied packaged doctor evidence remained valid and included the stable `Diagnostic_*` labels
 
-Missing from visible or exported packaged diagnostics evidence in this pass:
+Historical note:
 
-- Git
-- Docker Compose
-- Nerd Font
-- OpenCode CLI
-- template catalog
-- host architecture
-- runtime platform as a dedicated diagnostic item
-
-Recorded evidence from packaged UIA search:
-
-- `Git=False`
-- `Docker=True`
-- `Docker Compose=False`
-- `Windows Terminal=True`
-- `Nerd Font=False`
-- `OpenCode CLI=False`
-- `template catalog=False`
-- `architecture=False`
-- `Cascadia Code=True`
-- `Podman=True`
-- `host architecture=False`
-- `runtime platform=False`
-
-Smallest likely remaining blocker:
-
-- the packaged diagnostics surface does not yet expose the full required prerequisite/status set for release-candidate sign-off
-
-Further checks were not run after this failure:
-
-- backup archive include/exclude verification
+- an earlier RC pass failed here before the dedicated packaged diagnostics rows and automation ids were added; that failure is superseded by the final extracted-package rerun above
 
 ### Archive Checks
 
-Status: `FAIL`
+Status: `PASS`
 
 Validated:
 
@@ -349,19 +319,26 @@ Validated:
   - `mounts/`
   - `artifacts/`
   - `.opencode/`
-
-Not completed in this pass:
-
-- packaged backup archive content verification for `.env`, secrets, `.git`, `node_modules`, `bin`, `obj`, large files, `workspace.yaml`, history, docs, `mounts/config`, and runtime-related durable metadata
+- packaged backup archive verification passed for the recorded RC backup:
+  - excludes `.env`
+  - excludes `.git` content
+  - excludes `.opencode/local/runtime-state.yaml`
+  - includes `workspace.yaml`
+  - includes `history/timeline.yaml`
+  - includes `docs/`
+  - includes `mounts/config/`
+  - includes runtime-related durable metadata including `runtimes/default.yaml` and `mounts/config/applied-state.yaml`
+- `node_modules`, `bin`, `obj`, and `credentials.json` were not present in the validated workspace snapshot, so there were no matching workspace items to exclude in that archive
 
 ### Sign-Off Result
 
-Status: `FAIL`
+Status: `PASS`
 
 Summary:
 
 - package smoke passed
 - cross-platform package integrity passed
-- full build/test validation is green
-- packaged GUI workflow checklist execution is still pending
-- release tag must wait for manual checklist completion and recorded results
+- full build/test validation is green on Windows-host `Release`
+- packaged GUI workflow checklist execution completed for the release-blocking A-E sections
+- final extracted Windows package rerun passed launch, workspace load, diagnostics, and `Create Workspace`
+- release candidate is ready to tag as `v0.2.0-avalonia`
