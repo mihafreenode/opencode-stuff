@@ -13,7 +13,12 @@ public sealed class WorkspaceRuntimeStateServiceTests
         var paths = WorkspacePathBuilder.Build(root);
 
         Assert.Equal(Path.Combine(root, ".opencode", "local", "runtime-state.yaml"), paths.RuntimeStatePath);
-        Assert.DoesNotContain(".opencode\\local\\runtime-state.yaml", paths.RuntimeStatePath, StringComparison.Ordinal);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            var incorrectSingleSegmentPath = Path.Combine(root, ".opencode\\local\\runtime-state.yaml");
+            Assert.NotEqual(incorrectSingleSegmentPath, paths.RuntimeStatePath);
+        }
     }
 
     [Fact]
@@ -52,6 +57,11 @@ public sealed class WorkspaceRuntimeStateServiceTests
             Assert.Equal("linux/arm64", loaded.ResolvedPlatform);
             Assert.Equal("Native", loaded.CompatibilityMode);
             Assert.Equal(DateTimeOffset.Parse("2026-06-19T08:00:00Z"), loaded.LastSuccessfulProvision);
+
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.False(File.Exists(Path.Combine(tempRoot, ".opencode\\local\\runtime-state.yaml")));
+            }
         }
         finally
         {

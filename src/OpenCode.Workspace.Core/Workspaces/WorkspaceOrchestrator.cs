@@ -636,7 +636,15 @@ public sealed class WorkspaceOrchestrator
     public async Task EnsureRuntimeStateCurrentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         Log(log, "app", $"Regenerating runtime-state.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
-        await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        try
+        {
+            await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}", exception);
+        }
+
         if (!File.Exists(snapshot.Paths.RuntimeStatePath))
         {
             throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}");

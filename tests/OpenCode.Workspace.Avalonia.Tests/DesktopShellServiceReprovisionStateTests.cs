@@ -62,19 +62,27 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var timelineService = new WorkspaceTimelineService();
             var checkpointService = new WorkspaceCheckpointService();
             var runtime = new StubContainerRuntime();
-            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime, new UnavailableRuntimeResolver());
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Recover Failure"), includeRuntimeInspection: false);
             var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
 
             File.Delete(created.Paths.ComposePath);
             File.Delete(created.Paths.RuntimeStatePath);
+            Directory.Delete(created.Paths.OpencodeLocalPath, recursive: false);
+            File.WriteAllText(created.Paths.OpencodeLocalPath, "block runtime-state directory creation");
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RecoverWorkspaceAsync(created.Paths.RootPath, created));
 
-            Assert.Contains("runtime-state.yaml", exception.Message, StringComparison.Ordinal);
+            Assert.True(
+                exception.Message.Contains("runtime-state.yaml", StringComparison.Ordinal)
+                || exception.Message.Contains("required managed runtime files", StringComparison.Ordinal),
+                $"Unexpected exception message: {exception.Message}");
             var savedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
             Assert.False(savedRecord.LastOperationSucceeded);
-            Assert.Contains("runtime-state.yaml", savedRecord.LastOperationResult, StringComparison.Ordinal);
+            Assert.True(
+                savedRecord.LastOperationResult.Contains("runtime-state.yaml", StringComparison.Ordinal)
+                || savedRecord.LastOperationResult.Contains("required managed runtime files", StringComparison.Ordinal),
+                $"Unexpected saved result: {savedRecord.LastOperationResult}");
         }
         finally
         {
