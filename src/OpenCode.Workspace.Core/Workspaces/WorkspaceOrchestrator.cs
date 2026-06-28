@@ -1406,11 +1406,6 @@ public sealed class WorkspaceOrchestrator
     {
         var hostPlatform = await GetCachedHostPlatformAsync(cancellationToken);
         var resolvedRuntimePlan = await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
-        if (!resolvedRuntimePlan.IsAvailable)
-        {
-            return;
-        }
-
         var runtimeState = _workspaceRuntimeStateService.CreateState(resolvedRuntimePlan, DateTimeOffset.UtcNow);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
     }

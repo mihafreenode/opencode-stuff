@@ -6,6 +6,17 @@ namespace OpenCode.Workspace.Core.Tests;
 public sealed class WorkspaceRuntimeStateServiceTests
 {
     [Fact]
+    public void WorkspacePathBuilder_UsesCrossPlatformRuntimeStatePath()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"runtime-state-paths-{Guid.NewGuid():N}");
+
+        var paths = WorkspacePathBuilder.Build(root);
+
+        Assert.Equal(Path.Combine(root, ".opencode", "local", "runtime-state.yaml"), paths.RuntimeStatePath);
+        Assert.DoesNotContain(".opencode\\local\\runtime-state.yaml", paths.RuntimeStatePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Read_WhenFileIsMissing_ReturnsNull()
     {
         var service = new WorkspaceRuntimeStateService();
@@ -91,5 +102,62 @@ public sealed class WorkspaceRuntimeStateServiceTests
         Assert.Equal("linux/amd64", state.ResolvedPlatform);
         Assert.Equal("Emulated", state.CompatibilityMode);
         Assert.Equal(DateTimeOffset.Parse("2026-06-19T09:00:00Z"), state.LastSuccessfulProvision);
+    }
+
+    [Fact]
+    public void CreateState_PreservesUnavailableRuntimePlanForMachineLocalRecoveryState()
+    {
+        var service = new WorkspaceRuntimeStateService();
+
+        var state = service.CreateState(new ResolvedRuntimePlan
+        {
+            Runtime = "docker",
+            TargetPlatform = "linux/arm64",
+            CompatibilityMode = RuntimeCompatibilityMode.Unavailable,
+            SupportLevel = SupportLevel.Unavailable,
+            IsAvailable = false,
+            DiagnosticExplanation = "Docker is unavailable on this host.",
+            HostPlatform = new HostPlatformInfo
+            {
+                OperatingSystem = HostOperatingSystem.MacOS,
+                Architecture = HostArchitecture.Arm64,
+                HostDescription = "macOS arm64",
+                NativeContainerPlatform = "linux/arm64",
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = false,
+                    EngineReachable = false,
+                    BuildxAvailable = false,
+                    SupportedPlatforms = [],
+                },
+            },
+        });
+
+        Assert.Equal("docker", state.ResolvedEngine);
+        Assert.Equal("linux/arm64", state.ResolvedPlatform);
+        Assert.Equal("Unavailable", state.CompatibilityMode);
+    }
+
+    [Fact]
+    public void ManagedRuntimePathSources_DoNotUseLiteralBackslashRuntimeStateSegments()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var pathBuilder = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Core", "Workspaces", "WorkspacePathBuilder.cs"));
+        var orchestrator = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Core", "Workspaces", "WorkspaceOrchestrator.cs"));
+
+        Assert.DoesNotContain(".opencode\\local", pathBuilder, StringComparison.Ordinal);
+        Assert.DoesNotContain(".opencode\\local", orchestrator, StringComparison.Ordinal);
+    }
+
+    private static string GetRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OpenCode.Workspace.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("Repository root was not found.");
     }
 }

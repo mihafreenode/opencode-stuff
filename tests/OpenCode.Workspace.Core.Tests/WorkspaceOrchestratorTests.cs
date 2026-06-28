@@ -845,6 +845,55 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public async Task RecoverWorkspace_RegeneratesRuntimeStateAtSnapshotPath_WhenRuntimeIsUnavailable()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var orchestrator = new WorkspaceOrchestrator(
+                new WorkspaceYamlService(),
+                new WorkspaceDiscoveryService(),
+                new WorkspaceRepository(GetAppDataRoot(tempRoot)),
+                CreateResolver(),
+                new ComposeGenerator(),
+                new EnvironmentFileGenerator(),
+                new ProvisioningScriptGenerator(),
+                new TerminalArtifactsGenerator(),
+                new AttachArtifactsGenerator(),
+                new WorkspaceContentGenerator(),
+                new WorkspaceAppliedStateService(),
+                new WorkspaceCheckpointService(),
+                new WorkspaceTimelineService(),
+                new WorkspaceSafetyService(),
+                new WorkspaceIgnorePolicyService(),
+                new WorkspaceRuntimeStateService(),
+                new FakeWorkspaceProvider(),
+                runtime,
+                new FixedPlatformDetector(),
+                new UnavailableRuntimeResolver(),
+                new NoOpTerminalLauncher());
+
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, CreateAnalizaDefinition(), includeRuntimeInspection: false);
+            File.Delete(snapshot.Paths.RuntimeStatePath);
+
+            await orchestrator.RecoverAsync(snapshot);
+
+            Assert.True(File.Exists(snapshot.Paths.RuntimeStatePath));
+            var restored = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(restored);
+            Assert.Equal(snapshot.Paths.RuntimeStatePath, Path.Combine(snapshot.Paths.OpencodeLocalPath, "runtime-state.yaml"));
+            Assert.Equal("linux/amd64", restored.ResolvedPlatform);
+            Assert.Equal("Unavailable", restored.CompatibilityMode);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task AttachAsync_WhenWorkspaceContainerIsNotRunning_DoesNotLaunchTerminal()
     {
         var tempRoot = CreateTempRoot();
@@ -1738,6 +1787,23 @@ public sealed class WorkspaceOrchestratorTests
                 SupportLevel = SupportLevel.NativeTested,
                 IsAvailable = true,
                 DiagnosticExplanation = "Test runtime plan.",
+                HostPlatform = hostPlatform,
+            });
+        }
+    }
+
+    private sealed class UnavailableRuntimeResolver : IRuntimeResolver
+    {
+        public Task<ResolvedRuntimePlan> ResolveAsync(WorkspaceDefinition definition, HostPlatformInfo hostPlatform, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new ResolvedRuntimePlan
+            {
+                Runtime = "docker",
+                TargetPlatform = hostPlatform.NativeContainerPlatform,
+                CompatibilityMode = RuntimeCompatibilityMode.Unavailable,
+                SupportLevel = SupportLevel.Unavailable,
+                IsAvailable = false,
+                DiagnosticExplanation = "Test runtime unavailable.",
                 HostPlatform = hostPlatform,
             });
         }
