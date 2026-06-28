@@ -629,6 +629,18 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", $"Validating regenerated compose.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
         var result = await _containerRuntime.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace recovery failed.");
+        await EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+        EnsureRecoveredManagedRuntimeArtifactsExist(snapshot.Paths);
+    }
+
+    public async Task EnsureRuntimeStateCurrentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        Log(log, "app", $"Regenerating runtime-state.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
+        await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        if (!File.Exists(snapshot.Paths.RuntimeStatePath))
+        {
+            throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}");
+        }
     }
 
     public async Task StartAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -1401,6 +1413,27 @@ public sealed class WorkspaceOrchestrator
 
         var runtimeState = _workspaceRuntimeStateService.CreateState(resolvedRuntimePlan, DateTimeOffset.UtcNow);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
+    }
+
+    private static void EnsureRecoveredManagedRuntimeArtifactsExist(WorkspacePaths paths)
+    {
+        var missing = new List<string>();
+        if (!File.Exists(paths.ComposePath))
+        {
+            missing.Add(paths.ComposePath);
+        }
+
+        if (!File.Exists(paths.RuntimeStatePath))
+        {
+            missing.Add(paths.RuntimeStatePath);
+        }
+
+        if (missing.Count == 0)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {string.Join(Environment.NewLine + "- ", missing)}");
     }
 
     private Task<HostPlatformInfo> GetCachedHostPlatformAsync(CancellationToken cancellationToken)

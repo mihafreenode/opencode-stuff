@@ -232,9 +232,9 @@ Notes:
 
 ### Recovery Workflow
 
-Status: `FAIL`
+Status: `PASS`
 
-Validated before failure:
+Validated in packaged app:
 
 - after Section A removed `rc-first-workspace` from the list, the packaged app successfully re-imported the same workspace root
 - packaged `Open Existing Repository` inspection now succeeds and reports:
@@ -261,54 +261,79 @@ Recorded evidence:
   - `## workspace/rc-first-workspace-20260626-1030`
 - preserved user file SHA-256 after recovery: `D213FAC2FAB84E18965D8A90D60015572DFE1D46A46461B4B301E60ED6DF919D`
 - `compose.yaml` exists after recovery and was regenerated
-- `.opencode\local\runtime-state.yaml` is still missing after recovery
-
-Smallest likely remaining blocker:
-
-- recovery reports success without regenerating all damaged managed runtime files, specifically `.opencode\local\runtime-state.yaml`
-
-Further recovery checks were not run after this failure:
-
-- publish workflow
-- prerequisite diagnostics capture
-- backup archive include/exclude verification
+- `.opencode\local\runtime-state.yaml` exists after recovery and was regenerated
+- packaged UI shows runtime-state status `Loaded (linux/amd64)` after recovery
 
 ### Publish Workflow
 
-Status: `FAIL`
+Status: `PASS`
 
-Not completed in this pass:
+Validated in packaged app:
 
-- local bare remote setup
-- packaged Save Point and Publish flow
-- remote branch verification from packaged GUI
+- local bare remote configured at `C:\Users\miha.pirnat\AppData\Local\Temp\opencode-rc-remote.git`
+- packaged Save Point completed before publish
+- packaged Publish confirmation dialog reported:
+  - Working Copy: `workspace/opencode-rc-workspaces-20260626-1709`
+  - Remote backup: `origin (C:\Users\miha.pirnat\AppData\Local\Temp\opencode-rc-remote.git)`
+  - Tracking branch: first publish will create upstream tracking.
+  - Ahead/behind: `0/0`
+  - Working tree is clean.
+- remote branch exists after publish:
+  - `workspace/opencode-rc-workspaces-20260626-1709`
+- remote commit id after publish:
+  - `a75d54b17be2a4233b2ca1a8302ba0932730233b`
+- no force-push path was involved
 
 ### Prerequisites And Diagnostics
 
 Status: `FAIL`
 
-Validated:
+Visible in packaged Diagnostics page:
 
-- packaged app does not crash when the workspace index is missing
-- shared doctor/discovery backend returns actionable output
-- existing Windows app-data path remains in use
-- packaged UI shows diagnostics navigation and doctor/validation actions
+- workspace target selection
+- runtime target: `linux/amd64`
+- doctor actions:
+  - `Run Doctor`
+  - `Validate linux/amd64`
+  - `Validate linux/arm64`
+- doctor results currently surfaced:
+  - `Podman` -> `Fail`
+  - `Docker Desktop` -> `Pass`
+  - `Windows Terminal` -> `Pass`
+  - `Cascadia Code` -> `Pass`
 
-Not fully validated from the packaged desktop surface:
+Missing from visible or exported packaged diagnostics evidence in this pass:
 
 - Git
-- Docker
 - Docker Compose
-- Windows Terminal
-- fonts / Nerd Font
+- Nerd Font
 - OpenCode CLI
 - template catalog
-- runtime platform
 - host architecture
+- runtime platform as a dedicated diagnostic item
 
-Blocking note:
+Recorded evidence from packaged UIA search:
 
-- prerequisite handling is likely correct in shared services, but the packaged GUI checklist still needs manual execution and recording
+- `Git=False`
+- `Docker=True`
+- `Docker Compose=False`
+- `Windows Terminal=True`
+- `Nerd Font=False`
+- `OpenCode CLI=False`
+- `template catalog=False`
+- `architecture=False`
+- `Cascadia Code=True`
+- `Podman=True`
+- `host architecture=False`
+- `runtime platform=False`
+
+Smallest likely remaining blocker:
+
+- the packaged diagnostics surface does not yet expose the full required prerequisite/status set for release-candidate sign-off
+
+Further checks were not run after this failure:
+
+- backup archive include/exclude verification
 
 ### Archive Checks
 

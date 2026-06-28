@@ -12,6 +12,77 @@ namespace OpenCode.Workspace.Avalonia.Tests;
 public sealed class DesktopShellServiceReprovisionStateTests
 {
     [Fact]
+    public async Task Recover_RegeneratesComposeAndRuntimeState_WithoutChangingUserFile()
+    {
+        var tempRoot = CreateTempRoot();
+        var workspaceRoot = Path.Combine(tempRoot, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var timelineService = new WorkspaceTimelineService();
+            var checkpointService = new WorkspaceCheckpointService();
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
+            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Recover Demo"), includeRuntimeInspection: false);
+            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+
+            var userFile = Path.Combine(workspaceRoot, "docs", "preserve-me.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(userFile)!);
+            await File.WriteAllTextAsync(userFile, "preserve this file");
+            var userFileHashBefore = ComputeFileHash(userFile);
+
+            File.Delete(created.Paths.ComposePath);
+            File.Delete(created.Paths.RuntimeStatePath);
+
+            var result = await service.RecoverWorkspaceAsync(created.Paths.RootPath, created);
+
+            Assert.True(File.Exists(created.Paths.ComposePath));
+            Assert.True(File.Exists(created.Paths.RuntimeStatePath));
+            Assert.Equal(userFileHashBefore, ComputeFileHash(userFile));
+            Assert.Equal($"Workspace '{created.Definition.Workspace.Name}' runtime was repaired.", result.Message);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Recover_FailsWhenRuntimeStateCannotBeRegenerated()
+    {
+        var tempRoot = CreateTempRoot();
+        var workspaceRoot = Path.Combine(tempRoot, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var timelineService = new WorkspaceTimelineService();
+            var checkpointService = new WorkspaceCheckpointService();
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime, new UnavailableRuntimeResolver());
+            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Recover Failure"), includeRuntimeInspection: false);
+            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+
+            File.Delete(created.Paths.ComposePath);
+            File.Delete(created.Paths.RuntimeStatePath);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RecoverWorkspaceAsync(created.Paths.RootPath, created));
+
+            Assert.Contains("runtime-state.yaml", exception.Message, StringComparison.Ordinal);
+            var savedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+            Assert.False(savedRecord.LastOperationSucceeded);
+            Assert.Contains("runtime-state.yaml", savedRecord.LastOperationResult, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Reprovision_FailureThenSuccess_ClearsCurrentFailureAndRetainsHistory()
     {
         var tempRoot = CreateTempRoot();
@@ -63,7 +134,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
         }
     }
 
-    private static WorkspaceOrchestrator CreateOrchestrator(string tempRoot, WorkspaceRepository repository, WorkspaceTimelineService timelineService, IContainerRuntime runtime)
+    private static WorkspaceOrchestrator CreateOrchestrator(string tempRoot, WorkspaceRepository repository, WorkspaceTimelineService timelineService, IContainerRuntime runtime, IRuntimeResolver? runtimeResolver = null)
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
@@ -85,7 +156,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             new FakeWorkspaceProvider(),
             runtime,
             new FixedPlatformDetector(),
-            new FixedRuntimeResolver(),
+            runtimeResolver ?? new FixedRuntimeResolver(),
             new NoOpTerminalLauncher());
     }
 
@@ -130,6 +201,13 @@ public sealed class DesktopShellServiceReprovisionStateTests
         {
             Directory.Delete(appDataRoot, true);
         }
+    }
+
+    private static string ComputeFileHash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        return Convert.ToHexString(sha256.ComputeHash(stream));
     }
 
     private sealed class FakeWorkspaceProvider : IWorkspaceProvider
@@ -210,6 +288,23 @@ public sealed class DesktopShellServiceReprovisionStateTests
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class UnavailableRuntimeResolver : IRuntimeResolver
+    {
+        public Task<ResolvedRuntimePlan> ResolveAsync(WorkspaceDefinition definition, HostPlatformInfo hostPlatform, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new ResolvedRuntimePlan
+            {
+                Runtime = "docker",
+                TargetPlatform = "linux/amd64",
+                CompatibilityMode = RuntimeCompatibilityMode.Unavailable,
+                SupportLevel = SupportLevel.Unavailable,
+                IsAvailable = false,
+                DiagnosticExplanation = "Runtime unavailable for test.",
+                HostPlatform = hostPlatform,
+            });
+        }
     }
 
     private sealed class StubContainerRuntime : IContainerRuntime

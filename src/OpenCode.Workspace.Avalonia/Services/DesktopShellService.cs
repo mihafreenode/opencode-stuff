@@ -555,6 +555,18 @@ public sealed class DesktopShellService : IDesktopShellService
             append(OperationTranscriptLineKind.Status, "Recovering workspace runtime...");
             await _workspaceOrchestrator.RecoverAsync(snapshot, log, cancellationToken);
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            if (snapshot.LocalRuntimeState is null)
+            {
+                append(OperationTranscriptLineKind.Status, "Regenerating local runtime state...");
+                await _workspaceOrchestrator.EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+                snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            }
+
+            if (snapshot.LocalRuntimeState is null)
+            {
+                throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}");
+            }
+
             await PersistWorkspaceRecordAsync(snapshot, "Recover", "Repaired workspace runtime and validated generated files.", true, cancellationToken);
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
