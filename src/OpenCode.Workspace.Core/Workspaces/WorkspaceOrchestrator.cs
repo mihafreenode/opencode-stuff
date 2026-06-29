@@ -637,6 +637,12 @@ public sealed class WorkspaceOrchestrator
         EnsureRecoveredManagedRuntimeArtifactsExist(snapshot.Paths);
     }
 
+    public async Task<ProcessResult?> RevalidateVolatileEnvironmentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        Log(log, "app", $"Revalidating volatile runtime environment for workspace '{snapshot.Definition.Workspace.Name}'.");
+        return await _containerRuntime.ValidateVolatileEnvironmentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+    }
+
     public async Task EnsureRuntimeStateCurrentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         Log(log, "app", $"Regenerating runtime-state.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");

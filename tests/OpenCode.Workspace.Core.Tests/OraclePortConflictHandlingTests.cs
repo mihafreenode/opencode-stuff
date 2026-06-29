@@ -73,7 +73,8 @@ public sealed class OraclePortConflictHandlingTests
             Assert.False(result.IsSuccess);
             Assert.Equal(WorkspaceFailureClassification.EnvironmentPortConflict, result.FailureClassification);
             Assert.Contains("Oracle port 1521 is already in use.", result.StandardError);
-            Assert.Contains("Owning container: other-oracle", result.StandardError);
+            Assert.Contains("Port 1521 currently owned by: other-oracle", result.StandardError);
+            Assert.Contains("Last checked:", result.StandardError);
             Assert.Contains("Stop other Oracle workspace", result.StandardError);
             Assert.Contains("Use a different port", result.StandardError);
             Assert.DoesNotContain(runner.Commands, command => command.Contains(" up ", StringComparison.Ordinal));

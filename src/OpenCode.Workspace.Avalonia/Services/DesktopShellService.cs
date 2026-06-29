@@ -172,6 +172,36 @@ public sealed class DesktopShellService : IDesktopShellService
         return await _workspaceOrchestrator.CreateWorkspaceAsync(rootPath, definition, log, cancellationToken, includeRuntimeInspection: false);
     }
 
+    public async Task<WorkspaceSnapshot> RefreshVolatileWorkspaceStateAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
+        var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        var volatileFailureWasCurrent = HasCurrentVolatileFailure(snapshot.Record);
+        var volatileEnvironmentFailure = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, log, cancellationToken);
+
+        if (volatileEnvironmentFailure is not null)
+        {
+            var refreshedHealth = BuildVolatileFailureHealth(snapshot, volatileEnvironmentFailure, DateTimeOffset.UtcNow);
+            await PersistWorkspaceRecordFailureAsync(snapshot.Record, volatileEnvironmentFailure.StandardError, cancellationToken, "Health Recheck", refreshedHealth);
+            throw new WorkspaceProvisioningException(refreshedHealth, volatileEnvironmentFailure.StandardError);
+        }
+
+        if (!volatileFailureWasCurrent)
+        {
+            return snapshot;
+        }
+
+        var updatedRecord = CloneRecord(
+            snapshot.Record,
+            operationName: "Health Recheck",
+            operationResult: BuildVolatileSuccessMessage(snapshot.Record),
+            succeeded: true,
+            lastPreparedUtc: snapshot.Record.LastPreparedUtc,
+            provisioningHealth: null);
+        await _workspaceRepository.SaveAsync(updatedRecord, cancellationToken);
+        return CloneSnapshot(snapshot, updatedRecord);
+    }
+
     public async Task<WorkspaceOperationResult> OpenWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var transcript = CreateTranscript("Open Workspace", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
@@ -180,6 +210,7 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Checking workspace...");
+            snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             for (var phaseIndex = 0; phaseIndex < 4; phaseIndex++)
             {
                 snapshot = await LoadOpenWorkspaceSnapshotAsync(rootPath, snapshot, append, log, cancellationToken);
@@ -344,7 +375,7 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
-            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
 
             if (snapshot.UpdateRequired || snapshot.AppliedState is null)
@@ -659,7 +690,7 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public async Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
     {
-        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        var snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, currentSnapshot, null, cancellationToken);
         var findings = new List<string>();
         var currentProblems = new List<string>();
         var previousFailureContext = new List<string>();
@@ -830,7 +861,7 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
-            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             repairBaseline ??= snapshot.Record.LastProvisioningHealth;
             repairSnapshotBefore ??= snapshot;
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
@@ -902,7 +933,7 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
-            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             repairBaseline ??= snapshot.Record.LastProvisioningHealth;
             repairSnapshotBefore ??= snapshot;
             append(OperationTranscriptLineKind.Status, "Resetting runtime...");
@@ -960,7 +991,7 @@ public sealed class DesktopShellService : IDesktopShellService
         try
         {
             append(OperationTranscriptLineKind.Status, "Preparing attach...");
-            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             var plan = _workspaceLaunchPlanResolver.Resolve(snapshot);
             LogOpenContext(log, snapshot, plan);
 
@@ -1121,56 +1152,110 @@ public sealed class DesktopShellService : IDesktopShellService
 
     private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
     {
-        var record = new WorkspaceRecord
-        {
-            Name = snapshot.Record.Name,
-            RootPath = snapshot.Record.RootPath,
-            RepositoryPath = snapshot.Record.RepositoryPath,
-            ConfigurationPath = snapshot.Record.ConfigurationPath,
-            SourceType = snapshot.Record.SourceType,
-            ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
-            OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
-            SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
-            RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
-            CreatedUtc = snapshot.Record.CreatedUtc,
-            LastOpenedUtc = snapshot.Record.LastOpenedUtc,
-            LastPreparedUtc = lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
-            OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
-            LastOperationName = operationName,
-            LastOperationResult = operationResult,
-            LastOperationSucceeded = succeeded,
-            LastOperationUtc = DateTimeOffset.UtcNow,
-            LastProvisioningHealth = provisioningHealth ?? snapshot.Record.LastProvisioningHealth,
-        };
+        var record = CloneRecord(
+            snapshot.Record,
+            operationName,
+            operationResult,
+            succeeded,
+            lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
+            provisioningHealth ?? snapshot.Record.LastProvisioningHealth);
 
         return _workspaceRepository.SaveAsync(record, cancellationToken);
     }
 
     private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision", WorkspaceProvisioningHealthRecord? provisioningHealth = null)
     {
-        var failureRecord = new WorkspaceRecord
-        {
-            Name = record.Name,
-            RootPath = record.RootPath,
-            RepositoryPath = record.RepositoryPath,
-            ConfigurationPath = record.ConfigurationPath,
-            SourceType = record.SourceType,
-            ImportedFromExistingCheckout = record.ImportedFromExistingCheckout,
-            OriginalDefaultBranch = record.OriginalDefaultBranch,
-            SelectedWorkspaceBranch = record.SelectedWorkspaceBranch,
-            RemoteOriginUrl = record.RemoteOriginUrl,
-            CreatedUtc = record.CreatedUtc,
-            LastOpenedUtc = record.LastOpenedUtc,
-            LastPreparedUtc = record.LastPreparedUtc,
-            OracleSoftwareNoticeShown = record.OracleSoftwareNoticeShown,
-            LastOperationName = operationName,
-            LastOperationResult = errorMessage,
-            LastOperationSucceeded = false,
-            LastOperationUtc = DateTimeOffset.UtcNow,
-            LastProvisioningHealth = provisioningHealth ?? record.LastProvisioningHealth,
-        };
+        var failureRecord = CloneRecord(record, operationName, errorMessage, false, record.LastPreparedUtc, provisioningHealth ?? record.LastProvisioningHealth);
 
         return _workspaceRepository.SaveAsync(failureRecord, cancellationToken);
+    }
+
+    private static WorkspaceRecord CloneRecord(WorkspaceRecord source, string operationName, string operationResult, bool succeeded, DateTimeOffset? lastPreparedUtc, WorkspaceProvisioningHealthRecord? provisioningHealth)
+        => new()
+        {
+            Name = source.Name,
+            RootPath = source.RootPath,
+            RepositoryPath = source.RepositoryPath,
+            ConfigurationPath = source.ConfigurationPath,
+            SourceType = source.SourceType,
+            ImportedFromExistingCheckout = source.ImportedFromExistingCheckout,
+            OriginalDefaultBranch = source.OriginalDefaultBranch,
+            SelectedWorkspaceBranch = source.SelectedWorkspaceBranch,
+            RemoteOriginUrl = source.RemoteOriginUrl,
+            CreatedUtc = source.CreatedUtc,
+            LastOpenedUtc = source.LastOpenedUtc,
+            LastPreparedUtc = lastPreparedUtc ?? source.LastPreparedUtc,
+            OracleSoftwareNoticeShown = source.OracleSoftwareNoticeShown,
+            LastOperationName = operationName,
+            LastOperationResult = operationResult,
+            LastOperationSucceeded = succeeded,
+            LastOperationUtc = DateTimeOffset.UtcNow,
+            LastProvisioningHealth = provisioningHealth,
+        };
+
+    private static WorkspaceSnapshot CloneSnapshot(WorkspaceSnapshot source, WorkspaceRecord record)
+        => new()
+        {
+            Record = record,
+            Definition = source.Definition,
+            Paths = source.Paths,
+            ConfigurationPath = source.ConfigurationPath,
+            RuntimeState = source.RuntimeState,
+            Safety = source.Safety,
+            Session = source.Session,
+            AppliedState = source.AppliedState,
+            LocalRuntimeState = source.LocalRuntimeState,
+            ResolvedRuntimePlan = source.ResolvedRuntimePlan,
+            UpdateRequired = source.UpdateRequired,
+        };
+
+    private static bool HasCurrentVolatileFailure(WorkspaceRecord record)
+    {
+        var failureText = string.Join(Environment.NewLine, new[]
+        {
+            record.LastOperationSucceeded == false ? record.LastOperationResult : null,
+            record.LastProvisioningHealth?.Reason,
+            record.LastProvisioningHealth?.Evidence,
+        }.Where(value => !string.IsNullOrWhiteSpace(value))!);
+
+        return failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase)
+            || failureText.Contains("port conflict", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildVolatileSuccessMessage(WorkspaceRecord record)
+        => HasCurrentVolatileFailure(record)
+            ? "Volatile runtime checks passed. Previous port conflict is no longer present."
+            : "Volatile runtime checks passed.";
+
+    private static WorkspaceProvisioningHealthRecord BuildVolatileFailureHealth(WorkspaceSnapshot snapshot, ProcessResult failure, DateTimeOffset checkedAt)
+    {
+        var reason = failure.StandardErrorLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim();
+        var evidenceLines = failure.StandardErrorLines
+            .SkipWhile(line => string.IsNullOrWhiteSpace(line) || string.Equals(line.Trim(), reason, StringComparison.Ordinal))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToArray();
+
+        return new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = "Volatile environment revalidation",
+            Summary = "Workspace runtime is currently blocked by a volatile host conflict.",
+            Reason = string.IsNullOrWhiteSpace(reason) ? "Workspace runtime is blocked by a volatile host conflict." : reason,
+            Evidence = string.Join(Environment.NewLine, evidenceLines),
+            ProblemScope = "WorkspaceProblem",
+            RecommendedAction = "Troubleshoot Workspace.",
+            PreviousRecommendedAction = snapshot.Record.LastProvisioningHealth?.RecommendedAction ?? string.Empty,
+            Confidence = "HIGH",
+            Timestamp = checkedAt,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.ComposePath,
+            WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
+            Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+            EstimatedEffort = "Low",
+            EstimatedDuration = "1-2 minutes",
+            LastDiagnosticsTimestamp = checkedAt,
+            RepairHistory = snapshot.Record.LastProvisioningHealth?.RepairHistory ?? Array.Empty<WorkspaceRepairAttemptRecord>(),
+        };
     }
 
     private static WorkspaceProvisioningHealthRecord? ExtractProvisioningHealth(Exception exception, WorkspaceProvisioningHealthRecord? fallback)

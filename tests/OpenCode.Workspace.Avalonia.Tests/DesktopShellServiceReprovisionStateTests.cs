@@ -129,6 +129,76 @@ public sealed class DesktopShellServiceReprovisionStateTests
     }
 
     [Fact]
+    public async Task RefreshVolatileWorkspaceStateAsync_ClearsStalePortConflictWhenPortIsNowFree()
+    {
+        var tempRoot = CreateTempRoot();
+        var workspaceRoot = Path.Combine(tempRoot, "workspace");
+        Directory.CreateDirectory(workspaceRoot);
+
+        try
+        {
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var timelineService = new WorkspaceTimelineService();
+            var checkpointService = new WorkspaceCheckpointService();
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
+            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Port Recheck"), includeRuntimeInspection: false);
+            var staleRecord = new WorkspaceRecord
+            {
+                Name = created.Record.Name,
+                RootPath = created.Record.RootPath,
+                RepositoryPath = created.Record.RepositoryPath,
+                ConfigurationPath = created.Record.ConfigurationPath,
+                SourceType = created.Record.SourceType,
+                ImportedFromExistingCheckout = created.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = created.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = created.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = created.Record.RemoteOriginUrl,
+                CreatedUtc = created.Record.CreatedUtc,
+                LastOpenedUtc = created.Record.LastOpenedUtc,
+                LastPreparedUtc = created.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = created.Record.OracleSoftwareNoticeShown,
+                LastOperationName = "Prepare",
+                LastOperationResult = "Oracle port 1521 is already in use.",
+                LastOperationSucceeded = false,
+                LastOperationUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Volatile environment revalidation",
+                    Summary = "Workspace runtime is currently blocked by a volatile host conflict.",
+                    Reason = "Oracle port 1521 is already in use.",
+                    Evidence = "Port 1521 currently owned by: other-oracle",
+                    ProblemScope = "WorkspaceProblem",
+                    RecommendedAction = "Troubleshoot Workspace.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+                    Duration = TimeSpan.Zero,
+                    RawLogReference = created.Paths.ComposePath,
+                    Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+                    EstimatedEffort = "Low",
+                    EstimatedDuration = "1-2 minutes",
+                    LastDiagnosticsTimestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+                },
+            };
+            await repository.SaveAsync(staleRecord, CancellationToken.None);
+            var staleSnapshot = await orchestrator.LoadSnapshotAsync(workspaceRoot, includeRuntimeInspection: true, includeSessionInspection: false);
+            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+
+            var refreshed = await service.RefreshVolatileWorkspaceStateAsync(workspaceRoot, staleSnapshot);
+
+            Assert.True(refreshed.Record.LastOperationSucceeded);
+            Assert.Equal("Health Recheck", refreshed.Record.LastOperationName);
+            Assert.Contains("Previous port conflict is no longer present", refreshed.Record.LastOperationResult, StringComparison.Ordinal);
+            Assert.Null(refreshed.Record.LastProvisioningHealth);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task OpenWorkspace_FailsSafelyWhenProvisioningFailsAfterContainerStart()
     {
         var tempRoot = CreateTempRoot();
@@ -574,6 +644,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
         public Func<ProcessResult>? ProvisionScriptResultFactory { get; init; }
         public Func<ProcessResult>? RemoveResultFactory { get; init; }
+        public Func<ProcessResult?>? ValidateVolatileEnvironmentResultFactory { get; init; }
 
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
 
@@ -596,6 +667,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
         public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
             => Task.FromResult(Success("docker compose reset"));
+
+        public Task<ProcessResult?> ValidateVolatileEnvironmentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(ValidateVolatileEnvironmentResultFactory?.Invoke());
 
         public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(Success("docker compose ps", "workspace"));

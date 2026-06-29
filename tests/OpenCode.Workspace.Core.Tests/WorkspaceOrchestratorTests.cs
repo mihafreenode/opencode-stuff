@@ -1870,6 +1870,9 @@ public sealed class WorkspaceOrchestratorTests
         public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
             => Task.FromResult(Success("docker compose reset"));
 
+        public Task<ProcessResult?> ValidateVolatileEnvironmentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult<ProcessResult?>(null);
+
         public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(Success("docker compose ps", "workspace"));
 

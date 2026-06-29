@@ -37,6 +37,9 @@ public sealed class DockerContainerRuntime : IContainerRuntime
     public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
         => _dockerService.ResetAsync(paths, definition, log, cancellationToken, repairComposeAsync);
 
+    public Task<ProcessResult?> ValidateVolatileEnvironmentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => _dockerService.ValidateVolatileEnvironmentAsync(paths, definition, log, cancellationToken);
+
     public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.GetPsAsync(paths, definition, log, cancellationToken);
 

@@ -32,6 +32,17 @@ public sealed class DockerService
     public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
         => RunComposeWithValidationRepairAsync(paths, definition, new[] { "down", "-v", "--remove-orphans" }, log, cancellationToken, repairComposeAsync);
 
+    public async Task<ProcessResult?> ValidateVolatileEnvironmentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var oraclePortConflictResult = await DetectOraclePortConflictAsync(paths, definition, log, cancellationToken);
+        if (oraclePortConflictResult is not null)
+        {
+            return oraclePortConflictResult;
+        }
+
+        return await DetectAnalyticsPortConflictAsync(paths, definition, log, cancellationToken);
+    }
+
     public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "ps", "--status", "running", "--services" }, log, cancellationToken);
 
@@ -487,6 +498,7 @@ public sealed class DockerService
 
     private static string BuildOraclePortConflictMessage(OracleHostPortCheck port, ContainerPortOwner? containerOwner, HostPortDiagnostic hostDiagnostic, ProcessResult dockerPsResult, ProcessResult composePsResult)
     {
+        var checkedAt = DateTimeOffset.Now;
         var lines = new List<string>
         {
             $"{port.Label} port {port.Port} is already in use.",
@@ -500,7 +512,7 @@ public sealed class DockerService
         if (containerOwner is not null)
         {
             lines.Add(string.Empty);
-            lines.Add($"Owning container: {containerOwner.ContainerName}");
+            lines.Add($"Port {port.Port} currently owned by: {containerOwner.ContainerName}");
         }
 
         if (hostDiagnostic.Details.Count > 0)
@@ -524,6 +536,8 @@ public sealed class DockerService
             lines.Add(dockerPsResult.StandardOutput.Trim());
         }
 
+        lines.Add(string.Empty);
+        lines.Add($"Last checked: {checkedAt:yyyy-MM-dd HH:mm:ss zzz}");
         lines.Add(string.Empty);
         lines.Add("Suggested actions:");
         lines.Add("- Stop other Oracle workspace");

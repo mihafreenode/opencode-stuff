@@ -629,7 +629,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        await TroubleshootWorkspaceAsync(SelectedWorkspace.RootPath);
+        var rootPath = SelectedWorkspace.RootPath;
+
+        try
+        {
+            var refreshedSnapshot = await _desktopShellService.RefreshVolatileWorkspaceStateAsync(rootPath, SelectedWorkspace.Snapshot);
+            ReplaceSelectedWorkspace(refreshedSnapshot);
+        }
+        catch (WorkspaceProvisioningException)
+        {
+            await LoadAsync();
+            SelectWorkspace(rootPath);
+        }
+
+        await TroubleshootWorkspaceAsync(rootPath);
     }
 
     private async Task CreateSavePointAsync()
