@@ -2257,6 +2257,71 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task CleanupRepairFailure_UsesGenericResetRuntimeAction()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Validate Oracle prerequisites",
+                    Summary = "Workspace provisioning stopped.",
+                    Reason = "Oracle XML Database (XDB) is invalid.",
+                    Evidence = "XDB status = INVALID",
+                    RecommendedAction = "Reset Runtime.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Duration = TimeSpan.FromMinutes(1),
+                    RawLogReference = "mounts/config/provision.sh",
+                    Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                    EstimatedEffort = "Medium",
+                    EstimatedDuration = "4-6 minutes",
+                },
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(desktop);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Repairability" && item.Value == "CleanupRepair");
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
+        Assert.Contains(page.DetailActions, item => item.Label == "Reset Runtime" && item.IsEnabled);
+    }
+
+    [Fact]
     public async Task OperationLogVisibility_TogglesAndDefaultsVisibleAfterOperation()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
@@ -2679,6 +2744,7 @@ public sealed class ShellViewModelTests
         };
         public Exception? ReprovisionException { get; init; }
         public Exception? OpenWorkspaceException { get; init; }
+        public Exception? ResetRuntimeException { get; init; }
         public Exception? AttachException { get; init; }
         public Exception? RemoveException { get; init; }
         public Exception? PublishException { get; init; }
@@ -2707,6 +2773,7 @@ public sealed class ShellViewModelTests
         public int CreateCheckpointCallCount { get; private set; }
         public int StartCallCount { get; private set; }
         public int OpenWorkspaceCallCount { get; private set; }
+        public int ResetRuntimeCallCount { get; private set; }
         public int AttachCallCount { get; private set; }
         public int PrepareCallCount { get; private set; }
         public int ReprovisionCallCount { get; private set; }
@@ -2894,6 +2961,18 @@ public sealed class ShellViewModelTests
         {
             StartCallCount++;
             return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("started"), Message = "started", Transcript = new OperationTranscript() });
+        }
+
+        public Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            ResetRuntimeCallCount++;
+
+            if (ResetRuntimeException is not null)
+            {
+                throw ResetRuntimeException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("reset"), Message = "reset", Transcript = new OperationTranscript() });
         }
 
         public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
@@ -3198,6 +3277,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -3284,6 +3364,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;

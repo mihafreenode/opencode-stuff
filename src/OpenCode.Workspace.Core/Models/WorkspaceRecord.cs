@@ -43,6 +43,10 @@ public sealed class WorkspaceProvisioningHealthRecord
     public string ApexVersion { get; init; } = string.Empty;
     public string OrdsVersion { get; init; } = string.Empty;
     public string WorkspaceRuntimeVersion { get; init; } = string.Empty;
+    public string Repairability { get; init; } = string.Empty;
+    public string EstimatedEffort { get; init; } = string.Empty;
+    public string EstimatedDuration { get; init; } = string.Empty;
+    public DateTimeOffset? LastDiagnosticsTimestamp { get; init; }
 }
 
 public enum WorkspaceSourceType

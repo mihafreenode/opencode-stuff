@@ -1534,7 +1534,7 @@ public sealed class WorkspaceOrchestrator
             return null;
         }
 
-        return new WorkspaceProvisioningHealthRecord
+        var record = new WorkspaceProvisioningHealthRecord
         {
             Succeeded = false,
             Stage = stage,
@@ -1547,6 +1547,26 @@ public sealed class WorkspaceOrchestrator
             Duration = result.Duration,
             RawLogReference = snapshot.Paths.ProvisionScriptPath,
             WorkspaceRuntimeVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(CultureInfo.InvariantCulture),
+        };
+
+        var repairability = WorkspaceRepairabilityAnalyzer.Analyze(snapshot, record);
+        return new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = record.Succeeded,
+            Stage = record.Stage,
+            Summary = record.Summary,
+            Reason = record.Reason,
+            Evidence = string.IsNullOrWhiteSpace(record.Evidence) ? repairability.Evidence : record.Evidence,
+            RecommendedAction = repairability.RecommendedNextAction,
+            Confidence = string.IsNullOrWhiteSpace(record.Confidence) ? repairability.Confidence : record.Confidence,
+            Timestamp = record.Timestamp,
+            Duration = record.Duration,
+            RawLogReference = record.RawLogReference,
+            WorkspaceRuntimeVersion = record.WorkspaceRuntimeVersion,
+            Repairability = repairability.Classification.ToString(),
+            EstimatedEffort = repairability.EstimatedEffort,
+            EstimatedDuration = repairability.EstimatedDuration,
+            LastDiagnosticsTimestamp = record.Timestamp,
         };
     }
 

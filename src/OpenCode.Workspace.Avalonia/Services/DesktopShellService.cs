@@ -846,6 +846,44 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
+    public async Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Reset Runtime", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Status, "Resetting runtime...");
+            await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, log, cancellationToken);
+            append(OperationTranscriptLineKind.Status, "Reprovisioning runtime...");
+            await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            var health = BuildCleanupProvisioningHealth(snapshot, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            await PersistWorkspaceRecordAsync(snapshot, "Reset Runtime", "Managed runtime was reset and reprovisioned.", true, cancellationToken, DateTimeOffset.UtcNow, health);
+            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-succeeded", "Reset runtime", BuildProvisioningTimelineDetails(health));
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Runtime for '{snapshot.Definition.Workspace.Name}' was reset.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Reset Runtime", provisioningHealth);
+                _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-failed", "Reset runtime failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
     public async Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var transcript = CreateTranscript("Attach", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
@@ -1064,6 +1102,32 @@ public sealed class DesktopShellService : IDesktopShellService
             OracleVersion = string.Empty,
             WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
         };
+
+    private static WorkspaceProvisioningHealthRecord BuildCleanupProvisioningHealth(WorkspaceSnapshot snapshot, DateTimeOffset startedUtc, DateTimeOffset completedUtc)
+    {
+        var record = BuildSuccessfulProvisioningHealth(snapshot, startedUtc, completedUtc);
+        return new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = record.Succeeded,
+            Stage = record.Stage,
+            Summary = record.Summary,
+            Reason = record.Reason,
+            Evidence = record.Evidence,
+            RecommendedAction = "Open Workspace.",
+            Confidence = record.Confidence,
+            Timestamp = record.Timestamp,
+            Duration = record.Duration,
+            RawLogReference = record.RawLogReference,
+            ApexVersion = record.ApexVersion,
+            OrdsVersion = record.OrdsVersion,
+            OracleVersion = record.OracleVersion,
+            WorkspaceRuntimeVersion = record.WorkspaceRuntimeVersion,
+            Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+            EstimatedEffort = "Medium",
+            EstimatedDuration = "4-6 minutes",
+            LastDiagnosticsTimestamp = completedUtc,
+        };
+    }
 
     private static string BuildProvisioningTimelineDetails(WorkspaceProvisioningHealthRecord? health, string? fallback = null)
     {

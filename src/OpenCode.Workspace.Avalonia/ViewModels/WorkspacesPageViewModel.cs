@@ -54,6 +54,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         CreateCheckpointCommand = new AsyncRelayCommand(CreateCheckpointAsync, CanCreateCheckpointSelectedWorkspace);
         StartWorkspaceCommand = new AsyncRelayCommand(StartSelectedWorkspaceAsync, CanStartSelectedWorkspace);
         RecoverWorkspaceCommand = new AsyncRelayCommand(RecoverSelectedWorkspaceAsync, CanRecoverSelectedWorkspace);
+        ResetRuntimeCommand = new AsyncRelayCommand(ResetRuntimeSelectedWorkspaceAsync, CanResetRuntimeSelectedWorkspace);
         AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
         RetryWorkspaceCommand = new AsyncRelayCommand(RetrySelectedWorkspaceAsync, CanRetrySelectedWorkspace);
@@ -78,6 +79,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand CreateCheckpointCommand { get; }
     public AsyncRelayCommand StartWorkspaceCommand { get; }
     public AsyncRelayCommand RecoverWorkspaceCommand { get; }
+    public AsyncRelayCommand ResetRuntimeCommand { get; }
     public AsyncRelayCommand AttachWorkspaceCommand { get; }
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
     public AsyncRelayCommand RetryWorkspaceCommand { get; }
@@ -226,6 +228,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 CreateCheckpointCommand.RaiseCanExecuteChanged();
                 StartWorkspaceCommand.RaiseCanExecuteChanged();
                 RecoverWorkspaceCommand.RaiseCanExecuteChanged();
+                ResetRuntimeCommand.RaiseCanExecuteChanged();
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
                 ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
                 RetryWorkspaceCommand.RaiseCanExecuteChanged();
@@ -996,6 +999,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             (rootPath, snapshot, sink) => _desktopShellService.RecoverWorkspaceAsync(rootPath, snapshot, sink));
     }
 
+    private async Task ResetRuntimeSelectedWorkspaceAsync()
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        await RunWorkspaceOperationAsync(
+            "Reset Oracle Runtime",
+            "Resetting Oracle runtime...",
+            (rootPath, snapshot, sink) => _desktopShellService.ResetRuntimeAsync(rootPath, snapshot, sink));
+    }
+
     private async Task AttachSelectedWorkspaceAsync()
     {
         if (SelectedWorkspace is null)
@@ -1215,6 +1231,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         DetailTitle = SelectedWorkspace.Name;
         var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
+        var provisioningHealth = SelectedWorkspace.Record.LastProvisioningHealth;
         DetailSummary = failureGuidance?.Summary ?? BuildWorkspaceSummary(SelectedWorkspace);
         DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
@@ -1233,7 +1250,27 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (failureGuidance is not null)
         {
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.Stage ?? failureGuidance.Stage))
+            {
+                DetailItems.Add(new DetailItemViewModel("Stage", provisioningHealth?.Stage ?? failureGuidance.Stage));
+            }
             DetailItems.Add(new DetailItemViewModel("Reason", failureGuidance.Reason));
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.Evidence ?? failureGuidance.Evidence))
+            {
+                DetailItems.Add(new DetailItemViewModel("Evidence", provisioningHealth?.Evidence ?? failureGuidance.Evidence));
+            }
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.Repairability ?? failureGuidance.Repairability))
+            {
+                DetailItems.Add(new DetailItemViewModel("Repairability", provisioningHealth?.Repairability ?? failureGuidance.Repairability));
+            }
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.Confidence ?? failureGuidance.Confidence))
+            {
+                DetailItems.Add(new DetailItemViewModel("Confidence", provisioningHealth?.Confidence ?? failureGuidance.Confidence));
+            }
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration))
+            {
+                DetailItems.Add(new DetailItemViewModel("Estimated duration", provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration));
+            }
             DetailItems.Add(new DetailItemViewModel("Recommended action", failureGuidance.RecommendedAction));
         }
 
@@ -1258,6 +1295,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Open Workspace", BuildOpenDescription(SelectedWorkspace), CanStartSelectedWorkspace(), GetOpenDisabledReason(SelectedWorkspace), OpenSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenWorkspaceFolderCommand));
         DetailActions.Add(new ActionItemViewModel("Recover", BuildRecoverDescription(SelectedWorkspace), CanRecoverSelectedWorkspace(), GetRecoverDisabledReason(SelectedWorkspace), RecoverWorkspaceCommand));
+        if (failureGuidance?.CanCleanup == true)
+        {
+            DetailActions.Add(new ActionItemViewModel("Reset Runtime", BuildResetRuntimeDescription(SelectedWorkspace), CanResetRuntimeSelectedWorkspace(), GetResetRuntimeDisabledReason(SelectedWorkspace), ResetRuntimeCommand));
+        }
         DetailActions.Add(new ActionItemViewModel("Validate", BuildValidateDescription(SelectedWorkspace), CanValidateSelectedWorkspace(), GetValidateDisabledReason(SelectedWorkspace), ValidateSelectedWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Remove", BuildRemoveDescription(SelectedWorkspace), CanRemoveSelectedWorkspace(), GetRemoveDisabledReason(SelectedWorkspace), RemoveWorkspaceCommand));
         DetailActions.Add(new ActionItemViewModel("Publish", BuildPublishDescription(SelectedWorkspace), CanPublishSelectedWorkspace(), GetPublishDisabledReason(SelectedWorkspace), PublishWorkspaceCommand));
@@ -1273,6 +1314,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private bool CanReprovisionSelectedWorkspace()
         => SelectedWorkspace is { HasSnapshot: true } && !IsReprovisioning;
+
+    private bool CanResetRuntimeSelectedWorkspace()
+        => CanResetRuntimeWorkspace(SelectedWorkspace);
 
     private bool CanRetrySelectedWorkspace()
         => CanRetryWorkspace(SelectedWorkspace);
@@ -1328,6 +1372,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanRecoverWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so recovery cannot run.";
+
+    private string GetResetRuntimeDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanResetRuntimeWorkspace(workspace) ? string.Empty : "Runtime reset is not available for the current workspace state.";
 
     private string GetAttachDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1392,6 +1441,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : CanRecoverWorkspace(workspace)
                 ? "Assess and repair generated runtime files and container readiness without deleting user work."
                 : "Workspace root or configuration file is missing, so recovery cannot run.";
+
+    private string BuildResetRuntimeDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanResetRuntimeWorkspace(workspace)
+                ? "Recreate managed runtime resources while keeping workspace files, history, downloads, and user content."
+                : "Runtime reset is not available for the current workspace state.";
 
     private string BuildAttachDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1540,6 +1596,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         return CanStartWorkspace(workspace);
+    }
+
+    private bool CanResetRuntimeWorkspace(WorkspaceSummaryViewModel? workspace)
+    {
+        if (_interactionService is null || IsBusyForWorkspaceActions || workspace is null || !CanStartWorkspace(workspace))
+        {
+            return false;
+        }
+
+        return string.Equals(workspace.Record.LastProvisioningHealth?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal)
+            || GetRepairabilityAssessment(workspace)?.Classification == WorkspaceRepairability.CleanupRepair;
     }
 
     private bool CanRetryWorkspace(WorkspaceSummaryViewModel? workspace)
@@ -1753,26 +1820,47 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         var failureMessage = GetFailureMessage(workspace);
+        if (string.IsNullOrWhiteSpace(failureMessage)
+            && (workspace.Record.LastOperationSucceeded == false
+                || workspace.Record.LastProvisioningHealth is not null
+                || !string.IsNullOrWhiteSpace(workspace.FailedOperationName)
+                || string.Equals(workspace.RuntimeStatusLabel, "Error", StringComparison.OrdinalIgnoreCase)))
+        {
+            failureMessage = workspace.LastActivity;
+        }
+
         if (string.IsNullOrWhiteSpace(failureMessage))
         {
             return null;
         }
 
         var reason = ExtractFailureReason(failureMessage);
+        var health = workspace.Record.LastProvisioningHealth;
+        var repairability = GetRepairabilityAssessment(workspace);
         var canRetry = CanRetryWorkspace(workspace);
         var canRecover = CanRecoverWorkspace(workspace);
         var canDiagnose = CanValidateWorkspace(workspace);
-        var canCleanup = CanRemoveWorkspace(workspace);
+        var canCleanup = CanResetRuntimeWorkspace(workspace);
         return new WorkspaceFailureGuidance(
-            BuildFailureHeadline(workspace.FailedOperationName, reason),
+            BuildFailureHeadline(workspace.FailedOperationName, health?.Reason ?? reason),
+            health?.Stage ?? string.Empty,
             reason,
-            BuildRecommendedAction(workspace, reason, canRetry, canRecover, canDiagnose, canCleanup),
+            string.IsNullOrWhiteSpace(health?.Evidence) ? repairability?.Evidence ?? string.Empty : health.Evidence,
+            repairability?.Classification.ToString() ?? string.Empty,
+            string.IsNullOrWhiteSpace(health?.Confidence) ? repairability?.Confidence ?? string.Empty : health.Confidence,
+            repairability?.EstimatedDuration ?? health?.EstimatedDuration ?? string.Empty,
+            BuildRecommendedAction(workspace, health, reason, repairability, canRetry, canRecover, canDiagnose, canCleanup),
             WorkspaceFailureSeverity.Error,
             canRetry,
             canRecover,
             canDiagnose,
             canCleanup);
     }
+
+    private static WorkspaceRepairabilityAssessment? GetRepairabilityAssessment(WorkspaceSummaryViewModel? workspace)
+        => workspace?.HasSnapshot == true
+            ? WorkspaceRepairabilityAnalyzer.Analyze(workspace.Snapshot, workspace.Record.LastProvisioningHealth)
+            : null;
 
     private static bool HasFailureMessage(WorkspaceSummaryViewModel? workspace)
         => !string.IsNullOrWhiteSpace(GetFailureMessage(workspace));
@@ -1784,7 +1872,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return null;
         }
 
-        return (workspace.Record.LastOperationSucceeded == false || !string.IsNullOrWhiteSpace(workspace.FailedOperationName)) && !string.IsNullOrWhiteSpace(workspace.LastActivity)
+        return (workspace.Record.LastOperationSucceeded == false
+                || !string.IsNullOrWhiteSpace(workspace.FailedOperationName)
+                || string.Equals(workspace.RuntimeStatusLabel, "Error", StringComparison.OrdinalIgnoreCase)
+                || workspace.Record.LastProvisioningHealth is not null)
+            && !string.IsNullOrWhiteSpace(workspace.LastActivity)
             ? workspace.LastActivity
             : null;
     }
@@ -1829,7 +1921,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         };
     }
 
-    private string BuildRecommendedAction(WorkspaceSummaryViewModel workspace, string reason, bool canRetry, bool canRecover, bool canDiagnose, bool canCleanup)
+    private string BuildRecommendedAction(WorkspaceSummaryViewModel workspace, WorkspaceProvisioningHealthRecord? health, string reason, WorkspaceRepairabilityAssessment? repairability, bool canRetry, bool canRecover, bool canDiagnose, bool canCleanup)
     {
         if (reason.Contains("not running", StringComparison.OrdinalIgnoreCase) && CanStartWorkspace(workspace))
         {
@@ -1857,6 +1949,21 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 return "Run Diagnostics to inspect the conflict.";
             }
+        }
+
+        if (repairability?.Classification == WorkspaceRepairability.CleanupRepair && canCleanup)
+        {
+            return repairability.RecommendedNextAction;
+        }
+
+        if (repairability?.Classification == WorkspaceRepairability.ManualRepair && !string.IsNullOrWhiteSpace(repairability.RecommendedNextAction))
+        {
+            return repairability.RecommendedNextAction;
+        }
+
+        if (!string.IsNullOrWhiteSpace(health?.RecommendedAction))
+        {
+            return health.RecommendedAction;
         }
 
         if (canRetry)
@@ -2007,6 +2114,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         CreateCheckpointCommand.RaiseCanExecuteChanged();
         StartWorkspaceCommand.RaiseCanExecuteChanged();
         RecoverWorkspaceCommand.RaiseCanExecuteChanged();
+        ResetRuntimeCommand.RaiseCanExecuteChanged();
         AttachWorkspaceCommand.RaiseCanExecuteChanged();
         ValidateSelectedWorkspaceCommand.RaiseCanExecuteChanged();
         RemoveWorkspaceCommand.RaiseCanExecuteChanged();
@@ -2018,7 +2126,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private sealed record WorkspaceFailureGuidance(
         string Summary,
+        string Stage,
         string Reason,
+        string Evidence,
+        string Repairability,
+        string Confidence,
+        string EstimatedDuration,
         string RecommendedAction,
         WorkspaceFailureSeverity Severity,
         bool CanRetry,
