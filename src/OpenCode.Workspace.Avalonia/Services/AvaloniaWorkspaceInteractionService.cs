@@ -108,4 +108,12 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         AppWindowIcons.Apply(window, _owner);
         return window.ShowDialog<bool>(_owner);
     }
+
+    public async Task<bool> ConfirmResetRuntimeAsync(WorkspaceRuntimeResetPrompt prompt, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new ResetRuntimeWindow(prompt);
+        AppWindowIcons.Apply(window, _owner);
+        return await window.ShowDialog<bool>(_owner);
+    }
 }

@@ -80,6 +80,29 @@ public sealed class DesktopShellService : IDesktopShellService
             ? _oracleSoftwareNoticeService.BuildPrompt(snapshot)
             : null;
 
+    public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot snapshot)
+        => new()
+        {
+            WorkspaceName = snapshot.Definition.Workspace.Name,
+            WorkspaceRoot = snapshot.Paths.RootPath,
+            Summary = "Reset recreates managed runtime resources for this workspace while keeping your workspace files and downloads.",
+            Removes =
+            [
+                "Managed containers for this workspace",
+                "Managed Docker volumes for this workspace",
+                "Generated runtime state",
+            ],
+            Keeps =
+            [
+                "Workspace files",
+                "Git history",
+                "Documentation",
+                "Downloads/cache",
+                "workspace.yaml",
+            ],
+            ConfirmationMessage = "Reset runtime and continue?",
+        };
+
     public async Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
     {
         var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);

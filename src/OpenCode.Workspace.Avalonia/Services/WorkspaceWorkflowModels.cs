@@ -88,6 +88,16 @@ public sealed class WorkspaceRecoveryAssessment
     public DateTimeOffset? LastCheckedAt { get; init; }
 }
 
+public sealed class WorkspaceRuntimeResetPrompt
+{
+    public required string WorkspaceName { get; init; }
+    public required string WorkspaceRoot { get; init; }
+    public required string Summary { get; init; }
+    public IReadOnlyList<string> Removes { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Keeps { get; init; } = Array.Empty<string>();
+    public string ConfirmationMessage { get; init; } = string.Empty;
+}
+
 public sealed class WorkspaceCheckpointPrompt
 {
     public required string WorkspaceName { get; init; }

@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+        x:Class="OpenCode.Workspace.Avalonia.ResetRuntimeWindow"
+        Width="740"
+        Height="520"
+        MinWidth="680"
+        MinHeight="460"
+        Title="Reset Runtime"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Reset Runtime" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Reset Runtime" />
+      <TextBlock x:Name="SummaryTextBlock" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Workspace" FontWeight="SemiBold" />
+          <Border Classes="summary-inline">
+            <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+              <TextBlock Text="Workspace" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Column="1" x:Name="WorkspaceNameTextBlock" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="1" Text="Location" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" x:Name="WorkspaceRootTextBlock" TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <Border Classes="panel-subtle">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Reset Runtime will remove:" FontWeight="SemiBold" />
+            <ItemsControl x:Name="RemovesItemsControl" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Reset Runtime will keep:" FontWeight="SemiBold" />
+            <ItemsControl x:Name="KeepsItemsControl" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Classes="dialog-footer">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+        <TextBlock x:Name="ConfirmationTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
+        <Button Grid.Column="1" Content="Cancel" IsCancel="True" Click="CancelClicked" automation:AutomationProperties.Name="Cancel Reset Runtime" />
+        <Button Grid.Column="2" Classes="accent" Content="Reset Runtime" IsDefault="True" Click="ConfirmClicked" automation:AutomationProperties.Name="Confirm Reset Runtime" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

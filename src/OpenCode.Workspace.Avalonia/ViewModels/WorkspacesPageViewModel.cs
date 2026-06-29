@@ -1001,14 +1001,26 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private async Task ResetRuntimeSelectedWorkspaceAsync()
     {
-        if (SelectedWorkspace is null)
+        if (SelectedWorkspace is null || _interactionService is null)
+        {
+            return;
+        }
+
+        var currentSnapshot = SelectedWorkspace.Snapshot;
+        if (currentSnapshot is null)
+        {
+            return;
+        }
+
+        var prompt = _desktopShellService.BuildRuntimeResetPrompt(currentSnapshot);
+        if (!await _interactionService.ConfirmResetRuntimeAsync(prompt))
         {
             return;
         }
 
         await RunWorkspaceOperationAsync(
-            "Reset Oracle Runtime",
-            "Resetting Oracle runtime...",
+            "Reset Runtime",
+            "Resetting runtime...",
             (rootPath, snapshot, sink) => _desktopShellService.ResetRuntimeAsync(rootPath, snapshot, sink));
     }
 

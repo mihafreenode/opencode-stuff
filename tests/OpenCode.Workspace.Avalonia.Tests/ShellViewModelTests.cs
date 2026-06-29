@@ -187,6 +187,33 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void ResetRuntimeWindow_UsesScopeConfirmationLayout()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ResetRuntimeWindow.axaml"));
+        var codeBehind = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ResetRuntimeWindow.axaml.cs"));
+
+        Assert.Contains("Reset Runtime", axaml, StringComparison.Ordinal);
+        Assert.Contains("Reset Runtime will remove:", axaml, StringComparison.Ordinal);
+        Assert.Contains("Reset Runtime will keep:", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("BuildItems", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspacesPageViewModel_UsesGenericResetRuntimeActionNames()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var code = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+
+        Assert.Contains("ResetRuntimeCommand", code, StringComparison.Ordinal);
+        Assert.Contains("Reset Runtime", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResetOracleRuntime", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("Reset Oracle Runtime", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SavePointInteractionService_ReadsWindowResultAfterDialogCloses()
     {
         var repoRoot = GetRepositoryRoot();
@@ -2322,6 +2349,78 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ResetRuntime_RequestsConfirmationWithRemoveAndKeepScope()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Validate runtime prerequisites",
+                    Summary = "Workspace provisioning stopped.",
+                    Reason = "Managed runtime state is invalid.",
+                    Evidence = "Runtime volume contains partial initialization.",
+                    RecommendedAction = "Reset Runtime.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Duration = TimeSpan.FromMinutes(1),
+                    RawLogReference = "mounts/config/provision.sh",
+                    Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                    EstimatedEffort = "Medium",
+                    EstimatedDuration = "4-6 minutes",
+                },
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var interaction = new FakeWorkspaceInteractionService { ResetRuntimeConfirmed = false };
+        var page = new WorkspacesPageViewModel(desktop);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await page.ResetRuntimeCommand.ExecuteAsync();
+
+        Assert.NotNull(interaction.LastResetRuntimePrompt);
+        Assert.Contains("Managed containers for this workspace", interaction.LastResetRuntimePrompt!.Removes);
+        Assert.Contains("Managed Docker volumes for this workspace", interaction.LastResetRuntimePrompt.Removes);
+        Assert.Contains("Generated runtime state", interaction.LastResetRuntimePrompt.Removes);
+        Assert.Contains("Workspace files", interaction.LastResetRuntimePrompt.Keeps);
+        Assert.Contains("Git history", interaction.LastResetRuntimePrompt.Keeps);
+        Assert.Contains("Documentation", interaction.LastResetRuntimePrompt.Keeps);
+        Assert.Contains("Downloads/cache", interaction.LastResetRuntimePrompt.Keeps);
+        Assert.Equal(0, desktop.ResetRuntimeCallCount);
+    }
+
+    [Fact]
     public async Task OperationLogVisibility_TogglesAndDefaultsVisibleAfterOperation()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
@@ -2856,6 +2955,17 @@ public sealed class ShellViewModelTests
                 }
                 : null;
 
+        public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot snapshot)
+            => new()
+            {
+                WorkspaceName = snapshot.Definition.Workspace.Name,
+                WorkspaceRoot = snapshot.Paths.RootPath,
+                Summary = "Reset recreates managed runtime resources for this workspace while keeping your workspace files and downloads.",
+                Removes = ["Managed containers for this workspace", "Managed Docker volumes for this workspace", "Generated runtime state"],
+                Keeps = ["Workspace files", "Git history", "Documentation", "Downloads/cache", "workspace.yaml"],
+                ConfirmationMessage = "Reset runtime and continue?",
+            };
+
         public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
         {
             AcknowledgeOracleNoticeCallCount++;
@@ -3258,6 +3368,7 @@ public sealed class ShellViewModelTests
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
         public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName) => throw new NotImplementedException();
         public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot) => throw new NotImplementedException();
+        public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot snapshot) => new() { WorkspaceName = snapshot.Definition.Workspace.Name, WorkspaceRoot = snapshot.Paths.RootPath, Summary = "summary" };
         public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -3296,6 +3407,8 @@ public sealed class ShellViewModelTests
         public Exception? RemoveDialogException { get; init; }
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
+        public bool ResetRuntimeConfirmed { get; init; } = true;
+        public WorkspaceRuntimeResetPrompt? LastResetRuntimePrompt { get; private set; }
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateWorkspaceDraft);
@@ -3333,6 +3446,12 @@ public sealed class ShellViewModelTests
 
         public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
             => Task.FromResult(true);
+
+        public Task<bool> ConfirmResetRuntimeAsync(WorkspaceRuntimeResetPrompt prompt, CancellationToken cancellationToken = default)
+        {
+            LastResetRuntimePrompt = prompt;
+            return Task.FromResult(ResetRuntimeConfirmed);
+        }
     }
 
     private sealed class ThrowingDesktopShellService : IDesktopShellService
@@ -3345,6 +3464,7 @@ public sealed class ShellViewModelTests
         public WorkspaceCheckpointIndex LoadCheckpointIndex(string checkpointIndexPath) => new();
         public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(TemplateManifest template, string workspaceName) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(WorkspaceSnapshot snapshot) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot snapshot) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<string> SuggestSavePointMessageAsync(string rootPath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
