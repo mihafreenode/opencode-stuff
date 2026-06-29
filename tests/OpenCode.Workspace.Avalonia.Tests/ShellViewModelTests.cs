@@ -915,7 +915,9 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var recover = page.DetailActions.Single(item => item.Label == "Recover");
+            var recover = page.DetailPrimaryAction?.Label == "Recover Workspace"
+                ? page.DetailPrimaryAction
+                : page.DetailActions.Single(item => item.Label == "Recover Workspace");
             Assert.True(recover.IsEnabled);
             Assert.Equal(string.Empty, recover.DisabledReason);
         }
@@ -2247,7 +2249,9 @@ public sealed class ShellViewModelTests
         Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Retry", StringComparison.Ordinal));
-        Assert.Contains(page.DetailActions, item => item.Label == "Retry" && item.IsEnabled);
+        Assert.NotNull(page.DetailPrimaryAction);
+        Assert.Equal("Retry", page.DetailPrimaryAction!.Label);
+        Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
@@ -2280,7 +2284,9 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Workspace could not open terminal session.", page.DetailSummary);
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Open Workspace.");
-        Assert.Contains(page.DetailActions, item => item.Label == "Open Workspace" && item.IsEnabled);
+        Assert.NotNull(page.DetailPrimaryAction);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
+        Assert.True(page.DetailPrimaryAction.IsEnabled);
     }
 
     [Fact]
@@ -2345,7 +2351,141 @@ public sealed class ShellViewModelTests
 
         Assert.Contains(page.DetailItems, item => item.Label == "Repairability" && item.Value == "CleanupRepair");
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
-        Assert.Contains(page.DetailActions, item => item.Label == "Reset Runtime" && item.IsEnabled);
+        Assert.NotNull(page.DetailPrimaryAction);
+        Assert.Equal("Reset Runtime", page.DetailPrimaryAction!.Label);
+        Assert.True(page.DetailPrimaryAction.IsEnabled);
+        Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reset Runtime");
+    }
+
+    [Fact]
+    public async Task CleanupRepairFailure_DemotesOpenWorkspaceAndOrdersVisibleActions()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Validate Oracle prerequisites",
+                    Summary = "Workspace provisioning stopped.",
+                    Reason = "Oracle XML Database (XDB) is invalid.",
+                    Evidence = "XDB status = INVALID",
+                    RecommendedAction = "Reset Runtime.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Duration = TimeSpan.FromMinutes(1),
+                    RawLogReference = "mounts/config/provision.sh",
+                    Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                    EstimatedEffort = "Medium",
+                    EstimatedDuration = "4-6 minutes",
+                },
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(desktop);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal(["Run Diagnostics", "Retry", "Open Folder", "Recover Workspace"], page.DetailActions.Take(4).Select(item => item.Label));
+        var actionLabels = page.DetailActions.Select(item => item.Label).ToList();
+        Assert.True(actionLabels.IndexOf("Open Workspace") > actionLabels.IndexOf("Recover Workspace"));
+    }
+
+    [Fact]
+    public async Task CleanupRepairFailure_RecommendationMatchesVisibleEnabledResetRuntimeButton()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Validate runtime prerequisites",
+                    Summary = "Workspace provisioning stopped.",
+                    Reason = "Managed runtime state is invalid.",
+                    Evidence = "Runtime volume contains partial initialization.",
+                    RecommendedAction = "Reset Runtime.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Duration = TimeSpan.FromMinutes(1),
+                    RawLogReference = "mounts/config/provision.sh",
+                    Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                    EstimatedEffort = "Medium",
+                    EstimatedDuration = "4-6 minutes",
+                },
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
+
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(desktop);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
+        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
+        Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
     [Fact]
@@ -2533,6 +2673,22 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("automation:AutomationProperties.AutomationId=\"{Binding AutomationId}\"", axaml, StringComparison.Ordinal);
         Assert.Contains("automation:AutomationProperties.Name=\"{Binding AutomationName}\"", axaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MainWindow_DetailsPanel_SurfacesRecommendedActionAboveScrollableActionList()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
+        var recommendedActionIndex = axaml.IndexOf("Text=\"Recommended action\"", StringComparison.Ordinal);
+        var primaryButtonIndex = axaml.IndexOf("Content=\"{Binding CurrentPage.DetailPrimaryAction.Label}\"", StringComparison.Ordinal);
+        var actionListIndex = axaml.IndexOf("ItemsSource=\"{Binding CurrentPage.DetailActions}\"", StringComparison.Ordinal);
+
+        Assert.Contains("IsVisible=\"{Binding CurrentPage.ShowDetailPrimaryAction}\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Classes=\"accent\"", axaml, StringComparison.Ordinal);
+        Assert.True(recommendedActionIndex >= 0);
+        Assert.True(primaryButtonIndex > recommendedActionIndex);
+        Assert.True(actionListIndex > primaryButtonIndex);
     }
 
     [Fact]

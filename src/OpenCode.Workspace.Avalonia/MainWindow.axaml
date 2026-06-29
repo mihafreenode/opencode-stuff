@@ -479,12 +479,25 @@
     </Border>
 
     <Border Grid.Row="1" Grid.Column="2" Margin="0,16,16,16" Classes="panel">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
         <TextBlock Text="{Binding CurrentPage.DetailTitle}" Classes="section-title" />
         <Border Grid.Row="1" Classes="panel-subtle" MinHeight="74" MaxHeight="96">
           <TextBlock Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" />
         </Border>
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Border Grid.Row="2" Classes="panel-subtle" IsVisible="{Binding CurrentPage.ShowDetailPrimaryAction}">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Recommended action" FontWeight="SemiBold" />
+            <Button Classes="accent"
+                    Content="{Binding CurrentPage.DetailPrimaryAction.Label}"
+                    Command="{Binding CurrentPage.DetailPrimaryAction.Command}"
+                    IsEnabled="{Binding CurrentPage.DetailPrimaryAction.IsEnabled}"
+                    automation:AutomationProperties.AutomationId="{Binding CurrentPage.DetailPrimaryAction.AutomationId}"
+                    automation:AutomationProperties.Name="{Binding CurrentPage.DetailPrimaryAction.AutomationName}" />
+            <TextBlock Text="{Binding CurrentPage.DetailPrimaryAction.Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding CurrentPage.DetailPrimaryAction.HasDescription}" />
+            <TextBlock Text="{Binding CurrentPage.DetailPrimaryAction.DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding CurrentPage.DetailPrimaryAction.ShowDisabledReason}" />
+          </StackPanel>
+        </Border>
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <ItemsControl ItemsSource="{Binding CurrentPage.DetailItems}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -496,7 +509,7 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
-        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="320">
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="260">
           <ItemsControl ItemsSource="{Binding CurrentPage.DetailActions}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
