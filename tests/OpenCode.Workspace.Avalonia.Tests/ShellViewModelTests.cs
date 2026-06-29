@@ -1006,7 +1006,7 @@ public sealed class ShellViewModelTests
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Attach").Command).ExecuteAsync();
 
         Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Equal("Workspace could not open terminal session.", page.DetailSummary);
+        Assert.Contains("Workspace could not open terminal session.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Windows Terminal launch failed.", StringComparison.Ordinal));
     }
 
@@ -1036,7 +1036,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
 
-        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+        Assert.Contains("Workspace could not be prepared.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("Runtime files need repair. Run Recover Workspace.", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Recover Workspace.");
     }
@@ -2187,6 +2187,107 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Reprovision_HighVolumeOutput_StaysBufferedUntilBatchFlush()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")])
+        {
+            ReprovisionResultFactoryAsync = async (_, sink, cancellationToken) =>
+            {
+                for (var index = 0; index < 10000; index++)
+                {
+                    sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardOutput, Text = $"sql line {index}" });
+                }
+
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "done" };
+            },
+        };
+
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        var reprovisionTask = page.ReprovisionWorkspaceCommand.ExecuteAsync();
+        await started.Task;
+
+        Assert.True(page.PendingOperationLogLineCountForTesting >= 10000);
+        Assert.DoesNotContain("sql line 9999", page.OperationLogText, StringComparison.Ordinal);
+
+        page.SelectedWorkspace = page.Workspaces.Single(item => item.Name == "beta");
+        Assert.Equal("beta", page.SelectedWorkspace.Name);
+
+        page.FlushPendingOperationLogForTesting();
+
+        Assert.Contains("sql line", page.OperationLogText, StringComparison.Ordinal);
+        Assert.True(page.PendingOperationLogLineCountForTesting > 0);
+        Assert.True(page.VisibleOperationLogLineCountForTesting <= 5000);
+
+        release.SetResult();
+        await reprovisionTask;
+
+        Assert.Contains("sql line 9999", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reprovision_HighVolumeOutput_CopyAllUsesFullTranscriptFile()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactory = (_, sink) =>
+            {
+                for (var index = 0; index < 10000; index++)
+                {
+                    sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardOutput, Text = $"sql line {index}" });
+                }
+
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "done" };
+            },
+        };
+
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        Assert.DoesNotContain("sql line 0", page.OperationLogText, StringComparison.Ordinal);
+        Assert.Contains("sql line 9999", page.OperationLogText, StringComparison.Ordinal);
+        Assert.True(page.VisibleOperationLogLineCountForTesting <= 5000);
+
+        var fullLog = page.GetCopyAllOperationLogText();
+        Assert.Contains("sql line 0", fullLog, StringComparison.Ordinal);
+        Assert.Contains("sql line 9999", fullLog, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reprovision_FailurePreservesFullTranscriptFile()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactoryAsync = async (_, sink, _) =>
+            {
+                for (var index = 0; index < 250; index++)
+                {
+                    sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = $"failure line {index}" });
+                }
+
+                throw new InvalidOperationException("provision failed");
+            },
+        };
+
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+        await page.ReprovisionWorkspaceCommand.ExecuteAsync();
+
+        var fullLog = page.GetCopyAllOperationLogText();
+        Assert.Contains("failure line 0", fullLog, StringComparison.Ordinal);
+        Assert.Contains("failure line 249", fullLog, StringComparison.Ordinal);
+        Assert.Contains("provision failed", page.ReprovisionStatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Reprovision_CreatesOperationTranscript()
     {
         var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
@@ -2246,11 +2347,11 @@ public sealed class ShellViewModelTests
         Assert.Contains("Command: docker exec odip-analiza-workspace", page.ReprovisionStatusMessage, StringComparison.Ordinal);
         Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
         Assert.Contains("/workspace/.env: line 17", page.SelectedWorkspace?.LastActivity, StringComparison.Ordinal);
-        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+        Assert.Contains("Workspace could not be prepared.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Troubleshoot Workspace.");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -2271,7 +2372,7 @@ public sealed class ShellViewModelTests
 
         Assert.DoesNotContain("docker exec odip-analiza-workspace", page.DetailSummary, StringComparison.Ordinal);
         Assert.DoesNotContain("/workspace/.env: line 17", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
+        Assert.Contains("Workspace could not be prepared.", page.DetailSummary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2282,7 +2383,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Workspace could not open terminal session.", page.DetailSummary);
+        Assert.Contains("Workspace could not open terminal session.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Open Workspace.");
         Assert.NotNull(page.DetailPrimaryAction);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
@@ -2352,9 +2453,9 @@ public sealed class ShellViewModelTests
         Assert.Contains(page.DetailItems, item => item.Label == "Repairability" && item.Value == "CleanupRepair");
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Reset Runtime", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
-        Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reset Runtime");
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
     }
 
     [Fact]
@@ -2417,10 +2518,9 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
-        Assert.Equal(["Troubleshoot Workspace", "Retry", "Open Folder", "Recover Workspace"], page.DetailActions.Take(4).Select(item => item.Label));
-        var actionLabels = page.DetailActions.Select(item => item.Label).ToList();
-        Assert.True(actionLabels.IndexOf("Open Workspace") > actionLabels.IndexOf("Recover Workspace"));
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal(["Open Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
     }
 
     [Fact]
@@ -2451,7 +2551,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
-        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
     }
 
     [Fact]
@@ -2502,7 +2602,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
         Assert.Contains(page.DetailItems, item => item.Label == "Repair attempted" && item.Value == "Reset Runtime");
         Assert.Contains(page.DetailItems, item => item.Label == "Outcome" && item.Value == "No improvement detected.");
         Assert.Contains(page.DetailItems, item => item.Label == "Previous recommendation" && item.Value == "Reset Runtime.");
@@ -2537,7 +2637,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Diagnostics.");
-        Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -2550,7 +2650,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Recover Workspace.");
-        Assert.Equal("Recover Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -2582,7 +2682,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Troubleshoot Workspace", StringComparison.Ordinal));
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
     }
 
@@ -2604,6 +2704,66 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(1, desktop.RefreshVolatileWorkspaceStateCallCount);
         Assert.Equal(page.SelectedWorkspace?.RootPath, navigatedRootPath);
+    }
+
+    [Fact]
+    public async Task InvestigateProblem_UsesWorkspaceTroubleshootingPageInsteadOfDiagnostics()
+    {
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false)])
+        {
+            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = "Workspace troubleshooting",
+                Summary = "Workspace-specific failure evidence.",
+                Recommendation = "Open Workspace should retry the safe repair path.",
+                CanOpenWorkspace = true,
+                Facts = [new WorkspaceTroubleshootingFact { Label = "Last failed stage", Value = "Installing APEX" }],
+            }),
+        };
+        var shell = CreateShellWithDesktop(desktop);
+
+        await shell.InitializeAsync();
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
+        Assert.Equal("Workspace-specific failure evidence.", shell.CurrentPage.DetailSummary);
+    }
+
+    [Fact]
+    public async Task InvestigateProblem_InProgressProvisioning_ShowsKeepWaitingInsteadOfDoctor()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = "Provisioning still running",
+                Summary = "Provisioning is still running. APEX installation may take several minutes.",
+                Recommendation = "View Log or Keep Waiting.",
+                IsProvisioningInProgress = true,
+                CanKeepWaiting = true,
+                CanViewLog = true,
+                TranscriptFilePath = request.TranscriptFilePath,
+                TranscriptExcerpt = "[oracle-apex] Stage: Installing APEX",
+            }),
+        };
+        var shell = CreateShellWithDesktop(desktop);
+
+        await shell.InitializeAsync();
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        workspacesPage.StartOperationTranscriptForTesting("Open Workspace", snapshot.Definition.Workspace.Name);
+        workspacesPage.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Installing APEX..." });
+        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
+        Assert.Equal("Keep Waiting", troubleshootingPage.DetailPrimaryAction?.Label);
+        Assert.Contains("APEX installation may take several minutes", troubleshootingPage.DetailSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain(troubleshootingPage.DetailActions, item => item.Label == "Run Doctor");
     }
 
     [Fact]
@@ -2667,7 +2827,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
-        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -2865,7 +3025,7 @@ public sealed class ShellViewModelTests
         var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
         var recommendedActionIndex = axaml.IndexOf("Text=\"Recommended action\"", StringComparison.Ordinal);
         var primaryButtonIndex = axaml.IndexOf("Content=\"{Binding CurrentPage.DetailPrimaryAction.Label}\"", StringComparison.Ordinal);
-        var actionListIndex = axaml.IndexOf("ItemsSource=\"{Binding CurrentPage.DetailActions}\"", StringComparison.Ordinal);
+        var actionListIndex = axaml.IndexOf("ItemsSource=\"{Binding CurrentPage.DetailVisibleActions}\"", StringComparison.Ordinal);
 
         Assert.Contains("IsVisible=\"{Binding CurrentPage.ShowDetailPrimaryAction}\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Classes=\"accent\"", axaml, StringComparison.Ordinal);
@@ -3192,6 +3352,7 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? OpenWorkspaceResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
+        public Func<WorkspaceTroubleshootingRequest, CancellationToken, Task<WorkspaceTroubleshootingReport>>? TroubleshootingReportFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? PrepareResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceCheckpointOperationResult>>? CheckpointResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceRemovalOperationResult>>? RemoveResultFactoryAsync { get; set; }
@@ -3689,6 +3850,32 @@ public sealed class ShellViewModelTests
             return Task.FromResult(result);
         }
 
+        public Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default)
+        {
+            if (TroubleshootingReportFactoryAsync is not null)
+            {
+                return TroubleshootingReportFactoryAsync(request, cancellationToken);
+            }
+
+            return Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = request.IsOperationInProgress ? "Provisioning still running" : "Workspace troubleshooting",
+                Summary = request.IsOperationInProgress ? "Provisioning is still running. Keep waiting while the workspace operation continues." : "Workspace-specific troubleshooting details.",
+                Recommendation = request.IsOperationInProgress ? "View Log or Keep Waiting." : "Open Workspace should handle the next safe step.",
+                IsProvisioningInProgress = request.IsOperationInProgress,
+                CanKeepWaiting = request.IsOperationInProgress,
+                CanViewLog = !string.IsNullOrWhiteSpace(request.TranscriptFilePath),
+                CanOpenWorkspace = !request.IsOperationInProgress,
+                CanRecoverWorkspace = true,
+                CanResetRuntime = false,
+                Facts = [new WorkspaceTroubleshootingFact { Label = "Current stage", Value = string.IsNullOrWhiteSpace(request.CurrentStatusMessage) ? "Unknown" : request.CurrentStatusMessage }],
+                TranscriptFilePath = request.TranscriptFilePath,
+                TranscriptExcerpt = request.IsOperationInProgress ? "live log excerpt" : string.Empty,
+            });
+        }
+
         public WorkspaceTimeline LoadTimeline(string timelinePath)
         {
             if (TimelineException is not null)
@@ -3774,6 +3961,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
+        public Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceTroubleshootingReport { WorkspaceName = request.WorkspaceName, RootPath = request.RootPath, Headline = "Workspace troubleshooting", Summary = "Workspace-specific troubleshooting details.", Recommendation = "Open Workspace.", CanOpenWorkspace = true });
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
@@ -3871,6 +4059,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 

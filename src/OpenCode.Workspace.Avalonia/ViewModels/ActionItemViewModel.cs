@@ -67,10 +67,12 @@ public sealed class ActionItemViewModel : ObservableObject
     public string AutomationId => Label switch
     {
         "Attach" => "WorkspaceAction_Attach",
+        "Attach Only" => "WorkspaceAction_AttachOnly",
+        "Start Only" => "WorkspaceAction_StartOnly",
         "Save Point" => "WorkspaceAction_SavePoint",
         "Backup" => "WorkspaceAction_Backup",
         "Recover" or "Recover Workspace" => "WorkspaceAction_Recover",
-        "Troubleshoot Workspace" => "WorkspaceAction_TroubleshootWorkspace",
+        "Troubleshoot Workspace" or "Investigate Problem" => "WorkspaceAction_InvestigateProblem",
         "Publish" => "WorkspaceAction_Publish",
         "Remove" => "WorkspaceAction_RemoveFromList",
         _ => $"WorkspaceAction_{BuildSafeToken(Label)}",

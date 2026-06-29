@@ -126,3 +126,40 @@ public sealed class SavePointDraft
 {
     public required string Message { get; init; }
 }
+
+public sealed class WorkspaceTroubleshootingRequest
+{
+    public required string RootPath { get; init; }
+    public WorkspaceSnapshot? Snapshot { get; init; }
+    public string WorkspaceName { get; init; } = string.Empty;
+    public bool IsOperationInProgress { get; init; }
+    public string CurrentOperationName { get; init; } = string.Empty;
+    public string CurrentStatusMessage { get; init; } = string.Empty;
+    public string TranscriptFilePath { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceTroubleshootingFact
+{
+    public required string Label { get; init; }
+    public required string Value { get; init; }
+}
+
+public sealed class WorkspaceTroubleshootingReport
+{
+    public required string WorkspaceName { get; init; }
+    public required string RootPath { get; init; }
+    public required string Headline { get; init; }
+    public required string Summary { get; init; }
+    public required string Recommendation { get; init; }
+    public IReadOnlyList<WorkspaceTroubleshootingFact> Facts { get; init; } = Array.Empty<WorkspaceTroubleshootingFact>();
+    public IReadOnlyList<string> SuggestedNextSteps { get; init; } = Array.Empty<string>();
+    public bool IsProvisioningInProgress { get; init; }
+    public bool RecommendHostDiagnostics { get; init; }
+    public bool CanKeepWaiting { get; init; }
+    public bool CanViewLog { get; init; }
+    public bool CanOpenWorkspace { get; init; }
+    public bool CanRecoverWorkspace { get; init; }
+    public bool CanResetRuntime { get; init; }
+    public string TranscriptFilePath { get; init; } = string.Empty;
+    public string TranscriptExcerpt { get; init; } = string.Empty;
+}

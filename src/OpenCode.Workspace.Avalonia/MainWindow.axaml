@@ -91,7 +91,7 @@
                             Margin="0,0,0,10"
                             automation:AutomationProperties.AutomationId="{Binding RowAutomationId}"
                             automation:AutomationProperties.Name="{Binding RowAutomationName}">
-                      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
                         <TextBlock Text="{Binding Name}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
@@ -111,8 +111,17 @@
                           <TextBlock Text="{Binding RuntimeStatusLabel}" />
                         </Border>
                         <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding RootPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-                        <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding RepositoryStatus}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                        <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding LastActivity}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding Headline}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                        <TextBlock Grid.Row="3" Grid.ColumnSpan="3" Text="{Binding Summary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                        <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="10" IsVisible="{Binding HasPrimaryAction}">
+                          <Button Classes="accent"
+                                  Content="{Binding PrimaryAction.Label}"
+                                  Command="{Binding PrimaryAction.Command}"
+                                  IsEnabled="{Binding PrimaryAction.IsEnabled}"
+                                  automation:AutomationProperties.AutomationId="{Binding PrimaryAction.AutomationId}"
+                                  automation:AutomationProperties.Name="{Binding PrimaryAction.AutomationName}" />
+                          <TextBlock Text="{Binding Recommendation}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasRecommendation}" VerticalAlignment="Center" />
+                        </StackPanel>
                       </Grid>
                     </Border>
                   </DataTemplate>
@@ -232,6 +241,110 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:WorkspaceTroubleshootingPageViewModel">
+      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Investigate Problem" Classes="section-title" />
+            <TextBlock Text="Workspace-specific diagnostics focused on why this workspace failed, stalled, or needs repair."
+                       Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel-subtle">
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding DetailSummary}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding DetailRecommendation}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDetailRecommendation}" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Spacing="10">
+          <Button Classes="accent"
+                  Content="{Binding DetailPrimaryAction.Label}"
+                  Command="{Binding DetailPrimaryAction.Command}"
+                  IsEnabled="{Binding DetailPrimaryAction.IsEnabled}"
+                  IsVisible="{Binding ShowDetailPrimaryAction}"
+                  automation:AutomationProperties.AutomationId="{Binding DetailPrimaryAction.AutomationId}"
+                  automation:AutomationProperties.Name="{Binding DetailPrimaryAction.AutomationName}" />
+          <ItemsControl ItemsSource="{Binding DetailVisibleActions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="panel-subtle" Margin="0,0,0,8">
+                  <StackPanel Spacing="6">
+                    <Button Content="{Binding Label}"
+                            Command="{Binding Command}"
+                            IsEnabled="{Binding IsEnabled}"
+                            automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                            automation:AutomationProperties.Name="{Binding AutomationName}" />
+                    <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Expander Header="Advanced" IsExpanded="{Binding ShowAdvancedActions}" IsVisible="{Binding HasDetailAdvancedActions}">
+            <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,8,0,0">
+                    <StackPanel Spacing="6">
+                      <Button Content="{Binding Label}"
+                              Command="{Binding Command}"
+                              IsEnabled="{Binding IsEnabled}"
+                              automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                              automation:AutomationProperties.Name="{Binding AutomationName}" />
+                      <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Expander>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="3">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Evidence" Classes="section-title" />
+            <ItemsControl ItemsSource="{Binding DetailItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Spacing="8" IsVisible="{Binding HasTranscriptExcerpt}">
+              <TextBlock Text="Transcript Excerpt" Classes="section-title" />
+              <TextBox Text="{Binding TranscriptExcerpt}"
+                       IsReadOnly="True"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Consolas"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       MinHeight="180" />
+            </StackPanel>
+
+            <StackPanel Spacing="8" IsVisible="{Binding HasSuggestedNextSteps}">
+              <TextBlock Text="Next Steps" Classes="section-title" />
+              <ItemsControl ItemsSource="{Binding SuggestedNextSteps}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding .}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,4" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </Grid>
@@ -482,7 +595,10 @@
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
         <TextBlock Text="{Binding CurrentPage.DetailTitle}" Classes="section-title" />
         <Border Grid.Row="1" Classes="panel-subtle" MinHeight="74" MaxHeight="96">
-          <TextBlock Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" />
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding CurrentPage.DetailSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="48" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding CurrentPage.DetailRecommendation}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding CurrentPage.HasDetailRecommendation}" />
+          </StackPanel>
         </Border>
         <Border Grid.Row="2" Classes="panel-subtle" IsVisible="{Binding CurrentPage.ShowDetailPrimaryAction}">
           <StackPanel Spacing="6">
@@ -509,24 +625,45 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
-        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="260">
-          <ItemsControl ItemsSource="{Binding CurrentPage.DetailActions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Classes="panel-subtle" Margin="0,0,0,8" MinHeight="86">
-                  <StackPanel Spacing="6">
-                    <Button Content="{Binding Label}"
-                            Command="{Binding Command}"
-                            IsEnabled="{Binding IsEnabled}"
-                            automation:AutomationProperties.AutomationId="{Binding AutomationId}"
-                            automation:AutomationProperties.Name="{Binding AutomationName}" />
-                    <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDescription}" />
-                    <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowDisabledReason}" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="320">
+          <StackPanel Spacing="10">
+            <ItemsControl ItemsSource="{Binding CurrentPage.DetailVisibleActions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8" MinHeight="86">
+                    <StackPanel Spacing="6">
+                      <Button Content="{Binding Label}"
+                              Command="{Binding Command}"
+                              IsEnabled="{Binding IsEnabled}"
+                              automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                              automation:AutomationProperties.Name="{Binding AutomationName}" />
+                      <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDescription}" />
+                      <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowDisabledReason}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Expander Header="Advanced" IsExpanded="{Binding CurrentPage.ShowAdvancedActions}" IsVisible="{Binding CurrentPage.HasDetailAdvancedActions}">
+              <ItemsControl ItemsSource="{Binding CurrentPage.DetailAdvancedActions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,8,0,0" MinHeight="86">
+                      <StackPanel Spacing="6">
+                        <Button Content="{Binding Label}"
+                                Command="{Binding Command}"
+                                IsEnabled="{Binding IsEnabled}"
+                                automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                automation:AutomationProperties.Name="{Binding AutomationName}" />
+                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDescription}" />
+                        <TextBlock Text="{Binding DisabledReason}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="CharacterEllipsis" IsVisible="{Binding ShowDisabledReason}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+          </StackPanel>
         </ScrollViewer>
       </Grid>
     </Border>

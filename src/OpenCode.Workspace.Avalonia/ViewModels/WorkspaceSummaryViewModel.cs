@@ -11,6 +11,10 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     private string? _lastActivityOverride;
     private string? _failedOperationNameOverride;
     private bool _isSelected;
+    private string _headline = string.Empty;
+    private string _summary = string.Empty;
+    private string _recommendation = string.Empty;
+    private ActionItemViewModel? _primaryAction;
 
     public WorkspaceSummaryViewModel(WorkspaceShellItem item)
     {
@@ -103,6 +107,45 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     public string SelectedMarkerAutomationId => "WorkspaceRow_Selected";
     public string SelectedMarkerAutomationName => "WorkspaceRow_Selected";
     public string? FailedOperationName => _failedOperationNameOverride ?? Record.LastOperationName;
+    public string Headline
+    {
+        get => string.IsNullOrWhiteSpace(_headline) ? RuntimeStatusLabel : _headline;
+        private set => SetProperty(ref _headline, value);
+    }
+
+    public string Summary
+    {
+        get => string.IsNullOrWhiteSpace(_summary) ? LastActivity : _summary;
+        private set => SetProperty(ref _summary, value);
+    }
+
+    public string Recommendation
+    {
+        get => _recommendation;
+        private set
+        {
+            if (SetProperty(ref _recommendation, value))
+            {
+                RaisePropertyChanged(nameof(HasRecommendation));
+            }
+        }
+    }
+
+    public bool HasRecommendation => !string.IsNullOrWhiteSpace(Recommendation);
+
+    public ActionItemViewModel? PrimaryAction
+    {
+        get => _primaryAction;
+        private set
+        {
+            if (SetProperty(ref _primaryAction, value))
+            {
+                RaisePropertyChanged(nameof(HasPrimaryAction));
+            }
+        }
+    }
+
+    public bool HasPrimaryAction => PrimaryAction is not null;
 
     public bool IsSelected
     {
@@ -138,6 +181,14 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         RaiseWorkspaceDisplayChanged();
     }
 
+    public void ApplyPresentation(WorkspacePresentation presentation)
+    {
+        Headline = presentation.Headline;
+        Summary = presentation.Summary;
+        Recommendation = presentation.Recommendation;
+        PrimaryAction = presentation.PrimaryAction;
+    }
+
     private string DisplayNameFromRecord()
         => string.IsNullOrWhiteSpace(Record.Name) ? Record.RootPath : Record.Name;
 
@@ -161,5 +212,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     {
         RaisePropertyChanged(nameof(RuntimeStatusLabel));
         RaisePropertyChanged(nameof(LastActivity));
+        RaisePropertyChanged(nameof(Headline));
+        RaisePropertyChanged(nameof(Summary));
     }
 }

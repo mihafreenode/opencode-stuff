@@ -72,7 +72,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
     }
 
     [Fact]
-    public async Task OpenWorkspace_WithMissingRuntimeState_FailsWithRecoverGuidance()
+    public async Task OpenWorkspace_WithMissingRuntimeState_AutoRepairsAndOpens()
     {
         var tempRoot = CreateTempRoot();
 
@@ -80,9 +80,10 @@ public sealed class DesktopShellServiceReprovisionStateTests
         {
             var fixture = await CreateMissingRuntimeStateWorkspaceFixtureAsync(tempRoot, "Odip Analiza");
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, fixture.OpenSnapshot));
+            var result = await fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, fixture.OpenSnapshot);
 
-            Assert.Contains("Run Recover Workspace", exception.Message, StringComparison.Ordinal);
+            Assert.True(result.Snapshot.Record.LastOperationSucceeded);
+            Assert.Contains("Repairing runtime...", string.Join(Environment.NewLine, result.Transcript.Lines.Select(line => line.Text)), StringComparison.Ordinal);
         }
         finally
         {

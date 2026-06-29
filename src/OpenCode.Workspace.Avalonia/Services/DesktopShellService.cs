@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
@@ -219,7 +220,24 @@ public sealed class DesktopShellService : IDesktopShellService
 
                 if (plan.NeedsRecover)
                 {
-                    throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+                    await RunOpenPhaseAsync(
+                        snapshot,
+                        append,
+                        log,
+                        "Repairing runtime...",
+                        OpenWorkspaceProvisionTimeout,
+                        token => _workspaceOrchestrator.RecoverAsync(snapshot, log, token),
+                        cancellationToken);
+                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                    if (snapshot.LocalRuntimeState is null)
+                    {
+                        append(OperationTranscriptLineKind.Status, "Regenerating runtime state...");
+                        await _workspaceOrchestrator.EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+                        snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                    }
+
+                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                    continue;
                 }
 
                 if (plan.TerminalUnavailable)
@@ -1150,6 +1168,109 @@ public sealed class DesktopShellService : IDesktopShellService
         return Task.CompletedTask;
     }
 
+    public async Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default)
+    {
+        var snapshot = request.Snapshot;
+        if (snapshot is null)
+        {
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(request.RootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: true);
+        }
+
+        var facts = new List<WorkspaceTroubleshootingFact>();
+        var health = snapshot.Record.LastProvisioningHealth;
+        var volatileValidation = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, cancellationToken: cancellationToken);
+        var timeline = _timelineService.Load(snapshot.Paths.TimelinePath);
+        var lastTimelineEvent = timeline.Events.OrderByDescending(item => item.OccurredUtc).FirstOrDefault();
+        var transcriptFilePath = ResolveTroubleshootingTranscriptPath(request, snapshot);
+        var transcriptExcerpt = ReadTranscriptExcerpt(transcriptFilePath);
+        var isOracleWorkspace = IsOracleWorkspace(snapshot, health);
+        var hostProblem = IsHostProblem(health);
+        var runtimeStateMissing = !File.Exists(snapshot.Paths.RuntimeStatePath);
+        var appliedStateMissing = !File.Exists(snapshot.Paths.AppliedStatePath);
+        var attachScriptMissing = !File.Exists(snapshot.Paths.AttachWrapperScriptPath);
+        var stage = request.IsOperationInProgress
+            ? request.CurrentStatusMessage
+            : health?.Stage ?? snapshot.Record.LastOperationName ?? "Unknown";
+
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Current operation", Value = request.IsOperationInProgress ? request.CurrentOperationName : snapshot.Record.LastOperationName ?? "None" });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Current stage", Value = string.IsNullOrWhiteSpace(stage) ? "Unknown" : stage });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Provisioning state", Value = request.IsOperationInProgress ? "Provisioning is still running." : snapshot.Record.LastOperationSucceeded == false ? "Last provisioning attempt exited with an error." : "No active provisioning detected." });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime state", Value = snapshot.RuntimeState.ToString() });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime-state.yaml", Value = DescribeFileState(snapshot.Paths.RuntimeStatePath) });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Applied-state.yaml", Value = DescribeFileState(snapshot.Paths.AppliedStatePath) });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Attach script", Value = DescribeFileState(snapshot.Paths.AttachWrapperScriptPath) });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Provision script", Value = DescribeFileState(snapshot.Paths.ProvisionScriptPath) });
+
+        if (health is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(health.Reason))
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = "Last failure reason", Value = health.Reason });
+            }
+
+            if (!string.IsNullOrWhiteSpace(health.Evidence))
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = "Last failure evidence", Value = health.Evidence });
+            }
+
+            if (!string.IsNullOrWhiteSpace(health.Repairability))
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = "Repairability", Value = health.Repairability });
+            }
+
+            if (!string.IsNullOrWhiteSpace(health.OracleVersion) || !string.IsNullOrWhiteSpace(health.ApexVersion) || !string.IsNullOrWhiteSpace(health.OrdsVersion))
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = "Oracle provider", Value = BuildOracleProviderSummary(health) });
+            }
+        }
+
+        if (volatileValidation is not null)
+        {
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Docker validation", Value = BuildProcessSummary(volatileValidation) });
+            var validationEvidence = ExtractValidationEvidence(volatileValidation);
+            if (!string.IsNullOrWhiteSpace(validationEvidence))
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = "Compose and container evidence", Value = validationEvidence });
+            }
+        }
+
+        if (lastTimelineEvent is not null)
+        {
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Last timeline event", Value = $"{lastTimelineEvent.Summary} at {lastTimelineEvent.OccurredUtc:O}" });
+        }
+
+        if (!string.IsNullOrWhiteSpace(transcriptFilePath))
+        {
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Transcript file", Value = transcriptFilePath });
+        }
+
+        var suggestedNextSteps = BuildSuggestedNextSteps(request, health, runtimeStateMissing, appliedStateMissing, hostProblem, isOracleWorkspace);
+        var canResetRuntime = string.Equals(health?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal);
+        var headline = BuildTroubleshootingHeadline(request, health, hostProblem, runtimeStateMissing, appliedStateMissing);
+        var summary = BuildTroubleshootingSummary(request, health, isOracleWorkspace, hostProblem, runtimeStateMissing, appliedStateMissing, attachScriptMissing);
+        var recommendation = BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace);
+
+        return new WorkspaceTroubleshootingReport
+        {
+            WorkspaceName = string.IsNullOrWhiteSpace(request.WorkspaceName) ? snapshot.Definition.Workspace.Name : request.WorkspaceName,
+            RootPath = request.RootPath,
+            Headline = headline,
+            Summary = summary,
+            Recommendation = recommendation,
+            Facts = facts,
+            SuggestedNextSteps = suggestedNextSteps,
+            IsProvisioningInProgress = request.IsOperationInProgress,
+            RecommendHostDiagnostics = hostProblem,
+            CanKeepWaiting = request.IsOperationInProgress,
+            CanViewLog = !string.IsNullOrWhiteSpace(transcriptFilePath),
+            CanOpenWorkspace = !request.IsOperationInProgress,
+            CanRecoverWorkspace = !request.IsOperationInProgress,
+            CanResetRuntime = canResetRuntime,
+            TranscriptFilePath = transcriptFilePath,
+            TranscriptExcerpt = transcriptExcerpt,
+        };
+    }
+
     private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
     {
         var record = CloneRecord(
@@ -1192,6 +1313,184 @@ public sealed class DesktopShellService : IDesktopShellService
             LastOperationUtc = DateTimeOffset.UtcNow,
             LastProvisioningHealth = provisioningHealth,
         };
+
+    private static string ResolveTroubleshootingTranscriptPath(WorkspaceTroubleshootingRequest request, WorkspaceSnapshot snapshot)
+        => !string.IsNullOrWhiteSpace(request.TranscriptFilePath) && File.Exists(request.TranscriptFilePath)
+            ? request.TranscriptFilePath
+            : File.Exists(snapshot.Paths.AttachDiagnosticsLogPath)
+                ? snapshot.Paths.AttachDiagnosticsLogPath
+                : string.Empty;
+
+    private static string DescribeFileState(string path)
+        => File.Exists(path) ? $"Present: {path}" : $"Missing: {path}";
+
+    private static string ReadTranscriptExcerpt(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return string.Empty;
+        }
+
+        var lines = new Queue<string>();
+        foreach (var line in File.ReadLines(filePath))
+        {
+            lines.Enqueue(line);
+            while (lines.Count > 80)
+            {
+                lines.Dequeue();
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static bool IsOracleWorkspace(WorkspaceSnapshot snapshot, WorkspaceProvisioningHealthRecord? health)
+        => snapshot.Definition.Features.Any(feature => feature.Contains("oracle", StringComparison.OrdinalIgnoreCase) || feature.Contains("apex", StringComparison.OrdinalIgnoreCase))
+            || snapshot.Definition.Services.Any(service => service.Contains("oracle", StringComparison.OrdinalIgnoreCase) || service.Contains("ords", StringComparison.OrdinalIgnoreCase))
+            || !string.IsNullOrWhiteSpace(health?.OracleVersion)
+            || !string.IsNullOrWhiteSpace(health?.ApexVersion)
+            || !string.IsNullOrWhiteSpace(health?.OrdsVersion);
+
+    private static bool IsHostProblem(WorkspaceProvisioningHealthRecord? health)
+        => string.Equals(health?.ProblemScope, "HostProblem", StringComparison.Ordinal)
+            || string.Equals(health?.RecommendedAction, "Run Diagnostics.", StringComparison.Ordinal)
+            || health?.Reason.Contains("Docker engine", StringComparison.OrdinalIgnoreCase) == true
+            || health?.Reason.Contains("Windows Terminal", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string BuildOracleProviderSummary(WorkspaceProvisioningHealthRecord health)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(health.OracleVersion))
+        {
+            parts.Add($"Oracle {health.OracleVersion}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health.ApexVersion))
+        {
+            parts.Add($"APEX {health.ApexVersion}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health.OrdsVersion))
+        {
+            parts.Add($"ORDS {health.OrdsVersion}");
+        }
+
+        return string.Join(", ", parts);
+    }
+
+    private static string BuildProcessSummary(ProcessResult processResult)
+        => $"Exit code {processResult.ExitCode}. Command: {processResult.Command}";
+
+    private static string ExtractValidationEvidence(ProcessResult processResult)
+    {
+        var lines = processResult.StandardErrorLines
+            .Concat(processResult.StandardOutputLines)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Take(20)
+            .ToList();
+        return lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildTroubleshootingHeadline(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing)
+    {
+        if (request.IsOperationInProgress)
+        {
+            return "Provisioning still running";
+        }
+
+        if (hostProblem)
+        {
+            return "Host-level issue detected";
+        }
+
+        if (runtimeStateMissing || appliedStateMissing)
+        {
+            return "Managed runtime files need repair";
+        }
+
+        return string.IsNullOrWhiteSpace(health?.Stage) ? "Workspace troubleshooting" : health.Stage;
+    }
+
+    private static string BuildTroubleshootingSummary(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool isOracleWorkspace, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing, bool attachScriptMissing)
+    {
+        if (request.IsOperationInProgress)
+        {
+            return isOracleWorkspace
+                ? "Provisioning is still running. APEX installation may take several minutes. Keep waiting unless the process exits, times out, or new error evidence appears."
+                : "Provisioning is still running. Keep waiting while OpenCode continues the workspace operation and streams the log.";
+        }
+
+        if (hostProblem)
+        {
+            return "This looks like a host-level problem rather than a workspace-only failure. Review the workspace evidence first, then run host diagnostics if needed.";
+        }
+
+        if (runtimeStateMissing || appliedStateMissing || attachScriptMissing)
+        {
+            return "Managed runtime artifacts are missing or stale after the last operation. Open Workspace can usually repair these safely and continue.";
+        }
+
+        return string.IsNullOrWhiteSpace(health?.Summary)
+            ? "OpenCode gathered the current workspace evidence so you can see what failed and what to try next."
+            : health.Summary;
+    }
+
+    private static string BuildTroubleshootingRecommendation(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool canResetRuntime, bool runtimeStateMissing, bool isOracleWorkspace)
+    {
+        if (request.IsOperationInProgress)
+        {
+            return isOracleWorkspace
+                ? "Provisioning is still running. View Log or Keep Waiting while Oracle APEX and ORDS continue to install."
+                : "Provisioning is still running. View Log or Keep Waiting before treating this as a failed workspace.";
+        }
+
+        if (hostProblem)
+        {
+            return "Run Host Diagnostics only if the workspace evidence still points to Docker, Windows Terminal, or another host prerequisite.";
+        }
+
+        if (runtimeStateMissing)
+        {
+            return "Open Workspace should safely repair the missing runtime state and continue.";
+        }
+
+        if (canResetRuntime)
+        {
+            return "Investigate the workspace evidence first. Reset Runtime is available in Advanced if cleanup repair is actually needed.";
+        }
+
+        return string.IsNullOrWhiteSpace(health?.RecommendedAction)
+            ? "Use the workspace evidence below to choose the next safe action."
+            : health.RecommendedAction;
+    }
+
+    private static IReadOnlyList<string> BuildSuggestedNextSteps(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool runtimeStateMissing, bool appliedStateMissing, bool hostProblem, bool isOracleWorkspace)
+    {
+        if (request.IsOperationInProgress)
+        {
+            return isOracleWorkspace
+                ? ["Keep waiting while Oracle APEX and ORDS continue to provision.", "Use View Log to confirm that stage output is still moving.", "Treat this as failed only if the process exits, times out, or new error evidence appears."]
+                : ["Keep waiting while provisioning continues.", "Use View Log to confirm that output is still streaming."];
+        }
+
+        var steps = new List<string>();
+        if (runtimeStateMissing || appliedStateMissing)
+        {
+            steps.Add("Open Workspace to let OpenCode repair the missing managed runtime files.");
+        }
+
+        if (hostProblem)
+        {
+            steps.Add("Run Host Diagnostics only after reviewing the workspace-specific evidence above.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health?.Reason))
+        {
+            steps.Add($"Review the last failure reason: {health.Reason}");
+        }
+
+        return steps;
+    }
 
     private static WorkspaceSnapshot CloneSnapshot(WorkspaceSnapshot source, WorkspaceRecord record)
         => new()
