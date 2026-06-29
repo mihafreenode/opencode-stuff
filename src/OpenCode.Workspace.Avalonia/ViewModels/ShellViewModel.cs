@@ -31,7 +31,7 @@ public sealed class ShellViewModel : ObservableObject
         _currentPage = workspacesPage;
         StatusBarBuild = $"{appBuildInfo.BuildConfiguration} {appBuildInfo.AssemblyVersion}";
 
-        workspacesPage.ValidateWorkspaceAsync = ValidateWorkspaceFromOverviewAsync;
+        workspacesPage.TroubleshootWorkspaceAsync = TroubleshootWorkspaceFromOverviewAsync;
         workspacesPage.PropertyChanged += (_, eventArgs) =>
         {
             RefreshStatusBar();
@@ -153,7 +153,7 @@ public sealed class ShellViewModel : ObservableObject
     private NavigationItemViewModel CreateNavigationItem(PageViewModel page)
         => new(page.Title, page, new RelayCommand(() => CurrentPage = page));
 
-    private async Task ValidateWorkspaceFromOverviewAsync(string workspacePath)
+    private async Task TroubleshootWorkspaceFromOverviewAsync(string workspacePath)
     {
         CurrentPage = _diagnosticsPage;
         _diagnosticsPage.SelectedWorkspaceTarget = _diagnosticsPage.WorkspaceTargets.FirstOrDefault(item => string.Equals(item.RootPath, workspacePath, StringComparison.OrdinalIgnoreCase))

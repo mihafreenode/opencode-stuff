@@ -2248,9 +2248,9 @@ public sealed class ShellViewModelTests
         Assert.Contains("/workspace/.env: line 17", page.SelectedWorkspace?.LastActivity, StringComparison.Ordinal);
         Assert.Equal("Workspace could not be prepared.", page.DetailSummary);
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
-        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Retry", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Troubleshoot Workspace.");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Retry", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -2418,9 +2418,117 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
-        Assert.Equal(["Run Diagnostics", "Retry", "Open Folder", "Recover Workspace"], page.DetailActions.Take(4).Select(item => item.Label));
+        Assert.Equal(["Troubleshoot Workspace", "Retry", "Open Folder", "Recover Workspace"], page.DetailActions.Take(4).Select(item => item.Label));
         var actionLabels = page.DetailActions.Select(item => item.Label).ToList();
         Assert.True(actionLabels.IndexOf("Open Workspace") > actionLabels.IndexOf("Recover Workspace"));
+    }
+
+    [Fact]
+    public async Task XdbInvalid_DoesNotRecommendHostDiagnostics()
+    {
+        var snapshot = WithProvisioningHealth(
+            CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false),
+            new WorkspaceProvisioningHealthRecord
+            {
+                Succeeded = false,
+                Stage = "Validate Oracle prerequisites",
+                Summary = "Workspace provisioning stopped.",
+                Reason = "Oracle XML Database (XDB) is invalid.",
+                Evidence = "XDB status = INVALID",
+                RecommendedAction = "Reset Runtime.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Duration = TimeSpan.FromMinutes(1),
+                RawLogReference = "mounts/config/provision.sh",
+                Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                EstimatedEffort = "Medium",
+                EstimatedDuration = "4-6 minutes",
+            });
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
+        Assert.Equal("Reset Runtime", page.DetailPrimaryAction?.Label);
+    }
+
+    [Fact]
+    public async Task DockerUnavailable_RecommendsRunDiagnostics()
+    {
+        var snapshot = WithProvisioningHealth(
+            CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Docker engine is unavailable.", lastOperationSucceeded: false),
+            new WorkspaceProvisioningHealthRecord
+            {
+                Succeeded = false,
+                Stage = "Check host prerequisites",
+                Summary = "Workspace provisioning stopped.",
+                Reason = "Docker engine is unavailable.",
+                Evidence = "Docker engine check failed.",
+                RecommendedAction = "Run Diagnostics.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Duration = TimeSpan.FromSeconds(20),
+                RawLogReference = "mounts/config/provision.sh",
+                Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+                EstimatedEffort = "Low",
+                EstimatedDuration = "1-2 minutes",
+            });
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Diagnostics.");
+        Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
+        Assert.True(page.DetailPrimaryAction?.IsEnabled);
+    }
+
+    [Fact]
+    public async Task MissingRuntimeState_RecommendsRecoverWorkspace()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Open Workspace", lastOperationResult: "Runtime state is missing.", lastOperationSucceeded: false)]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Recover Workspace.");
+        Assert.Equal("Recover Workspace", page.DetailPrimaryAction?.Label);
+        Assert.True(page.DetailPrimaryAction?.IsEnabled);
+    }
+
+    [Fact]
+    public async Task PortConflict_RecommendsTroubleshootWorkspace()
+    {
+        var snapshot = WithProvisioningHealth(
+            CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "5432 port is already in use.", lastOperationSucceeded: false),
+            new WorkspaceProvisioningHealthRecord
+            {
+                Succeeded = false,
+                Stage = "Start services",
+                Summary = "Workspace provisioning stopped.",
+                Reason = "5432 port is already in use.",
+                Evidence = "Port 5432 is already in use.",
+                RecommendedAction = "Stop conflicting workspace and Retry.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Duration = TimeSpan.FromSeconds(15),
+                RawLogReference = "mounts/config/provision.sh",
+                Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+                EstimatedEffort = "Low",
+                EstimatedDuration = "1-2 minutes",
+            });
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Troubleshoot Workspace", StringComparison.Ordinal));
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2962,6 +3070,42 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
         };
     }
+
+    private static WorkspaceSnapshot WithProvisioningHealth(WorkspaceSnapshot snapshot, WorkspaceProvisioningHealthRecord health)
+        => new()
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                SourceType = snapshot.Record.SourceType,
+                ImportedFromExistingCheckout = snapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = snapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = snapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = snapshot.Record.RemoteOriginUrl,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = snapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = snapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastOperationUtc = snapshot.Record.LastOperationUtc,
+                LastProvisioningHealth = health,
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+        };
 
     private sealed class FakeDesktopShellService : IDesktopShellService
     {

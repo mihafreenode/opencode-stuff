@@ -40,6 +40,7 @@ public static class WorkspaceRepairabilityAnalyzer
             }
 
             if (reason.Contains("XDB is invalid", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("(XDB) is invalid", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("SYSDBA connection", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("pluggable database", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("not open for writes", StringComparison.OrdinalIgnoreCase)
@@ -58,7 +59,7 @@ public static class WorkspaceRepairabilityAnalyzer
 
             if (IsOracleWorkspace(snapshot))
             {
-                return Create(WorkspaceRepairability.Unknown, "MEDIUM", evidence, "Run Diagnostics.", "Medium", "2-4 minutes");
+                return Create(WorkspaceRepairability.Unknown, "MEDIUM", evidence, "Troubleshoot Workspace.", "Medium", "2-4 minutes");
             }
         }
 
@@ -69,10 +70,10 @@ public static class WorkspaceRepairabilityAnalyzer
 
         if (snapshot?.RuntimeState == WorkspaceRuntimeState.Unknown)
         {
-            return Create(WorkspaceRepairability.AutomaticRepair, "MEDIUM", "Runtime availability could not be confirmed.", "Run Diagnostics.", "Low", "1-2 minutes");
+            return Create(WorkspaceRepairability.AutomaticRepair, "MEDIUM", "Runtime availability could not be confirmed.", "Troubleshoot Workspace.", "Low", "1-2 minutes");
         }
 
-        return Create(WorkspaceRepairability.Unknown, "LOW", string.Empty, "Run Diagnostics.", "Medium", "2-4 minutes");
+        return Create(WorkspaceRepairability.Unknown, "LOW", string.Empty, "Troubleshoot Workspace.", "Medium", "2-4 minutes");
     }
 
     private static bool IsOracleWorkspace(WorkspaceSnapshot? snapshot)
