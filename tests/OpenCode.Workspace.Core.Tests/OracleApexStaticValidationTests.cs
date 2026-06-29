@@ -204,6 +204,14 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Stage: Ready", apexScript);
         Assert.Contains("Workspace provisioning stopped.", apexScript);
         Assert.Contains("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", apexScript);
+        Assert.Contains("recompile_invalid_oracle_components()", apexScript);
+        Assert.Contains("ALTER SESSION SET CONTAINER = CDB$ROOT;", apexScript);
+        Assert.Contains("EXECUTE dbms_registry_sys.validate_components;", apexScript);
+        Assert.Contains("cat /tmp/oracle-utlrp.out >&2 || true", apexScript);
+        Assert.Contains("ORDS landing page is reachable after APEX validation", apexScript);
+        Assert.Contains("oracle_fail \"Oracle APEX route is not reachable.\"", apexScript);
+        Assert.True(apexScript.IndexOf("recompile_invalid_oracle_components >/tmp/oracle-utlrp.out 2>&1 || true", StringComparison.Ordinal) < apexScript.IndexOf("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", StringComparison.Ordinal));
+        Assert.True(apexScript.IndexOf("oracle_set_stage 'Install APEX'", StringComparison.Ordinal) > apexScript.IndexOf("validate_oracle_prerequisites", StringComparison.Ordinal));
         Assert.Contains("oracle_fail \"SYSDBA connection to Oracle failed.\"", apexScript);
         Assert.Contains("oracle_fail \"Required pluggable database FREEPDB1 is not open.\"", apexScript);
         Assert.Contains(".local/oracle/downloads", apexScript);

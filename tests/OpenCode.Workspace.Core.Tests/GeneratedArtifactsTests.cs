@@ -421,13 +421,23 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
         Assert.Contains("oracle_apex_url=http://oracle-ords:8080/ords/apex_admin", script);
+        Assert.Contains("oracle_ords_landing_url=http://oracle-ords:8080/ords/", script);
         Assert.Contains("wait_for_ords_runtime()", script);
         Assert.Contains("verify_apex_login_route()", script);
         Assert.Contains("oracle_fail \"Oracle REST Data Services (ORDS) did not become reachable.\"", script);
-        Assert.Contains("oracle_fail \"Oracle APEX login route is not reachable.\"", script);
+        Assert.Contains("ORDS landing page is reachable after APEX validation", script);
+        Assert.Contains("oracle_fail \"Oracle APEX route is not reachable.\"", script);
         Assert.Contains("validate_oracle_environment()", script);
         Assert.Contains("validate_oracle_prerequisites()", script);
         Assert.Contains("SELECT status FROM dba_registry WHERE comp_id = 'XDB';", script);
+        Assert.Contains("recompile_invalid_oracle_components()", script);
+        Assert.Contains("ALTER SESSION SET CONTAINER = CDB$ROOT;", script);
+        Assert.Contains("EXECUTE dbms_registry_sys.validate_components;", script);
+        Assert.Contains("Attempting Oracle component recompile", script);
+        Assert.Contains("if [ \"${xdb_status}\" != 'VALID' ]; then", script);
+        Assert.Contains("cat /tmp/oracle-utlrp.out >&2 || true", script);
+        Assert.True(script.IndexOf("recompile_invalid_oracle_components >/tmp/oracle-utlrp.out 2>&1 || true", StringComparison.Ordinal) < script.IndexOf("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", StringComparison.Ordinal));
+        Assert.True(script.IndexOf("oracle_set_stage 'Install APEX'", StringComparison.Ordinal) > script.IndexOf("validate_oracle_prerequisites", StringComparison.Ordinal));
     }
 
     [Fact]
