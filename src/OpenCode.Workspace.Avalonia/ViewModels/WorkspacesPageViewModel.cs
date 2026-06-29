@@ -1265,6 +1265,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (failureGuidance is not null)
         {
+            var lastRepairAttempt = provisioningHealth?.RepairHistory.LastOrDefault();
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Stage ?? failureGuidance.Stage))
             {
                 DetailItems.Add(new DetailItemViewModel("Stage", provisioningHealth?.Stage ?? failureGuidance.Stage));
@@ -1278,6 +1279,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 DetailItems.Add(new DetailItemViewModel("Repairability", provisioningHealth?.Repairability ?? failureGuidance.Repairability));
             }
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.ProblemScope))
+            {
+                DetailItems.Add(new DetailItemViewModel("Problem scope", provisioningHealth.ProblemScope));
+            }
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Confidence ?? failureGuidance.Confidence))
             {
                 DetailItems.Add(new DetailItemViewModel("Confidence", provisioningHealth?.Confidence ?? failureGuidance.Confidence));
@@ -1285,6 +1290,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration))
             {
                 DetailItems.Add(new DetailItemViewModel("Estimated duration", provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration));
+            }
+            if (lastRepairAttempt is not null)
+            {
+                DetailItems.Add(new DetailItemViewModel("Repair attempted", lastRepairAttempt.RepairType));
+                DetailItems.Add(new DetailItemViewModel("Outcome", FormatRepairOutcome(lastRepairAttempt.Result)));
+                if (!lastRepairAttempt.RootCauseChanged && !string.IsNullOrWhiteSpace(lastRepairAttempt.EvidenceAfter))
+                {
+                    DetailItems.Add(new DetailItemViewModel("Root cause comparison", $"Unchanged: {lastRepairAttempt.EvidenceAfter}"));
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(provisioningHealth?.PreviousRecommendedAction))
+            {
+                DetailItems.Add(new DetailItemViewModel("Previous recommendation", provisioningHealth.PreviousRecommendedAction));
             }
             DetailItems.Add(new DetailItemViewModel("Recommended action", failureGuidance.RecommendedAction));
         }
@@ -2269,6 +2287,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             reason.Contains(pattern, StringComparison.OrdinalIgnoreCase)
             || evidence.Contains(pattern, StringComparison.OrdinalIgnoreCase)
             || stage.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+
+    private static string FormatRepairOutcome(string outcome)
+        => outcome switch
+        {
+            nameof(WorkspaceRepairOutcome.RepairNoEffect) => "No improvement detected.",
+            nameof(WorkspaceRepairOutcome.RepairImproved) => "Issue changed after repair.",
+            nameof(WorkspaceRepairOutcome.RepairPartiallySucceeded) => "Repair partially succeeded.",
+            nameof(WorkspaceRepairOutcome.RepairFailed) => "Repair failed.",
+            _ => "Problem resolved.",
+        };
 
     private static string? TryMapPrimaryAction(string? recommendedAction, WorkspaceFailureProblemScope scope, bool canRetry, bool canRecover, bool canTroubleshoot, bool canCleanup, bool canOpenWorkspace)
     {

@@ -2455,6 +2455,61 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task XdbInvalid_AfterResetRuntimeNoEffect_ShowsTroubleshootWorkspaceAndRepairOutcome()
+    {
+        var snapshot = WithProvisioningHealth(
+            CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false),
+            new WorkspaceProvisioningHealthRecord
+            {
+                Succeeded = false,
+                Stage = "Validate Oracle prerequisites",
+                Summary = "Workspace provisioning stopped.",
+                Reason = "Oracle XML Database (XDB) is invalid.",
+                Evidence = "XDB status = INVALID",
+                ProblemScope = "RuntimeProblem",
+                RecommendedAction = "Troubleshoot Workspace.",
+                PreviousRecommendedAction = "Reset Runtime.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Duration = TimeSpan.FromMinutes(1),
+                RawLogReference = "mounts/config/provision.sh",
+                Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+                EstimatedEffort = "Medium",
+                EstimatedDuration = "4-6 minutes",
+                RepairHistory =
+                [
+                    new WorkspaceRepairAttemptRecord
+                    {
+                        RepairType = "Reset Runtime",
+                        StartedUtc = DateTimeOffset.UtcNow.AddMinutes(-8),
+                        CompletedUtc = DateTimeOffset.UtcNow.AddMinutes(-3),
+                        Duration = TimeSpan.FromMinutes(5),
+                        Result = WorkspaceRepairOutcome.RepairNoEffect,
+                        EvidenceBefore = "XDB status = INVALID",
+                        EvidenceAfter = "XDB status = INVALID",
+                        RootCauseBefore = "Oracle XML Database (XDB) is invalid.",
+                        RootCauseAfter = "Oracle XML Database (XDB) is invalid.",
+                        WorkspaceStateBefore = "runtime=Running",
+                        WorkspaceStateAfter = "runtime=Running",
+                        PreviousRecommendation = "Reset Runtime.",
+                        UpdatedRecommendation = "Troubleshoot Workspace.",
+                    },
+                ],
+            });
+
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Contains(page.DetailItems, item => item.Label == "Repair attempted" && item.Value == "Reset Runtime");
+        Assert.Contains(page.DetailItems, item => item.Label == "Outcome" && item.Value == "No improvement detected.");
+        Assert.Contains(page.DetailItems, item => item.Label == "Previous recommendation" && item.Value == "Reset Runtime.");
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Troubleshoot Workspace.");
+    }
+
+    [Fact]
     public async Task DockerUnavailable_RecommendsRunDiagnostics()
     {
         var snapshot = WithProvisioningHealth(

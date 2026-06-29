@@ -34,7 +34,9 @@ public sealed class WorkspaceProvisioningHealthRecord
     public string Summary { get; init; } = string.Empty;
     public string Reason { get; init; } = string.Empty;
     public string Evidence { get; init; } = string.Empty;
+    public string ProblemScope { get; init; } = string.Empty;
     public string RecommendedAction { get; init; } = string.Empty;
+    public string PreviousRecommendedAction { get; init; } = string.Empty;
     public string Confidence { get; init; } = string.Empty;
     public DateTimeOffset Timestamp { get; init; }
     public TimeSpan Duration { get; init; }
@@ -47,6 +49,36 @@ public sealed class WorkspaceProvisioningHealthRecord
     public string EstimatedEffort { get; init; } = string.Empty;
     public string EstimatedDuration { get; init; } = string.Empty;
     public DateTimeOffset? LastDiagnosticsTimestamp { get; init; }
+    public IReadOnlyList<WorkspaceRepairAttemptRecord> RepairHistory { get; init; } = Array.Empty<WorkspaceRepairAttemptRecord>();
+}
+
+public sealed class WorkspaceRepairAttemptRecord
+{
+    public string RepairType { get; init; } = string.Empty;
+    public DateTimeOffset StartedUtc { get; init; }
+    public DateTimeOffset CompletedUtc { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string Result { get; init; } = string.Empty;
+    public string EvidenceBefore { get; init; } = string.Empty;
+    public string EvidenceAfter { get; init; } = string.Empty;
+    public string RootCauseBefore { get; init; } = string.Empty;
+    public string RootCauseAfter { get; init; } = string.Empty;
+    public bool RootCauseChanged { get; init; }
+    public string WorkspaceStateBefore { get; init; } = string.Empty;
+    public string WorkspaceStateAfter { get; init; } = string.Empty;
+    public bool WorkspaceStateChanged { get; init; }
+    public string Confidence { get; init; } = string.Empty;
+    public string PreviousRecommendation { get; init; } = string.Empty;
+    public string UpdatedRecommendation { get; init; } = string.Empty;
+}
+
+public static class WorkspaceRepairOutcome
+{
+    public const string RepairSucceeded = nameof(RepairSucceeded);
+    public const string RepairImproved = nameof(RepairImproved);
+    public const string RepairNoEffect = nameof(RepairNoEffect);
+    public const string RepairPartiallySucceeded = nameof(RepairPartiallySucceeded);
+    public const string RepairFailed = nameof(RepairFailed);
 }
 
 public enum WorkspaceSourceType

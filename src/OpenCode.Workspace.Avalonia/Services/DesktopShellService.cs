@@ -825,10 +825,14 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         var transcript = CreateTranscript("Recover", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
         var snapshot = currentSnapshot;
+        var repairBaseline = currentSnapshot?.Record.LastProvisioningHealth;
+        var repairSnapshotBefore = currentSnapshot;
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
             snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            repairBaseline ??= snapshot.Record.LastProvisioningHealth;
+            repairSnapshotBefore ??= snapshot;
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
             append(OperationTranscriptLineKind.Status, "Recovering workspace runtime...");
             await _workspaceOrchestrator.RecoverAsync(snapshot, log, cancellationToken);
@@ -845,11 +849,20 @@ public sealed class DesktopShellService : IDesktopShellService
                 throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}");
             }
 
-            var recoverHealth = BuildSuccessfulProvisioningHealth(snapshot, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            var completedUtc = DateTimeOffset.UtcNow;
+            var recoverHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                repairBaseline,
+                "Recover Workspace",
+                transcript.StartedUtc,
+                completedUtc,
+                repairSnapshotBefore,
+                snapshot,
+                BuildSuccessfulProvisioningHealth(snapshot, transcript.StartedUtc, completedUtc));
             await PersistWorkspaceRecordAsync(snapshot, "Recover", "Repaired workspace runtime and validated generated files.", true, cancellationToken, provisioningHealth: recoverHealth);
             _timelineService.Append(snapshot.Paths.TimelinePath, "recover-succeeded", "Recovered workspace", BuildProvisioningTimelineDetails(recoverHealth));
+            AppendRepairOutcomeTranscript(append, recoverHealth);
             append(OperationTranscriptLineKind.Result, "Completed.");
-            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.CompletedUtc = completedUtc;
             transcript.Succeeded = true;
             return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' runtime was repaired.", Transcript = transcript };
         }
@@ -857,9 +870,19 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             if (snapshot is not null)
             {
-                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                var completedUtc = DateTimeOffset.UtcNow;
+                var provisioningHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                    repairBaseline,
+                    "Recover Workspace",
+                    transcript.StartedUtc,
+                    completedUtc,
+                    repairSnapshotBefore,
+                    snapshot,
+                    ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth) ?? BuildFallbackFailureHealth(snapshot, completedUtc, exception.Message),
+                    WorkspaceRepairOutcome.RepairFailed);
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Recover", provisioningHealth);
                 _timelineService.Append(snapshot.Paths.TimelinePath, "recover-failed", "Recover failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
+                AppendRepairOutcomeTranscript(append, provisioningHealth);
             }
 
             AppendFailureTranscript(exception, append);
@@ -873,21 +896,34 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         var transcript = CreateTranscript("Reset Runtime", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
         var snapshot = currentSnapshot;
+        var repairBaseline = currentSnapshot?.Record.LastProvisioningHealth;
+        var repairSnapshotBefore = currentSnapshot;
 
         try
         {
             append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
             snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            repairBaseline ??= snapshot.Record.LastProvisioningHealth;
+            repairSnapshotBefore ??= snapshot;
             append(OperationTranscriptLineKind.Status, "Resetting runtime...");
             await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, log, cancellationToken);
             append(OperationTranscriptLineKind.Status, "Reprovisioning runtime...");
             await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
-            var health = BuildCleanupProvisioningHealth(snapshot, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            var completedUtc = DateTimeOffset.UtcNow;
+            var health = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                repairBaseline,
+                "Reset Runtime",
+                transcript.StartedUtc,
+                completedUtc,
+                repairSnapshotBefore,
+                snapshot,
+                BuildCleanupProvisioningHealth(snapshot, transcript.StartedUtc, completedUtc));
             await PersistWorkspaceRecordAsync(snapshot, "Reset Runtime", "Managed runtime was reset and reprovisioned.", true, cancellationToken, DateTimeOffset.UtcNow, health);
             _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-succeeded", "Reset runtime", BuildProvisioningTimelineDetails(health));
+            AppendRepairOutcomeTranscript(append, health);
             append(OperationTranscriptLineKind.Result, "Completed.");
-            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.CompletedUtc = completedUtc;
             transcript.Succeeded = true;
             return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Runtime for '{snapshot.Definition.Workspace.Name}' was reset.", Transcript = transcript };
         }
@@ -895,9 +931,19 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             if (snapshot is not null)
             {
-                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                var completedUtc = DateTimeOffset.UtcNow;
+                var provisioningHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                    repairBaseline,
+                    "Reset Runtime",
+                    transcript.StartedUtc,
+                    completedUtc,
+                    repairSnapshotBefore,
+                    snapshot,
+                    ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth) ?? BuildFallbackFailureHealth(snapshot, completedUtc, exception.Message),
+                    WorkspaceRepairOutcome.RepairFailed);
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Reset Runtime", provisioningHealth);
                 _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-failed", "Reset runtime failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
+                AppendRepairOutcomeTranscript(append, provisioningHealth);
             }
 
             AppendFailureTranscript(exception, append);
@@ -959,6 +1005,8 @@ public sealed class DesktopShellService : IDesktopShellService
     public async Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var snapshot = currentSnapshot;
+        var repairBaseline = currentSnapshot?.Record.LastProvisioningHealth;
+        var repairSnapshotBefore = currentSnapshot;
         var wasRunning = snapshot?.RuntimeState == WorkspaceRuntimeState.Running;
         var transcript = new OperationTranscript
         {
@@ -978,6 +1026,8 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             append(OperationTranscriptLineKind.Status, snapshot is null ? "Loading current workspace state..." : "Using current workspace state...");
             snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            repairBaseline ??= snapshot.Record.LastProvisioningHealth;
+            repairSnapshotBefore ??= snapshot;
             wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
             append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
             append(OperationTranscriptLineKind.Comment, BuildReprovisionReason(snapshot));
@@ -1004,12 +1054,21 @@ public sealed class DesktopShellService : IDesktopShellService
                 refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             }
 
-            var reprovisionHealth = BuildSuccessfulProvisioningHealth(refreshed, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            var completedUtc = DateTimeOffset.UtcNow;
+            var reprovisionHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                repairBaseline,
+                "Reprovision",
+                transcript.StartedUtc,
+                completedUtc,
+                repairSnapshotBefore,
+                refreshed,
+                BuildSuccessfulProvisioningHealth(refreshed, transcript.StartedUtc, completedUtc));
             await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow, reprovisionHealth);
             _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", BuildProvisioningTimelineDetails(reprovisionHealth));
             refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            AppendRepairOutcomeTranscript(append, reprovisionHealth);
             append(OperationTranscriptLineKind.Result, "Completed");
-            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.CompletedUtc = completedUtc;
             transcript.Succeeded = true;
 
             return new WorkspaceReprovisionResult
@@ -1024,9 +1083,19 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             if (snapshot is not null)
             {
-                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                var completedUtc = DateTimeOffset.UtcNow;
+                var provisioningHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                    repairBaseline,
+                    "Reprovision",
+                    transcript.StartedUtc,
+                    completedUtc,
+                    repairSnapshotBefore,
+                    snapshot,
+                    ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth) ?? BuildFallbackFailureHealth(snapshot, completedUtc, exception.Message),
+                    WorkspaceRepairOutcome.RepairFailed);
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, provisioningHealth: provisioningHealth);
                 _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
+                AppendRepairOutcomeTranscript(append, provisioningHealth);
             }
             AppendFailureTranscript(exception, append);
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
@@ -1120,6 +1189,7 @@ public sealed class DesktopShellService : IDesktopShellService
             Timestamp = completedUtc,
             Duration = completedUtc - startedUtc,
             RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            ProblemScope = "Unknown",
             ApexVersion = string.Empty,
             OrdsVersion = string.Empty,
             OracleVersion = string.Empty,
@@ -1136,6 +1206,7 @@ public sealed class DesktopShellService : IDesktopShellService
             Summary = record.Summary,
             Reason = record.Reason,
             Evidence = record.Evidence,
+            ProblemScope = "RuntimeProblem",
             RecommendedAction = "Open Workspace.",
             Confidence = record.Confidence,
             Timestamp = record.Timestamp,
@@ -1151,6 +1222,59 @@ public sealed class DesktopShellService : IDesktopShellService
             LastDiagnosticsTimestamp = completedUtc,
         };
     }
+
+    private static WorkspaceProvisioningHealthRecord BuildFallbackFailureHealth(WorkspaceSnapshot snapshot, DateTimeOffset completedUtc, string errorMessage)
+        => new()
+        {
+            Succeeded = false,
+            Stage = "Repair execution",
+            Summary = "Workspace repair failed.",
+            Reason = string.IsNullOrWhiteSpace(errorMessage) ? "Workspace repair failed." : errorMessage,
+            Evidence = string.Empty,
+            ProblemScope = "Unknown",
+            RecommendedAction = "Troubleshoot Workspace.",
+            Confidence = "MEDIUM",
+            Timestamp = completedUtc,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
+            Repairability = WorkspaceRepairability.Unknown.ToString(),
+            EstimatedEffort = "Medium",
+            EstimatedDuration = "2-4 minutes",
+            LastDiagnosticsTimestamp = completedUtc,
+        };
+
+    private static void AppendRepairOutcomeTranscript(Action<OperationTranscriptLineKind, string> append, WorkspaceProvisioningHealthRecord health)
+    {
+        var lastAttempt = health.RepairHistory.LastOrDefault();
+        if (lastAttempt is null)
+        {
+            return;
+        }
+
+        append(OperationTranscriptLineKind.Comment, $"Repair attempted: {lastAttempt.RepairType}");
+        append(OperationTranscriptLineKind.Comment, $"Outcome: {FormatRepairOutcome(lastAttempt.Result)}");
+
+        if (!lastAttempt.RootCauseChanged && !string.IsNullOrWhiteSpace(lastAttempt.EvidenceAfter))
+        {
+            append(OperationTranscriptLineKind.Comment, $"Root cause unchanged: {lastAttempt.EvidenceAfter}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastAttempt.UpdatedRecommendation))
+        {
+            append(OperationTranscriptLineKind.Comment, $"Recommendation updated: {lastAttempt.UpdatedRecommendation}");
+        }
+    }
+
+    private static string FormatRepairOutcome(string outcome)
+        => outcome switch
+        {
+            nameof(WorkspaceRepairOutcome.RepairNoEffect) => "No improvement detected.",
+            nameof(WorkspaceRepairOutcome.RepairImproved) => "Issue changed after repair.",
+            nameof(WorkspaceRepairOutcome.RepairPartiallySucceeded) => "Repair partially succeeded.",
+            nameof(WorkspaceRepairOutcome.RepairFailed) => "Repair failed.",
+            _ => "Problem resolved.",
+        };
 
     private static string BuildProvisioningTimelineDetails(WorkspaceProvisioningHealthRecord? health, string? fallback = null)
     {
@@ -1174,6 +1298,22 @@ public sealed class DesktopShellService : IDesktopShellService
         if (!string.IsNullOrWhiteSpace(health.RecommendedAction))
         {
             lines.Add($"Recommended action: {health.RecommendedAction}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health.PreviousRecommendedAction))
+        {
+            lines.Add($"Previous recommendation: {health.PreviousRecommendedAction}");
+        }
+
+        if (health.RepairHistory.Count > 0)
+        {
+            var lastAttempt = health.RepairHistory[^1];
+            lines.Add($"Repair attempted: {lastAttempt.RepairType}");
+            lines.Add($"Repair outcome: {lastAttempt.Result}");
+            if (!lastAttempt.RootCauseChanged && !string.IsNullOrWhiteSpace(lastAttempt.EvidenceAfter))
+            {
+                lines.Add($"Root cause unchanged: {lastAttempt.EvidenceAfter}");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(health.Confidence))

@@ -1550,7 +1550,7 @@ public sealed class WorkspaceOrchestrator
         };
 
         var repairability = WorkspaceRepairabilityAnalyzer.Analyze(snapshot, record);
-        return new WorkspaceProvisioningHealthRecord
+        var diagnosis = new WorkspaceProvisioningHealthRecord
         {
             Succeeded = record.Succeeded,
             Stage = record.Stage,
@@ -1568,6 +1568,8 @@ public sealed class WorkspaceOrchestrator
             EstimatedDuration = repairability.EstimatedDuration,
             LastDiagnosticsTimestamp = record.Timestamp,
         };
+
+        return WorkspaceTroubleshootingEngine.ApplyDiagnosis(snapshot, diagnosis, snapshot.Record.LastProvisioningHealth);
     }
 
     private static string BuildCommandFailureDetails(ProcessResult result)

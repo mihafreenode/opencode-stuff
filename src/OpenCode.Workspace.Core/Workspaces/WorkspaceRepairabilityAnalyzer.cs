@@ -24,6 +24,20 @@ public static class WorkspaceRepairabilityAnalyzer
 {
     public static WorkspaceRepairabilityAssessment Analyze(WorkspaceSnapshot? snapshot, WorkspaceProvisioningHealthRecord? health)
     {
+        if (health is not null
+            && !string.IsNullOrWhiteSpace(health.Repairability)
+            && !string.IsNullOrWhiteSpace(health.RecommendedAction)
+            && health.RepairHistory.Count > 0)
+        {
+            return Create(
+                ParseRepairability(health.Repairability),
+                string.IsNullOrWhiteSpace(health.Confidence) ? "MEDIUM" : health.Confidence,
+                string.IsNullOrWhiteSpace(health.Evidence) ? health.Reason : health.Evidence,
+                health.RecommendedAction,
+                string.IsNullOrWhiteSpace(health.EstimatedEffort) ? "Medium" : health.EstimatedEffort,
+                string.IsNullOrWhiteSpace(health.EstimatedDuration) ? "2-4 minutes" : health.EstimatedDuration);
+        }
+
         if (health is not null)
         {
             var reason = health.Reason;
@@ -89,4 +103,7 @@ public static class WorkspaceRepairabilityAnalyzer
             EstimatedEffort = effort,
             EstimatedDuration = duration,
         };
+
+    private static WorkspaceRepairability ParseRepairability(string repairability)
+        => Enum.TryParse<WorkspaceRepairability>(repairability, ignoreCase: true, out var parsed) ? parsed : WorkspaceRepairability.Unknown;
 }
