@@ -24,6 +24,25 @@ public sealed class WorkspaceRecord
     public string? LastOperationResult { get; init; }
     public bool? LastOperationSucceeded { get; init; }
     public DateTimeOffset? LastOperationUtc { get; init; }
+    public WorkspaceProvisioningHealthRecord? LastProvisioningHealth { get; init; }
+}
+
+public sealed class WorkspaceProvisioningHealthRecord
+{
+    public bool Succeeded { get; init; }
+    public string Stage { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public string Evidence { get; init; } = string.Empty;
+    public string RecommendedAction { get; init; } = string.Empty;
+    public string Confidence { get; init; } = string.Empty;
+    public DateTimeOffset Timestamp { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string RawLogReference { get; init; } = string.Empty;
+    public string OracleVersion { get; init; } = string.Empty;
+    public string ApexVersion { get; init; } = string.Empty;
+    public string OrdsVersion { get; init; } = string.Empty;
+    public string WorkspaceRuntimeVersion { get; init; } = string.Empty;
 }
 
 public enum WorkspaceSourceType

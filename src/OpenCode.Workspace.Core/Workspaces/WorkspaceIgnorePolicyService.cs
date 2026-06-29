@@ -23,8 +23,7 @@ public sealed class WorkspaceIgnorePolicyService
         "artifacts/",
         "docs/",
         "runtimes/",
-        ".local/",
-        ".local/oracle/",
+        ".local/oracle/network/",
         ".opencode/",
         ".github/",
         ".devcontainer/",
@@ -46,6 +45,7 @@ public sealed class WorkspaceIgnorePolicyService
     private static readonly string[] IgnoredPrefixes =
     [
         ".opencode/local/",
+        ".local/oracle/downloads/",
         ".cache/",
         ".pytest_cache/",
         ".mypy_cache/",
@@ -66,6 +66,7 @@ public sealed class WorkspaceIgnorePolicyService
     [
         ".git/",
         ".opencode/local/",
+        ".local/oracle/downloads/",
         "node_modules/",
         "bin/",
         "obj/",

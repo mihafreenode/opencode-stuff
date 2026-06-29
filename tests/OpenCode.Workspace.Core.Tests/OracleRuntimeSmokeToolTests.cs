@@ -193,7 +193,7 @@ public sealed class OracleRuntimeSmokeToolTests
                 OrdsHttpStatusCode = 200,
                 ApexHttpStatusCode = 302,
                 ApexMediaFound = true,
-                ApexMediaPath = "/workspace/.local/oracle/downloads/apex.zip",
+                ApexMediaPath = "/workspace/.local/oracle/downloads/apex/apex.zip",
                 ApexInstalled = true,
                 ApexVersion = "24.2",
                 ApexRegistryStatus = "VALID",
@@ -218,7 +218,7 @@ public sealed class OracleRuntimeSmokeToolTests
             Assert.Contains("ords_http_status_code=200", content);
             Assert.Contains("apex_http_status_code=302", content);
             Assert.Contains("apex_media_found=True", content);
-            Assert.Contains("apex_media_path=/workspace/.local/oracle/downloads/apex.zip", content);
+            Assert.Contains("apex_media_path=/workspace/.local/oracle/downloads/apex/apex.zip", content);
             Assert.Contains("apex_installed=True", content);
             Assert.Contains("apex_version=24.2", content);
             Assert.Contains("apex_registry_status=VALID", content);
@@ -261,7 +261,7 @@ public sealed class OracleRuntimeSmokeToolTests
         Assert.Contains("scripts/testing/oracle-runtime-smoke.ps1", agentsDoc);
 
         Assert.Contains("Windows host validation as authoritative", troubleshootingDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("official Oracle APEX ZIP placed under `.local/oracle/downloads/`", smokeDoc);
+        Assert.Contains("official Oracle APEX ZIP placed under `.local/oracle/downloads/apex/`", smokeDoc);
     }
 
     [Fact]

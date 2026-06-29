@@ -6,7 +6,7 @@ It uses Oracle Database Free, Oracle REST Data Services (ORDS), Oracle APEX, and
 
 Oracle APEX media is user-provided. The repository does not redistribute Oracle APEX ZIP files.
 
-Place the official Oracle APEX ZIP under `.local/oracle/downloads/` as `apex.zip` or an official filename such as `apex_24.2_en.zip`, then run `Prepare Workspace`.
+Place the official Oracle APEX ZIP under `.local/oracle/downloads/apex/` as `apex.zip` or an official filename such as `apex_24.2_en.zip`, then run `Prepare Workspace`.
 
 ## What This Demo Is For
 

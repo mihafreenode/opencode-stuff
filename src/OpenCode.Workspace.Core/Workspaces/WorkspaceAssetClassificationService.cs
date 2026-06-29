@@ -32,7 +32,7 @@ public sealed class WorkspaceAssetClassificationService
         "catalog/",
         "Localization/",
         "tests/",
-        ".local/oracle/downloads/",
+        ".local/oracle/network/",
     ];
 
     private static readonly string[] GeneratedExact =
@@ -63,6 +63,7 @@ public sealed class WorkspaceAssetClassificationService
     [
         ".git/",
         ".opencode/local/",
+        ".local/oracle/downloads/",
         "mounts/home/",
         "mounts/user/",
         "mounts/inbox/",

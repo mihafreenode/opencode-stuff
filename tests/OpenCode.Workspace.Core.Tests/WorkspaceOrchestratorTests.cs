@@ -714,6 +714,32 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public void CreateWorkspace_PreservesExistingGitIgnore_AndAddsManagedCacheSection()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            Directory.CreateDirectory(tempRoot);
+            File.WriteAllText(Path.Combine(tempRoot, ".gitignore"), "custom-user-entry/\n");
+            var orchestrator = CreateOrchestrator(tempRoot, CreateResolver());
+
+            orchestrator.CreateWorkspace(tempRoot, CreateDefinition("core", "oracle-demo"));
+
+            var gitIgnore = File.ReadAllText(Path.Combine(tempRoot, ".gitignore"));
+            Assert.Contains("custom-user-entry/", gitIgnore, StringComparison.Ordinal);
+            Assert.Contains("# OpenCode Stuff managed cache", gitIgnore, StringComparison.Ordinal);
+            Assert.Contains(".local/oracle/downloads/", gitIgnore, StringComparison.Ordinal);
+            Assert.Contains("# End OpenCode Stuff managed cache", gitIgnore, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task ManagedWorkspaceOperations_RegenerateStaleComposeBeforeDockerComposeDownAndUp()
     {
         var tempRoot = CreateTempRoot();

@@ -421,8 +421,13 @@ public sealed class GeneratedArtifactsTests
 
         Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
         Assert.Contains("oracle_apex_url=http://oracle-ords:8080/ords/apex_admin", script);
-        Assert.Contains("ORDS endpoint did not become reachable", script);
-        Assert.Contains("OracleRuntimeFailure: APEX login route not reachable", script);
+        Assert.Contains("wait_for_ords_runtime()", script);
+        Assert.Contains("verify_apex_login_route()", script);
+        Assert.Contains("oracle_fail \"Oracle REST Data Services (ORDS) did not become reachable.\"", script);
+        Assert.Contains("oracle_fail \"Oracle APEX login route is not reachable.\"", script);
+        Assert.Contains("validate_oracle_environment()", script);
+        Assert.Contains("validate_oracle_prerequisites()", script);
+        Assert.Contains("SELECT status FROM dba_registry WHERE comp_id = 'XDB';", script);
     }
 
     [Fact]

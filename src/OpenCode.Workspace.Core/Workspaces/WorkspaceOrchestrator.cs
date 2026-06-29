@@ -2,6 +2,7 @@ using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using System.Globalization;
 
 namespace OpenCode.Workspace.Core.Workspaces;
 
@@ -12,6 +13,9 @@ namespace OpenCode.Workspace.Core.Workspaces;
 /// </summary>
 public sealed class WorkspaceOrchestrator
 {
+    private const string ManagedGitIgnoreStartMarker = "# OpenCode Stuff managed cache";
+    private const string ManagedGitIgnoreEndMarker = "# End OpenCode Stuff managed cache";
+
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly WorkspaceDiscoveryService _workspaceDiscoveryService;
     private readonly WorkspaceRepository _workspaceRepository;
@@ -1134,18 +1138,7 @@ public sealed class WorkspaceOrchestrator
             File.WriteAllText(paths.ArtifactIndexPath, "{\n  \"runs\": []\n}");
         }
 
-        if (!File.Exists(paths.GitIgnorePath))
-        {
-            var gitIgnore = string.Join("\n",
-                "mounts/home/",
-                "mounts/user/",
-                "mounts/inbox/",
-                "history/checkpoints/",
-                "artifacts/runs/",
-                ".opencode/local/",
-                string.Empty);
-            File.WriteAllText(paths.GitIgnorePath, gitIgnore.Replace("\r\n", "\n", StringComparison.Ordinal));
-        }
+        EnsureManagedGitIgnore(paths.GitIgnorePath);
 
         if (!File.Exists(paths.DefaultRuntimePath))
         {
@@ -1158,6 +1151,52 @@ public sealed class WorkspaceOrchestrator
                 string.Empty);
             File.WriteAllText(paths.DefaultRuntimePath, content.Replace("\r\n", "\n", StringComparison.Ordinal));
         }
+    }
+
+    private static void EnsureManagedGitIgnore(string gitIgnorePath)
+    {
+        var managedSectionLines = new[]
+        {
+            ManagedGitIgnoreStartMarker,
+            "mounts/home/",
+            "mounts/user/",
+            "mounts/inbox/",
+            "history/checkpoints/",
+            "artifacts/runs/",
+            ".opencode/local/",
+            ".local/oracle/downloads/",
+            ManagedGitIgnoreEndMarker,
+        };
+
+        var existingContent = File.Exists(gitIgnorePath)
+            ? File.ReadAllText(gitIgnorePath).Replace("\r\n", "\n", StringComparison.Ordinal)
+            : string.Empty;
+
+        string updatedContent;
+        var startIndex = existingContent.IndexOf(ManagedGitIgnoreStartMarker, StringComparison.Ordinal);
+        var endIndex = existingContent.IndexOf(ManagedGitIgnoreEndMarker, StringComparison.Ordinal);
+        var managedSection = string.Join("\n", managedSectionLines) + "\n";
+
+        if (startIndex >= 0 && endIndex > startIndex)
+        {
+            var afterEndIndex = endIndex + ManagedGitIgnoreEndMarker.Length;
+            if (afterEndIndex < existingContent.Length && existingContent[afterEndIndex] == '\n')
+            {
+                afterEndIndex++;
+            }
+
+            updatedContent = existingContent[..startIndex] + managedSection + existingContent[afterEndIndex..];
+        }
+        else if (string.IsNullOrWhiteSpace(existingContent))
+        {
+            updatedContent = managedSection;
+        }
+        else
+        {
+            updatedContent = existingContent.TrimEnd('\n') + "\n\n" + managedSection;
+        }
+
+        File.WriteAllText(gitIgnorePath, updatedContent.Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
     private async Task ValidateWorkspaceRunningAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
@@ -1245,7 +1284,7 @@ public sealed class WorkspaceOrchestrator
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
         Log(log, "app", "Running provisioning script inside the workspace container.");
         var provisionResult = await _containerRuntime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
-        EnsureSuccess(provisionResult, "Workspace provisioning failed.");
+        EnsureProvisionSuccess(provisionResult, snapshot);
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
@@ -1467,6 +1506,68 @@ public sealed class WorkspaceOrchestrator
         }
 
         throw new InvalidOperationException($"{failureMessage}{Environment.NewLine}Command: {result.Command}{Environment.NewLine}Exit code: {result.ExitCode}{Environment.NewLine}{details}".Trim());
+    }
+
+    private static void EnsureProvisionSuccess(ProcessResult result, WorkspaceSnapshot snapshot)
+    {
+        if (result.IsSuccess)
+        {
+            return;
+        }
+
+        var healthRecord = TryBuildProvisioningHealthRecord(result, snapshot);
+        if (healthRecord is not null)
+        {
+            throw new WorkspaceProvisioningException(healthRecord, BuildCommandFailureDetails(result));
+        }
+
+        EnsureSuccess(result, "Workspace provisioning failed.");
+    }
+
+    private static WorkspaceProvisioningHealthRecord? TryBuildProvisioningHealthRecord(ProcessResult result, WorkspaceSnapshot snapshot)
+    {
+        var allLines = result.StandardErrorLines.Concat(result.StandardOutputLines).ToList();
+        var stage = FindStructuredProvisioningValue(allLines, "Stage:");
+        var reason = FindStructuredProvisioningValue(allLines, "Reason:");
+        if (string.IsNullOrWhiteSpace(stage) || string.IsNullOrWhiteSpace(reason))
+        {
+            return null;
+        }
+
+        return new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = stage,
+            Summary = string.IsNullOrWhiteSpace(FindStructuredProvisioningValue(allLines, "Workspace provisioning stopped.")) ? "Workspace provisioning stopped." : FindStructuredProvisioningValue(allLines, "Workspace provisioning stopped."),
+            Reason = reason,
+            Evidence = FindStructuredProvisioningValue(allLines, "Evidence:"),
+            RecommendedAction = FindStructuredProvisioningValue(allLines, "Recommended action:"),
+            Confidence = FindStructuredProvisioningValue(allLines, "Confidence:"),
+            Timestamp = DateTimeOffset.UtcNow,
+            Duration = result.Duration,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            WorkspaceRuntimeVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(CultureInfo.InvariantCulture),
+        };
+    }
+
+    private static string BuildCommandFailureDetails(ProcessResult result)
+    {
+        var details = string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError;
+        return $"Command: {result.Command}{Environment.NewLine}Exit code: {result.ExitCode}{Environment.NewLine}{details}".Trim();
+    }
+
+    private static string FindStructuredProvisioningValue(IReadOnlyList<string> lines, string prefix)
+    {
+        if (string.Equals(prefix, "Workspace provisioning stopped.", StringComparison.Ordinal))
+        {
+            return lines.Any(line => string.Equals(line.Trim(), prefix, StringComparison.Ordinal)) ? prefix : string.Empty;
+        }
+
+        return lines
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(line => line[prefix.Length..].Trim())
+            .FirstOrDefault() ?? string.Empty;
     }
 
     private static void Log(Action<CommandLogEntry>? log, string source, string message)

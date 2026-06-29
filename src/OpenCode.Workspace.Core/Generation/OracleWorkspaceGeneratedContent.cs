@@ -1151,15 +1151,15 @@ This workspace does not redistribute Oracle APEX media.
 Before provisioning a real APEX runtime:
 
 1. Download the official Oracle APEX ZIP from Oracle.
-2. Place it under `.local/oracle/downloads/`.
+2. Place it under `.local/oracle/downloads/apex/`.
 3. Rename it to `apex.zip`, or keep an official filename such as `apex_24.2_en.zip`.
 4. Reprovision or start the workspace again.
 
 Supported paths:
 
-- `.local/oracle/downloads/apex.zip`
-- `.local/oracle/downloads/apex_*.zip`
-- `.local/oracle/downloads/apex*.zip`
+- `.local/oracle/downloads/apex/apex.zip`
+- `.local/oracle/downloads/apex/apex_*.zip`
+- `.local/oracle/downloads/apex/apex*.zip`
 
 The repository does not include Oracle APEX media.
 

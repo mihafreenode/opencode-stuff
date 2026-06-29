@@ -822,7 +822,9 @@ public sealed class DesktopShellService : IDesktopShellService
                 throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}");
             }
 
-            await PersistWorkspaceRecordAsync(snapshot, "Recover", "Repaired workspace runtime and validated generated files.", true, cancellationToken);
+            var recoverHealth = BuildSuccessfulProvisioningHealth(snapshot, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            await PersistWorkspaceRecordAsync(snapshot, "Recover", "Repaired workspace runtime and validated generated files.", true, cancellationToken, provisioningHealth: recoverHealth);
+            _timelineService.Append(snapshot.Paths.TimelinePath, "recover-succeeded", "Recovered workspace", BuildProvisioningTimelineDetails(recoverHealth));
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
@@ -832,7 +834,9 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             if (snapshot is not null)
             {
-                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Recover");
+                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Recover", provisioningHealth);
+                _timelineService.Append(snapshot.Paths.TimelinePath, "recover-failed", "Recover failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
             }
 
             AppendFailureTranscript(exception, append);
@@ -939,8 +943,9 @@ public sealed class DesktopShellService : IDesktopShellService
                 refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             }
 
-            await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow);
-            _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", "Regenerated runtime files and refreshed workspace state.");
+            var reprovisionHealth = BuildSuccessfulProvisioningHealth(refreshed, transcript.StartedUtc, DateTimeOffset.UtcNow);
+            await PersistWorkspaceRecordAsync(refreshed, "Reprovision", "Workspace reprovisioned successfully.", true, cancellationToken, DateTimeOffset.UtcNow, reprovisionHealth);
+            _timelineService.Append(refreshed.Paths.TimelinePath, "reprovision-succeeded", "Reprovisioned workspace", BuildProvisioningTimelineDetails(reprovisionHealth));
             refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
             append(OperationTranscriptLineKind.Result, "Completed");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
@@ -958,8 +963,9 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             if (snapshot is not null)
             {
-                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken);
-                _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", exception.Message);
+                var provisioningHealth = ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth);
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, provisioningHealth: provisioningHealth);
+                _timelineService.Append(snapshot.Paths.TimelinePath, "reprovision-failed", "Reprovision failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
             }
             AppendFailureTranscript(exception, append);
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
@@ -983,7 +989,7 @@ public sealed class DesktopShellService : IDesktopShellService
         return Task.CompletedTask;
     }
 
-    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null)
+    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
     {
         var record = new WorkspaceRecord
         {
@@ -1004,12 +1010,13 @@ public sealed class DesktopShellService : IDesktopShellService
             LastOperationResult = operationResult,
             LastOperationSucceeded = succeeded,
             LastOperationUtc = DateTimeOffset.UtcNow,
+            LastProvisioningHealth = provisioningHealth ?? snapshot.Record.LastProvisioningHealth,
         };
 
         return _workspaceRepository.SaveAsync(record, cancellationToken);
     }
 
-    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision")
+    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision", WorkspaceProvisioningHealthRecord? provisioningHealth = null)
     {
         var failureRecord = new WorkspaceRecord
         {
@@ -1030,9 +1037,64 @@ public sealed class DesktopShellService : IDesktopShellService
             LastOperationResult = errorMessage,
             LastOperationSucceeded = false,
             LastOperationUtc = DateTimeOffset.UtcNow,
+            LastProvisioningHealth = provisioningHealth ?? record.LastProvisioningHealth,
         };
 
         return _workspaceRepository.SaveAsync(failureRecord, cancellationToken);
+    }
+
+    private static WorkspaceProvisioningHealthRecord? ExtractProvisioningHealth(Exception exception, WorkspaceProvisioningHealthRecord? fallback)
+        => exception is WorkspaceProvisioningException provisioningException ? provisioningException.HealthRecord : fallback;
+
+    private static WorkspaceProvisioningHealthRecord BuildSuccessfulProvisioningHealth(WorkspaceSnapshot snapshot, DateTimeOffset startedUtc, DateTimeOffset completedUtc)
+        => new()
+        {
+            Succeeded = true,
+            Stage = "Final verification",
+            Summary = "Provisioning completed.",
+            Reason = "Oracle workspace provisioning completed successfully.",
+            Evidence = $"Runtime state = {snapshot.RuntimeState}",
+            RecommendedAction = "Open Workspace.",
+            Confidence = "HIGH",
+            Timestamp = completedUtc,
+            Duration = completedUtc - startedUtc,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            ApexVersion = string.Empty,
+            OrdsVersion = string.Empty,
+            OracleVersion = string.Empty,
+            WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
+        };
+
+    private static string BuildProvisioningTimelineDetails(WorkspaceProvisioningHealthRecord? health, string? fallback = null)
+    {
+        if (health is null)
+        {
+            return fallback ?? string.Empty;
+        }
+
+        var lines = new List<string>
+        {
+            health.Summary,
+            $"Stage: {health.Stage}",
+            $"Reason: {health.Reason}",
+        };
+
+        if (!string.IsNullOrWhiteSpace(health.Evidence))
+        {
+            lines.Add($"Evidence: {health.Evidence}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health.RecommendedAction))
+        {
+            lines.Add($"Recommended action: {health.RecommendedAction}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(health.Confidence))
+        {
+            lines.Add($"Confidence: {health.Confidence}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static OperationTranscriptLineKind MapLineKind(CommandLogEntry entry)

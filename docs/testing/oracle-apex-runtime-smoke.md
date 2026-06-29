@@ -9,7 +9,7 @@ It is not part of the default CI or unit-test suite because Oracle and APEX prov
 - Docker
 - network access to Oracle-provided sources
 - enough time for Oracle Database Free, SQLcl, and ORDS setup
-- official Oracle APEX ZIP placed under `.local/oracle/downloads/` for APEX templates
+- official Oracle APEX ZIP placed under `.local/oracle/downloads/apex/` for APEX templates
 
 Current APEX smoke requires:
 

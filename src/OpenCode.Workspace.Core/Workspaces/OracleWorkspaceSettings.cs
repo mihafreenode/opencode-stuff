@@ -4,11 +4,15 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class OracleWorkspaceSettings
 {
+    public const string DownloadsRootRelativePath = ".local/oracle/downloads";
+    public const string ApexDownloadsRelativePath = ".local/oracle/downloads/apex";
+    public const string SqlclDownloadsRelativePath = ".local/oracle/downloads/sqlcl";
+    public const string OrdsDownloadsRelativePath = ".local/oracle/downloads/ords";
     public const int DefaultHostPort = 1521;
     public const int DefaultOrdsPort = 8181;
     public const int ContainerListenerPort = 1521;
     public const int ContainerOrdsPort = 8080;
-    public const string ApexDownloadsDirectory = "/workspace/.local/oracle/downloads";
+    public const string ApexDownloadsDirectory = "/workspace/.local/oracle/downloads/apex";
     public const string ApexPreferredZipName = "apex.zip";
 
     public required int HostPort { get; init; }

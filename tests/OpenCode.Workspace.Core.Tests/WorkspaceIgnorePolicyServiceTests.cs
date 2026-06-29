@@ -156,6 +156,7 @@ public sealed class WorkspaceIgnorePolicyServiceTests
     [InlineData(".npm/")]
     [InlineData(".pnpm-store/")]
     [InlineData(".opencode/local/")]
+    [InlineData(".local/oracle/downloads/")]
     public void Classify_DefaultIgnoredHiddenCaches_AreIgnored(string path)
     {
         var classification = _service.Classify(path, isDirectory: true);
@@ -206,6 +207,7 @@ public sealed class WorkspaceIgnorePolicyServiceTests
     [InlineData("runtimes/")]
     [InlineData("history/timeline.yaml")]
     [InlineData("workspace.yaml")]
+    [InlineData(".local/oracle/network/admin/")]
     public void Classify_DurableWorkspaceContent_IsTracked(string path)
     {
         var classification = _service.Classify(path, path.EndsWith('/'));

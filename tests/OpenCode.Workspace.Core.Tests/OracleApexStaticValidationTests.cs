@@ -195,19 +195,20 @@ public sealed class OracleApexStaticValidationTests
         Assert.DoesNotContain("Stage: Installing ORDS", plsqlScript);
         Assert.DoesNotContain("Stage: Installing APEX", plsqlScript);
 
-        Assert.Contains("Stage: Preparing Workspace", apexScript);
-        Assert.Contains("Stage: Downloading Dependencies", apexScript);
-        Assert.Contains("Stage: Starting Oracle Database", apexScript);
-        Assert.Contains("Stage: Waiting for Database Readiness", apexScript);
-        Assert.Contains("Stage: Installing ORDS", apexScript);
-        Assert.Contains("Stage: Installing APEX", apexScript);
-        Assert.Contains("Stage: Configuring Workspace", apexScript);
-        Assert.Contains("Stage: Creating Sample Application", apexScript);
-        Assert.Contains("Stage: Running Validation", apexScript);
+        Assert.Contains("oracle_set_stage 'Validate environment'", apexScript);
+        Assert.Contains("oracle_set_stage 'Validate Oracle prerequisites'", apexScript);
+        Assert.Contains("oracle_set_stage 'Install APEX'", apexScript);
+        Assert.Contains("oracle_set_stage 'Configure ORDS'", apexScript);
+        Assert.Contains("oracle_set_stage 'Workspace configuration'", apexScript);
+        Assert.Contains("oracle_set_stage 'Final verification'", apexScript);
         Assert.Contains("Stage: Ready", apexScript);
-        Assert.Contains("OracleRuntimeFailure: APEX installation media missing", apexScript);
+        Assert.Contains("Workspace provisioning stopped.", apexScript);
+        Assert.Contains("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", apexScript);
+        Assert.Contains("oracle_fail \"SYSDBA connection to Oracle failed.\"", apexScript);
+        Assert.Contains("oracle_fail \"Required pluggable database FREEPDB1 is not open.\"", apexScript);
         Assert.Contains(".local/oracle/downloads", apexScript);
         Assert.Contains("apex_admin", apexScript);
+        Assert.DoesNotContain(") || true", apexScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -230,11 +231,11 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Try It Yourself", plsqlDoc);
         Assert.Contains("Oracle APEX Demo", apexDoc);
         Assert.Contains("Oracle APEX Demo extends the Oracle PL/SQL path", apexDoc);
-        Assert.Contains(".local/oracle/downloads/", apexDoc);
+        Assert.Contains(".local/oracle/downloads/apex/", apexDoc);
         Assert.Contains("does not redistribute Oracle APEX ZIP files", apexDoc);
         Assert.Contains("Interactive Report", apexDoc);
         Assert.Contains("Oracle APEXlang Demo", apexLangDoc);
-        Assert.Contains(".local/oracle/downloads/", apexLangDoc);
+        Assert.Contains(".local/oracle/downloads/apex/", apexLangDoc);
         Assert.Contains("source-controlled Oracle APEX workflow", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Open Application Specification Language", apexLangDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Try It Yourself", apexLangDoc);

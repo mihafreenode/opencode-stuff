@@ -13,6 +13,8 @@ public sealed class WorkspaceAssetClassificationServiceTests
     [InlineData("AGENTS.md", false, WorkspaceAssetClass.Durable)]
     [InlineData("compose.yaml", false, WorkspaceAssetClass.Generated)]
     [InlineData(".opencode/local/runtime-state.yaml", false, WorkspaceAssetClass.Ephemeral)]
+    [InlineData(".local/oracle/downloads/apex/apex.zip", false, WorkspaceAssetClass.Ephemeral)]
+    [InlineData(".local/oracle/network/admin/README.md", false, WorkspaceAssetClass.Durable)]
     [InlineData("mounts/config/provision.sh", false, WorkspaceAssetClass.Generated)]
     [InlineData(".git/HEAD", false, WorkspaceAssetClass.Ephemeral)]
     [InlineData("mounts/user/session.log", false, WorkspaceAssetClass.Ephemeral)]
