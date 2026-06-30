@@ -57,14 +57,20 @@ public sealed class WorkspaceServiceHealthSnapshot
     public string ServiceId { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string Category { get; init; } = string.Empty;
+    public string StatusLabel { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public IReadOnlyList<string> Applications { get; init; } = Array.Empty<string>();
     public string Endpoint { get; init; } = string.Empty;
+    public string PrimaryUrl { get; init; } = string.Empty;
     public WorkspaceServiceProbeType ProbeType { get; init; } = WorkspaceServiceProbeType.Custom;
     public WorkspaceHealthStatus Status { get; init; } = WorkspaceHealthStatus.Attention;
     public TimeSpan? Latency { get; init; }
+    public IReadOnlyList<WorkspaceHealthFact> Highlights { get; init; } = Array.Empty<WorkspaceHealthFact>();
     public IReadOnlyList<WorkspaceHealthFact> Evidence { get; init; } = Array.Empty<WorkspaceHealthFact>();
     public string Confidence { get; init; } = string.Empty;
     public DateTimeOffset Timestamp { get; init; }
     public string Recommendation { get; init; } = string.Empty;
+    public string ActionLabel { get; init; } = string.Empty;
     public string OpenUrl { get; init; } = string.Empty;
     public TimeSpan RefreshInterval { get; init; }
     public string ProviderKey { get; init; } = string.Empty;

@@ -50,7 +50,8 @@ public sealed class WorkspaceTroubleshootingPageViewModel : PageViewModel
         ActionItemViewModel? primaryAction,
         IReadOnlyList<ActionItemViewModel> visibleActions,
         IReadOnlyList<ActionItemViewModel> advancedActions,
-        IReadOnlyList<ActionItemViewModel> investigationActions)
+        IReadOnlyList<ActionItemViewModel> investigationActions,
+        IReadOnlyList<ServiceHealthRowViewModel> services)
     {
         WorkspaceRootPath = report.RootPath;
         DetailTitle = report.WorkspaceName;
@@ -65,6 +66,7 @@ public sealed class WorkspaceTroubleshootingPageViewModel : PageViewModel
         RecommendedNextStepDuration = report.RecommendedNextStepDuration;
 
         DetailItems.Clear();
+        DetailServices.Clear();
         DetailVisibleActions.Clear();
         DetailActions.Clear();
         DetailAdvancedActions.Clear();
@@ -80,6 +82,11 @@ public sealed class WorkspaceTroubleshootingPageViewModel : PageViewModel
         foreach (var fact in report.Facts)
         {
             DetailItems.Add(new DetailItemViewModel(fact.Label, fact.Value));
+        }
+
+        foreach (var service in services)
+        {
+            DetailServices.Add(service);
         }
 
         foreach (var action in visibleActions)
@@ -121,6 +128,7 @@ public sealed class WorkspaceTroubleshootingPageViewModel : PageViewModel
         RaisePropertyChanged(nameof(HasRepairHistory));
         RaisePropertyChanged(nameof(HasInvestigationHistory));
         RaisePropertyChanged(nameof(HasDetailAdvancedActions));
+        RaisePropertyChanged(nameof(HasDetailServices));
         RaisePropertyChanged(nameof(CurrentDiagnosis));
         RaisePropertyChanged(nameof(CurrentEvidence));
         RaisePropertyChanged(nameof(CurrentConfidence));

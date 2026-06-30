@@ -5,7 +5,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 public static class WorkspaceHealthEngine
 {
     public static WorkspaceHealthSnapshot Build(WorkspaceSnapshot snapshot)
-        => BuildAsync(snapshot).GetAwaiter().GetResult();
+        => BuildAsync(snapshot).ConfigureAwait(false).GetAwaiter().GetResult();
 
     public static async Task<WorkspaceHealthSnapshot> BuildAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
     {
@@ -18,7 +18,7 @@ public static class WorkspaceHealthEngine
             BuildGitProvider(snapshot, timestamp),
         };
 
-        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, cancellationToken: cancellationToken);
+        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, cancellationToken: cancellationToken).ConfigureAwait(false);
         providers.Add(BuildServicesProvider(services, timestamp));
 
         if (IsOracleWorkspace(snapshot))
@@ -200,7 +200,7 @@ public static class WorkspaceHealthEngine
         var apexService = services.FirstOrDefault(item => item.ServiceId == "apex");
         var databaseService = services.FirstOrDefault(item => item.ServiceId == "oracle-database");
         var oracleInvestigation = investigationHistory.LastOrDefault(item => string.Equals(item.ProviderName, "Oracle", StringComparison.Ordinal));
-        var oracleEvidence = databaseService?.Evidence.FirstOrDefault()?.Value ?? (snapshot.RuntimeState == WorkspaceRuntimeState.Running ? "Database container reachable." : "Database container not running yet.");
+        var oracleEvidence = databaseService?.Summary ?? (snapshot.RuntimeState == WorkspaceRuntimeState.Running ? "Database container reachable." : "Database container not running yet.");
         var oracleStatus = databaseService?.Status ?? (snapshot.RuntimeState == WorkspaceRuntimeState.Running ? WorkspaceHealthStatus.Healthy : WorkspaceHealthStatus.Attention);
         var xdbStatus = TryMatchEvidence(investigationHistory, "XDB") switch
         {
@@ -275,13 +275,13 @@ public static class WorkspaceHealthEngine
             Status = ordsStatus,
             Summary = ordsStatus switch
             {
-                WorkspaceHealthStatus.Degraded => "ORDS endpoint is not usable.",
-                WorkspaceHealthStatus.Healthy => "ORDS endpoint is reachable.",
+                WorkspaceHealthStatus.Degraded => "ORDS is reporting an application error.",
+                WorkspaceHealthStatus.Healthy => "ORDS is available.",
                 _ => "ORDS has not been confirmed yet.",
             },
             Evidence =
             [
-                new WorkspaceHealthFact { Label = "ords", Value = ordsService?.Evidence.FirstOrDefault()?.Value ?? (string.IsNullOrWhiteSpace(TryMatchEvidence(investigationHistory, "ORDS")) ? "not inspected" : TryMatchEvidence(investigationHistory, "ORDS")) },
+                new WorkspaceHealthFact { Label = "ords", Value = ordsService?.Summary ?? (string.IsNullOrWhiteSpace(TryMatchEvidence(investigationHistory, "ORDS")) ? "not inspected" : TryMatchEvidence(investigationHistory, "ORDS")) },
             ],
             Confidence = ordsStatus == WorkspaceHealthStatus.Degraded ? "HIGH" : "MEDIUM",
             Timestamp = oracleInvestigation?.CompletedUtc ?? timestamp,
@@ -300,13 +300,13 @@ public static class WorkspaceHealthEngine
             Summary = apexStatus switch
             {
                 WorkspaceHealthStatus.Provisioning => "APEX installation is still running.",
-                WorkspaceHealthStatus.Healthy => "APEX installation evidence is healthy.",
-                WorkspaceHealthStatus.Attention => string.IsNullOrWhiteSpace(apexEvidence) ? "APEX has not been confirmed yet." : "APEX needs attention.",
+                WorkspaceHealthStatus.Healthy => "APEX application is available.",
+                WorkspaceHealthStatus.Attention => string.IsNullOrWhiteSpace(apexEvidence) ? "APEX has not been confirmed yet." : "APEX needs installation or configuration.",
                 _ => "APEX is unavailable.",
             },
             Evidence =
             [
-                new WorkspaceHealthFact { Label = "apex", Value = apexService?.Evidence.FirstOrDefault()?.Value ?? (string.IsNullOrWhiteSpace(apexEvidence) ? "not inspected" : apexEvidence) },
+                new WorkspaceHealthFact { Label = "apex", Value = apexService?.Summary ?? (string.IsNullOrWhiteSpace(apexEvidence) ? "not inspected" : apexEvidence) },
             ],
             Confidence = apexStatus is WorkspaceHealthStatus.Healthy or WorkspaceHealthStatus.Provisioning ? "HIGH" : "MEDIUM",
             Timestamp = oracleInvestigation?.CompletedUtc ?? timestamp,
@@ -318,7 +318,7 @@ public static class WorkspaceHealthEngine
             {
                 WorkspaceHealthStatus.Healthy => "APEX applications should be available.",
                 WorkspaceHealthStatus.Provisioning => "Workspace can still be opened, but APEX applications are not ready yet.",
-                _ => "Workspace can still be opened, but APEX applications may not be usable yet.",
+                _ => "Workspace can still be opened, but APEX applications are not usable yet.",
             },
         };
     }
@@ -329,14 +329,25 @@ public static class WorkspaceHealthEngine
 
     private static WorkspaceProviderHealthSnapshot BuildServicesProvider(IReadOnlyList<WorkspaceServiceHealthSnapshot> services, DateTimeOffset timestamp)
     {
+        var launchableApplications = services
+            .Where(item => string.Equals(item.Category, "Application", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var availableApplications = launchableApplications
+            .Where(item => item.Status == WorkspaceHealthStatus.Healthy)
+            .Select(item => item.Name)
+            .ToList();
+        var unavailableApplications = launchableApplications
+            .Where(item => item.Status is not WorkspaceHealthStatus.Healthy)
+            .Select(item => item.Name)
+            .ToList();
         var overallStatus = services.Select(item => item.Status).DefaultIfEmpty(WorkspaceHealthStatus.Healthy).MaxBy(SeverityRank);
         var summary = services.Count == 0
-            ? "No declared application services."
-            : services.Any(item => item.Status is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable)
-                ? "One or more workspace services are not currently usable."
-                : services.Any(item => item.Status is WorkspaceHealthStatus.Attention or WorkspaceHealthStatus.Provisioning)
-                    ? "Workspace services need attention before all application features are available."
-                    : "Workspace services are reachable.";
+            ? "No declared applications were discovered."
+            : launchableApplications.Count == 0
+                ? "Workspace infrastructure is available."
+                : unavailableApplications.Count > 0
+                    ? $"Available: {JoinNames(availableApplications)}. Needs attention: {JoinNames(unavailableApplications)}."
+                    : $"Available applications: {JoinNames(availableApplications)}.";
         return new WorkspaceProviderHealthSnapshot
         {
             ProviderKey = "services",
@@ -346,9 +357,9 @@ public static class WorkspaceHealthEngine
             Evidence = services.Select(service => new WorkspaceHealthFact
             {
                 Label = service.Name,
-                Value = string.IsNullOrWhiteSpace(service.Evidence.FirstOrDefault()?.Value)
-                    ? service.Status.ToString()
-                    : $"{service.Status}: {service.Evidence.FirstOrDefault()!.Value}",
+                Value = string.IsNullOrWhiteSpace(service.Summary)
+                    ? service.StatusLabel
+                    : $"{service.StatusLabel}: {service.Summary}",
             }).ToList(),
             Confidence = services.All(item => item.Confidence == "HIGH") ? "HIGH" : "MEDIUM",
             Timestamp = timestamp,
@@ -359,6 +370,9 @@ public static class WorkspaceHealthEngine
             WorkspaceImpact = summary,
         };
     }
+
+    private static string JoinNames(IReadOnlyList<string> values)
+        => values.Count == 0 ? "none" : string.Join(", ", values);
 
     private static string TryMatchEvidence(IEnumerable<WorkspaceInvestigationRecord> investigations, string pattern)
         => investigations.LastOrDefault(item => item.Title.Contains(pattern, StringComparison.OrdinalIgnoreCase)

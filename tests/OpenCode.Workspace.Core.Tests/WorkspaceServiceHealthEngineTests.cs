@@ -8,13 +8,13 @@ namespace OpenCode.Workspace.Core.Tests;
 public sealed class WorkspaceServiceHealthEngineTests
 {
     [Theory]
-    [InlineData(HttpStatusCode.OK, WorkspaceHealthStatus.Healthy)]
-    [InlineData(HttpStatusCode.Found, WorkspaceHealthStatus.Healthy)]
-    [InlineData(HttpStatusCode.Unauthorized, WorkspaceHealthStatus.Attention)]
-    [InlineData(HttpStatusCode.Forbidden, WorkspaceHealthStatus.Attention)]
-    [InlineData(HttpStatusCode.NotFound, WorkspaceHealthStatus.Attention)]
-    [InlineData(HttpStatusCode.InternalServerError, WorkspaceHealthStatus.Degraded)]
-    public async Task HttpServices_ClassifyStatuses(HttpStatusCode statusCode, WorkspaceHealthStatus expected)
+    [InlineData(HttpStatusCode.OK, WorkspaceHealthStatus.Healthy, "Available")]
+    [InlineData(HttpStatusCode.Found, WorkspaceHealthStatus.Healthy, "Available")]
+    [InlineData(HttpStatusCode.Unauthorized, WorkspaceHealthStatus.Attention, "Authentication required")]
+    [InlineData(HttpStatusCode.Forbidden, WorkspaceHealthStatus.Attention, "Access denied")]
+    [InlineData(HttpStatusCode.NotFound, WorkspaceHealthStatus.Attention, "Not configured")]
+    [InlineData(HttpStatusCode.InternalServerError, WorkspaceHealthStatus.Degraded, "Application error")]
+    public async Task HttpServices_ClassifyStatuses(HttpStatusCode statusCode, WorkspaceHealthStatus expected, string expectedLabel)
     {
         var snapshot = CreateOracleSnapshot();
         var runner = new FakeProbeRunner
@@ -26,17 +26,21 @@ public sealed class WorkspaceServiceHealthEngineTests
                 Latency = TimeSpan.FromMilliseconds(41),
                 ResponseSample = "Oracle Application Express",
                 ContentType = "text/html",
+                RedirectLocation = statusCode == HttpStatusCode.Found ? "http://localhost:8181/ords/_/landing" : string.Empty,
+                ResponseHeaders = "Location: http://localhost:8181/ords/_/landing",
             },
             TcpResult = new WorkspaceServiceProbeResult { IsReachable = true, Latency = TimeSpan.FromMilliseconds(5) },
         };
 
         var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
 
-        Assert.Equal(expected, services.Single(item => item.ServiceId == "ords").Status);
+        var ords = services.Single(item => item.ServiceId == "ords");
+        Assert.Equal(expected, ords.Status);
+        Assert.Equal(expectedLabel, ords.StatusLabel);
     }
 
     [Fact]
-    public async Task ApexValidator_Downgrades503ToAttention()
+    public async Task ApexValidator_ReportsUnavailableApplicationWithoutOpenUrl()
     {
         var snapshot = CreateOracleSnapshot();
         var runner = new FakeProbeRunner
@@ -48,6 +52,7 @@ public sealed class WorkspaceServiceHealthEngineTests
                 Latency = TimeSpan.FromMilliseconds(55),
                 ResponseSample = "App Unavailable",
                 ContentType = "text/html",
+                ResponseHeaders = "content-type: text/html",
             },
             TcpResult = new WorkspaceServiceProbeResult { IsReachable = true, Latency = TimeSpan.FromMilliseconds(5) },
         };
@@ -55,11 +60,22 @@ public sealed class WorkspaceServiceHealthEngineTests
         var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
 
         var ords = services.Single(item => item.ServiceId == "ords");
+        var sqlDeveloperWeb = services.Single(item => item.ServiceId == "sql-developer-web");
+        var restApis = services.Single(item => item.ServiceId == "rest-apis");
         var apex = services.Single(item => item.ServiceId == "apex");
         Assert.Equal(WorkspaceHealthStatus.Degraded, ords.Status);
+        Assert.Equal(WorkspaceHealthStatus.Degraded, sqlDeveloperWeb.Status);
+        Assert.Equal(WorkspaceHealthStatus.Degraded, restApis.Status);
+        Assert.Contains("⚠ SQL Developer Web", ords.Applications);
+        Assert.Contains("⚠ REST APIs", ords.Applications);
+        Assert.Contains("⚠ Oracle APEX", ords.Applications);
         Assert.Equal(WorkspaceHealthStatus.Attention, apex.Status);
-        Assert.Equal("Investigate APEX installation.", apex.Recommendation);
-        Assert.Equal("http://localhost:8181/ords/", apex.OpenUrl);
+        Assert.Equal("Unavailable", apex.StatusLabel);
+        Assert.Equal("ORDS is available but APEX application is not currently configured.", apex.Summary);
+        Assert.Equal("Complete APEX installation.", apex.Recommendation);
+        Assert.Equal("Open Oracle APEX", apex.ActionLabel);
+        Assert.Equal(string.Empty, apex.OpenUrl);
+        Assert.Contains(apex.Evidence, item => item.Label == "Content validation");
     }
 
     [Fact]
@@ -76,24 +92,96 @@ public sealed class WorkspaceServiceHealthEngineTests
 
         var postgres = services.Single(item => item.ServiceId == "postgres");
         Assert.Equal(WorkspaceHealthStatus.Unavailable, postgres.Status);
-        Assert.Contains(postgres.Evidence, item => item.Label == "failure" && item.Value == "Connection refused");
+        Assert.Equal("Unavailable", postgres.StatusLabel);
+        Assert.Equal("localhost:15432", postgres.PrimaryUrl);
     }
 
     [Fact]
-    public async Task RunningRuntime_ExposesClickableHttpUrlsAndRefreshIntervals()
+    public async Task RunningRuntime_ExposesApplicationOpenUrlPrimaryUrlAndDetails()
     {
         var snapshot = CreatePostgresSnapshot();
         var runner = new FakeProbeRunner
         {
             TcpResult = new WorkspaceServiceProbeResult { IsReachable = true, Latency = TimeSpan.FromMilliseconds(5) },
-            HttpResult = new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = HttpStatusCode.OK, Latency = TimeSpan.FromMilliseconds(20), ContentType = "text/html", ResponseSample = "pgadmin" },
+            HttpResult = new WorkspaceServiceProbeResult
+            {
+                IsReachable = true,
+                StatusCode = HttpStatusCode.OK,
+                Latency = TimeSpan.FromMilliseconds(20),
+                ContentType = "text/html",
+                ResponseSample = "pgadmin",
+                ResponseHeaders = "content-type: text/html",
+            },
         };
 
         var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
 
         var pgadmin = services.Single(item => item.ServiceId == "pgadmin");
         Assert.Equal("http://localhost:18080/", pgadmin.OpenUrl);
+        Assert.Equal("http://localhost:18080/", pgadmin.PrimaryUrl);
         Assert.Equal(TimeSpan.FromSeconds(30), pgadmin.RefreshInterval);
+        Assert.Contains(pgadmin.Highlights, item => item.Label == "Latency" && item.Value == "20 ms");
+        Assert.Contains(pgadmin.Evidence, item => item.Label == "Headers");
+        Assert.Contains(pgadmin.Evidence, item => item.Label == "Last checked");
+        Assert.Equal("Open pgAdmin", pgadmin.ActionLabel);
+    }
+
+    [Fact]
+    public async Task RedirectResponses_UseRedirectTargetForOpenUrlAndPrimaryUrl()
+    {
+        var snapshot = CreateOracleSnapshot();
+        var runner = new FakeProbeRunner
+        {
+            HttpResult = new WorkspaceServiceProbeResult
+            {
+                IsReachable = true,
+                StatusCode = HttpStatusCode.Found,
+                Latency = TimeSpan.FromMilliseconds(20),
+                RedirectLocation = "http://localhost:8181/ords/_/landing",
+                ResponseHeaders = "Location: http://localhost:8181/ords/_/landing",
+            },
+            TcpResult = new WorkspaceServiceProbeResult { IsReachable = true, Latency = TimeSpan.FromMilliseconds(5) },
+        };
+
+        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
+
+        var ords = services.Single(item => item.ServiceId == "ords");
+        Assert.Equal("http://localhost:8181/ords/_/landing", ords.OpenUrl);
+        Assert.Equal("http://localhost:8181/ords/_/landing", ords.PrimaryUrl);
+        Assert.Contains(ords.Evidence, item => item.Label == "Redirect" && item.Value == "http://localhost:8181/ords/_/landing");
+    }
+
+    [Fact]
+    public async Task OrdsDiscovery_ExposesWorkspaceApplicationsWhenApexIsAvailable()
+    {
+        var snapshot = CreateOracleSnapshot();
+        var runner = new FakeProbeRunner
+        {
+            HttpResult = new WorkspaceServiceProbeResult
+            {
+                IsReachable = true,
+                StatusCode = HttpStatusCode.OK,
+                Latency = TimeSpan.FromMilliseconds(24),
+                ResponseSample = "Oracle Application Express SQL Developer Web",
+                ContentType = "text/html",
+                ResponseHeaders = "content-type: text/html",
+            },
+            TcpResult = new WorkspaceServiceProbeResult { IsReachable = true, Latency = TimeSpan.FromMilliseconds(5) },
+        };
+
+        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
+
+        var ords = services.Single(item => item.ServiceId == "ords");
+        var sqlDeveloperWeb = services.Single(item => item.ServiceId == "sql-developer-web");
+        var restApis = services.Single(item => item.ServiceId == "rest-apis");
+        var apex = services.Single(item => item.ServiceId == "apex");
+        Assert.Equal("Open Oracle REST Data Services", ords.ActionLabel);
+        Assert.Equal("Open SQL Developer Web", sqlDeveloperWeb.ActionLabel);
+        Assert.Equal("Open REST APIs", restApis.ActionLabel);
+        Assert.Equal(WorkspaceHealthStatus.Healthy, apex.Status);
+        Assert.Contains("✓ SQL Developer Web", ords.Applications);
+        Assert.Contains("✓ REST APIs", ords.Applications);
+        Assert.Contains("✓ Oracle APEX", ords.Applications);
     }
 
     private static WorkspaceSnapshot CreateOracleSnapshot()

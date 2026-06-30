@@ -1495,6 +1495,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailPrimaryAction = null;
             DetailActions.Clear();
+            DetailServices.Clear();
             DetailAdvancedActions.Clear();
             DetailRecommendation = string.Empty;
             ShowAdvancedActions = false;
@@ -1509,6 +1510,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
         DetailSummary = presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
+        DetailServices.Clear();
         DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
         DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
@@ -1537,17 +1539,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             foreach (var service in SelectedWorkspace.Health.Services)
             {
-                DetailItems.Add(new DetailItemViewModel($"Service: {service.Name}", service.Status.ToString()));
-                if (!string.IsNullOrWhiteSpace(service.Endpoint))
-                {
-                    DetailItems.Add(new DetailItemViewModel($"{service.Name} endpoint", service.Endpoint));
-                }
-
-                var serviceEvidence = string.Join("; ", service.Evidence.Select(item => $"{item.Label}={item.Value}"));
-                if (!string.IsNullOrWhiteSpace(serviceEvidence))
-                {
-                    DetailItems.Add(new DetailItemViewModel($"{service.Name} evidence", serviceEvidence));
-                }
+                DetailServices.Add(BuildServiceHealthRow(service));
             }
         }
         if (SelectedWorkspace.HasError)
@@ -1660,6 +1652,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailPrimaryAction = null;
             DetailActions.Clear();
+            DetailServices.Clear();
             DetailVisibleActions.Clear();
             DetailAdvancedActions.Clear();
             ShowAdvancedActions = false;
@@ -2787,6 +2780,30 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         };
 
         return $"[{line.Timestamp:HH:mm:ss}] {kind} {line.Text}";
+    }
+
+    private ServiceHealthRowViewModel BuildServiceHealthRow(WorkspaceServiceHealthSnapshot service)
+    {
+        var applications = string.Join(Environment.NewLine, service.Applications);
+        var highlights = string.Join(Environment.NewLine, service.Highlights.Select(item => $"{item.Label}: {item.Value}"));
+        var details = string.Join(Environment.NewLine, service.Evidence.Select(item => $"{item.Label}: {item.Value}"));
+        AsyncRelayCommand? openCommand = null;
+        if (!string.IsNullOrWhiteSpace(service.OpenUrl))
+        {
+            openCommand = new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(service.OpenUrl));
+        }
+
+        return new ServiceHealthRowViewModel(
+            service.Name,
+            service.StatusLabel,
+            service.Summary,
+            applications,
+            service.PrimaryUrl,
+            highlights,
+            details,
+            string.IsNullOrWhiteSpace(service.ActionLabel) ? "Open" : service.ActionLabel,
+            service.OpenUrl,
+            openCommand);
     }
 
     private sealed class OperationTranscriptSink : IOperationLogSink

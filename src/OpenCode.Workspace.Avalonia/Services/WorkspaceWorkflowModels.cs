@@ -167,6 +167,19 @@ public sealed class WorkspaceTroubleshootingHistoryEntry
     public string Source { get; init; } = string.Empty;
 }
 
+public sealed class WorkspaceTroubleshootingServiceEntry
+{
+    public required string Name { get; init; }
+    public required string Status { get; init; }
+    public string Summary { get; init; } = string.Empty;
+    public string Applications { get; init; } = string.Empty;
+    public string PrimaryUrl { get; init; } = string.Empty;
+    public string Highlights { get; init; } = string.Empty;
+    public string Details { get; init; } = string.Empty;
+    public string ActionLabel { get; init; } = string.Empty;
+    public string OpenUrl { get; init; } = string.Empty;
+}
+
 public sealed class WorkspaceTroubleshootingReport
 {
     public required string WorkspaceName { get; init; }
@@ -182,6 +195,7 @@ public sealed class WorkspaceTroubleshootingReport
     public string RecommendedNextStepDuration { get; init; } = string.Empty;
     public IReadOnlyList<WorkspaceTroubleshootingFact> Facts { get; init; } = Array.Empty<WorkspaceTroubleshootingFact>();
     public IReadOnlyList<string> SuggestedNextSteps { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<WorkspaceTroubleshootingServiceEntry> Services { get; init; } = Array.Empty<WorkspaceTroubleshootingServiceEntry>();
     public IReadOnlyList<WorkspaceTroubleshootingAction> InvestigationActions { get; init; } = Array.Empty<WorkspaceTroubleshootingAction>();
     public IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> RepairHistory { get; init; } = Array.Empty<WorkspaceTroubleshootingHistoryEntry>();
     public IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> InvestigationHistory { get; init; } = Array.Empty<WorkspaceTroubleshootingHistoryEntry>();

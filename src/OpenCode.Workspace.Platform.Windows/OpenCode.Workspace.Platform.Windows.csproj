@@ -13,4 +13,10 @@
     <ProjectReference Include="..\OpenCode.Workspace.Platform\OpenCode.Workspace.Platform.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="artifacts/**/*.cs" />
+    <EmbeddedResource Remove="artifacts/**" />
+    <None Remove="artifacts/**/*.cs" />
+  </ItemGroup>
+
 </Project>

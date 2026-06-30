@@ -382,6 +382,33 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <StackPanel Spacing="8" IsVisible="{Binding HasDetailServices}">
+              <TextBlock Text="Applications" Classes="section-title" />
+              <ItemsControl ItemsSource="{Binding DetailServices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,0,0,8">
+                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="{Binding ActionLabel}" Command="{Binding OpenCommand}" IsVisible="{Binding CanOpen}" />
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="2" IsVisible="{Binding HasApplications}">
+                          <TextBlock Text="Applications" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Applications}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding PrimaryUrl}" TextWrapping="Wrap" IsVisible="{Binding HasPrimaryUrl}" />
+                        <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding Highlights}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasHighlights}" />
+                        <Expander Grid.Row="6" Grid.ColumnSpan="2" Header="Details" IsVisible="{Binding HasDetails}">
+                          <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,0" />
+                        </Expander>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
             <StackPanel Spacing="8" IsVisible="{Binding HasRepairHistory}">
               <TextBlock Text="What have we already tried?" Classes="section-title" />
               <ItemsControl ItemsSource="{Binding RepairHistory}">
@@ -711,16 +738,44 @@
           </StackPanel>
         </Border>
         <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding CurrentPage.DetailItems}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <StackPanel Margin="0,0,0,10" Spacing="3">
-                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxHeight="54" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+          <StackPanel Spacing="10">
+            <ItemsControl ItemsSource="{Binding CurrentPage.DetailItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="0,0,0,10" Spacing="3">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxHeight="54" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Spacing="8" IsVisible="{Binding CurrentPage.HasDetailServices}">
+              <TextBlock Text="Applications" FontWeight="SemiBold" />
+              <ItemsControl ItemsSource="{Binding CurrentPage.DetailServices}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,0,0,8">
+                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="{Binding ActionLabel}" Command="{Binding OpenCommand}" IsVisible="{Binding CanOpen}" />
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="2" IsVisible="{Binding HasApplications}">
+                          <TextBlock Text="Applications" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Applications}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding PrimaryUrl}" TextWrapping="Wrap" IsVisible="{Binding HasPrimaryUrl}" />
+                        <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Text="{Binding Highlights}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasHighlights}" />
+                        <Expander Grid.Row="6" Grid.ColumnSpan="2" Header="Details" IsVisible="{Binding HasDetails}">
+                          <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,0" />
+                        </Expander>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </StackPanel>
         </ScrollViewer>
         <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="320">
           <StackPanel Spacing="10">

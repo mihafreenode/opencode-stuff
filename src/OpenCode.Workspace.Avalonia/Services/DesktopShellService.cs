@@ -1306,10 +1306,10 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             foreach (var service in snapshot.Health.Services)
             {
-                facts.Add(new WorkspaceTroubleshootingFact { Label = $"Service: {service.Name}", Value = service.Status.ToString() });
+                facts.Add(new WorkspaceTroubleshootingFact { Label = $"Service: {service.Name}", Value = service.StatusLabel });
                 if (service.Evidence.Count > 0)
                 {
-                    facts.Add(new WorkspaceTroubleshootingFact { Label = $"{service.Name} evidence", Value = string.Join("; ", service.Evidence.Select(item => $"{item.Label}={item.Value}")) });
+                    facts.Add(new WorkspaceTroubleshootingFact { Label = $"{service.Name} evidence", Value = string.Join("; ", service.Evidence.Select(item => $"{item.Label}: {item.Value}")) });
                 }
             }
         }
@@ -1353,6 +1353,18 @@ public sealed class DesktopShellService : IDesktopShellService
             RecommendedNextStepDuration = string.IsNullOrWhiteSpace(health?.EstimatedDuration) ? "10-30 seconds" : health.EstimatedDuration,
             Facts = facts,
             SuggestedNextSteps = suggestedNextSteps,
+            Services = snapshot.Health.Services.Select(service => new WorkspaceTroubleshootingServiceEntry
+            {
+                Name = service.Name,
+                Status = service.StatusLabel,
+                Summary = service.Summary,
+                Applications = string.Join(Environment.NewLine, service.Applications),
+                PrimaryUrl = service.PrimaryUrl,
+                Highlights = string.Join(Environment.NewLine, service.Highlights.Select(item => $"{item.Label}: {item.Value}")),
+                Details = string.Join(Environment.NewLine, service.Evidence.Select(item => $"{item.Label}: {item.Value}")),
+                ActionLabel = service.ActionLabel,
+                OpenUrl = service.OpenUrl,
+            }).ToList(),
             InvestigationActions = investigations,
             RepairHistory = BuildRepairHistory(health),
             InvestigationHistory = BuildInvestigationHistory(health),

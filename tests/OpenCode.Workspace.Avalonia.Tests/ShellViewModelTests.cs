@@ -3158,6 +3158,124 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task WorkspaceDetails_ServiceRowsExposeOpenActionForUsefulEndpoints()
+    {
+        var snapshot = WithHealthServices(
+            CreateOracleSnapshot("alpha", oracleNoticeShown: true),
+            new WorkspaceServiceHealthSnapshot
+            {
+                ServiceId = "ords",
+                Name = "Oracle REST Data Services",
+                Category = "Service",
+                StatusLabel = "Available",
+                Summary = "Application gateway is responding and published workspace applications were discovered.",
+                Applications = ["✓ SQL Developer Web", "⚠ Oracle APEX", "✓ REST APIs"],
+                Endpoint = "http://localhost:8181/ords/",
+                PrimaryUrl = "http://localhost:8181/ords/_/landing",
+                ProbeType = WorkspaceServiceProbeType.Http,
+                Status = WorkspaceHealthStatus.Healthy,
+                Latency = TimeSpan.FromMilliseconds(41),
+                Highlights = [new WorkspaceHealthFact { Label = "Latency", Value = "41 ms" }],
+                Evidence = [new WorkspaceHealthFact { Label = "HTTP status", Value = "200 OK" }, new WorkspaceHealthFact { Label = "Probe duration", Value = "41 ms" }],
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Recommendation = "Open Workspace.",
+                ActionLabel = "Open Oracle REST Data Services",
+                OpenUrl = "http://localhost:8181/ords/_/landing",
+                RefreshInterval = TimeSpan.FromSeconds(30),
+                ProviderKey = "oracle",
+            },
+            new WorkspaceServiceHealthSnapshot
+            {
+                ServiceId = "sql-developer-web",
+                Name = "SQL Developer Web",
+                Category = "Application",
+                StatusLabel = "Available",
+                Summary = "Browser-based database tooling is available.",
+                Endpoint = "http://localhost:8181/ords/",
+                PrimaryUrl = "http://localhost:8181/ords/_/landing",
+                ProbeType = WorkspaceServiceProbeType.Http,
+                Status = WorkspaceHealthStatus.Healthy,
+                Latency = TimeSpan.FromMilliseconds(55),
+                Highlights = [new WorkspaceHealthFact { Label = "Latency", Value = "55 ms" }],
+                Evidence = [new WorkspaceHealthFact { Label = "HTTP status", Value = "200 OK" }],
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Recommendation = "Open Workspace.",
+                ActionLabel = "Open SQL Developer Web",
+                OpenUrl = "http://localhost:8181/ords/_/landing",
+                RefreshInterval = TimeSpan.FromSeconds(30),
+                ProviderKey = "oracle",
+            });
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        var ords = page.DetailServices.Single(item => item.Name == "Oracle REST Data Services");
+        var sqlDeveloperWeb = page.DetailServices.Single(item => item.Name == "SQL Developer Web");
+        Assert.True(ords.CanOpen);
+        Assert.True(sqlDeveloperWeb.CanOpen);
+        Assert.Equal("Open Oracle REST Data Services", ords.ActionLabel);
+        Assert.Contains("SQL Developer Web", ords.Applications, StringComparison.Ordinal);
+
+        await ords.OpenCommand!.ExecuteAsync();
+        Assert.Contains("http://localhost:8181/ords/_/landing", desktop.OpenedPaths);
+    }
+
+    [Fact]
+    public async Task Troubleshooting_ServiceRowsExposeOpenActionForPgAdmin()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = "Workspace troubleshooting",
+                Summary = "Service health evidence available.",
+                Recommendation = "Open Workspace.",
+                CurrentDiagnosis = "pgAdmin reachable.",
+                CurrentEvidence = "HTTP 200",
+                Confidence = "HIGH",
+                RecommendedNextStep = "Open Workspace",
+                RecommendedNextStepDescription = "Workspace can still be used.",
+                RecommendedNextStepDuration = "Immediate",
+                CanOpenWorkspace = true,
+                Services =
+                [
+                    new WorkspaceTroubleshootingServiceEntry
+                    {
+                        Name = "pgAdmin",
+                        Status = "Available",
+                        Summary = "HTTP service responding.",
+                        Applications = string.Empty,
+                        PrimaryUrl = "http://localhost:18080/",
+                        Highlights = "Latency: 20 ms",
+                        Details = "HTTP status: 200 OK",
+                        ActionLabel = "Open pgAdmin",
+                        OpenUrl = "http://localhost:18080/",
+                    },
+                ],
+            }),
+        };
+        var shell = CreateShellWithDesktop(desktop);
+
+        await shell.InitializeAsync();
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
+        var pgadmin = Assert.Single(troubleshootingPage.DetailServices);
+        Assert.Equal("pgAdmin", pgadmin.Name);
+        Assert.True(pgadmin.CanOpen);
+
+        await pgadmin.OpenCommand!.ExecuteAsync();
+        Assert.Contains("http://localhost:18080/", desktop.OpenedPaths);
+    }
+
+    [Fact]
     public async Task StatusBar_UpdatesWhenWorkspaceSelectionChanges()
     {
         var shell = CreateShell([CreateSnapshot("alpha"), CreateSnapshot("beta")]);
@@ -3333,6 +3451,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" } : null,
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
             UpdateRequired = updateRequired,
+            Health = new WorkspaceHealthSnapshot(),
         };
     }
 
@@ -3382,6 +3501,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
         };
     }
 
@@ -3419,6 +3539,33 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+        };
+
+    private static WorkspaceSnapshot WithHealthServices(WorkspaceSnapshot snapshot, params WorkspaceServiceHealthSnapshot[] services)
+        => new()
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = new WorkspaceHealthSnapshot
+            {
+                OverallStatus = services.Any(item => item.Status == WorkspaceHealthStatus.Degraded) ? WorkspaceHealthStatus.Degraded : services.Any(item => item.Status == WorkspaceHealthStatus.Attention) ? WorkspaceHealthStatus.Attention : WorkspaceHealthStatus.Healthy,
+                Summary = "Service health loaded.",
+                Recommendation = "Open Workspace.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Providers = [],
+                Services = services,
+            },
         };
 
     private sealed class FakeDesktopShellService : IDesktopShellService

@@ -190,7 +190,8 @@ public sealed class ShellViewModel : ObservableObject
             CreateTroubleshootingPrimaryAction(report),
             CreateTroubleshootingVisibleActions(report),
             CreateTroubleshootingAdvancedActions(report),
-            CreateTroubleshootingInvestigationActions(report, request));
+            CreateTroubleshootingInvestigationActions(report, request),
+            CreateTroubleshootingServiceRows(report));
         CurrentPage = _workspaceTroubleshootingPage;
         RefreshStatusBar();
     }
@@ -263,6 +264,21 @@ public sealed class ShellViewModel : ObservableObject
 
     private ActionItemViewModel CreateWorkspaceTroubleshootingAction(string label, string description, bool isEnabled, string disabledReason, Func<Task> executeAsync)
         => new(label, description, isEnabled, disabledReason, new AsyncRelayCommand(executeAsync));
+
+    private IReadOnlyList<ServiceHealthRowViewModel> CreateTroubleshootingServiceRows(WorkspaceTroubleshootingReport report)
+        => report.Services
+            .Select(service => new ServiceHealthRowViewModel(
+                service.Name,
+                service.Status,
+                service.Summary,
+                service.Applications,
+                service.PrimaryUrl,
+                service.Highlights,
+                service.Details,
+                service.ActionLabel,
+                service.OpenUrl,
+                string.IsNullOrWhiteSpace(service.OpenUrl) ? null : new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(service.OpenUrl))))
+            .ToList();
 
     private Task KeepWaitingForWorkspaceAsync()
     {

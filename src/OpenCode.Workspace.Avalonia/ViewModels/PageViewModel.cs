@@ -67,8 +67,10 @@ public abstract class PageViewModel : ObservableObject
     }
 
     public bool HasDetailAdvancedActions => DetailAdvancedActions.Count > 0;
+    public bool HasDetailServices => DetailServices.Count > 0;
 
     public ObservableCollection<DetailItemViewModel> DetailItems { get; } = [];
+    public ObservableCollection<ServiceHealthRowViewModel> DetailServices { get; } = [];
     public ObservableCollection<ActionItemViewModel> DetailVisibleActions { get; } = [];
     public ObservableCollection<ActionItemViewModel> DetailActions { get; } = [];
     public ObservableCollection<ActionItemViewModel> DetailAdvancedActions { get; } = [];
