@@ -117,7 +117,7 @@ internal static class WorkspaceHealthAggregator
 
     private static string BuildCurrentStatus(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isFreshWorkspace)
     {
-        if (isFreshWorkspace && runtimeMissing && !runtimeRunning)
+        if (isFreshWorkspace && !runtimeRunning)
         {
             return "Not Prepared";
         }
@@ -147,7 +147,7 @@ internal static class WorkspaceHealthAggregator
         bool isFreshWorkspace,
         string servicesSummary)
     {
-        if (isFreshWorkspace && runtimeMissing && !runtimeRunning)
+        if (isFreshWorkspace && !runtimeRunning)
         {
             return "Open Workspace will prepare the runtime and open the terminal.";
         }

@@ -2229,7 +2229,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FreshWorkspaceBeforeOpen_UsesNotPreparedAndOpenWorkspace()
     {
-        var snapshot = CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
+        var snapshot = CreateSnapshot("alpha", includeRuntimeState: true, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
         snapshot = new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
@@ -2251,18 +2251,44 @@ public sealed class ShellViewModelTests
             Safety = snapshot.Safety,
             Session = snapshot.Session,
             AppliedState = null,
-            LocalRuntimeState = null,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = true,
-            Health = new WorkspaceHealthSnapshot(),
+            Health = CreateHealthSnapshot(
+                WorkspaceHealthStatus.Degraded,
+                "Open Workspace will need to repair runtime artifacts before you can work.",
+                "Run Recover Workspace.",
+                providers:
+                [
+                    new WorkspaceProviderHealthSnapshot
+                    {
+                        ProviderKey = "runtime",
+                        DisplayName = "Runtime",
+                        Status = WorkspaceHealthStatus.Degraded,
+                        Summary = "Managed runtime files are missing or stale.",
+                        WorkspaceImpact = "Open Workspace will need to repair runtime artifacts before you can work.",
+                        Timestamp = DateTimeOffset.UtcNow,
+                    },
+                    new WorkspaceProviderHealthSnapshot
+                    {
+                        ProviderKey = "container",
+                        DisplayName = "Container",
+                        Status = WorkspaceHealthStatus.Attention,
+                        Summary = "Workspace runtime is stopped.",
+                        WorkspaceImpact = "Workspace can still be opened, but the runtime will need to start first.",
+                        Timestamp = DateTimeOffset.UtcNow,
+                    },
+                ]),
         };
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
 
         await page.LoadAsync();
 
         Assert.Equal("Not Prepared", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Workspace will prepare the runtime and open the terminal.", page.DetailSummary);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Contains(page.DetailItems, item => item.Label == "Current status" && item.Value == "Not Prepared");
     }
 
     [Fact]
