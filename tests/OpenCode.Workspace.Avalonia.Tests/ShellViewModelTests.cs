@@ -2227,6 +2227,45 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task FreshWorkspaceBeforeOpen_UsesNotPreparedAndOpenWorkspace()
+    {
+        var snapshot = CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = null,
+                LastOperationName = "Create Workspace",
+                LastOperationResult = "Workspace created.",
+                LastOperationSucceeded = true,
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = WorkspaceRuntimeState.Stopped,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = null,
+            LocalRuntimeState = null,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = true,
+            Health = new WorkspaceHealthSnapshot(),
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Not Prepared", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+    }
+
+    [Fact]
     public async Task RecommendationAction_MatchesVisiblePrimaryAction()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
@@ -2237,6 +2276,20 @@ public sealed class ShellViewModelTests
         Assert.NotNull(recommendedAction);
         Assert.NotNull(page.DetailPrimaryAction);
         Assert.Equal(page.DetailPrimaryAction!.Label, recommendedAction);
+    }
+
+    [Fact]
+    public async Task PreviousFailureThenCurrentSuccess_PreservesHistoryOnly()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace action failed.", lastOperationSucceeded: false);
+        snapshot = WithHealth(snapshot, CreateHealthSnapshot(WorkspaceHealthStatus.Healthy, "Workspace is running.", "Open Workspace."));
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Ready", page.SelectedWorkspace?.Headline);
+        Assert.DoesNotContain("Workspace action failed", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Contains(page.DetailItems, item => item.Label == "Recent history" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1516,7 +1516,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         DetailTitle = SelectedWorkspace.Name;
-        var aggregatedState = BuildAggregatedState(SelectedWorkspace);
         var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
         var provisioningHealth = SelectedWorkspace.Record.LastProvisioningHealth;
         var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
@@ -1533,6 +1532,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (SelectedWorkspace.Snapshot?.LocalRuntimeState?.Resources.Ports.Count > 0)
         {
             DetailItems.Add(new DetailItemViewModel("Resources", FormatManagedResources(SelectedWorkspace.Snapshot.LocalRuntimeState.Resources.Ports)));
+        }
+        if (!string.IsNullOrWhiteSpace(presentation.ServicesSummary))
+        {
+            DetailItems.Add(new DetailItemViewModel("Applications", presentation.ServicesSummary));
         }
         DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
         DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
@@ -1570,7 +1573,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
         }
 
-        if (failureGuidance is not null && ShouldShowFailureEvidence(SelectedWorkspace, aggregatedState))
+        if (failureGuidance is not null && ShouldShowFailureEvidence(SelectedWorkspace))
         {
             var lastRepairAttempt = provisioningHealth?.RepairHistory.LastOrDefault();
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Stage ?? failureGuidance.Stage))
@@ -1698,46 +1701,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private WorkspacePresentation BuildWorkspacePresentation(WorkspaceSummaryViewModel workspace, bool useWorkspaceScopedCommands)
     {
-        var aggregatedState = BuildAggregatedState(workspace);
         var failureGuidance = TryBuildFailureGuidance(workspace);
-        var shouldPreferFailureGuidance = ShouldPreferFailureGuidance(workspace, failureGuidance);
-        var shouldInvestigateFirst = shouldPreferFailureGuidance || aggregatedState.ShouldInvestigateFirst;
-        var headline = aggregatedState.Headline;
-        var summary = shouldPreferFailureGuidance ? failureGuidance!.Reason : aggregatedState.Summary;
-        var requestedPrimaryLabel = shouldPreferFailureGuidance && !string.IsNullOrWhiteSpace(failureGuidance?.PrimaryAction)
-            ? failureGuidance!.PrimaryAction!
-            : aggregatedState.PrimaryActionLabel;
-        var recommendation = shouldPreferFailureGuidance && !string.IsNullOrWhiteSpace(failureGuidance?.RecommendedAction)
-            ? failureGuidance!.RecommendedAction
-            : string.IsNullOrWhiteSpace(aggregatedState.Recommendation)
-            ? BuildWorkspacePresentationRecommendation(workspace, failureGuidance, requestedPrimaryLabel)
-            : aggregatedState.Recommendation;
-        var primaryLabel = NormalizeVisiblePrimaryActionLabel(requestedPrimaryLabel);
-        var recommendedActionLabel = WorkspaceHealthAggregator.TryExtractRecommendedActionLabel(recommendation);
-        if (!string.IsNullOrWhiteSpace(recommendedActionLabel)
-            && !string.Equals(NormalizeVisiblePrimaryActionLabel(recommendedActionLabel), primaryLabel, StringComparison.Ordinal))
-        {
-            recommendation = primaryLabel + ".";
-        }
-
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
-
-        var primaryAction = ResolvePrimaryAction(primaryLabel, openWorkspaceAction, investigateProblemAction);
-        var secondaryActions = new List<ActionItemViewModel>();
-        if (!ReferenceEquals(primaryAction, openWorkspaceAction))
-        {
-            secondaryActions.Add(openWorkspaceAction);
-        }
-
-        if (!ReferenceEquals(primaryAction, investigateProblemAction))
-        {
-            secondaryActions.Add(investigateProblemAction);
-        }
-
-        secondaryActions.Add(openFolderAction);
-
         var advancedActions = new List<ActionItemViewModel>
         {
             CreatePresentationAction(workspace, "Recover Workspace", BuildRecoverDescription(workspace), CanRecoverWorkspace(workspace), GetRecoverDisabledReason(workspace), RecoverSelectedWorkspaceAsync, useWorkspaceScopedCommands),
@@ -1757,72 +1724,37 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             advancedActions.Insert(0, CreatePresentationAction(workspace, "Retry", BuildRetryDescription(workspace), CanRetryWorkspace(workspace), GetRetryDisabledReason(workspace), RetrySelectedWorkspaceAsync, useWorkspaceScopedCommands));
         }
 
-        return new WorkspacePresentation
-        {
-            Headline = headline,
-            Summary = summary,
-            CurrentStatus = aggregatedState.HealthLabel,
-            CurrentActivity = aggregatedState.ActivityLabel,
-            ActivitySummary = aggregatedState.ActivitySummary,
-            Recommendation = recommendation,
-            RecentHistoryNote = aggregatedState.RecentHistoryNote,
-            PrimaryAction = primaryAction,
-            SecondaryActions = secondaryActions,
-            AdvancedActions = advancedActions,
-        };
+        return WorkspaceHealthAggregator.BuildPresentation(
+            workspace,
+            isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
+            currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
+            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty,
+            new WorkspacePresentationActions
+            {
+                OpenWorkspace = openWorkspaceAction,
+                TroubleshootWorkspace = investigateProblemAction,
+                OpenFolder = openFolderAction,
+                AdvancedActions = advancedActions,
+            });
     }
 
-    private static ActionItemViewModel ResolvePrimaryAction(string primaryLabel, ActionItemViewModel openWorkspaceAction, ActionItemViewModel investigateProblemAction)
-        => string.Equals(primaryLabel, "Troubleshoot Workspace", StringComparison.Ordinal)
-            ? investigateProblemAction
-            : openWorkspaceAction;
-
-    private static string NormalizeVisiblePrimaryActionLabel(string label)
-        => string.Equals(label, "Troubleshoot Workspace", StringComparison.Ordinal)
-            ? "Troubleshoot Workspace"
-            : "Open Workspace";
-
-    private static bool ShouldShowFailureEvidence(WorkspaceSummaryViewModel workspace, WorkspaceAggregatedState aggregatedState)
+    private static bool ShouldShowFailureEvidence(WorkspaceSummaryViewModel workspace)
     {
-        if (aggregatedState.ActivityLabel != "None")
+        if (workspace.Snapshot is null)
         {
             return false;
         }
 
-        if (workspace.Snapshot?.Health.OverallStatus is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating)
+        if (workspace.Snapshot.Health.OverallStatus is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating)
         {
             return true;
         }
 
-        return workspace.Record.LastProvisioningHealth is not null
-            && workspace.Record.LastOperationSucceeded == false;
-    }
-
-    private static bool ShouldPreferFailureGuidance(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance)
-    {
-        if (failureGuidance is null)
-        {
-            return false;
-        }
-
-        if (workspace.HasTransientOperationFailure)
-        {
-            return true;
-        }
-
-        if (workspace.Record.LastProvisioningHealth is null || workspace.Record.LastOperationSucceeded != false)
-        {
-            return false;
-        }
-
-        var hasHealthyApplications = workspace.Snapshot?.Health.Services.Any(service =>
-            string.Equals(service.Category, "Application", StringComparison.OrdinalIgnoreCase)
-            && service.Status == WorkspaceHealthStatus.Healthy) == true;
-        return !hasHealthyApplications;
+        return false;
     }
 
     private WorkspaceAggregatedState BuildAggregatedState(WorkspaceSummaryViewModel workspace)
-        => WorkspaceHealthAggregator.Build(
+        => WorkspaceHealthAggregator.BuildState(
             workspace,
             isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
             currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
@@ -1843,106 +1775,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
                 await executeAsync();
             }));
-
-    private static bool ShouldInvestigateProblemFirst(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance)
-    {
-        if (workspace.Snapshot?.Health.OverallStatus is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating)
-        {
-            return true;
-        }
-
-        return failureGuidance is not null
-            && (failureGuidance.CanCleanup
-                || failureGuidance.Scope == WorkspaceFailureProblemScope.HostProblem
-                || string.Equals(failureGuidance.PrimaryAction, "Run Diagnostics", StringComparison.Ordinal)
-                || string.Equals(failureGuidance.PrimaryAction, "Troubleshoot Workspace", StringComparison.Ordinal));
-    }
-
-    private string BuildWorkspaceHeadline(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance, bool shouldInvestigateFirst)
-    {
-        if (workspace.IsLoading)
-        {
-            return "Checking workspace";
-        }
-
-        var overallHealth = workspace.Snapshot?.Health.OverallStatus;
-        if (overallHealth is WorkspaceHealthStatus.Provisioning or WorkspaceHealthStatus.Investigating)
-        {
-            return overallHealth.GetValueOrDefault().ToString();
-        }
-
-        if (failureGuidance is not null || overallHealth is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable)
-        {
-            return shouldInvestigateFirst ? "Needs attention" : "Needs repair";
-        }
-
-        if (overallHealth == WorkspaceHealthStatus.Attention)
-        {
-            return "Attention needed";
-        }
-
-        if (workspace.HasSnapshot && (workspace.Snapshot!.UpdateRequired || workspace.Snapshot.LocalRuntimeState is null || workspace.Snapshot.AppliedState is null))
-        {
-            return "Needs repair";
-        }
-
-        return workspace.Snapshot?.Health.OverallStatus == WorkspaceHealthStatus.Healthy
-            ? "Ready"
-            : workspace.Snapshot?.RuntimeState == WorkspaceRuntimeState.Running ? "Ready" : "Open workspace";
-    }
-
-    private string BuildWorkspacePresentationSummary(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance, bool shouldInvestigateFirst)
-    {
-        if (workspace.HasSnapshot && workspace.Snapshot!.LocalRuntimeState is null)
-        {
-            return "Runtime state is missing. Open Workspace will regenerate managed runtime files, validate the runtime, and open the terminal.";
-        }
-
-        if (failureGuidance is null)
-        {
-            if (workspace.Snapshot?.Health is not null && !string.IsNullOrWhiteSpace(workspace.Snapshot.Health.Summary))
-            {
-                return workspace.Snapshot.Health.Summary;
-            }
-
-            if (workspace.HasSnapshot && workspace.Snapshot!.LocalRuntimeState is null)
-            {
-                return "Runtime state is missing. Open Workspace will regenerate managed runtime files, validate the runtime, and open the terminal.";
-            }
-
-            if (workspace.HasSnapshot && (workspace.Snapshot!.UpdateRequired || workspace.Snapshot.AppliedState is null))
-            {
-                return "Open Workspace will repair managed runtime files, validate the runtime, and open the terminal.";
-            }
-
-            return workspace.Snapshot?.RuntimeState == WorkspaceRuntimeState.Running
-                ? "Open Workspace will attach to the running terminal session."
-                : "Open Workspace will start what is needed and hand off to the terminal.";
-        }
-
-        return shouldInvestigateFirst
-            ? failureGuidance.Summary
-            : $"{failureGuidance.Summary} Open Workspace will try the safe repair path before asking for advanced recovery actions.";
-    }
-
-    private static string BuildWorkspacePresentationRecommendation(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance, string primaryLabel)
-    {
-        if (failureGuidance is null)
-        {
-            if (!string.IsNullOrWhiteSpace(workspace.Snapshot?.Health.Recommendation))
-            {
-                return workspace.Snapshot!.Health.Recommendation;
-            }
-
-            return primaryLabel == "Open Workspace"
-                ? "Open Workspace is the fastest path to a working terminal."
-                : string.Empty;
-        }
-
-        return primaryLabel == "Troubleshoot Workspace"
-            ? failureGuidance.RecommendedAction
-            : failureGuidance.RecommendedAction;
-    }
 
     private static string BuildInvestigateProblemDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
