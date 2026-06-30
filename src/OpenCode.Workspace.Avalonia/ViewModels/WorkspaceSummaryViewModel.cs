@@ -39,15 +39,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? _runtimeStatusLabelOverride ?? "Error"
         : !string.IsNullOrWhiteSpace(_runtimeStatusLabelOverride)
         ? _runtimeStatusLabelOverride!
-        : Snapshot!.Record.LastOperationSucceeded == false
-        ? "Error"
-        : Snapshot.UpdateRequired
-            ? "Update available"
-            : Snapshot.RuntimeState == WorkspaceRuntimeState.Running
-                ? "Running"
-                : Snapshot.RuntimeState == WorkspaceRuntimeState.Stopped
-                    ? "Stopped"
-                    : "Ready";
+        : FormatHealthStatusLabel(Snapshot!.Health.OverallStatus);
     public string ProtectionLabel => IsLoading
         ? "Loading..."
         : HasError
@@ -80,7 +72,11 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? _lastActivityOverride ?? ErrorMessage
         : !string.IsNullOrWhiteSpace(_lastActivityOverride)
         ? _lastActivityOverride!
-        : string.IsNullOrWhiteSpace(Snapshot!.Record.LastOperationResult) ? "No recent activity" : Snapshot.Record.LastOperationResult!;
+        : !string.IsNullOrWhiteSpace(Snapshot!.Health.Summary)
+            ? Snapshot.Health.Summary
+            : string.IsNullOrWhiteSpace(Snapshot.Record.LastOperationResult)
+                ? "No recent activity"
+                : Snapshot.Record.LastOperationResult!;
     public string SafetyState => IsLoading ? "Workspace details are still loading." : HasError ? "Workspace record exists but the workspace could not be loaded." : Snapshot!.Safety.Headline;
     public string RepositoryStatus => IsLoading
         ? string.IsNullOrWhiteSpace(Item.LoadingStatusMessage) ? "Loading details..." : Item.LoadingStatusMessage
@@ -99,6 +95,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             ? "Loaded"
             : $"Loaded ({Snapshot.LocalRuntimeState.ResolvedPlatform})";
     public string RuntimeTarget => IsLoading ? "Loading..." : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
+    public WorkspaceHealthSnapshot? Health => Snapshot?.Health;
     public string SafeWorkspaceName => BuildSafeWorkspaceToken(Name);
     public string RowAutomationId => $"WorkspaceRow_{SafeWorkspaceName}";
     public string RowAutomationName => $"WorkspaceRow_{SafeWorkspaceName}";
@@ -214,5 +211,18 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         RaisePropertyChanged(nameof(LastActivity));
         RaisePropertyChanged(nameof(Headline));
         RaisePropertyChanged(nameof(Summary));
+        RaisePropertyChanged(nameof(Health));
     }
+
+    private static string FormatHealthStatusLabel(WorkspaceHealthStatus status)
+        => status switch
+        {
+            WorkspaceHealthStatus.Healthy => "Healthy",
+            WorkspaceHealthStatus.Attention => "Attention",
+            WorkspaceHealthStatus.Degraded => "Degraded",
+            WorkspaceHealthStatus.Unavailable => "Unavailable",
+            WorkspaceHealthStatus.Provisioning => "Provisioning",
+            WorkspaceHealthStatus.Investigating => "Investigating",
+            _ => "Healthy",
+        };
 }

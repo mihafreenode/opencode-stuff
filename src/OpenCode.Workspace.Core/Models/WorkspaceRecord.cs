@@ -170,6 +170,7 @@ public sealed class WorkspaceSnapshot
     public WorkspaceRuntimeStateRecord? LocalRuntimeState { get; init; }
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool UpdateRequired { get; init; }
+    public WorkspaceHealthSnapshot Health { get; init; } = new();
 }
 
 public sealed class WorkspaceSessionSnapshot

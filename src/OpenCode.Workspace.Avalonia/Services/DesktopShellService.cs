@@ -1302,6 +1302,18 @@ public sealed class DesktopShellService : IDesktopShellService
             facts.Add(new WorkspaceTroubleshootingFact { Label = "Last timeline event", Value = $"{context.LastTimelineEvent.Summary} at {context.LastTimelineEvent.OccurredUtc:O}" });
         }
 
+        if (snapshot.Health.Services.Count > 0)
+        {
+            foreach (var service in snapshot.Health.Services)
+            {
+                facts.Add(new WorkspaceTroubleshootingFact { Label = $"Service: {service.Name}", Value = service.Status.ToString() });
+                if (service.Evidence.Count > 0)
+                {
+                    facts.Add(new WorkspaceTroubleshootingFact { Label = $"{service.Name} evidence", Value = string.Join("; ", service.Evidence.Select(item => $"{item.Label}={item.Value}")) });
+                }
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(context.TranscriptFilePath))
         {
             facts.Add(new WorkspaceTroubleshootingFact { Label = "Transcript file", Value = context.TranscriptFilePath });
@@ -1311,7 +1323,10 @@ public sealed class DesktopShellService : IDesktopShellService
         var canResetRuntime = string.Equals(health?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal);
         var headline = BuildTroubleshootingHeadline(request, health, hostProblem, runtimeStateMissing, appliedStateMissing);
         var summary = BuildTroubleshootingSummary(request, health, isOracleWorkspace, hostProblem, runtimeStateMissing, appliedStateMissing, attachScriptMissing);
-        var recommendation = BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace);
+        var serviceRecommendation = snapshot.Health.Services.FirstOrDefault(item => item.Status is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Attention)?.Recommendation;
+        var recommendation = string.IsNullOrWhiteSpace(serviceRecommendation)
+            ? BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace)
+            : serviceRecommendation;
         var investigations = WorkspaceTroubleshootingEngine.GetAvailableInvestigations(context)
             .Select(item => new WorkspaceTroubleshootingAction
             {
@@ -1645,7 +1660,8 @@ public sealed class DesktopShellService : IDesktopShellService
     }
 
     private static WorkspaceSnapshot CloneSnapshot(WorkspaceSnapshot source, WorkspaceRecord record)
-        => new()
+    {
+        var snapshot = new WorkspaceSnapshot
         {
             Record = record,
             Definition = source.Definition,
@@ -1658,7 +1674,25 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = source.LocalRuntimeState,
             ResolvedRuntimePlan = source.ResolvedRuntimePlan,
             UpdateRequired = source.UpdateRequired,
+            Health = new WorkspaceHealthSnapshot(),
         };
+
+        return new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = WorkspaceHealthEngine.Build(snapshot),
+        };
+    }
 
     private static bool HasCurrentVolatileFailure(WorkspaceRecord record)
     {

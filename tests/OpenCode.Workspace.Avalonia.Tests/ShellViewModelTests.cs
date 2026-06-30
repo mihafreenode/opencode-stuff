@@ -2048,7 +2048,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Loaded (linux/amd64)", page.SelectedWorkspace?.LocalRuntimeStateStatus);
         Assert.Equal("Workspace reprovisioned successfully.", page.ReprovisionStatusMessage);
-        Assert.Equal("Running", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Healthy", page.SelectedWorkspace?.RuntimeStatusLabel);
         Assert.Equal("Workspace reprovisioned successfully.", page.SelectedWorkspace?.LastActivity);
     }
 

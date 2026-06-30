@@ -186,6 +186,7 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = localRuntimeState,
             ResolvedRuntimePlan = resolvedRuntimePlan,
             UpdateRequired = updateRequired,
+            Health = new WorkspaceHealthSnapshot(),
         };
 
         if (!includeRuntimeInspection)
@@ -207,6 +208,7 @@ public sealed class WorkspaceOrchestrator
                 LocalRuntimeState = snapshot.LocalRuntimeState,
                 ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
                 UpdateRequired = snapshot.UpdateRequired,
+                Health = WorkspaceHealthEngine.Build(snapshot),
             };
         }
 
@@ -216,7 +218,7 @@ public sealed class WorkspaceOrchestrator
                 ? await MeasureStageAsync("session-inspection", "Session inspection", "Inspected OpenCode session state.", rootPath, workspaceName, () => GetSessionStateAsync(definition, cancellationToken), loadObserver, stageProgress)
                 : WorkspaceSessionState.Unknown
             : WorkspaceSessionState.NotRunning;
-        return new WorkspaceSnapshot
+        var finalSnapshot = new WorkspaceSnapshot
         {
             Record = snapshot.Record,
             Definition = snapshot.Definition,
@@ -233,6 +235,23 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Health = new WorkspaceHealthSnapshot(),
+        };
+
+        return new WorkspaceSnapshot
+        {
+            Record = finalSnapshot.Record,
+            Definition = finalSnapshot.Definition,
+            Paths = finalSnapshot.Paths,
+            ConfigurationPath = finalSnapshot.ConfigurationPath,
+            RuntimeState = finalSnapshot.RuntimeState,
+            Safety = finalSnapshot.Safety,
+            Session = finalSnapshot.Session,
+            AppliedState = finalSnapshot.AppliedState,
+            LocalRuntimeState = finalSnapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = finalSnapshot.ResolvedRuntimePlan,
+            UpdateRequired = finalSnapshot.UpdateRequired,
+            Health = WorkspaceHealthEngine.Build(finalSnapshot),
         };
     }
 
