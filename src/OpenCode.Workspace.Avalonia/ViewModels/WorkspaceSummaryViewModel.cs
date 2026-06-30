@@ -104,6 +104,8 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     public string SelectedMarkerAutomationId => "WorkspaceRow_Selected";
     public string SelectedMarkerAutomationName => "WorkspaceRow_Selected";
     public string? FailedOperationName => _failedOperationNameOverride ?? Record.LastOperationName;
+    public bool HasTransientOperationFailure => !string.IsNullOrWhiteSpace(_failedOperationNameOverride) && !string.IsNullOrWhiteSpace(_lastActivityOverride);
+    public string TransientOperationSummary => _lastActivityOverride ?? string.Empty;
     public string Headline
     {
         get => string.IsNullOrWhiteSpace(_headline) ? RuntimeStatusLabel : _headline;

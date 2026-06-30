@@ -133,6 +133,142 @@
       </Grid>
     </DataTemplate>
 
+    <DataTemplate DataType="vm:RuntimeResourcesPageViewModel">
+      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <Border Classes="panel">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Runtime Resource Explorer" Classes="section-title" />
+            <TextBlock Text="Workspace-owned runtime resources, conflicts, orphaned resources, and service links." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="panel">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Classes="accent" Content="Refresh" Command="{Binding RefreshCommand}" />
+            <Button Content="Clean Orphaned Resources" Command="{Binding CleanOrphanedResourcesCommand}" />
+            <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="2">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Workspaces" Classes="section-title" />
+            <ListBox ItemsSource="{Binding Workspaces}" SelectedItem="{Binding SelectedWorkspace}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <DockPanel>
+                        <TextBlock Text="{Binding WorkspaceName}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding Status}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Health}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBlock Text="{Binding WorkspaceRootPath}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Resources" Classes="section-title" />
+            <ListBox ItemsSource="{Binding Resources}" SelectedItem="{Binding SelectedResource}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <DockPanel>
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding Status}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding WorkspaceName}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBlock Text="{Binding ResourceType}" Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Conflicts" Classes="section-title" />
+            <ListBox ItemsSource="{Binding Conflicts}" SelectedItem="{Binding SelectedConflict}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <DockPanel>
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding ConflictType}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding CurrentOwner}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBlock Text="{Binding RecommendedAction}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Unused" Classes="section-title" />
+            <ListBox ItemsSource="{Binding UnusedResources}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding CleanupSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Orphaned" Classes="section-title" />
+            <ListBox ItemsSource="{Binding OrphanedResources}" SelectedItem="{Binding SelectedOrphanedResource}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <DockPanel>
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding Health}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding ResourceType}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBlock Text="{Binding CleanupSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="Health" Classes="section-title" />
+            <ListBox ItemsSource="{Binding HealthItems}" SelectedItem="{Binding SelectedHealth}" BorderThickness="0" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <DockPanel>
+                        <TextBlock Text="{Binding Category}" FontWeight="SemiBold" DockPanel.Dock="Left" />
+                        <Border DockPanel.Dock="Right" Classes="status-chip">
+                          <TextBlock Text="{Binding Status}" />
+                        </Border>
+                      </DockPanel>
+                      <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </DataTemplate>
+
     <DataTemplate DataType="vm:DiagnosticsPageViewModel">
       <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
         <Border Classes="panel">

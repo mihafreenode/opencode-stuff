@@ -272,8 +272,8 @@ public sealed class ExistingGitCheckoutImportTests
             var loaded = await orchestrator.LoadSnapshotAsync(rootPath);
 
             Assert.Equal("Existing Workspace", imported.Definition.Workspace.Name);
-            Assert.Null(loaded.LocalRuntimeState);
-            Assert.False(File.Exists(loaded.Paths.RuntimeStatePath));
+            Assert.NotNull(loaded.LocalRuntimeState);
+            Assert.True(File.Exists(loaded.Paths.RuntimeStatePath));
             Assert.Equal("workspace.yaml", loaded.ConfigurationPath);
         }
         finally

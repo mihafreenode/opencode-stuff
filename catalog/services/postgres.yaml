@@ -5,7 +5,7 @@ displayName: PostgreSQL
 description: PostgreSQL service container for local development.
 image: postgres:17
 hostPorts:
-  - 15432:5432
+  - ${POSTGRES_HOST_PORT}:5432
 environment:
   POSTGRES_DB: app
   POSTGRES_USER: app

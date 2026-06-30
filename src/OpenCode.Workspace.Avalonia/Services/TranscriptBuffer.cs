@@ -84,9 +84,14 @@ internal sealed class TranscriptBuffer : IDisposable
             _writer.Flush();
         }
 
-        return File.Exists(TranscriptFilePath)
-            ? File.ReadAllText(TranscriptFilePath)
-            : string.Empty;
+        if (!File.Exists(TranscriptFilePath))
+        {
+            return string.Empty;
+        }
+
+        using var stream = new FileStream(TranscriptFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     public async Task<string> ReadAllTextAsync(CancellationToken cancellationToken = default)

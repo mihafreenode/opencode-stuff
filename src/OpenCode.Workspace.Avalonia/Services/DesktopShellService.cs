@@ -30,6 +30,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly OracleSoftwareNoticeService _oracleSoftwareNoticeService;
     private readonly WindowsTerminalProfileSetupService _windowsTerminalProfileSetupService;
     private readonly WorkspaceLaunchPlanResolver _workspaceLaunchPlanResolver;
+    private readonly WorkspaceRuntimeExplorerService _workspaceRuntimeExplorerService;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -57,6 +58,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
         _windowsTerminalProfileSetupService = windowsTerminalProfileSetupService;
         _workspaceLaunchPlanResolver = new WorkspaceLaunchPlanResolver();
+        _workspaceRuntimeExplorerService = new WorkspaceRuntimeExplorerService(workspaceRepository, new WorkspaceRuntimeStateService(), new WorkspaceYamlService(), timelineService, new ProcessRunner());
     }
 
     public async Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
@@ -425,6 +427,38 @@ public sealed class DesktopShellService : IDesktopShellService
             if (snapshot is not null)
             {
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Start");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceOperationResult> StopWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Stop", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Stopping runtime...");
+            await _workspaceOrchestrator.StopAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(snapshot, "Stop", "Stopped workspace runtime.", true, cancellationToken);
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' was stopped.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Stop");
             }
 
             AppendFailureTranscript(exception, append);
@@ -970,6 +1004,7 @@ public sealed class DesktopShellService : IDesktopShellService
                 BuildCleanupProvisioningHealth(snapshot, transcript.StartedUtc, completedUtc));
             await PersistWorkspaceRecordAsync(snapshot, "Reset Runtime", "Managed runtime was reset and reprovisioned.", true, cancellationToken, DateTimeOffset.UtcNow, health);
             _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-succeeded", "Reset runtime", BuildProvisioningTimelineDetails(health));
+            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset", "Reset runtime", "Removed and recreated managed runtime resources.");
             AppendRepairOutcomeTranscript(append, health);
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = completedUtc;
@@ -993,6 +1028,39 @@ public sealed class DesktopShellService : IDesktopShellService
                 await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Reset Runtime", provisioningHealth);
                 _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-failed", "Reset runtime failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
                 AppendRepairOutcomeTranscript(append, provisioningHealth);
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
+    public async Task<WorkspaceOperationResult> ReleaseRuntimeResourcesAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Release Resources", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Releasing managed runtime resources...");
+            await _workspaceOrchestrator.RemoveDockerResourcesAsync(snapshot, log, cancellationToken);
+            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(snapshot, "Release Resources", "Released managed Docker resources for this workspace.", true, cancellationToken);
+            _timelineService.Append(snapshot.Paths.TimelinePath, "resource-release", "Released runtime resources", "Released managed Docker resources for the workspace runtime.");
+            append(OperationTranscriptLineKind.Result, "Completed.");
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Released managed runtime resources for '{snapshot.Definition.Workspace.Name}'.", Transcript = transcript };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Release Resources");
             }
 
             AppendFailureTranscript(exception, append);
@@ -1166,6 +1234,32 @@ public sealed class DesktopShellService : IDesktopShellService
         startInfo.UseShellExecute = false;
         Process.Start(startInfo);
         return Task.CompletedTask;
+    }
+
+    public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)
+        => _workspaceRuntimeExplorerService.BuildAsync(cancellationToken);
+
+    public Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default)
+        => _workspaceRuntimeExplorerService.InspectResourceAsync(resource, cancellationToken);
+
+    public async Task<RuntimeResourceCleanupResult> CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Clean Orphaned Resources", string.Empty, string.Empty, null, out var append, out _);
+        append(OperationTranscriptLineKind.Status, "Scanning for orphaned runtime resources...");
+        await _workspaceRuntimeExplorerService.CleanOrphanedResourcesAsync(cancellationToken);
+        foreach (var record in _workspaceRepository.LoadAll())
+        {
+            var paths = WorkspacePathBuilder.Build(record.RootPath, record.ConfigurationPath);
+            if (File.Exists(paths.TimelinePath))
+            {
+                _timelineService.Append(paths.TimelinePath, "orphan-cleaned", "Cleaned orphaned resources", "Removed orphaned managed Docker resources from the host runtime.");
+            }
+        }
+
+        append(OperationTranscriptLineKind.Result, "Completed.");
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = true;
+        return new RuntimeResourceCleanupResult { Message = "Cleaned orphaned runtime resources.", Transcript = transcript };
     }
 
     public async Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default)

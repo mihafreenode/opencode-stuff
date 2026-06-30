@@ -127,6 +127,55 @@ public sealed class WorkspaceServiceHealthEngineTests
     }
 
     [Fact]
+    public async Task AllocatedRuntimePorts_UpdateServiceUrls()
+    {
+        var snapshot = CreatePostgresSnapshot();
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = new WorkspaceRuntimeStateRecord
+            {
+                ResolvedEngine = "docker",
+                ResolvedPlatform = "linux/amd64",
+                CompatibilityMode = "native",
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.PostgresResourceId, ServiceId = "postgres", DisplayName = "PostgreSQL", Protocol = "tcp", PreferredPort = 15432, AllocatedPort = 15433, ContainerPort = 5432, Endpoint = "tcp://localhost:15433", OpenUrl = "tcp://localhost:15433" },
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.PgAdminResourceId, ServiceId = "pgadmin", DisplayName = "pgAdmin", Protocol = "http", PreferredPort = 18080, AllocatedPort = 18081, ContainerPort = 80, Endpoint = "http://localhost:18081/", OpenUrl = "http://localhost:18081/" },
+                    ],
+                    ServiceEndpoints =
+                    [
+                        new WorkspaceServiceEndpointRecord { ServiceId = "postgres", DisplayName = "PostgreSQL", Endpoint = "tcp://localhost:15433", OpenUrl = "tcp://localhost:15433" },
+                        new WorkspaceServiceEndpointRecord { ServiceId = "pgadmin", DisplayName = "pgAdmin", Endpoint = "http://localhost:18081/", OpenUrl = "http://localhost:18081/" },
+                    ],
+                },
+            },
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+        };
+        var runner = new FakeProbeRunner
+        {
+            TcpResult = new WorkspaceServiceProbeResult { IsReachable = true },
+            HttpResult = new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "pgadmin" },
+        };
+
+        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, runner);
+
+        Assert.Equal("localhost:15433", services.Single(item => item.ServiceId == "postgres").PrimaryUrl);
+        Assert.Equal("http://localhost:18081/", services.Single(item => item.ServiceId == "pgadmin").OpenUrl);
+    }
+
+    [Fact]
     public async Task RedirectResponses_UseRedirectTargetForOpenUrlAndPrimaryUrl()
     {
         var snapshot = CreateOracleSnapshot();

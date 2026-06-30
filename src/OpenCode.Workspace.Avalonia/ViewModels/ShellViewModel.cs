@@ -12,6 +12,7 @@ public sealed class ShellViewModel : ObservableObject
     private readonly WorkspacesPageViewModel _workspacesPage;
     private readonly SavePointsPageViewModel _savePointsPage;
     private readonly DiagnosticsPageViewModel _diagnosticsPage;
+    private readonly RuntimeResourcesPageViewModel _runtimeResourcesPage;
     private readonly WorkspaceTroubleshootingPageViewModel _workspaceTroubleshootingPage;
     private readonly SettingsPageViewModel _settingsPage;
 
@@ -20,6 +21,7 @@ public sealed class ShellViewModel : ObservableObject
         IDesktopShellService desktopShellService,
         WorkspaceTroubleshootingPageViewModel workspaceTroubleshootingPage,
         DiagnosticsPageViewModel diagnosticsPage,
+        RuntimeResourcesPageViewModel runtimeResourcesPage,
         TemplatesPageViewModel templatesPage,
         SavePointsPageViewModel savePointsPage,
         TranscriptsPageViewModel transcriptsPage,
@@ -32,12 +34,14 @@ public sealed class ShellViewModel : ObservableObject
         _workspacesPage = workspacesPage;
         _savePointsPage = savePointsPage;
         _diagnosticsPage = diagnosticsPage;
+        _runtimeResourcesPage = runtimeResourcesPage;
         _workspaceTroubleshootingPage = workspaceTroubleshootingPage;
         _settingsPage = settingsPage;
         _currentPage = workspacesPage;
         StatusBarBuild = $"{appBuildInfo.BuildConfiguration} {appBuildInfo.AssemblyVersion}";
 
         workspacesPage.TroubleshootWorkspaceAsync = TroubleshootWorkspaceFromOverviewAsync;
+        runtimeResourcesPage.NavigateToWorkspaceAsync = NavigateToWorkspaceAsync;
         workspacesPage.PropertyChanged += (_, eventArgs) =>
         {
             RefreshStatusBar();
@@ -61,6 +65,7 @@ public sealed class ShellViewModel : ObservableObject
         NavigationItems =
         [
             CreateNavigationItem(workspacesPage),
+            CreateNavigationItem(runtimeResourcesPage),
             CreateNavigationItem(remoteTargetsPage),
             CreateNavigationItem(templatesPage),
             CreateNavigationItem(savePointsPage),
@@ -126,6 +131,7 @@ public sealed class ShellViewModel : ObservableObject
             desktopShellService,
             new WorkspaceTroubleshootingPageViewModel(),
             diagnosticsPage,
+            new RuntimeResourcesPageViewModel(desktopShellService),
             new TemplatesPageViewModel(templateCatalogShellService),
             new SavePointsPageViewModel(desktopShellService),
             new TranscriptsPageViewModel(desktopShellService),
@@ -142,6 +148,14 @@ public sealed class ShellViewModel : ObservableObject
         await _workspacesPage.LoadAsync(cancellationToken);
         await _savePointsPage.RefreshAsync(_workspacesPage.SelectedWorkspace, cancellationToken);
         await _settingsPage.LoadHostCapabilitiesAsync(cancellationToken);
+        try
+        {
+            await _runtimeResourcesPage.RefreshAsync();
+        }
+        catch
+        {
+        }
+
         _diagnosticsPage.RefreshWorkspaceLoadSummary();
         RefreshStatusBar();
     }
@@ -335,6 +349,14 @@ public sealed class ShellViewModel : ObservableObject
         var updatedRequest = BuildWorkspaceTroubleshootingRequest(request.RootPath);
         var report = await _desktopShellService.ExecuteWorkspaceTroubleshootingActionAsync(updatedRequest, actionId);
         ShowWorkspaceTroubleshootingReport(report, updatedRequest);
+    }
+
+    private Task NavigateToWorkspaceAsync(string rootPath)
+    {
+        _workspacesPage.SelectWorkspaceByRootPath(rootPath);
+        CurrentPage = _workspacesPage;
+        RefreshStatusBar();
+        return Task.CompletedTask;
     }
 
     private void RefreshStatusBar()

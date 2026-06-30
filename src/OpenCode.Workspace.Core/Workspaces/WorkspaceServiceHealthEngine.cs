@@ -430,11 +430,8 @@ public static class WorkspaceServiceHealthEngine
 
         public IReadOnlyList<WorkspaceServiceHealthDefinition> DescribeServices(WorkspaceSnapshot snapshot)
         {
-            var settings = OracleWorkspaceSettings.From(snapshot.Definition);
-            var ordsEndpoint = $"http://localhost:{settings.OrdsPort}/ords/";
-            var ordsLanding = $"http://localhost:{settings.OrdsPort}/ords/_/landing";
-            return
-            [
+            var definitions = new List<WorkspaceServiceHealthDefinition>
+            {
                 new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "oracle-database",
@@ -442,13 +439,21 @@ public static class WorkspaceServiceHealthEngine
                     Category = "Database",
                     Description = "TCP endpoint available.",
                     ActionLabel = "Open Database Endpoint",
-                    Endpoint = $"tcp://localhost:{settings.HostPort}",
+                    Endpoint = WorkspaceRuntimeResourceCatalog.ResolveServiceEndpoint(snapshot.Definition, snapshot.LocalRuntimeState, "oracle-database"),
                     ProbeType = WorkspaceServiceProbeType.Tcp,
                     ProviderKey = "oracle",
                     Recommendation = "Investigate Oracle runtime.",
                     RefreshInterval = TimeSpan.FromSeconds(30),
                 },
-                new WorkspaceServiceHealthDefinition
+            };
+
+            if (snapshot.Definition.Services.Contains("oracle-ords", StringComparer.OrdinalIgnoreCase))
+            {
+                var ordsEndpoint = WorkspaceRuntimeResourceCatalog.ResolveServiceEndpoint(snapshot.Definition, snapshot.LocalRuntimeState, "ords");
+                var ordsLanding = WorkspaceRuntimeResourceCatalog.ResolveServiceOpenUrl(snapshot.Definition, snapshot.LocalRuntimeState, "ords");
+                definitions.AddRange(
+                [
+                    new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "ords",
                     Name = "Oracle REST Data Services",
@@ -463,7 +468,7 @@ public static class WorkspaceServiceHealthEngine
                     RefreshInterval = TimeSpan.FromSeconds(30),
                     Validator = ClassifyOrds,
                 },
-                new WorkspaceServiceHealthDefinition
+                    new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "sql-developer-web",
                     Name = "SQL Developer Web",
@@ -478,7 +483,7 @@ public static class WorkspaceServiceHealthEngine
                     RefreshInterval = TimeSpan.FromSeconds(30),
                     Validator = ClassifySqlDeveloperWeb,
                 },
-                new WorkspaceServiceHealthDefinition
+                    new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "rest-apis",
                     Name = "REST APIs",
@@ -493,7 +498,7 @@ public static class WorkspaceServiceHealthEngine
                     RefreshInterval = TimeSpan.FromSeconds(30),
                     Validator = ClassifyRestApis,
                 },
-                new WorkspaceServiceHealthDefinition
+                    new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "apex",
                     Name = "Oracle APEX",
@@ -508,7 +513,10 @@ public static class WorkspaceServiceHealthEngine
                     RefreshInterval = TimeSpan.FromSeconds(30),
                     Validator = ClassifyApex,
                 },
-            ];
+                ]);
+            }
+
+            return definitions;
         }
     }
 
@@ -542,36 +550,45 @@ public static class WorkspaceServiceHealthEngine
             => snapshot.Definition.Services.Any(service => service.Contains("postgres", StringComparison.OrdinalIgnoreCase) || service.Contains("pgadmin", StringComparison.OrdinalIgnoreCase));
 
         public IReadOnlyList<WorkspaceServiceHealthDefinition> DescribeServices(WorkspaceSnapshot snapshot)
-            =>
-            [
-                new WorkspaceServiceHealthDefinition
+        {
+            var definitions = new List<WorkspaceServiceHealthDefinition>();
+            if (snapshot.Definition.Services.Contains("postgres", StringComparer.OrdinalIgnoreCase))
+            {
+                definitions.Add(new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "postgres",
                     Name = "PostgreSQL",
                     Category = "Database",
                     Description = "TCP endpoint available.",
                     ActionLabel = "Open Database Endpoint",
-                    Endpoint = "tcp://localhost:15432",
+                    Endpoint = WorkspaceRuntimeResourceCatalog.ResolveServiceEndpoint(snapshot.Definition, snapshot.LocalRuntimeState, "postgres"),
                     ProbeType = WorkspaceServiceProbeType.Tcp,
                     ProviderKey = "postgres",
                     Recommendation = "Inspect PostgreSQL runtime.",
                     RefreshInterval = TimeSpan.FromSeconds(30),
-                },
-                new WorkspaceServiceHealthDefinition
+                });
+            }
+
+            if (snapshot.Definition.Services.Contains("pgadmin", StringComparer.OrdinalIgnoreCase))
+            {
+                definitions.Add(new WorkspaceServiceHealthDefinition
                 {
                     ServiceId = "pgadmin",
                     Name = "pgAdmin",
                     Category = "Application",
                     Description = "HTTP service responding.",
                     ActionLabel = "Open pgAdmin",
-                    Endpoint = "http://localhost:18080/",
-                    OpenUrl = "http://localhost:18080/",
+                    Endpoint = WorkspaceRuntimeResourceCatalog.ResolveServiceEndpoint(snapshot.Definition, snapshot.LocalRuntimeState, "pgadmin"),
+                    OpenUrl = WorkspaceRuntimeResourceCatalog.ResolveServiceOpenUrl(snapshot.Definition, snapshot.LocalRuntimeState, "pgadmin"),
                     ProbeType = WorkspaceServiceProbeType.Http,
                     ProviderKey = "postgres",
                     Recommendation = "Inspect pgAdmin.",
                     RefreshInterval = TimeSpan.FromSeconds(30),
-                },
-            ];
+                });
+            }
+
+            return definitions;
+        }
     }
 
     private sealed class AnalyticsWorkspaceServiceHealthProvider : IWorkspaceServiceHealthProvider
@@ -581,8 +598,7 @@ public static class WorkspaceServiceHealthEngine
 
         public IReadOnlyList<WorkspaceServiceHealthDefinition> DescribeServices(WorkspaceSnapshot snapshot)
         {
-            var settings = AnalyticsWorkspaceSettings.From(snapshot.Definition);
-            var endpoint = $"http://localhost:{settings.MarimoPort}/";
+            var endpoint = WorkspaceRuntimeResourceCatalog.ResolveServiceOpenUrl(snapshot.Definition, snapshot.LocalRuntimeState, "marimo");
             return
             [
                 new WorkspaceServiceHealthDefinition

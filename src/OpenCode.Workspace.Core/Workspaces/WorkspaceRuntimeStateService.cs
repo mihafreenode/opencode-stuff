@@ -50,6 +50,7 @@ public sealed class WorkspaceRuntimeStateService
                         ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
                         CompatibilityMode = model.CompatibilityMode ?? string.Empty,
                         LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
+                        Resources = model.Resources ?? new WorkspaceManagedRuntimeResources(),
                     },
             };
         }
@@ -79,11 +80,12 @@ public sealed class WorkspaceRuntimeStateService
             ResolvedPlatform = state.ResolvedPlatform,
             CompatibilityMode = state.CompatibilityMode,
             LastSuccessfulProvision = state.LastSuccessfulProvision?.ToString("O"),
+            Resources = state.Resources,
         });
         File.WriteAllText(path, content.Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
-    public WorkspaceRuntimeStateRecord CreateState(ResolvedRuntimePlan plan, DateTimeOffset? lastSuccessfulProvision = null)
+    public WorkspaceRuntimeStateRecord CreateState(ResolvedRuntimePlan plan, DateTimeOffset? lastSuccessfulProvision = null, WorkspaceManagedRuntimeResources? resources = null)
     {
         return new WorkspaceRuntimeStateRecord
         {
@@ -91,6 +93,7 @@ public sealed class WorkspaceRuntimeStateService
             ResolvedPlatform = plan.TargetPlatform,
             CompatibilityMode = plan.CompatibilityMode.ToString(),
             LastSuccessfulProvision = lastSuccessfulProvision,
+            Resources = resources ?? new WorkspaceManagedRuntimeResources(),
         };
     }
 
@@ -100,5 +103,6 @@ public sealed class WorkspaceRuntimeStateService
         public string? ResolvedPlatform { get; init; }
         public string? CompatibilityMode { get; init; }
         public string? LastSuccessfulProvision { get; init; }
+        public WorkspaceManagedRuntimeResources? Resources { get; init; }
     }
 }

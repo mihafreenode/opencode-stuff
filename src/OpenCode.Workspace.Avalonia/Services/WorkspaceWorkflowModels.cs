@@ -122,6 +122,12 @@ public sealed class ExistingRepositoryImportDraft
     public bool ReuseExistingNamedBranch { get; init; }
 }
 
+public sealed class RuntimeResourceCleanupResult
+{
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+}
+
 public sealed class SavePointDraft
 {
     public required string Message { get; init; }

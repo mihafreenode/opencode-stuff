@@ -91,8 +91,31 @@ public static class WorkspaceHealthEngine
             new() { Label = "provision.sh", Value = File.Exists(snapshot.Paths.ProvisionScriptPath) ? "generated" : "missing" },
         };
 
+        foreach (var allocation in snapshot.LocalRuntimeState?.Resources.Ports ?? [])
+        {
+            evidence.Add(new WorkspaceHealthFact
+            {
+                Label = allocation.DisplayName,
+                Value = allocation.PreferredPort == allocation.AllocatedPort
+                    ? $"{allocation.AllocatedPort}"
+                    : $"preferred {allocation.PreferredPort}, allocated {allocation.AllocatedPort}",
+            });
+        }
+
+        foreach (var conflict in snapshot.LocalRuntimeState?.Resources.Conflicts ?? [])
+        {
+            evidence.Add(new WorkspaceHealthFact
+            {
+                Label = $"Port {conflict.PreferredPort}",
+                Value = $"Occupied by {conflict.Owner}. {conflict.Resolution}",
+            });
+        }
+
+        var hasResourceConflicts = snapshot.LocalRuntimeState?.Resources.Conflicts.Count > 0;
         var status = snapshot.LocalRuntimeState is null || snapshot.AppliedState is null
             ? WorkspaceHealthStatus.Degraded
+            : hasResourceConflicts
+                ? WorkspaceHealthStatus.Attention
             : snapshot.UpdateRequired
                 ? WorkspaceHealthStatus.Attention
                 : WorkspaceHealthStatus.Healthy;
@@ -105,6 +128,7 @@ public static class WorkspaceHealthEngine
             Summary = status switch
             {
                 WorkspaceHealthStatus.Healthy => "Runtime files are generated and current.",
+                WorkspaceHealthStatus.Attention when hasResourceConflicts => "Runtime resources were reallocated to avoid a conflict.",
                 WorkspaceHealthStatus.Attention => "Runtime files need refresh before the next open.",
                 _ => "Managed runtime files are missing or stale.",
             },
@@ -116,12 +140,15 @@ public static class WorkspaceHealthEngine
             RecommendedAction = status switch
             {
                 WorkspaceHealthStatus.Healthy => "Open Workspace.",
+                WorkspaceHealthStatus.Attention when hasResourceConflicts => "Open Runtime Resources.",
                 WorkspaceHealthStatus.Attention => "Open Workspace.",
                 _ => "Open Workspace.",
             },
             IsVolatile = false,
             WorkspaceImpact = status == WorkspaceHealthStatus.Healthy
                 ? "Workspace can be opened with the current runtime files."
+                : hasResourceConflicts
+                    ? "Workspace can be opened, but preferred runtime resources were busy and different ports were allocated."
                 : "Open Workspace will need to repair runtime artifacts before you can work.",
         };
     }
@@ -202,8 +229,12 @@ public static class WorkspaceHealthEngine
         var oracleInvestigation = investigationHistory.LastOrDefault(item => string.Equals(item.ProviderName, "Oracle", StringComparison.Ordinal));
         var oracleEvidence = databaseService?.Summary ?? (snapshot.RuntimeState == WorkspaceRuntimeState.Running ? "Database container reachable." : "Database container not running yet.");
         var oracleStatus = databaseService?.Status ?? (snapshot.RuntimeState == WorkspaceRuntimeState.Running ? WorkspaceHealthStatus.Healthy : WorkspaceHealthStatus.Attention);
-        var xdbStatus = TryMatchEvidence(investigationHistory, "XDB") switch
+        var xdbEvidence = TryMatchEvidence(investigationHistory, "XDB");
+        var hasCurrentOracleUsability = ordsService?.Status == WorkspaceHealthStatus.Healthy
+            || apexService?.Status == WorkspaceHealthStatus.Healthy;
+        var xdbStatus = xdbEvidence switch
         {
+            var evidence when evidence.Contains("INVALID", StringComparison.OrdinalIgnoreCase) && hasCurrentOracleUsability => WorkspaceHealthStatus.Attention,
             var evidence when evidence.Contains("INVALID", StringComparison.OrdinalIgnoreCase) => WorkspaceHealthStatus.Degraded,
             var evidence when !string.IsNullOrWhiteSpace(evidence) => WorkspaceHealthStatus.Healthy,
             _ => oracleStatus == WorkspaceHealthStatus.Healthy ? WorkspaceHealthStatus.Attention : WorkspaceHealthStatus.Attention,
@@ -252,12 +283,13 @@ public static class WorkspaceHealthEngine
             Summary = xdbStatus switch
             {
                 WorkspaceHealthStatus.Degraded => "XDB is invalid.",
+                WorkspaceHealthStatus.Attention when hasCurrentOracleUsability => "XDB failed earlier, but current Oracle applications are responding.",
                 WorkspaceHealthStatus.Healthy => "XDB validation looks healthy.",
                 _ => "XDB has not been confirmed yet.",
             },
             Evidence =
             [
-                new WorkspaceHealthFact { Label = "xdb", Value = string.IsNullOrWhiteSpace(TryMatchEvidence(investigationHistory, "XDB")) ? "not inspected" : TryMatchEvidence(investigationHistory, "XDB") },
+                new WorkspaceHealthFact { Label = "xdb", Value = string.IsNullOrWhiteSpace(xdbEvidence) ? "not inspected" : xdbEvidence },
             ],
             Confidence = xdbStatus == WorkspaceHealthStatus.Degraded ? "HIGH" : "MEDIUM",
             Timestamp = oracleInvestigation?.CompletedUtc ?? timestamp,
@@ -265,7 +297,12 @@ public static class WorkspaceHealthEngine
             Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
             RecommendedAction = xdbStatus == WorkspaceHealthStatus.Degraded ? "Troubleshoot Workspace." : "Open Workspace.",
             IsVolatile = false,
-            WorkspaceImpact = xdbStatus == WorkspaceHealthStatus.Degraded ? "Workspace can still open, but Oracle APEX setup cannot complete until XDB is fixed." : "XDB should not block current workspace use.",
+            WorkspaceImpact = xdbStatus switch
+            {
+                WorkspaceHealthStatus.Degraded => "Workspace can still open, but Oracle APEX setup cannot complete until XDB is fixed.",
+                WorkspaceHealthStatus.Attention when hasCurrentOracleUsability => "Workspace is usable now, but earlier XDB validation failed and may still affect Oracle APEX.",
+                _ => "XDB should not block current workspace use.",
+            },
         };
 
         yield return new WorkspaceProviderHealthSnapshot

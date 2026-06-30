@@ -7,12 +7,12 @@ internal static class OracleWorkspaceGeneratedContent
 {
     public static IReadOnlyDictionary<string, string> Generate(
         WorkspaceDefinition definition,
+        WorkspaceRuntimeStateRecord? runtimeState,
         Func<string, string> withGeneratedHeader,
         Func<string, string> withGeneratedSqlHeader,
         Func<string, string> withGeneratedScriptHeader)
     {
         var kind = OracleWorkspaceFamily.Detect(definition);
-        var oracleSettings = OracleWorkspaceSettings.From(definition);
         if (kind == OracleWorkspaceKind.None)
         {
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -44,6 +44,8 @@ internal static class OracleWorkspaceGeneratedContent
 
         if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
         {
+            var ordsBaseUrl = $"http://localhost:{WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId)}/ords";
+            var apexLoginUrl = ordsBaseUrl + "/apex_admin";
             files[Path.Combine("docs", "oracle-apex-demo.md")] = withGeneratedHeader(OracleApexDemoDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-books.md")] = withGeneratedHeader(OracleApexBooksDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-api-reference.md")] = withGeneratedHeader(OracleApexApiReferenceDoc());
@@ -59,8 +61,8 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("scripts", "health-check-ords.sh")] = withGeneratedScriptHeader(HealthCheckOrdsScript());
             files[Path.Combine("scripts", "health-check-apex.sh")] = withGeneratedScriptHeader(HealthCheckApexScript());
             files[Path.Combine("scripts", "health-check-sqlcl.sh")] = withGeneratedScriptHeader(HealthCheckSqlclScript());
-            files[Path.Combine("scripts", "open-ords.ps1")] = OpenOrdsScript(oracleSettings.OrdsBaseUrl);
-            files[Path.Combine("scripts", "open-apex.ps1")] = OpenApexScript(oracleSettings.ApexLoginUrl);
+            files[Path.Combine("scripts", "open-ords.ps1")] = OpenOrdsScript(ordsBaseUrl);
+            files[Path.Combine("scripts", "open-apex.ps1")] = OpenApexScript(apexLoginUrl);
             files[Path.Combine("scripts", "open-sql-worksheet.ps1")] = OpenSqlWorksheetScript();
             files[Path.Combine("tutorial", "oracle", "init", "03-customers-schema.sql")] = withGeneratedSqlHeader(CustomersSchemaSql());
             files[Path.Combine("tutorial", "oracle", "init", "04-customers-sample-data.sql")] = withGeneratedSqlHeader(CustomersSampleDataSql());

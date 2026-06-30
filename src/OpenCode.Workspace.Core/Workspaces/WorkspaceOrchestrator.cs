@@ -32,6 +32,7 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceSafetyService _workspaceSafetyService;
     private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
+    private readonly WorkspaceRuntimeResourceManager _workspaceRuntimeResourceManager;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IContainerRuntime _containerRuntime;
     private readonly IPlatformDetector _platformDetector;
@@ -80,6 +81,7 @@ public sealed class WorkspaceOrchestrator
         _workspaceSafetyService = workspaceSafetyService;
         _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
+        _workspaceRuntimeResourceManager = new WorkspaceRuntimeResourceManager(workspaceRepository, workspaceRuntimeStateService);
         _workspaceProvider = workspaceProvider;
         _containerRuntime = containerRuntime;
         _platformDetector = platformDetector;
@@ -380,7 +382,7 @@ public sealed class WorkspaceOrchestrator
         WriteWorkspaceDefinition(paths, definition);
         Log(log, "app", "[create] Workspace definition written.");
         Log(log, "app", "[create] Writing generated workspace files.");
-        WriteManagedGeneratedFiles(paths, definition);
+        WriteManagedGeneratedFiles(paths, definition, inspectHostAvailability: false);
         Log(log, "app", "[create] Generated workspace files written.");
         Log(log, "app", "[create] Initializing workspace repository.");
         await _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false, log, cancellationToken);
@@ -613,7 +615,7 @@ public sealed class WorkspaceOrchestrator
             WriteWorkspaceDefinition(paths, definition);
         }
 
-        WriteManagedGeneratedFiles(paths, definition);
+        WriteManagedGeneratedFiles(paths, definition, inspectHostAvailability: false);
 
         var now = DateTimeOffset.UtcNow;
         _workspaceRepository.Save(new WorkspaceRecord
@@ -642,18 +644,25 @@ public sealed class WorkspaceOrchestrator
     public async Task RegenerateAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
-        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition);
+        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, inspectHostAvailability: false);
         await Task.CompletedTask;
     }
 
     public async Task RecoverAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
-        await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
-        Log(log, "app", $"Validating regenerated compose.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
-        var result = await _containerRuntime.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
-        EnsureSuccess(result, "Workspace recovery failed.");
-        await EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
-        EnsureRecoveredManagedRuntimeArtifactsExist(snapshot.Paths);
+        try
+        {
+            await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+            Log(log, "app", $"Validating regenerated compose.yaml for workspace '{snapshot.Definition.Workspace.Name}'.");
+            var result = await _containerRuntime.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
+            EnsureSuccess(result, "Workspace recovery failed.");
+            await EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+            EnsureRecoveredManagedRuntimeArtifactsExist(snapshot.Paths);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"Workspace recovery did not regenerate all required managed runtime files.{Environment.NewLine}Missing:{Environment.NewLine}- {snapshot.Paths.RuntimeStatePath}", exception);
+        }
     }
 
     public async Task<ProcessResult?> RevalidateVolatileEnvironmentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -927,9 +936,10 @@ public sealed class WorkspaceOrchestrator
         _workspaceYamlService.WriteToFile(paths.WorkspaceYamlPath, definition);
     }
 
-    private GeneratedWorkspaceArtifacts WriteManagedGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
+    private GeneratedWorkspaceArtifacts WriteManagedGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null, bool inspectHostAvailability = false)
     {
-        var generatedArtifacts = GenerateArtifacts(definition, paths, runtimeMetadata);
+        var runtimeState = ResolveRuntimeStateForGeneration(definition, paths, runtimeMetadata, inspectHostAvailability);
+        var generatedArtifacts = GenerateArtifacts(definition, paths, runtimeMetadata, runtimeState);
 
         File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
         File.WriteAllText(paths.EnvironmentFilePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.EnvironmentFile));
@@ -991,6 +1001,7 @@ public sealed class WorkspaceOrchestrator
         // line endings even when the desktop app generated it on Windows.
         File.WriteAllText(paths.ProvisionScriptPath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ProvisionScript));
         EnsureGeneratedScriptPermissions(paths.ProvisionScriptPath);
+        _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
         return generatedArtifacts;
     }
 
@@ -1011,7 +1022,7 @@ public sealed class WorkspaceOrchestrator
             ? File.ReadAllText(paths.ComposePath)
             : null;
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
-        var generatedArtifacts = WriteManagedGeneratedFiles(paths, definition, runtimeMetadata);
+        var generatedArtifacts = WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: true);
         var composeWasUpdated = !string.Equals(previousCompose, generatedArtifacts.ComposeYaml, StringComparison.Ordinal);
 
         if (composeWasUpdated)
@@ -1049,20 +1060,24 @@ public sealed class WorkspaceOrchestrator
         }
     }
 
-    private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadataOverride = null)
+    private GeneratedWorkspaceArtifacts GenerateArtifacts(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadataOverride = null, WorkspaceRuntimeStateRecord? runtimeStateOverride = null)
     {
         var resolved = _workspaceResolver.Resolve(definition);
         var runtimeMetadata = runtimeMetadataOverride;
+        var runtimeStateRecord = runtimeStateOverride;
         if (runtimeMetadata is null)
         {
-            var runtimeState = _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath);
+            var runtimeState = runtimeStateRecord is null
+                ? _workspaceRuntimeStateService.ReadWithStatus(paths.RuntimeStatePath)
+                : new WorkspaceRuntimeStateReadResult { Status = WorkspaceRuntimeStateReadStatus.Loaded, State = runtimeStateRecord };
             runtimeMetadata = runtimeState.Status == WorkspaceRuntimeStateReadStatus.Loaded
                 ? GeneratedArtifactRuntimeMetadataBuilder.Create(runtimeState.State)
                 : GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+            runtimeStateRecord ??= runtimeState.State;
         }
         var workspaceYaml = _workspaceYamlService.Write(definition);
         var composeYaml = _composeGenerator.Generate(resolved, paths, runtimeMetadata);
-        var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata);
+        var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata, runtimeStateRecord);
         var provisionScript = _provisioningScriptGenerator.Generate(resolved, runtimeMetadata);
         var starshipConfig = _terminalArtifactsGenerator.GenerateStarshipConfig(definition, runtimeMetadata);
         var shellInitScript = _terminalArtifactsGenerator.GenerateShellInitScript(definition, runtimeMetadata);
@@ -1070,7 +1085,7 @@ public sealed class WorkspaceOrchestrator
         var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration(runtimeMetadata);
         var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths, runtimeMetadata);
         var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition, runtimeMetadata);
-        var additionalFiles = _workspaceContentGenerator.Generate(resolved);
+        var additionalFiles = _workspaceContentGenerator.Generate(resolved, runtimeStateRecord);
         var additionalBinaryFiles = _workspaceContentGenerator.GenerateBinaryFiles(resolved);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);
         var desiredStateHash = WorkspaceAppliedStateService.ComputeHash(
@@ -1118,6 +1133,12 @@ public sealed class WorkspaceOrchestrator
         return resolvedRuntimePlan is null
             ? GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null)
             : GeneratedArtifactRuntimeMetadataBuilder.Create(resolvedRuntimePlan);
+    }
+
+    private WorkspaceRuntimeStateRecord ResolveRuntimeStateForGeneration(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata, bool inspectHostAvailability)
+    {
+        var existingState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
+        return _workspaceRuntimeResourceManager.ResolveState(definition, paths, existingState, inspectHostAvailability: inspectHostAvailability);
     }
 
     private static bool IsUpdateRequired(WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, WorkspaceAppliedState? appliedState)
@@ -1478,10 +1499,39 @@ public sealed class WorkspaceOrchestrator
 
     private async Task WriteRuntimeStateAsync(WorkspaceDefinition definition, WorkspacePaths paths, CancellationToken cancellationToken)
     {
+        var previousState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var hostPlatform = await GetCachedHostPlatformAsync(cancellationToken);
         var resolvedRuntimePlan = await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
-        var runtimeState = _workspaceRuntimeStateService.CreateState(resolvedRuntimePlan, DateTimeOffset.UtcNow);
+        var runtimeState = _workspaceRuntimeResourceManager.ResolveState(definition, paths, resolvedRuntimePlan: resolvedRuntimePlan, lastSuccessfulProvision: DateTimeOffset.UtcNow, inspectHostAvailability: true);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
+        RecordRuntimeResourceTimeline(paths.TimelinePath, previousState, runtimeState);
+    }
+
+    private void RecordRuntimeResourceTimeline(string timelinePath, WorkspaceRuntimeStateRecord? previousState, WorkspaceRuntimeStateRecord runtimeState)
+    {
+        foreach (var allocation in runtimeState.Resources.Ports)
+        {
+            var previousAllocation = previousState?.Resources.Ports.FirstOrDefault(item => string.Equals(item.ResourceId, allocation.ResourceId, StringComparison.OrdinalIgnoreCase));
+            if (previousAllocation is null)
+            {
+                _workspaceTimelineService.Append(timelinePath, "resource-allocated", "Allocated runtime resource", $"Allocated {allocation.DisplayName} on port {allocation.AllocatedPort}.");
+                continue;
+            }
+
+            if (previousAllocation.AllocatedPort != allocation.AllocatedPort)
+            {
+                _workspaceTimelineService.Append(timelinePath, "resource-reallocated", "Reallocated runtime resource", $"Reallocated {allocation.DisplayName} from port {previousAllocation.AllocatedPort} to {allocation.AllocatedPort}.");
+            }
+        }
+
+        foreach (var conflict in runtimeState.Resources.Conflicts)
+        {
+            var alreadyKnown = previousState?.Resources.Conflicts.Any(item => string.Equals(item.ResourceId, conflict.ResourceId, StringComparison.OrdinalIgnoreCase) && string.Equals(item.Resolution, conflict.Resolution, StringComparison.OrdinalIgnoreCase)) == true;
+            if (!alreadyKnown)
+            {
+                _workspaceTimelineService.Append(timelinePath, "resource-conflict-detected", "Detected runtime conflict", $"{conflict.DisplayName}: {conflict.Resolution}");
+            }
+        }
     }
 
     private static void EnsureRecoveredManagedRuntimeArtifactsExist(WorkspacePaths paths)

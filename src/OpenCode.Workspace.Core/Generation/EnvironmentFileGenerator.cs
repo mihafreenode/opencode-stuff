@@ -7,7 +7,7 @@ public sealed class EnvironmentFileGenerator
 {
     private const string GeneratedFileLineEnding = "\n";
 
-    public string Generate(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
+    public string Generate(WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null, WorkspaceRuntimeStateRecord? runtimeState = null)
     {
         var slug = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
         var lines = new List<string>
@@ -22,7 +22,10 @@ public sealed class EnvironmentFileGenerator
 
         if (OracleWorkspaceFamily.IsOracleWorkspace(definition))
         {
-            var oracleSettings = OracleWorkspaceSettings.From(definition);
+            var oraclePort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
+            var ordsPort = OracleWorkspaceFamily.HasApex(definition)
+                ? WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId)
+                : OracleWorkspaceSettings.From(definition).OrdsPort;
             lines.AddRange(
             [
                 "ORACLE_PASSWORD=change-on-first-demo",
@@ -30,17 +33,26 @@ public sealed class EnvironmentFileGenerator
                 "ORACLE_DEMO_PASSWORD=demo_password",
                 "ORACLE_DEMO_SERVICE=FREEPDB1",
                 "ORACLE_DEMO_CONNECTION=demo_user/demo_password@//oracle-demo:1521/FREEPDB1",
-                $"ORACLE_HOST_PORT={oracleSettings.HostPort}",
-                $"ORACLE_ORDS_PORT={oracleSettings.OrdsPort}",
-                $"ORACLE_ORDS_BASE_URL={oracleSettings.OrdsBaseUrl}",
-                $"ORACLE_APEX_LOGIN_URL={oracleSettings.ApexLoginUrl}",
+                $"ORACLE_HOST_PORT={oraclePort}",
+                $"ORACLE_ORDS_PORT={ordsPort}",
+                $"ORACLE_ORDS_BASE_URL=http://localhost:{ordsPort}/ords",
+                $"ORACLE_APEX_LOGIN_URL=http://localhost:{ordsPort}/ords/apex_admin",
             ]);
+        }
+
+        if (definition.Services.Contains("postgres", StringComparer.OrdinalIgnoreCase))
+        {
+            lines.Add($"POSTGRES_HOST_PORT={WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.PostgresResourceId)}");
+        }
+
+        if (definition.Services.Contains("pgadmin", StringComparer.OrdinalIgnoreCase))
+        {
+            lines.Add($"PGADMIN_PORT={WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.PgAdminResourceId)}");
         }
 
         if (definition.Features.Contains("analytics-reporting", StringComparer.OrdinalIgnoreCase))
         {
-            var analyticsSettings = AnalyticsWorkspaceSettings.From(definition);
-            lines.Add($"MARIMO_PORT={analyticsSettings.MarimoPort}");
+            lines.Add($"MARIMO_PORT={WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.MarimoResourceId)}");
         }
 
         lines.Add(string.Empty);

@@ -551,7 +551,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         await LoadAsync();
-        SelectWorkspace(snapshot.Paths.RootPath);
+        SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
         DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
     }
 
@@ -580,7 +580,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }, new OperationTranscriptSink(this));
         FlushPendingOperationLogToUi(forceDrainAll: true);
         await LoadAsync();
-        SelectWorkspace(snapshot.Paths.RootPath);
+        SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
         DetailSummary = $"Imported existing Git checkout '{snapshot.Definition.Workspace.Name}'.";
     }
 
@@ -626,7 +626,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         await _desktopShellService.OpenPathAsync(SelectedWorkspace.RootPath);
     }
 
-    private void SelectWorkspace(string rootPath)
+    public void SelectWorkspaceByRootPath(string rootPath)
     {
         SelectedWorkspace = Workspaces.FirstOrDefault(item => string.Equals(item.RootPath, rootPath, StringComparison.OrdinalIgnoreCase));
     }
@@ -648,7 +648,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         catch (WorkspaceProvisioningException)
         {
             await LoadAsync();
-            SelectWorkspace(rootPath);
+            SelectWorkspaceByRootPath(rootPath);
         }
 
         await TroubleshootWorkspaceAsync(rootPath);
@@ -803,6 +803,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             _workspaceActionStatusMessage = exception.Message;
             SelectedWorkspace?.SetOperationFailureState(exception.Message, "Backup");
             DetailSummary = exception.Message;
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
             throw;
         }
         finally
@@ -883,6 +885,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             _workspaceActionStatusMessage = exception.Message;
             SelectedWorkspace.SetOperationFailureState(exception.Message, "Publish");
             DetailSummary = exception.Message;
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
             throw;
         }
         finally
@@ -1384,12 +1388,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private void ApplyImmediateBufferedStatus(string latestStatusText)
     {
+        _workspaceActionStatusMessage = latestStatusText;
         DetailSummary = latestStatusText;
 
         if (IsReprovisioning)
         {
             ReprovisionStatusMessage = latestStatusText;
             SelectedWorkspace?.SetReprovisioningState(latestStatusText);
+        }
+
+        RefreshWorkspacePresentations();
+        if (SelectedWorkspace is not null)
+        {
+            UpdateDetailPanel();
         }
     }
 
@@ -1505,35 +1516,47 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         DetailTitle = SelectedWorkspace.Name;
+        var aggregatedState = BuildAggregatedState(SelectedWorkspace);
         var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
         var provisioningHealth = SelectedWorkspace.Record.LastProvisioningHealth;
         var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
         DetailSummary = presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
         DetailServices.Clear();
+        DetailItems.Add(new DetailItemViewModel("Current status", presentation.CurrentStatus));
+        DetailItems.Add(new DetailItemViewModel("Current activity", presentation.CurrentActivity));
+        DetailItems.Add(new DetailItemViewModel("Activity summary", presentation.ActivitySummary));
+        DetailItems.Add(new DetailItemViewModel("Runtime", SelectedWorkspace.RuntimeSummary));
+        DetailItems.Add(new DetailItemViewModel("Git", SelectedWorkspace.RepositoryStatus));
+        DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
+        DetailItems.Add(new DetailItemViewModel("Runtime-state status", SelectedWorkspace.LocalRuntimeStateStatus));
+        if (SelectedWorkspace.Snapshot?.LocalRuntimeState?.Resources.Ports.Count > 0)
+        {
+            DetailItems.Add(new DetailItemViewModel("Resources", FormatManagedResources(SelectedWorkspace.Snapshot.LocalRuntimeState.Resources.Ports)));
+        }
+        DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
+        DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
         DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
-        DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
-        DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
-        DetailItems.Add(new DetailItemViewModel("Repository status", SelectedWorkspace.RepositoryStatus));
-        DetailItems.Add(new DetailItemViewModel("Runtime-state status", SelectedWorkspace.LocalRuntimeStateStatus));
-        DetailItems.Add(new DetailItemViewModel("Last activity", SelectedWorkspace.LastActivity));
-        DetailItems.Add(new DetailItemViewModel("Workspace health", SelectedWorkspace.Health?.OverallStatus.ToString() ?? "Unknown"));
-        DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
         DetailItems.Add(new DetailItemViewModel("Features", SelectedWorkspace.Features));
         DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.RuntimeTarget));
         if (!string.IsNullOrWhiteSpace(DetailRecommendation))
         {
-            DetailItems.Add(new DetailItemViewModel("Recommended action", DetailRecommendation));
+            DetailItems.Add(new DetailItemViewModel("Recommended next step", DetailRecommendation));
+        }
+
+        if (!string.IsNullOrWhiteSpace(presentation.RecentHistoryNote))
+        {
+            DetailItems.Add(new DetailItemViewModel("Recent history", presentation.RecentHistoryNote));
         }
         if (SelectedWorkspace.Health is not null)
         {
             foreach (var provider in SelectedWorkspace.Health.Providers)
             {
-                DetailItems.Add(new DetailItemViewModel($"{provider.DisplayName} health", provider.Status.ToString()));
+                DetailItems.Add(new DetailItemViewModel($"Provider health: {provider.DisplayName}", provider.Status.ToString()));
                 if (!string.IsNullOrWhiteSpace(provider.WorkspaceImpact))
                 {
-                    DetailItems.Add(new DetailItemViewModel($"{provider.DisplayName} impact", provider.WorkspaceImpact));
+                    DetailItems.Add(new DetailItemViewModel($"Provider details: {provider.DisplayName}", provider.WorkspaceImpact));
                 }
             }
 
@@ -1547,15 +1570,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
         }
 
-        if (failureGuidance is not null)
+        if (failureGuidance is not null && ShouldShowFailureEvidence(SelectedWorkspace, aggregatedState))
         {
             var lastRepairAttempt = provisioningHealth?.RepairHistory.LastOrDefault();
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Stage ?? failureGuidance.Stage))
             {
-                DetailItems.Add(new DetailItemViewModel("Stage", provisioningHealth?.Stage ?? failureGuidance.Stage));
+                DetailItems.Add(new DetailItemViewModel("Current diagnosis stage", provisioningHealth?.Stage ?? failureGuidance.Stage));
             }
 
-            DetailItems.Add(new DetailItemViewModel("Reason", failureGuidance.Reason));
+            DetailItems.Add(new DetailItemViewModel("Current diagnosis", failureGuidance.Reason));
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Evidence ?? failureGuidance.Evidence))
             {
                 DetailItems.Add(new DetailItemViewModel("Evidence", provisioningHealth?.Evidence ?? failureGuidance.Evidence));
@@ -1596,7 +1619,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 DetailItems.Add(new DetailItemViewModel("Previous recommendation", provisioningHealth.PreviousRecommendedAction));
             }
 
-            DetailItems.Add(new DetailItemViewModel("Recommended action", failureGuidance.RecommendedAction));
+            DetailItems.Add(new DetailItemViewModel("Detailed recommendation", failureGuidance.RecommendedAction));
         }
 
         ApplyDetailPresentation(presentation);
@@ -1675,18 +1698,33 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private WorkspacePresentation BuildWorkspacePresentation(WorkspaceSummaryViewModel workspace, bool useWorkspaceScopedCommands)
     {
+        var aggregatedState = BuildAggregatedState(workspace);
         var failureGuidance = TryBuildFailureGuidance(workspace);
-        var shouldInvestigateFirst = ShouldInvestigateProblemFirst(workspace, failureGuidance);
-        var headline = BuildWorkspaceHeadline(workspace, failureGuidance, shouldInvestigateFirst);
-        var summary = BuildWorkspacePresentationSummary(workspace, failureGuidance, shouldInvestigateFirst);
-        var primaryLabel = shouldInvestigateFirst ? "Troubleshoot Workspace" : "Open Workspace";
-        var recommendation = BuildWorkspacePresentationRecommendation(workspace, failureGuidance, primaryLabel);
+        var shouldPreferFailureGuidance = ShouldPreferFailureGuidance(workspace, failureGuidance);
+        var shouldInvestigateFirst = shouldPreferFailureGuidance || aggregatedState.ShouldInvestigateFirst;
+        var headline = aggregatedState.Headline;
+        var summary = shouldPreferFailureGuidance ? failureGuidance!.Reason : aggregatedState.Summary;
+        var requestedPrimaryLabel = shouldPreferFailureGuidance && !string.IsNullOrWhiteSpace(failureGuidance?.PrimaryAction)
+            ? failureGuidance!.PrimaryAction!
+            : aggregatedState.PrimaryActionLabel;
+        var recommendation = shouldPreferFailureGuidance && !string.IsNullOrWhiteSpace(failureGuidance?.RecommendedAction)
+            ? failureGuidance!.RecommendedAction
+            : string.IsNullOrWhiteSpace(aggregatedState.Recommendation)
+            ? BuildWorkspacePresentationRecommendation(workspace, failureGuidance, requestedPrimaryLabel)
+            : aggregatedState.Recommendation;
+        var primaryLabel = NormalizeVisiblePrimaryActionLabel(requestedPrimaryLabel);
+        var recommendedActionLabel = WorkspaceHealthAggregator.TryExtractRecommendedActionLabel(recommendation);
+        if (!string.IsNullOrWhiteSpace(recommendedActionLabel)
+            && !string.Equals(NormalizeVisiblePrimaryActionLabel(recommendedActionLabel), primaryLabel, StringComparison.Ordinal))
+        {
+            recommendation = primaryLabel + ".";
+        }
 
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
 
-        var primaryAction = shouldInvestigateFirst ? investigateProblemAction : openWorkspaceAction;
+        var primaryAction = ResolvePrimaryAction(primaryLabel, openWorkspaceAction, investigateProblemAction);
         var secondaryActions = new List<ActionItemViewModel>();
         if (!ReferenceEquals(primaryAction, openWorkspaceAction))
         {
@@ -1723,12 +1761,72 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             Headline = headline,
             Summary = summary,
+            CurrentStatus = aggregatedState.HealthLabel,
+            CurrentActivity = aggregatedState.ActivityLabel,
+            ActivitySummary = aggregatedState.ActivitySummary,
             Recommendation = recommendation,
+            RecentHistoryNote = aggregatedState.RecentHistoryNote,
             PrimaryAction = primaryAction,
             SecondaryActions = secondaryActions,
             AdvancedActions = advancedActions,
         };
     }
+
+    private static ActionItemViewModel ResolvePrimaryAction(string primaryLabel, ActionItemViewModel openWorkspaceAction, ActionItemViewModel investigateProblemAction)
+        => string.Equals(primaryLabel, "Troubleshoot Workspace", StringComparison.Ordinal)
+            ? investigateProblemAction
+            : openWorkspaceAction;
+
+    private static string NormalizeVisiblePrimaryActionLabel(string label)
+        => string.Equals(label, "Troubleshoot Workspace", StringComparison.Ordinal)
+            ? "Troubleshoot Workspace"
+            : "Open Workspace";
+
+    private static bool ShouldShowFailureEvidence(WorkspaceSummaryViewModel workspace, WorkspaceAggregatedState aggregatedState)
+    {
+        if (aggregatedState.ActivityLabel != "None")
+        {
+            return false;
+        }
+
+        if (workspace.Snapshot?.Health.OverallStatus is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating)
+        {
+            return true;
+        }
+
+        return workspace.Record.LastProvisioningHealth is not null
+            && workspace.Record.LastOperationSucceeded == false;
+    }
+
+    private static bool ShouldPreferFailureGuidance(WorkspaceSummaryViewModel workspace, WorkspaceFailureGuidance? failureGuidance)
+    {
+        if (failureGuidance is null)
+        {
+            return false;
+        }
+
+        if (workspace.HasTransientOperationFailure)
+        {
+            return true;
+        }
+
+        if (workspace.Record.LastProvisioningHealth is null || workspace.Record.LastOperationSucceeded != false)
+        {
+            return false;
+        }
+
+        var hasHealthyApplications = workspace.Snapshot?.Health.Services.Any(service =>
+            string.Equals(service.Category, "Application", StringComparison.OrdinalIgnoreCase)
+            && service.Status == WorkspaceHealthStatus.Healthy) == true;
+        return !hasHealthyApplications;
+    }
+
+    private WorkspaceAggregatedState BuildAggregatedState(WorkspaceSummaryViewModel workspace)
+        => WorkspaceHealthAggregator.Build(
+            workspace,
+            isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
+            currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
+            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty);
 
     private ActionItemViewModel CreatePresentationAction(WorkspaceSummaryViewModel workspace, string label, string description, bool isEnabled, string disabledReason, Func<Task> executeAsync, bool useWorkspaceScopedCommands)
         => new(
@@ -1740,7 +1838,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 if (useWorkspaceScopedCommands)
                 {
-                    SelectWorkspace(workspace.RootPath);
+                    SelectWorkspaceByRootPath(workspace.RootPath);
                 }
 
                 await executeAsync();
@@ -2363,13 +2461,38 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return null;
         }
 
+        var overallHealth = workspace.Snapshot?.Health.OverallStatus;
+        var hasCurrentFailure = overallHealth is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating;
+        var requiresRuntimeRepair = workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.AppliedState is null || workspace.Snapshot?.UpdateRequired == true;
+        var isFreshWorkspace = workspace.Record.LastPreparedUtc is null
+            && workspace.Record.LastOperationSucceeded == true
+            && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
+        if (!workspace.HasTransientOperationFailure && isFreshWorkspace && requiresRuntimeRepair)
+        {
+            return null;
+        }
+
+        if (!workspace.HasTransientOperationFailure
+            && requiresRuntimeRepair
+            && workspace.Record.LastOperationSucceeded != false
+            && workspace.Record.LastProvisioningHealth is null)
+        {
+            return null;
+        }
+
+        if (!workspace.HasTransientOperationFailure && !hasCurrentFailure && !requiresRuntimeRepair)
+        {
+            return null;
+        }
+
         var hasHistoricalFailure = workspace.Record.LastOperationSucceeded == false
             || workspace.Record.LastProvisioningHealth is not null
             || !string.IsNullOrWhiteSpace(workspace.FailedOperationName)
             || workspace.Snapshot?.LocalRuntimeState is null
             || workspace.Snapshot?.UpdateRequired == true
             || workspace.Snapshot?.AppliedState is null;
-        if (!hasHistoricalFailure
+        if (!workspace.HasTransientOperationFailure
+            && !hasHistoricalFailure
             && workspace.Snapshot?.Health.OverallStatus is not (WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Investigating))
         {
             return null;
@@ -2864,6 +2987,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             }
             AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = initialStatusMessage });
             DetailSummary = initialStatusMessage;
+            RefreshWorkspacePresentations();
+            UpdateDetailPanel();
             Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' updated UI status to '{initialStatusMessage}'.");
             var sink = new OperationTranscriptSink(this);
             var result = await operation(SelectedWorkspace.RootPath, SelectedWorkspace.Snapshot, sink);
@@ -2873,6 +2998,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             CompleteOperationTranscript(result.Transcript);
             _workspaceActionStatusMessage = result.Message;
             DetailSummary = result.Message;
+            RefreshWorkspacePresentations();
+            UpdateDetailPanel();
         }
         catch (Exception exception)
         {
@@ -2881,6 +3008,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             _workspaceActionStatusMessage = exception.Message;
             SelectedWorkspace?.SetOperationFailureState(exception.Message, operationName);
             DetailSummary = exception.Message;
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
+            RefreshWorkspacePresentations();
+            UpdateDetailPanel();
             throw;
         }
         finally
@@ -2959,4 +3090,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         Warning,
         Error,
     }
+
+    private static string FormatManagedResources(IReadOnlyList<WorkspacePortAllocationRecord> ports)
+        => string.Join(
+            Environment.NewLine,
+            ports.Select(port => port.PreferredPort == port.AllocatedPort
+                ? $"{port.DisplayName}: {port.AllocatedPort}"
+                : $"{port.DisplayName}: {port.AllocatedPort} (allocated automatically)"));
 }

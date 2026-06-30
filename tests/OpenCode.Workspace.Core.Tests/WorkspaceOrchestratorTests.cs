@@ -1096,7 +1096,7 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
-    public async Task ProvisionAsync_WhenProvisioningFails_DoesNotWriteRuntimeState()
+    public async Task ProvisionAsync_WhenProvisioningFails_DoesNotMarkRuntimeStateAsProvisioned()
     {
         var tempRoot = CreateTempRoot();
 
@@ -1111,7 +1111,9 @@ public sealed class WorkspaceOrchestratorTests
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
 
-            Assert.False(File.Exists(snapshot.Paths.RuntimeStatePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState);
+            Assert.Null(runtimeState.LastSuccessfulProvision);
         }
         finally
         {
@@ -1120,7 +1122,7 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
-    public async Task ProvisionAsync_WhenPostProvisionValidationFails_DoesNotWriteRuntimeState()
+    public async Task ProvisionAsync_WhenPostProvisionValidationFails_DoesNotMarkRuntimeStateAsProvisioned()
     {
         var tempRoot = CreateTempRoot();
 
@@ -1135,7 +1137,9 @@ public sealed class WorkspaceOrchestratorTests
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
 
-            Assert.False(File.Exists(snapshot.Paths.RuntimeStatePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState);
+            Assert.Null(runtimeState.LastSuccessfulProvision);
         }
         finally
         {

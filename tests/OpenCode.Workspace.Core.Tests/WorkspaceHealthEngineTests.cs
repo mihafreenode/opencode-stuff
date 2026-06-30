@@ -78,8 +78,36 @@ public sealed class WorkspaceHealthEngineTests
 
         Assert.Equal(WorkspaceHealthStatus.Degraded, health.OverallStatus);
         Assert.Equal(WorkspaceHealthStatus.Healthy, health.Providers.Single(item => item.ProviderKey == "oracle").Status);
-        Assert.Equal(WorkspaceHealthStatus.Degraded, health.Providers.Single(item => item.ProviderKey == "oracle-xdb").Status);
+        Assert.Equal(WorkspaceHealthStatus.Attention, health.Providers.Single(item => item.ProviderKey == "oracle-xdb").Status);
         Assert.Contains("APEX", health.Providers.Single(item => item.ProviderKey == "oracle-xdb").WorkspaceImpact, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_RuntimeResourceConflict_ReportsHealthFacts()
+    {
+        var snapshot = CreateSnapshot(localRuntimeState: new WorkspaceRuntimeStateRecord
+        {
+            ResolvedEngine = "docker",
+            ResolvedPlatform = "linux/amd64",
+            CompatibilityMode = "Native",
+            Resources = new WorkspaceManagedRuntimeResources
+            {
+                Ports =
+                [
+                    new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.PostgresResourceId, ServiceId = "postgres", DisplayName = "PostgreSQL", Protocol = "tcp", PreferredPort = 15432, AllocatedPort = 15433, ContainerPort = 5432, AllocationKind = "Alternative", Endpoint = "tcp://localhost:15433", OpenUrl = "tcp://localhost:15433" },
+                ],
+                Conflicts =
+                [
+                    new WorkspaceResourceConflictRecord { ResourceId = WorkspaceRuntimeResourceCatalog.PostgresResourceId, DisplayName = "PostgreSQL", PreferredPort = 15432, ConflictKind = "ManagedWorkspace", Owner = "workspace analytics-demo", Resolution = "Allocated alternative port 15433." },
+                ],
+            },
+        }, appliedState: new WorkspaceAppliedState { AppliedUtc = DateTimeOffset.UtcNow, DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition" }, services: ["postgres"]);
+
+        var health = WorkspaceHealthEngine.Build(snapshot);
+
+        var runtime = health.Providers.Single(item => item.ProviderKey == "runtime");
+        Assert.Equal(WorkspaceHealthStatus.Attention, runtime.Status);
+        Assert.Contains(runtime.Evidence, item => item.Label == "Port 15432" && item.Value.Contains("analytics-demo", StringComparison.Ordinal));
     }
 
     private static WorkspaceSnapshot CreateSnapshot(

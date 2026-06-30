@@ -222,7 +222,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
 
             Assert.Contains("Workspace provisioning failed.", exception.Message, StringComparison.Ordinal);
-            Assert.False(File.Exists(created.Paths.RuntimeStatePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(created.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState);
+            Assert.Null(runtimeState.LastSuccessfulProvision);
         }
         finally
         {

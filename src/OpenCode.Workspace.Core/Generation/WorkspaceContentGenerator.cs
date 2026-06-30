@@ -69,7 +69,7 @@ public sealed class WorkspaceContentGenerator
     private const string GeneratedOnboardingLinksBegin = "<!-- BEGIN GENERATED ONBOARDING LINKS -->";
     private const string GeneratedOnboardingLinksEnd = "<!-- END GENERATED ONBOARDING LINKS -->";
 
-    public IReadOnlyDictionary<string, string> Generate(ResolvedWorkspace workspace)
+    public IReadOnlyDictionary<string, string> Generate(ResolvedWorkspace workspace, WorkspaceRuntimeStateRecord? runtimeState = null)
     {
         var definition = workspace.Definition;
         var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -240,15 +240,14 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
         files[Path.Combine("scripts", "start-opencode-oracle-demo.ps1")] = StartOpenCodeOracleDemoScript();
 
-        foreach (var pair in OracleWorkspaceGeneratedContent.Generate(definition, WithGeneratedHeader, WithGeneratedSqlHeader, WithGeneratedScriptHeader))
+        foreach (var pair in OracleWorkspaceGeneratedContent.Generate(definition, runtimeState, WithGeneratedHeader, WithGeneratedSqlHeader, WithGeneratedScriptHeader))
         {
             files[pair.Key] = pair.Value;
         }
 
-        var oracleSettings = OracleWorkspaceSettings.From(definition);
         foreach (var key in files.Keys.ToList())
         {
-            files[key] = ReplaceOracleHostFacingEndpoints(files[key], oracleSettings);
+            files[key] = ReplaceOracleHostFacingEndpoints(files[key], definition, runtimeState);
         }
 
         return files;
@@ -357,11 +356,18 @@ public sealed class WorkspaceContentGenerator
     private static bool HasKnowledgePack(ResolvedWorkspace workspace, string packId)
         => workspace.KnowledgePacks.Any(pack => string.Equals(pack.Id, packId, StringComparison.OrdinalIgnoreCase));
 
-    private static string ReplaceOracleHostFacingEndpoints(string content, OracleWorkspaceSettings oracleSettings)
-        => content
-            .Replace("http://localhost:8181/ords/apex", oracleSettings.ApexLoginUrl, StringComparison.Ordinal)
-            .Replace("http://localhost:8181/ords", oracleSettings.OrdsBaseUrl, StringComparison.Ordinal)
-            .Replace("//localhost:1521/", $"//localhost:{oracleSettings.HostPort}/", StringComparison.Ordinal);
+    private static string ReplaceOracleHostFacingEndpoints(string content, WorkspaceDefinition definition, WorkspaceRuntimeStateRecord? runtimeState)
+    {
+        var hostPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
+        var ordsPort = OracleWorkspaceFamily.HasApex(definition)
+            ? WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId)
+            : OracleWorkspaceSettings.From(definition).OrdsPort;
+        return content
+            .Replace("http://localhost:8181/ords/apex", $"http://localhost:{ordsPort}/ords/apex", StringComparison.Ordinal)
+            .Replace("http://localhost:8181/ords/apex_admin", $"http://localhost:{ordsPort}/ords/apex_admin", StringComparison.Ordinal)
+            .Replace("http://localhost:8181/ords", $"http://localhost:{ordsPort}/ords", StringComparison.Ordinal)
+            .Replace("//localhost:1521/", $"//localhost:{hostPort}/", StringComparison.Ordinal);
+    }
 
     private static string BuildCapabilityCatalogIndex(ResolvedWorkspace workspace)
     {
