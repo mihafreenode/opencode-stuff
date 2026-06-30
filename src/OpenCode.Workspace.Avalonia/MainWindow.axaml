@@ -250,65 +250,124 @@
       <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
         <Border Classes="panel">
           <StackPanel Spacing="8">
-            <TextBlock Text="Investigate Problem" Classes="section-title" />
-            <TextBlock Text="Workspace-specific diagnostics focused on why this workspace failed, stalled, or needs repair."
+            <TextBlock Text="Workspace Troubleshooting" Classes="section-title" />
+            <TextBlock Text="OpenCode explains what is happening, what it already tried, and what the next best step is for this workspace."
                        Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
 
-        <Border Grid.Row="1" Classes="panel-subtle">
-          <StackPanel Spacing="6">
-            <TextBlock Text="{Binding DetailSummary}" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding DetailRecommendation}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDetailRecommendation}" />
-          </StackPanel>
-        </Border>
+        <Grid Grid.Row="1" ColumnDefinitions="2*,*" ColumnSpacing="12">
+          <Border Classes="panel-subtle">
+            <StackPanel Spacing="8">
+              <TextBlock Text="What is happening?" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding DetailSummary}" TextWrapping="Wrap" />
+              <TextBlock Text="Status" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="{Binding CurrentDiagnosis}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="panel-subtle">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Current diagnosis" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding CurrentDiagnosis}" TextWrapping="Wrap" />
+              <TextBlock Text="Confidence" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Text="{Binding CurrentConfidence}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+          </Border>
+        </Grid>
 
-        <StackPanel Grid.Row="2" Spacing="10">
-          <Button Classes="accent"
-                  Content="{Binding DetailPrimaryAction.Label}"
-                  Command="{Binding DetailPrimaryAction.Command}"
-                  IsEnabled="{Binding DetailPrimaryAction.IsEnabled}"
-                  IsVisible="{Binding ShowDetailPrimaryAction}"
-                  automation:AutomationProperties.AutomationId="{Binding DetailPrimaryAction.AutomationId}"
-                  automation:AutomationProperties.Name="{Binding DetailPrimaryAction.AutomationName}" />
-          <ItemsControl ItemsSource="{Binding DetailVisibleActions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Classes="panel-subtle" Margin="0,0,0,8">
-                  <StackPanel Spacing="6">
-                    <Button Content="{Binding Label}"
-                            Command="{Binding Command}"
-                            IsEnabled="{Binding IsEnabled}"
-                            automation:AutomationProperties.AutomationId="{Binding AutomationId}"
-                            automation:AutomationProperties.Name="{Binding AutomationName}" />
-                    <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <Expander Header="Advanced" IsExpanded="{Binding ShowAdvancedActions}" IsVisible="{Binding HasDetailAdvancedActions}">
-            <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="panel-subtle" Margin="0,8,0,0">
-                    <StackPanel Spacing="6">
-                      <Button Content="{Binding Label}"
-                              Command="{Binding Command}"
-                              IsEnabled="{Binding IsEnabled}"
-                              automation:AutomationProperties.AutomationId="{Binding AutomationId}"
-                              automation:AutomationProperties.Name="{Binding AutomationName}" />
-                      <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Expander>
-        </StackPanel>
+        <Grid Grid.Row="2" ColumnDefinitions="2*,*" ColumnSpacing="12">
+          <StackPanel Spacing="10">
+            <Border Classes="panel-subtle">
+              <StackPanel Spacing="8">
+                <TextBlock Text="What should we try next?" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding RecommendedNextStep}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding RecommendedNextStepDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="{Binding RecommendedNextStepDuration}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDetailRecommendation}" />
+                <Button Classes="accent"
+                        Content="{Binding DetailPrimaryAction.Label}"
+                        Command="{Binding DetailPrimaryAction.Command}"
+                        IsEnabled="{Binding DetailPrimaryAction.IsEnabled}"
+                        IsVisible="{Binding ShowDetailPrimaryAction}"
+                        automation:AutomationProperties.AutomationId="{Binding DetailPrimaryAction.AutomationId}"
+                        automation:AutomationProperties.Name="{Binding DetailPrimaryAction.AutomationName}" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="panel-subtle" IsVisible="{Binding HasInvestigationActions}">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Investigation actions" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding InvestigationActions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="panel-subtle" Margin="0,0,0,8">
+                        <StackPanel Spacing="6">
+                          <Button Content="{Binding Label}"
+                                  Command="{Binding Command}"
+                                  IsEnabled="{Binding IsEnabled}"
+                                  automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                  automation:AutomationProperties.Name="{Binding AutomationName}" />
+                          <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Spacing="10">
+            <Border Classes="panel-subtle">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Visible actions" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding DetailVisibleActions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="panel-subtle" Margin="0,0,0,8">
+                        <StackPanel Spacing="6">
+                          <Button Content="{Binding Label}"
+                                  Command="{Binding Command}"
+                                  IsEnabled="{Binding IsEnabled}"
+                                  automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                  automation:AutomationProperties.Name="{Binding AutomationName}" />
+                          <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Expander Header="Advanced" IsExpanded="{Binding ShowAdvancedActions}" IsVisible="{Binding HasDetailAdvancedActions}">
+              <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,8,0,0">
+                      <StackPanel Spacing="6">
+                        <Button Content="{Binding Label}"
+                                Command="{Binding Command}"
+                                IsEnabled="{Binding IsEnabled}"
+                                automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                automation:AutomationProperties.Name="{Binding AutomationName}" />
+                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+          </StackPanel>
+        </Grid>
 
         <ScrollViewer Grid.Row="3">
           <StackPanel Spacing="12">
+            <TextBlock Text="Why do we think this happened?" Classes="section-title" />
+            <Border Classes="panel-subtle">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{Binding CurrentEvidence}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+              </StackPanel>
+            </Border>
+
             <TextBlock Text="Evidence" Classes="section-title" />
             <ItemsControl ItemsSource="{Binding DetailItems}">
               <ItemsControl.ItemTemplate>
@@ -322,6 +381,44 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <StackPanel Spacing="8" IsVisible="{Binding HasRepairHistory}">
+              <TextBlock Text="What have we already tried?" Classes="section-title" />
+              <ItemsControl ItemsSource="{Binding RepairHistory}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,0,0,8">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Outcome}" />
+                        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasEvidence}" />
+                        <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasRecommendation}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <StackPanel Spacing="8" IsVisible="{Binding HasInvestigationHistory}">
+              <TextBlock Text="Investigation timeline" Classes="section-title" />
+              <ItemsControl ItemsSource="{Binding InvestigationHistory}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="panel-subtle" Margin="0,0,0,8">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Outcome}" />
+                        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                        <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasEvidence}" />
+                        <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasRecommendation}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
 
             <StackPanel Spacing="8" IsVisible="{Binding HasTranscriptExcerpt}">
               <TextBlock Text="Transcript Excerpt" Classes="section-title" />

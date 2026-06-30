@@ -2351,7 +2351,7 @@ public sealed class ShellViewModelTests
         Assert.Contains(page.DetailItems, item => item.Label == "Reason" && item.Value.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Troubleshoot Workspace.");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -2453,7 +2453,7 @@ public sealed class ShellViewModelTests
         Assert.Contains(page.DetailItems, item => item.Label == "Repairability" && item.Value == "CleanupRepair");
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
     }
@@ -2518,7 +2518,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal(["Open Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
     }
@@ -2551,7 +2551,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
     }
 
     [Fact]
@@ -2602,7 +2602,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
         Assert.Contains(page.DetailItems, item => item.Label == "Repair attempted" && item.Value == "Reset Runtime");
         Assert.Contains(page.DetailItems, item => item.Label == "Outcome" && item.Value == "No improvement detected.");
         Assert.Contains(page.DetailItems, item => item.Label == "Previous recommendation" && item.Value == "Reset Runtime.");
@@ -2637,7 +2637,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Run Diagnostics.");
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -2682,7 +2682,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Troubleshoot Workspace", StringComparison.Ordinal));
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Recommended action" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
     }
 
@@ -2767,6 +2767,85 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task TroubleshootWorkspace_InteractiveInvestigationUpdatesRecommendation()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        var desktop = new FakeDesktopShellService([snapshot])
+        {
+            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = "Workspace troubleshooting",
+                Summary = "Workspace provisioning stopped.",
+                Recommendation = "Inspect Oracle runtime.",
+                CurrentDiagnosis = "Oracle prerequisite validation failed.",
+                CurrentEvidence = "XDB status = INVALID",
+                Confidence = "HIGH",
+                RecommendedNextStep = "Inspect Oracle runtime",
+                RecommendedNextStepDescription = "Inspect Oracle runtime before repeating repair actions.",
+                RecommendedNextStepDuration = "15-30 seconds",
+                CanOpenWorkspace = true,
+                InvestigationActions =
+                [
+                    new WorkspaceTroubleshootingAction
+                    {
+                        Id = "inspect-oracle-runtime",
+                        Label = "Inspect Oracle runtime",
+                        Description = "Inspect Oracle runtime evidence.",
+                        EstimatedDuration = "15-30 seconds",
+                        ProviderName = "Oracle",
+                    },
+                ],
+            }),
+            TroubleshootingActionFactoryAsync = (request, actionId, _) => Task.FromResult(new WorkspaceTroubleshootingReport
+            {
+                WorkspaceName = request.WorkspaceName,
+                RootPath = request.RootPath,
+                Headline = "Workspace troubleshooting",
+                Summary = "Workspace provisioning stopped.",
+                Recommendation = "Reset Runtime.",
+                CurrentDiagnosis = "Oracle prerequisite validation failed.",
+                CurrentEvidence = "XDB status = INVALID",
+                Confidence = "HIGH",
+                RecommendedNextStep = "Reset Runtime",
+                RecommendedNextStepDescription = "Oracle runtime inspection confirmed that reset runtime is the next safe repair.",
+                RecommendedNextStepDuration = "4-6 minutes",
+                CanResetRuntime = true,
+                InvestigationHistory =
+                [
+                    new WorkspaceTroubleshootingHistoryEntry
+                    {
+                        Title = "Inspect Oracle runtime",
+                        Outcome = "Oracle runtime issue confirmed.",
+                        Summary = "Oracle prerequisite validation failed.",
+                        Evidence = "XDB status = INVALID",
+                        Recommendation = "Reset Runtime.",
+                        Confidence = "HIGH",
+                        EstimatedDuration = "15-30 seconds",
+                        OccurredUtc = DateTimeOffset.UtcNow,
+                        Source = "Oracle",
+                    },
+                ],
+            }),
+        };
+        var shell = CreateShellWithDesktop(desktop);
+
+        await shell.InitializeAsync();
+        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
+        var investigationAction = Assert.Single(troubleshootingPage.InvestigationActions);
+
+        await ((AsyncRelayCommand)investigationAction.Command).ExecuteAsync();
+
+        troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
+        Assert.Equal("Reset Runtime", troubleshootingPage.RecommendedNextStep);
+        Assert.Single(troubleshootingPage.InvestigationHistory);
+    }
+
+    [Fact]
     public async Task CleanupRepairFailure_RecommendationMatchesVisibleEnabledResetRuntimeButton()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
@@ -2827,7 +2906,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Contains(page.DetailItems, item => item.Label == "Recommended action" && item.Value == "Reset Runtime.");
-        Assert.Equal("Investigate Problem", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -3353,6 +3432,7 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? OpenWorkspaceResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
         public Func<WorkspaceTroubleshootingRequest, CancellationToken, Task<WorkspaceTroubleshootingReport>>? TroubleshootingReportFactoryAsync { get; init; }
+        public Func<WorkspaceTroubleshootingRequest, string, CancellationToken, Task<WorkspaceTroubleshootingReport>>? TroubleshootingActionFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? PrepareResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceCheckpointOperationResult>>? CheckpointResultFactoryAsync { get; set; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceRemovalOperationResult>>? RemoveResultFactoryAsync { get; set; }
@@ -3876,6 +3956,16 @@ public sealed class ShellViewModelTests
             });
         }
 
+        public Task<WorkspaceTroubleshootingReport> ExecuteWorkspaceTroubleshootingActionAsync(WorkspaceTroubleshootingRequest request, string actionId, CancellationToken cancellationToken = default)
+        {
+            if (TroubleshootingActionFactoryAsync is not null)
+            {
+                return TroubleshootingActionFactoryAsync(request, actionId, cancellationToken);
+            }
+
+            return GetWorkspaceTroubleshootingReportAsync(request, cancellationToken);
+        }
+
         public WorkspaceTimeline LoadTimeline(string timelinePath)
         {
             if (TimelineException is not null)
@@ -3962,6 +4052,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("tracking"), Succeeded = true, Message = "ok" });
         public Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceTroubleshootingReport { WorkspaceName = request.WorkspaceName, RootPath = request.RootPath, Headline = "Workspace troubleshooting", Summary = "Workspace-specific troubleshooting details.", Recommendation = "Open Workspace.", CanOpenWorkspace = true });
+        public Task<WorkspaceTroubleshootingReport> ExecuteWorkspaceTroubleshootingActionAsync(WorkspaceTroubleshootingRequest request, string actionId, CancellationToken cancellationToken = default) => GetWorkspaceTroubleshootingReportAsync(request, cancellationToken);
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
@@ -4060,6 +4151,7 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceReprovisionResult> ReprovisionWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceTroubleshootingReport> ExecuteWorkspaceTroubleshootingActionAsync(WorkspaceTroubleshootingRequest request, string actionId, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 

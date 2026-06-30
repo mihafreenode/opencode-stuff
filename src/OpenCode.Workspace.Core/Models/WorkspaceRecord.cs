@@ -50,6 +50,7 @@ public sealed class WorkspaceProvisioningHealthRecord
     public string EstimatedDuration { get; init; } = string.Empty;
     public DateTimeOffset? LastDiagnosticsTimestamp { get; init; }
     public IReadOnlyList<WorkspaceRepairAttemptRecord> RepairHistory { get; init; } = Array.Empty<WorkspaceRepairAttemptRecord>();
+    public IReadOnlyList<WorkspaceInvestigationRecord> InvestigationHistory { get; init; } = Array.Empty<WorkspaceInvestigationRecord>();
 }
 
 public sealed class WorkspaceRepairAttemptRecord
@@ -70,6 +71,23 @@ public sealed class WorkspaceRepairAttemptRecord
     public string Confidence { get; init; } = string.Empty;
     public string PreviousRecommendation { get; init; } = string.Empty;
     public string UpdatedRecommendation { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceInvestigationRecord
+{
+    public string InvestigationId { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public string Evidence { get; init; } = string.Empty;
+    public string Recommendation { get; init; } = string.Empty;
+    public string Outcome { get; init; } = string.Empty;
+    public string Confidence { get; init; } = string.Empty;
+    public string EstimatedDuration { get; init; } = string.Empty;
+    public DateTimeOffset StartedUtc { get; init; }
+    public DateTimeOffset CompletedUtc { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string ProviderName { get; init; } = string.Empty;
+    public string RelevantLogReference { get; init; } = string.Empty;
 }
 
 public static class WorkspaceRepairOutcome

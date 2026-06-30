@@ -144,6 +144,29 @@ public sealed class WorkspaceTroubleshootingFact
     public required string Value { get; init; }
 }
 
+public sealed class WorkspaceTroubleshootingAction
+{
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public required string Description { get; init; }
+    public string EstimatedDuration { get; init; } = string.Empty;
+    public string ProviderName { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceTroubleshootingHistoryEntry
+{
+    public required string Title { get; init; }
+    public required string Outcome { get; init; }
+    public required string Summary { get; init; }
+    public string Evidence { get; init; } = string.Empty;
+    public string Recommendation { get; init; } = string.Empty;
+    public string Confidence { get; init; } = string.Empty;
+    public string EstimatedDuration { get; init; } = string.Empty;
+    public DateTimeOffset OccurredUtc { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string Source { get; init; } = string.Empty;
+}
+
 public sealed class WorkspaceTroubleshootingReport
 {
     public required string WorkspaceName { get; init; }
@@ -151,8 +174,17 @@ public sealed class WorkspaceTroubleshootingReport
     public required string Headline { get; init; }
     public required string Summary { get; init; }
     public required string Recommendation { get; init; }
+    public string CurrentDiagnosis { get; init; } = string.Empty;
+    public string CurrentEvidence { get; init; } = string.Empty;
+    public string Confidence { get; init; } = string.Empty;
+    public string RecommendedNextStep { get; init; } = string.Empty;
+    public string RecommendedNextStepDescription { get; init; } = string.Empty;
+    public string RecommendedNextStepDuration { get; init; } = string.Empty;
     public IReadOnlyList<WorkspaceTroubleshootingFact> Facts { get; init; } = Array.Empty<WorkspaceTroubleshootingFact>();
     public IReadOnlyList<string> SuggestedNextSteps { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<WorkspaceTroubleshootingAction> InvestigationActions { get; init; } = Array.Empty<WorkspaceTroubleshootingAction>();
+    public IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> RepairHistory { get; init; } = Array.Empty<WorkspaceTroubleshootingHistoryEntry>();
+    public IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> InvestigationHistory { get; init; } = Array.Empty<WorkspaceTroubleshootingHistoryEntry>();
     public bool IsProvisioningInProgress { get; init; }
     public bool RecommendHostDiagnostics { get; init; }
     public bool CanKeepWaiting { get; init; }

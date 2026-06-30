@@ -163,8 +163,15 @@ public sealed class ShellViewModel : ObservableObject
 
     private async Task TroubleshootWorkspaceFromOverviewAsync(string workspacePath)
     {
+        var request = BuildWorkspaceTroubleshootingRequest(workspacePath);
+        var report = await _desktopShellService.GetWorkspaceTroubleshootingReportAsync(request);
+        ShowWorkspaceTroubleshootingReport(report, request);
+    }
+
+    private WorkspaceTroubleshootingRequest BuildWorkspaceTroubleshootingRequest(string workspacePath)
+    {
         var selectedWorkspace = _workspacesPage.SelectedWorkspace;
-        var request = new WorkspaceTroubleshootingRequest
+        return new WorkspaceTroubleshootingRequest
         {
             RootPath = workspacePath,
             Snapshot = selectedWorkspace?.Snapshot,
@@ -174,13 +181,16 @@ public sealed class ShellViewModel : ObservableObject
             CurrentStatusMessage = _workspacesPage.CurrentWorkspaceOperationStatus,
             TranscriptFilePath = _workspacesPage.CurrentOperationTranscriptFilePath ?? string.Empty,
         };
+    }
 
-        var report = await _desktopShellService.GetWorkspaceTroubleshootingReportAsync(request);
+    private void ShowWorkspaceTroubleshootingReport(WorkspaceTroubleshootingReport report, WorkspaceTroubleshootingRequest request)
+    {
         _workspaceTroubleshootingPage.ShowReport(
             report,
             CreateTroubleshootingPrimaryAction(report),
             CreateTroubleshootingVisibleActions(report),
-            CreateTroubleshootingAdvancedActions(report));
+            CreateTroubleshootingAdvancedActions(report),
+            CreateTroubleshootingInvestigationActions(report, request));
         CurrentPage = _workspaceTroubleshootingPage;
         RefreshStatusBar();
     }
@@ -239,6 +249,18 @@ public sealed class ShellViewModel : ObservableObject
         return actions;
     }
 
+    private IReadOnlyList<ActionItemViewModel> CreateTroubleshootingInvestigationActions(WorkspaceTroubleshootingReport report, WorkspaceTroubleshootingRequest request)
+        => report.InvestigationActions
+            .Select(action => CreateWorkspaceTroubleshootingAction(
+                action.Label,
+                string.IsNullOrWhiteSpace(action.EstimatedDuration)
+                    ? action.Description
+                    : $"{action.Description} Estimated time: {action.EstimatedDuration}.",
+                true,
+                string.Empty,
+                () => RunWorkspaceInvestigationAsync(request, action.Id)))
+            .ToList();
+
     private ActionItemViewModel CreateWorkspaceTroubleshootingAction(string label, string description, bool isEnabled, string disabledReason, Func<Task> executeAsync)
         => new(label, description, isEnabled, disabledReason, new AsyncRelayCommand(executeAsync));
 
@@ -290,6 +312,13 @@ public sealed class ShellViewModel : ObservableObject
         _diagnosticsPage.SelectedWorkspaceTarget = _diagnosticsPage.WorkspaceTargets.FirstOrDefault(item => string.Equals(item.RootPath, _workspaceTroubleshootingPage.WorkspaceRootPath, StringComparison.OrdinalIgnoreCase))
             ?? _diagnosticsPage.SelectedWorkspaceTarget;
         await _diagnosticsPage.RunDoctorAsync();
+    }
+
+    private async Task RunWorkspaceInvestigationAsync(WorkspaceTroubleshootingRequest request, string actionId)
+    {
+        var updatedRequest = BuildWorkspaceTroubleshootingRequest(request.RootPath);
+        var report = await _desktopShellService.ExecuteWorkspaceTroubleshootingActionAsync(updatedRequest, actionId);
+        ShowWorkspaceTroubleshootingReport(report, updatedRequest);
     }
 
     private void RefreshStatusBar()

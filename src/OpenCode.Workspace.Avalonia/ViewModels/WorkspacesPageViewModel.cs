@@ -281,7 +281,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             LoadErrorMessage = exception.Message;
             DetailTitle = "Workspace discovery failed";
             DetailSummary = "The window is available, but workspace discovery did not complete.";
-            DetailRecommendation = "Investigate Problem reviews workspace and runtime diagnostics without changing durable data.";
+            DetailRecommendation = "Troubleshoot Workspace reviews workspace and runtime diagnostics without changing durable data.";
             DetailItems.Clear();
             DetailItems.Add(new DetailItemViewModel("Error", exception.Message));
             DetailPrimaryAction = null;
@@ -1655,11 +1655,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var shouldInvestigateFirst = ShouldInvestigateProblemFirst(failureGuidance);
         var headline = BuildWorkspaceHeadline(workspace, failureGuidance, shouldInvestigateFirst);
         var summary = BuildWorkspacePresentationSummary(workspace, failureGuidance, shouldInvestigateFirst);
-        var primaryLabel = shouldInvestigateFirst ? "Investigate Problem" : "Open Workspace";
+        var primaryLabel = shouldInvestigateFirst ? "Troubleshoot Workspace" : "Open Workspace";
         var recommendation = BuildWorkspacePresentationRecommendation(failureGuidance, primaryLabel);
 
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
-        var investigateProblemAction = CreatePresentationAction(workspace, "Investigate Problem", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
+        var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
 
         var primaryAction = shouldInvestigateFirst ? investigateProblemAction : openWorkspaceAction;
@@ -1782,7 +1782,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 : string.Empty;
         }
 
-        return primaryLabel == "Investigate Problem"
+        return primaryLabel == "Troubleshoot Workspace"
             ? failureGuidance.RecommendedAction
             : "Safe repairs happen automatically. Advanced runtime cleanup is only offered when it is actually needed.";
     }

@@ -1170,31 +1170,94 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public async Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default)
     {
+        var context = await BuildWorkspaceTroubleshootingContextAsync(request, cancellationToken);
+        return BuildWorkspaceTroubleshootingReport(request, context);
+    }
+
+    public async Task<WorkspaceTroubleshootingReport> ExecuteWorkspaceTroubleshootingActionAsync(WorkspaceTroubleshootingRequest request, string actionId, CancellationToken cancellationToken = default)
+    {
+        var context = await BuildWorkspaceTroubleshootingContextAsync(request, cancellationToken);
+        var execution = WorkspaceTroubleshootingEngine.ExecuteInvestigation(context, actionId);
+        var updatedRecord = CloneRecord(context.Snapshot.Record, context.Snapshot.Record.LastOperationName ?? "Troubleshoot Workspace", context.Snapshot.Record.LastOperationResult ?? context.Snapshot.Record.LastProvisioningHealth?.Summary ?? "Workspace troubleshooting updated.", context.Snapshot.Record.LastOperationSucceeded ?? false, context.Snapshot.Record.LastPreparedUtc, execution.UpdatedHealth);
+        await _workspaceRepository.SaveAsync(updatedRecord, cancellationToken);
+        var updatedSnapshot = CloneSnapshot(context.Snapshot, updatedRecord);
+        var updatedRequest = new WorkspaceTroubleshootingRequest
+        {
+            RootPath = request.RootPath,
+            Snapshot = updatedSnapshot,
+            WorkspaceName = string.IsNullOrWhiteSpace(request.WorkspaceName) ? updatedSnapshot.Definition.Workspace.Name : request.WorkspaceName,
+            IsOperationInProgress = request.IsOperationInProgress,
+            CurrentOperationName = request.CurrentOperationName,
+            CurrentStatusMessage = request.CurrentStatusMessage,
+            TranscriptFilePath = request.TranscriptFilePath,
+        };
+        var updatedContext = await BuildWorkspaceTroubleshootingContextAsync(updatedRequest, cancellationToken);
+        return BuildWorkspaceTroubleshootingReport(updatedRequest, updatedContext);
+    }
+
+    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
+    {
+        var record = CloneRecord(
+            snapshot.Record,
+            operationName,
+            operationResult,
+            succeeded,
+            lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
+            provisioningHealth ?? snapshot.Record.LastProvisioningHealth);
+
+        return _workspaceRepository.SaveAsync(record, cancellationToken);
+    }
+
+    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision", WorkspaceProvisioningHealthRecord? provisioningHealth = null)
+    {
+        var failureRecord = CloneRecord(record, operationName, errorMessage, false, record.LastPreparedUtc, provisioningHealth ?? record.LastProvisioningHealth);
+
+        return _workspaceRepository.SaveAsync(failureRecord, cancellationToken);
+    }
+
+    private async Task<WorkspaceTroubleshootingContext> BuildWorkspaceTroubleshootingContextAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken)
+    {
         var snapshot = request.Snapshot;
         if (snapshot is null)
         {
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(request.RootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: true);
         }
 
-        var facts = new List<WorkspaceTroubleshootingFact>();
-        var health = snapshot.Record.LastProvisioningHealth;
         var volatileValidation = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, cancellationToken: cancellationToken);
         var timeline = _timelineService.Load(snapshot.Paths.TimelinePath);
-        var lastTimelineEvent = timeline.Events.OrderByDescending(item => item.OccurredUtc).FirstOrDefault();
         var transcriptFilePath = ResolveTroubleshootingTranscriptPath(request, snapshot);
-        var transcriptExcerpt = ReadTranscriptExcerpt(transcriptFilePath);
+
+        return new WorkspaceTroubleshootingContext
+        {
+            Snapshot = snapshot,
+            Health = snapshot.Record.LastProvisioningHealth,
+            IsProvisioningInProgress = request.IsOperationInProgress,
+            CurrentOperationName = request.CurrentOperationName,
+            CurrentStatusMessage = request.CurrentStatusMessage,
+            TranscriptFilePath = transcriptFilePath,
+            TranscriptExcerpt = ReadTranscriptExcerpt(transcriptFilePath),
+            VolatileValidation = volatileValidation,
+            LastTimelineEvent = timeline.Events.OrderByDescending(item => item.OccurredUtc).FirstOrDefault(),
+        };
+    }
+
+    private WorkspaceTroubleshootingReport BuildWorkspaceTroubleshootingReport(WorkspaceTroubleshootingRequest request, WorkspaceTroubleshootingContext context)
+    {
+        var snapshot = context.Snapshot;
+        var health = context.Health;
+        var facts = new List<WorkspaceTroubleshootingFact>();
         var isOracleWorkspace = IsOracleWorkspace(snapshot, health);
         var hostProblem = IsHostProblem(health);
         var runtimeStateMissing = !File.Exists(snapshot.Paths.RuntimeStatePath);
         var appliedStateMissing = !File.Exists(snapshot.Paths.AppliedStatePath);
         var attachScriptMissing = !File.Exists(snapshot.Paths.AttachWrapperScriptPath);
-        var stage = request.IsOperationInProgress
-            ? request.CurrentStatusMessage
+        var stage = context.IsProvisioningInProgress
+            ? context.CurrentStatusMessage
             : health?.Stage ?? snapshot.Record.LastOperationName ?? "Unknown";
 
-        facts.Add(new WorkspaceTroubleshootingFact { Label = "Current operation", Value = request.IsOperationInProgress ? request.CurrentOperationName : snapshot.Record.LastOperationName ?? "None" });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Current operation", Value = context.IsProvisioningInProgress ? context.CurrentOperationName : snapshot.Record.LastOperationName ?? "None" });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Current stage", Value = string.IsNullOrWhiteSpace(stage) ? "Unknown" : stage });
-        facts.Add(new WorkspaceTroubleshootingFact { Label = "Provisioning state", Value = request.IsOperationInProgress ? "Provisioning is still running." : snapshot.Record.LastOperationSucceeded == false ? "Last provisioning attempt exited with an error." : "No active provisioning detected." });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Provisioning state", Value = context.IsProvisioningInProgress ? "Provisioning is still running." : snapshot.Record.LastOperationSucceeded == false ? "Last provisioning attempt exited with an error." : "No active provisioning detected." });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime state", Value = snapshot.RuntimeState.ToString() });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime-state.yaml", Value = DescribeFileState(snapshot.Paths.RuntimeStatePath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Applied-state.yaml", Value = DescribeFileState(snapshot.Paths.AppliedStatePath) });
@@ -1224,24 +1287,24 @@ public sealed class DesktopShellService : IDesktopShellService
             }
         }
 
-        if (volatileValidation is not null)
+        if (context.VolatileValidation is not null)
         {
-            facts.Add(new WorkspaceTroubleshootingFact { Label = "Docker validation", Value = BuildProcessSummary(volatileValidation) });
-            var validationEvidence = ExtractValidationEvidence(volatileValidation);
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Docker validation", Value = BuildProcessSummary(context.VolatileValidation) });
+            var validationEvidence = ExtractValidationEvidence(context.VolatileValidation);
             if (!string.IsNullOrWhiteSpace(validationEvidence))
             {
                 facts.Add(new WorkspaceTroubleshootingFact { Label = "Compose and container evidence", Value = validationEvidence });
             }
         }
 
-        if (lastTimelineEvent is not null)
+        if (context.LastTimelineEvent is not null)
         {
-            facts.Add(new WorkspaceTroubleshootingFact { Label = "Last timeline event", Value = $"{lastTimelineEvent.Summary} at {lastTimelineEvent.OccurredUtc:O}" });
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Last timeline event", Value = $"{context.LastTimelineEvent.Summary} at {context.LastTimelineEvent.OccurredUtc:O}" });
         }
 
-        if (!string.IsNullOrWhiteSpace(transcriptFilePath))
+        if (!string.IsNullOrWhiteSpace(context.TranscriptFilePath))
         {
-            facts.Add(new WorkspaceTroubleshootingFact { Label = "Transcript file", Value = transcriptFilePath });
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Transcript file", Value = context.TranscriptFilePath });
         }
 
         var suggestedNextSteps = BuildSuggestedNextSteps(request, health, runtimeStateMissing, appliedStateMissing, hostProblem, isOracleWorkspace);
@@ -1249,6 +1312,16 @@ public sealed class DesktopShellService : IDesktopShellService
         var headline = BuildTroubleshootingHeadline(request, health, hostProblem, runtimeStateMissing, appliedStateMissing);
         var summary = BuildTroubleshootingSummary(request, health, isOracleWorkspace, hostProblem, runtimeStateMissing, appliedStateMissing, attachScriptMissing);
         var recommendation = BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace);
+        var investigations = WorkspaceTroubleshootingEngine.GetAvailableInvestigations(context)
+            .Select(item => new WorkspaceTroubleshootingAction
+            {
+                Id = item.Id,
+                Label = item.Title,
+                Description = item.Description,
+                EstimatedDuration = item.EstimatedDuration,
+                ProviderName = item.ProviderName,
+            })
+            .ToList();
 
         return new WorkspaceTroubleshootingReport
         {
@@ -1257,38 +1330,27 @@ public sealed class DesktopShellService : IDesktopShellService
             Headline = headline,
             Summary = summary,
             Recommendation = recommendation,
+            CurrentDiagnosis = string.IsNullOrWhiteSpace(health?.Reason) ? headline : health.Reason,
+            CurrentEvidence = string.IsNullOrWhiteSpace(health?.Evidence) ? context.TranscriptExcerpt : health.Evidence,
+            Confidence = string.IsNullOrWhiteSpace(health?.Confidence) ? "MEDIUM" : health.Confidence,
+            RecommendedNextStep = ResolveRecommendedNextStepLabel(recommendation),
+            RecommendedNextStepDescription = BuildRecommendedNextStepDescription(recommendation, health, request.IsOperationInProgress),
+            RecommendedNextStepDuration = string.IsNullOrWhiteSpace(health?.EstimatedDuration) ? "10-30 seconds" : health.EstimatedDuration,
             Facts = facts,
             SuggestedNextSteps = suggestedNextSteps,
+            InvestigationActions = investigations,
+            RepairHistory = BuildRepairHistory(health),
+            InvestigationHistory = BuildInvestigationHistory(health),
             IsProvisioningInProgress = request.IsOperationInProgress,
             RecommendHostDiagnostics = hostProblem,
             CanKeepWaiting = request.IsOperationInProgress,
-            CanViewLog = !string.IsNullOrWhiteSpace(transcriptFilePath),
+            CanViewLog = !string.IsNullOrWhiteSpace(context.TranscriptFilePath),
             CanOpenWorkspace = !request.IsOperationInProgress,
             CanRecoverWorkspace = !request.IsOperationInProgress,
             CanResetRuntime = canResetRuntime,
-            TranscriptFilePath = transcriptFilePath,
-            TranscriptExcerpt = transcriptExcerpt,
+            TranscriptFilePath = context.TranscriptFilePath,
+            TranscriptExcerpt = context.TranscriptExcerpt,
         };
-    }
-
-    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
-    {
-        var record = CloneRecord(
-            snapshot.Record,
-            operationName,
-            operationResult,
-            succeeded,
-            lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
-            provisioningHealth ?? snapshot.Record.LastProvisioningHealth);
-
-        return _workspaceRepository.SaveAsync(record, cancellationToken);
-    }
-
-    private Task PersistWorkspaceRecordFailureAsync(WorkspaceRecord record, string errorMessage, CancellationToken cancellationToken, string operationName = "Reprovision", WorkspaceProvisioningHealthRecord? provisioningHealth = null)
-    {
-        var failureRecord = CloneRecord(record, operationName, errorMessage, false, record.LastPreparedUtc, provisioningHealth ?? record.LastProvisioningHealth);
-
-        return _workspaceRepository.SaveAsync(failureRecord, cancellationToken);
     }
 
     private static WorkspaceRecord CloneRecord(WorkspaceRecord source, string operationName, string operationResult, bool succeeded, DateTimeOffset? lastPreparedUtc, WorkspaceProvisioningHealthRecord? provisioningHealth)
@@ -1380,6 +1442,96 @@ public sealed class DesktopShellService : IDesktopShellService
 
     private static string BuildProcessSummary(ProcessResult processResult)
         => $"Exit code {processResult.ExitCode}. Command: {processResult.Command}";
+
+    private static IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> BuildRepairHistory(WorkspaceProvisioningHealthRecord? health)
+    {
+        if (health is null)
+        {
+            return Array.Empty<WorkspaceTroubleshootingHistoryEntry>();
+        }
+
+        return health.RepairHistory.Select(attempt => new WorkspaceTroubleshootingHistoryEntry
+        {
+            Title = attempt.RepairType,
+            Outcome = FormatRepairOutcome(attempt.Result),
+            Summary = string.IsNullOrWhiteSpace(attempt.RootCauseAfter) ? attempt.Result : attempt.RootCauseAfter,
+            Evidence = string.IsNullOrWhiteSpace(attempt.EvidenceAfter) ? attempt.EvidenceBefore : attempt.EvidenceAfter,
+            Recommendation = attempt.UpdatedRecommendation,
+            Confidence = attempt.Confidence,
+            OccurredUtc = attempt.CompletedUtc,
+            Duration = attempt.Duration,
+            Source = "Repair",
+        }).ToList();
+    }
+
+    private static IReadOnlyList<WorkspaceTroubleshootingHistoryEntry> BuildInvestigationHistory(WorkspaceProvisioningHealthRecord? health)
+    {
+        if (health is null)
+        {
+            return Array.Empty<WorkspaceTroubleshootingHistoryEntry>();
+        }
+
+        return health.InvestigationHistory.Select(item => new WorkspaceTroubleshootingHistoryEntry
+        {
+            Title = item.Title,
+            Outcome = item.Outcome,
+            Summary = item.Summary,
+            Evidence = item.Evidence,
+            Recommendation = item.Recommendation,
+            Confidence = item.Confidence,
+            EstimatedDuration = item.EstimatedDuration,
+            OccurredUtc = item.CompletedUtc,
+            Duration = item.Duration,
+            Source = item.ProviderName,
+        }).ToList();
+    }
+
+    private static string ResolveRecommendedNextStepLabel(string recommendation)
+    {
+        if (string.IsNullOrWhiteSpace(recommendation))
+        {
+            return "Review workspace evidence";
+        }
+
+        var normalized = recommendation.Trim().TrimEnd('.');
+        return normalized switch
+        {
+            "Reset Runtime" => "Reset Runtime",
+            "Recover Workspace" => "Recover Workspace",
+            "Open Workspace" => "Open Workspace",
+            "Keep Waiting" => "Keep Waiting",
+            "Inspect ORDS" => "Inspect ORDS",
+            "Inspect provisioning transcript" => "Inspect provisioning transcript",
+            "Inspect Docker resources" => "Inspect Docker resources",
+            "Provide Oracle APEX media" => "Provide Oracle APEX media",
+            "Stop conflicting workspace and Retry" => "Resolve Docker conflict",
+            "Run Host Diagnostics" => "Run Host Diagnostics",
+            _ when normalized.StartsWith("Inspect ", StringComparison.OrdinalIgnoreCase) => normalized,
+            _ => normalized,
+        };
+    }
+
+    private static string BuildRecommendedNextStepDescription(string recommendation, WorkspaceProvisioningHealthRecord? health, bool isProvisioningInProgress)
+    {
+        if (isProvisioningInProgress)
+        {
+            return "OpenCode is still collecting runtime evidence. Keep waiting unless the process exits, times out, or the transcript stops changing.";
+        }
+
+        if (string.IsNullOrWhiteSpace(recommendation))
+        {
+            return "Review the current evidence and choose the next investigation from the list below.";
+        }
+
+        if (string.Equals(recommendation.Trim().TrimEnd('.'), "Manual intervention required", StringComparison.OrdinalIgnoreCase))
+        {
+            return "OpenCode already tried the obvious repairs without improvement, so the next step likely requires manual runtime intervention.";
+        }
+
+        return string.IsNullOrWhiteSpace(health?.Summary)
+            ? recommendation
+            : health.Summary;
+    }
 
     private static string ExtractValidationEvidence(ProcessResult processResult)
     {

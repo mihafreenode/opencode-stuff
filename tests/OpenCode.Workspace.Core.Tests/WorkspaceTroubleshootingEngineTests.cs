@@ -154,6 +154,93 @@ public sealed class WorkspaceTroubleshootingEngineTests
         Assert.DoesNotContain("Reset Runtime", updated.RecommendedAction, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void GetAvailableInvestigations_OracleWorkspace_ContributesOracleInvestigations()
+    {
+        var snapshot = CreateSnapshot(services: ["oracle-demo", "oracle-ords"]);
+        var context = CreateContext(snapshot, CreateHealth("Oracle XML Database (XDB) is invalid.", "XDB status = INVALID", "Troubleshoot Workspace.", WorkspaceRepairability.ManualRepair.ToString()));
+
+        var investigations = WorkspaceTroubleshootingEngine.GetAvailableInvestigations(context);
+
+        Assert.Contains(investigations, item => item.Id == "inspect-oracle-runtime");
+        Assert.Contains(investigations, item => item.Id == "inspect-apex");
+        Assert.Contains(investigations, item => item.Id == "inspect-ords");
+        Assert.Contains(investigations, item => item.Id == "inspect-workspace-runtime-files");
+    }
+
+    [Fact]
+    public void GetAvailableInvestigations_PostgreSqlWorkspace_ContributesPostgreSqlInvestigation()
+    {
+        var snapshot = CreateSnapshot(services: ["postgres"]);
+        var context = CreateContext(snapshot, CreateHealth("Migration failed.", "Extension missing", "Troubleshoot Workspace.", WorkspaceRepairability.Unknown.ToString()));
+
+        var investigations = WorkspaceTroubleshootingEngine.GetAvailableInvestigations(context);
+
+        Assert.Contains(investigations, item => item.Id == "inspect-postgres-runtime");
+    }
+
+    [Fact]
+    public void ExecuteInvestigation_OracleRuntime_UpdatesRecommendationAndPersistsHistory()
+    {
+        var snapshot = CreateSnapshot();
+        var health = CreateHealth(
+            "Oracle XML Database (XDB) is invalid.",
+            "XDB status = INVALID",
+            "Troubleshoot Workspace.",
+            WorkspaceRepairability.ManualRepair.ToString(),
+            repairHistory:
+            [
+                new WorkspaceRepairAttemptRecord
+                {
+                    RepairType = "Reset Runtime",
+                    StartedUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+                    CompletedUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                    Duration = TimeSpan.FromMinutes(5),
+                    Result = WorkspaceRepairOutcome.RepairNoEffect,
+                    EvidenceBefore = "XDB status = INVALID",
+                    EvidenceAfter = "XDB status = INVALID",
+                    RootCauseBefore = "Oracle XML Database (XDB) is invalid.",
+                    RootCauseAfter = "Oracle XML Database (XDB) is invalid.",
+                    WorkspaceStateBefore = "runtime=Running",
+                    WorkspaceStateAfter = "runtime=Running",
+                    PreviousRecommendation = "Reset Runtime.",
+                    UpdatedRecommendation = "Troubleshoot Workspace.",
+                },
+            ]);
+        var context = CreateContext(snapshot, health, transcriptExcerpt: "[oracle-apex] Stage: Installing APEX\nXDB status = INVALID");
+
+        var result = WorkspaceTroubleshootingEngine.ExecuteInvestigation(context, "inspect-oracle-runtime");
+
+        Assert.Equal("Manual intervention required.", result.UpdatedHealth.RecommendedAction);
+        var investigation = Assert.Single(result.UpdatedHealth.InvestigationHistory);
+        Assert.Equal("Inspect Oracle runtime", investigation.Title);
+        Assert.Equal("XDB status = INVALID", investigation.Evidence);
+    }
+
+    [Fact]
+    public void ExecuteInvestigation_InProgressOracleApex_RecommendsKeepWaiting()
+    {
+        var snapshot = CreateSnapshot();
+        var context = CreateContext(snapshot, CreateHealth("Oracle provisioning running.", "Installing APEX", "Troubleshoot Workspace.", WorkspaceRepairability.Unknown.ToString()), isProvisioningInProgress: true, currentStatusMessage: "Installing APEX...", transcriptExcerpt: "Installing APEX");
+
+        var result = WorkspaceTroubleshootingEngine.ExecuteInvestigation(context, "inspect-apex");
+
+        Assert.Equal("Keep Waiting.", result.UpdatedHealth.RecommendedAction);
+        Assert.Equal("APEX installation is still running.", result.Investigation.Summary);
+    }
+
+    private static WorkspaceTroubleshootingContext CreateContext(WorkspaceSnapshot snapshot, WorkspaceProvisioningHealthRecord health, bool isProvisioningInProgress = false, string currentStatusMessage = "", string transcriptExcerpt = "")
+        => new()
+        {
+            Snapshot = snapshot,
+            Health = health,
+            IsProvisioningInProgress = isProvisioningInProgress,
+            CurrentOperationName = isProvisioningInProgress ? "Open Workspace" : string.Empty,
+            CurrentStatusMessage = currentStatusMessage,
+            TranscriptFilePath = Path.Combine(snapshot.Paths.ConfigPath, "transcript.log"),
+            TranscriptExcerpt = transcriptExcerpt,
+        };
+
     private static WorkspaceSnapshot CreateSnapshot(string[]? services = null, WorkspaceRuntimeState runtimeState = WorkspaceRuntimeState.Running)
     {
         var root = Path.Combine(Path.GetTempPath(), $"workspace-troubleshooting-{Guid.NewGuid():N}");
