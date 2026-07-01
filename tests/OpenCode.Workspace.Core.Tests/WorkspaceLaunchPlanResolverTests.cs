@@ -79,7 +79,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
             var plan = _resolver.Resolve(snapshot);
 
             Assert.True(plan.NeedsRecover);
-            Assert.Contains("Recover Workspace", plan.Summary, StringComparison.Ordinal);
+            Assert.Equal("Managed runtime files are missing or stale.", plan.Summary);
         }
         finally
         {

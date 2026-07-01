@@ -7,7 +7,7 @@ public static class WorkspaceHealthEngine
     public static WorkspaceHealthSnapshot Build(WorkspaceSnapshot snapshot)
         => BuildAsync(snapshot).ConfigureAwait(false).GetAwaiter().GetResult();
 
-    public static async Task<WorkspaceHealthSnapshot> BuildAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
+    public static async Task<WorkspaceHealthSnapshot> BuildAsync(WorkspaceSnapshot snapshot, IWorkspaceServiceProbeRunner? probeRunner = null, CancellationToken cancellationToken = default)
     {
         var timestamp = DateTimeOffset.UtcNow;
         var providers = new List<WorkspaceProviderHealthSnapshot>
@@ -18,7 +18,7 @@ public static class WorkspaceHealthEngine
             BuildGitProvider(snapshot, timestamp),
         };
 
-        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, probeRunner, cancellationToken).ConfigureAwait(false);
         providers.Add(BuildServicesProvider(services, timestamp));
 
         if (IsOracleWorkspace(snapshot))

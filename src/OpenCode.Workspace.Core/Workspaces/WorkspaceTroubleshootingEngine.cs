@@ -13,6 +13,14 @@ public sealed class WorkspaceTroubleshootingContext
     public string TranscriptExcerpt { get; init; } = string.Empty;
     public ProcessResult? VolatileValidation { get; init; }
     public WorkspaceTimelineEvent? LastTimelineEvent { get; init; }
+    public IReadOnlyList<WorkspaceTroubleshootingCheck> TerminalReadinessChecks { get; init; } = Array.Empty<WorkspaceTroubleshootingCheck>();
+    public string LastAttachFailureReason { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceTroubleshootingCheck
+{
+    public required string Label { get; init; }
+    public required string Value { get; init; }
 }
 
 public sealed class WorkspaceInvestigationDefinition
@@ -545,6 +553,7 @@ public static class WorkspaceTroubleshootingEngine
             =>
             [
                 new WorkspaceInvestigationDefinition { Id = "inspect-workspace-runtime-files", Title = "Inspect workspace runtime files", Description = "Inspect runtime-state, applied-state, and attach artifacts for this workspace.", EstimatedDuration = "10-20 seconds", ProviderName = "Generic" },
+                new WorkspaceInvestigationDefinition { Id = "inspect-terminal-readiness", Title = "Inspect terminal readiness", Description = "Inspect attach scripts, runtime-state, container exec readiness, and terminal launch evidence.", EstimatedDuration = "10-20 seconds", ProviderName = "Generic" },
                 new WorkspaceInvestigationDefinition { Id = "inspect-generated-configuration", Title = "Inspect generated configuration", Description = "Inspect compose, environment, and generated provisioning artifacts.", EstimatedDuration = "10-20 seconds", ProviderName = "Generic" },
                 new WorkspaceInvestigationDefinition { Id = "inspect-docker-resources", Title = "Inspect Docker resources", Description = "Inspect current Docker and compose evidence for this workspace.", EstimatedDuration = "10-20 seconds", ProviderName = "Generic" },
                 new WorkspaceInvestigationDefinition { Id = "inspect-provisioning-transcript", Title = "Inspect provisioning transcript", Description = "Inspect the latest provisioning transcript and link the recommendation to relevant log evidence.", EstimatedDuration = "10-20 seconds", ProviderName = "Generic" },
@@ -590,6 +599,22 @@ public static class WorkspaceTroubleshootingEngine
                     var evidence = missing.Count == 0 ? "Generated configuration files are present." : $"Missing generated configuration files: {string.Join(", ", missing)}.";
                     var recommendation = missing.Count == 0 ? "Inspect Docker resources." : "Recover Workspace.";
                     execution = CompleteInvestigation(context, investigationId, "Inspect generated configuration", "Generic", "Generated configuration inspected.", evidence, recommendation, missing.Count == 0 ? "MEDIUM" : "HIGH", "10-20 seconds", missing.Count == 0 ? "Generated configuration looks complete." : "Generated configuration gap confirmed.");
+                    return true;
+                }
+
+                case "inspect-terminal-readiness":
+                {
+                    var evidence = context.TerminalReadinessChecks.Count == 0
+                        ? "No terminal readiness evidence was collected."
+                        : string.Join(Environment.NewLine, context.TerminalReadinessChecks.Select(item => $"{item.Label}: {item.Value}"));
+                    if (!string.IsNullOrWhiteSpace(context.LastAttachFailureReason))
+                    {
+                        evidence = string.IsNullOrWhiteSpace(evidence)
+                            ? $"Last attach failure: {context.LastAttachFailureReason}"
+                            : evidence + Environment.NewLine + $"Last attach failure: {context.LastAttachFailureReason}";
+                    }
+
+                    execution = CompleteInvestigation(context, investigationId, "Inspect terminal readiness", "Generic", "Terminal readiness inspection completed.", evidence, "Troubleshoot Workspace.", "HIGH", "10-20 seconds", "Terminal readiness evidence collected.");
                     return true;
                 }
 

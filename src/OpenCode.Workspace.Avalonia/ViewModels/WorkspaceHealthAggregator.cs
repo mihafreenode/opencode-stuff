@@ -68,19 +68,20 @@ internal static class WorkspaceHealthAggregator
         var updateRequired = snapshot?.UpdateRequired == true || snapshot?.AppliedState is null;
         var isFreshWorkspace = IsFreshWorkspace(workspace);
         var hasTransientFailure = workspace.HasTransientOperationFailure && !isOperationInProgress;
+        var hasLaunchReadinessProblem = HasLaunchReadinessProblem(workspace, snapshot, health, runtimeRunning);
         var servicesSummary = BuildServicesSummary(health);
-        var currentStatus = BuildCurrentStatus(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace);
+        var currentStatus = BuildCurrentStatus(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, hasLaunchReadinessProblem);
         var currentActivity = isOperationInProgress
             ? DetermineActivityLabel(currentOperationName, currentStatusMessage)
             : hasTransientFailure
-                ? DetermineFailureActivityLabel(workspace.FailedOperationName)
+                ? DetermineFailureActivityLabel(workspace.FailedOperationName, hasLaunchReadinessProblem)
                 : "None";
         var summary = isOperationInProgress
             ? BuildActivitySummary(currentOperationName, currentStatusMessage)
             : hasTransientFailure
-                ? BuildTransientFailureSummary(workspace.TransientOperationSummary)
-            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary);
-        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName);
+                ? BuildTransientFailureSummary(workspace.TransientOperationSummary, hasLaunchReadinessProblem, servicesSummary)
+            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary, hasLaunchReadinessProblem);
+        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName, hasLaunchReadinessProblem);
         var recommendation = BuildRecommendation(primaryActionLabel);
 
         return new WorkspaceAggregatedState
@@ -115,11 +116,16 @@ internal static class WorkspaceHealthAggregator
         return null;
     }
 
-    private static string BuildCurrentStatus(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isFreshWorkspace)
+    private static string BuildCurrentStatus(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isFreshWorkspace, bool hasLaunchReadinessProblem)
     {
         if (isFreshWorkspace && !runtimeRunning)
         {
             return "Not Prepared";
+        }
+
+        if (hasLaunchReadinessProblem)
+        {
+            return "Needs Attention";
         }
 
         if (runtimeMissing)
@@ -145,11 +151,17 @@ internal static class WorkspaceHealthAggregator
         bool updateRequired,
         bool runtimeRunning,
         bool isFreshWorkspace,
-        string servicesSummary)
+        string servicesSummary,
+        bool hasLaunchReadinessProblem)
     {
         if (isFreshWorkspace && !runtimeRunning)
         {
             return "Open Workspace will prepare the runtime and open the terminal.";
+        }
+
+        if (hasLaunchReadinessProblem)
+        {
+            return BuildLaunchReadinessSummary(servicesSummary);
         }
 
         if (runtimeMissing)
@@ -314,27 +326,34 @@ internal static class WorkspaceHealthAggregator
         };
     }
 
-    private static string DetermineFailureActivityLabel(string? operationName)
-        => operationName switch
-        {
-            "Reprovision" or "Recover" or "Reset Runtime" or "Open Workspace" => "Troubleshooting Recommended",
-            "Attach" => "Attach Failed",
-            "Backup" => "Backup Failed",
-            "Create Save Point" => "Save Point Failed",
-            "Create Checkpoint" => "Checkpoint Failed",
-            _ => "Recent Failure",
-        };
+    private static string DetermineFailureActivityLabel(string? operationName, bool hasLaunchReadinessProblem)
+        => hasLaunchReadinessProblem
+            ? "Terminal Launch Failed"
+            : operationName switch
+            {
+                "Reprovision" or "Recover" or "Reset Runtime" or "Open Workspace" => "Troubleshooting Recommended",
+                "Attach" => "Attach Failed",
+                "Backup" => "Backup Failed",
+                "Create Save Point" => "Save Point Failed",
+                "Create Checkpoint" => "Checkpoint Failed",
+                _ => "Recent Failure",
+            };
 
     private static bool IsFreshWorkspace(WorkspaceSummaryViewModel workspace)
         => workspace.Record.LastPreparedUtc is null
             && workspace.Record.LastOperationSucceeded == true
             && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
 
-    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName)
+    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName, bool hasLaunchReadinessProblem)
     {
         if (isFreshWorkspace || runtimeMissing || !runtimeRunning)
         {
             return "Open Workspace";
+        }
+
+        if (hasLaunchReadinessProblem)
+        {
+            return "Troubleshoot Workspace";
         }
 
         if (hasTransientFailure && failedOperationName is "Reprovision" or "Recover" or "Reset Runtime" or "Open Workspace")
@@ -347,8 +366,13 @@ internal static class WorkspaceHealthAggregator
             : "Open Workspace";
     }
 
-    private static string BuildTransientFailureSummary(string summary)
+    private static string BuildTransientFailureSummary(string summary, bool hasLaunchReadinessProblem, string servicesSummary)
     {
+        if (hasLaunchReadinessProblem)
+        {
+            return BuildLaunchReadinessSummary(servicesSummary);
+        }
+
         if (string.IsNullOrWhiteSpace(summary))
         {
             return "Workspace action failed.";
@@ -363,6 +387,38 @@ internal static class WorkspaceHealthAggregator
         => string.Equals(primaryActionLabel, "Troubleshoot Workspace", StringComparison.Ordinal)
             ? actions.TroubleshootWorkspace
             : actions.OpenWorkspace;
+
+    private static bool HasLaunchReadinessProblem(WorkspaceSummaryViewModel workspace, WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeRunning)
+    {
+        if (!runtimeRunning)
+        {
+            return false;
+        }
+
+        var message = workspace.Record.LastOperationSucceeded == false
+            ? workspace.Record.LastOperationResult ?? workspace.Record.LastProvisioningHealth?.Reason ?? string.Empty
+            : workspace.Record.LastProvisioningHealth?.Reason ?? string.Empty;
+        if (!IsLaunchReadinessProblem(message))
+        {
+            return false;
+        }
+
+        return health?.Services.Any(item => item.Status == WorkspaceHealthStatus.Healthy) == true || snapshot?.RuntimeState == WorkspaceRuntimeState.Running;
+    }
+
+    private static bool IsLaunchReadinessProblem(string message)
+        => !string.IsNullOrWhiteSpace(message)
+            && (message.Contains("terminal-ready state", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("terminal launch readiness", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("could not finish preparing the terminal", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("runtime files need repair", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("terminal could not be prepared", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("attach scripts and runtime state", StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildLaunchReadinessSummary(string servicesSummary)
+        => string.IsNullOrWhiteSpace(servicesSummary)
+            ? "Workspace services are running, but terminal launch is not ready."
+            : $"Workspace services are running, but terminal launch is not ready. {servicesSummary}";
 
     private static string ExtractHistoryReason(string message)
     {
@@ -380,11 +436,17 @@ internal static class WorkspaceHealthAggregator
                 continue;
             }
 
-            return rawLine.EndsWith('.') ? rawLine : rawLine + ".";
+            var normalized = NormalizeHistoryReason(rawLine.EndsWith('.') ? rawLine : rawLine + ".");
+            return normalized;
         }
 
         return "Earlier workspace operation failed.";
     }
+
+    private static string NormalizeHistoryReason(string reason)
+        => IsLaunchReadinessProblem(reason)
+            ? "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state."
+            : reason.Replace("Run Recover Workspace.", "Troubleshoot Workspace can inspect attach scripts and runtime state.", StringComparison.Ordinal);
 
     private static string JoinNames(IReadOnlyList<string> values)
         => values.Count == 0 ? "No applications" : string.Join(", ", values);

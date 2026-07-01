@@ -16,7 +16,7 @@ public sealed class WorkspaceLaunchPlanResolver
             return new WorkspaceLaunchPlan
             {
                 NeedsRecover = true,
-                Summary = "Runtime files need repair. Run Recover Workspace.",
+                Summary = "Managed runtime files are missing or stale.",
             };
         }
 
@@ -34,7 +34,7 @@ public sealed class WorkspaceLaunchPlanResolver
             return new WorkspaceLaunchPlan
             {
                 NeedsRecover = true,
-                Summary = "Runtime files need repair. Run Recover Workspace.",
+                Summary = "Managed runtime files are missing or stale.",
             };
         }
 

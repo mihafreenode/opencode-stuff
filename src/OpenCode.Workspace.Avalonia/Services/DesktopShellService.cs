@@ -10,6 +10,9 @@ namespace OpenCode.Workspace.Avalonia.Services;
 
 public sealed class DesktopShellService : IDesktopShellService
 {
+    private const string OpenWorkspaceTerminalReadinessFailureMessage = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.";
+    private const string TerminalLaunchReadinessFailureMessage = "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state.";
+
     private static readonly TimeSpan OpenWorkspaceLoadTimeout = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan OpenWorkspaceStartTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan OpenWorkspaceProvisionTimeout = TimeSpan.FromMinutes(20);
@@ -209,11 +212,16 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         var transcript = CreateTranscript("Open Workspace", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
         var snapshot = currentSnapshot;
+        var repairBaseline = currentSnapshot?.Record.LastProvisioningHealth;
+        var repairSnapshotBefore = currentSnapshot;
+        var automaticRepairAttempted = false;
 
         try
         {
             append(OperationTranscriptLineKind.Status, "Checking workspace...");
             snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
+            repairBaseline ??= snapshot.Record.LastProvisioningHealth;
+            repairSnapshotBefore ??= snapshot;
             for (var phaseIndex = 0; phaseIndex < 4; phaseIndex++)
             {
                 snapshot = await LoadOpenWorkspaceSnapshotAsync(rootPath, snapshot, append, log, cancellationToken);
@@ -222,6 +230,12 @@ public sealed class DesktopShellService : IDesktopShellService
 
                 if (plan.NeedsRecover)
                 {
+                    if (automaticRepairAttempted)
+                    {
+                        throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
+                    }
+
+                    automaticRepairAttempted = true;
                     await RunOpenPhaseAsync(
                         snapshot,
                         append,
@@ -304,14 +318,32 @@ public sealed class DesktopShellService : IDesktopShellService
                 return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' is open.", Transcript = transcript };
             }
 
-            throw new InvalidOperationException("Workspace open did not reach a terminal-ready state. Run Recover Workspace.");
+            throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
         }
         catch (Exception exception)
         {
             if (snapshot is not null)
             {
                 log?.Invoke(new CommandLogEntry { Source = "app", Message = exception.ToString() });
-                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Open Workspace");
+                WorkspaceProvisioningHealthRecord? provisioningHealth = null;
+                if (IsTerminalLaunchReadinessProblem(exception.Message))
+                {
+                    var completedUtc = DateTimeOffset.UtcNow;
+                    var terminalReadinessHealth = BuildTerminalLaunchReadinessHealth(snapshot, completedUtc, exception.Message);
+                    provisioningHealth = automaticRepairAttempted
+                        ? WorkspaceTroubleshootingEngine.RecordRepairAttempt(
+                            repairBaseline,
+                            "Recover Workspace",
+                            transcript.StartedUtc,
+                            completedUtc,
+                            repairSnapshotBefore,
+                            snapshot,
+                            terminalReadinessHealth,
+                            WorkspaceRepairOutcome.RepairNoEffect)
+                        : terminalReadinessHealth;
+                }
+
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Open Workspace", provisioningHealth);
             }
 
             AppendFailureTranscript(exception, append);
@@ -1083,12 +1115,12 @@ public sealed class DesktopShellService : IDesktopShellService
 
             if (plan.NeedsRecover)
             {
-                throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+                throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
             }
 
             if (plan.NeedsDiagnostics)
             {
-                throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+                throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
             }
 
             if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
@@ -1320,6 +1352,9 @@ public sealed class DesktopShellService : IDesktopShellService
         var volatileValidation = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, cancellationToken: cancellationToken);
         var timeline = _timelineService.Load(snapshot.Paths.TimelinePath);
         var transcriptFilePath = ResolveTroubleshootingTranscriptPath(request, snapshot);
+        var terminalReadinessChecks = await InspectTerminalReadinessAsync(snapshot, cancellationToken);
+        var lastAttachFailureReason = ResolveLastAttachFailureReason(snapshot.Record, ReadTranscriptExcerpt(transcriptFilePath));
+        var transcriptExcerpt = ReadTranscriptExcerpt(transcriptFilePath);
 
         return new WorkspaceTroubleshootingContext
         {
@@ -1329,9 +1364,11 @@ public sealed class DesktopShellService : IDesktopShellService
             CurrentOperationName = request.CurrentOperationName,
             CurrentStatusMessage = request.CurrentStatusMessage,
             TranscriptFilePath = transcriptFilePath,
-            TranscriptExcerpt = ReadTranscriptExcerpt(transcriptFilePath),
+            TranscriptExcerpt = transcriptExcerpt,
             VolatileValidation = volatileValidation,
             LastTimelineEvent = timeline.Events.OrderByDescending(item => item.OccurredUtc).FirstOrDefault(),
+            TerminalReadinessChecks = terminalReadinessChecks,
+            LastAttachFailureReason = lastAttachFailureReason,
         };
     }
 
@@ -1356,7 +1393,19 @@ public sealed class DesktopShellService : IDesktopShellService
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime-state.yaml", Value = DescribeFileState(snapshot.Paths.RuntimeStatePath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Applied-state.yaml", Value = DescribeFileState(snapshot.Paths.AppliedStatePath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Attach script", Value = DescribeFileState(snapshot.Paths.AttachWrapperScriptPath) });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Workspace shell script", Value = DescribeFileState(snapshot.Paths.OpencodeWorkspaceShellPath) });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Attach diagnostics log", Value = DescribeFileState(snapshot.Paths.AttachDiagnosticsLogPath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Provision script", Value = DescribeFileState(snapshot.Paths.ProvisionScriptPath) });
+
+        foreach (var check in context.TerminalReadinessChecks)
+        {
+            facts.Add(new WorkspaceTroubleshootingFact { Label = check.Label, Value = check.Value });
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.LastAttachFailureReason))
+        {
+            facts.Add(new WorkspaceTroubleshootingFact { Label = "Last attach failure", Value = context.LastAttachFailureReason });
+        }
 
         if (health is not null)
         {
@@ -1413,13 +1462,15 @@ public sealed class DesktopShellService : IDesktopShellService
             facts.Add(new WorkspaceTroubleshootingFact { Label = "Transcript file", Value = context.TranscriptFilePath });
         }
 
-        var suggestedNextSteps = BuildSuggestedNextSteps(request, health, runtimeStateMissing, appliedStateMissing, hostProblem, isOracleWorkspace);
+        var terminalReadinessProblem = IsTerminalLaunchReadinessProblem(health?.Reason ?? snapshot.Record.LastOperationResult ?? string.Empty)
+            || context.TerminalReadinessChecks.Any(item => item.Label is "Docker exec" or "Workspace shell script in container" && item.Value.StartsWith("Failed", StringComparison.OrdinalIgnoreCase));
+        var suggestedNextSteps = BuildSuggestedNextSteps(request, health, runtimeStateMissing, appliedStateMissing, hostProblem, isOracleWorkspace, terminalReadinessProblem);
         var canResetRuntime = string.Equals(health?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal);
-        var headline = BuildTroubleshootingHeadline(request, health, hostProblem, runtimeStateMissing, appliedStateMissing);
-        var summary = BuildTroubleshootingSummary(request, health, isOracleWorkspace, hostProblem, runtimeStateMissing, appliedStateMissing, attachScriptMissing);
+        var headline = BuildTroubleshootingHeadline(request, health, hostProblem, runtimeStateMissing, appliedStateMissing, terminalReadinessProblem);
+        var summary = BuildTroubleshootingSummary(request, health, isOracleWorkspace, hostProblem, runtimeStateMissing, appliedStateMissing, attachScriptMissing, terminalReadinessProblem);
         var serviceRecommendation = snapshot.Health.Services.FirstOrDefault(item => item.Status is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Attention)?.Recommendation;
         var recommendation = string.IsNullOrWhiteSpace(serviceRecommendation)
-            ? BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace)
+            ? BuildTroubleshootingRecommendation(request, health, hostProblem, canResetRuntime, runtimeStateMissing, isOracleWorkspace, terminalReadinessProblem)
             : serviceRecommendation;
         var investigations = WorkspaceTroubleshootingEngine.GetAvailableInvestigations(context)
             .Select(item => new WorkspaceTroubleshootingAction
@@ -1504,8 +1555,78 @@ public sealed class DesktopShellService : IDesktopShellService
                 ? snapshot.Paths.AttachDiagnosticsLogPath
                 : string.Empty;
 
+    private async Task<IReadOnlyList<WorkspaceTroubleshootingCheck>> InspectTerminalReadinessAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        var checks = new List<WorkspaceTroubleshootingCheck>
+        {
+            new() { Label = "Workspace container", Value = snapshot.RuntimeState == WorkspaceRuntimeState.Running ? "Running" : snapshot.RuntimeState.ToString() },
+            new() { Label = "Windows Terminal launch readiness", Value = _workspaceLaunchPlanResolver.Resolve(snapshot).TerminalUnavailable ? "Launch plan reports terminal unavailable." : "Launch plan allows terminal handoff." },
+        };
+
+        if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            checks.Add(new WorkspaceTroubleshootingCheck { Label = "Docker exec", Value = "Skipped: workspace container is not running." });
+            checks.Add(new WorkspaceTroubleshootingCheck { Label = "Workspace shell script in container", Value = "Skipped: workspace container is not running." });
+            return checks;
+        }
+
+        var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
+        var processRunner = new ProcessRunner();
+        var dockerExec = await processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "true"], cancellationToken: cancellationToken);
+        checks.Add(new WorkspaceTroubleshootingCheck
+        {
+            Label = "Docker exec",
+            Value = dockerExec.IsSuccess ? "Docker exec to workspace container works." : $"Failed: {FirstFailureLine(dockerExec)}",
+        });
+
+        var shellScript = await processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "test -f /opt/opencode-workspace/config/opencode-workspace-shell.sh && echo present"], cancellationToken: cancellationToken);
+        checks.Add(new WorkspaceTroubleshootingCheck
+        {
+            Label = "Workspace shell script in container",
+            Value = shellScript.IsSuccess ? "opencode-workspace-shell.sh exists in the container." : $"Failed: {FirstFailureLine(shellScript)}",
+        });
+
+        return checks;
+    }
+
+    private static string ResolveLastAttachFailureReason(WorkspaceRecord record, string transcriptExcerpt)
+    {
+        if (record.LastOperationSucceeded == false
+            && (string.Equals(record.LastOperationName, "Open Workspace", StringComparison.Ordinal)
+                || string.Equals(record.LastOperationName, "Attach", StringComparison.Ordinal)))
+        {
+            return string.IsNullOrWhiteSpace(record.LastOperationResult)
+                ? string.Empty
+                : ExtractPrimaryFailureLine(record.LastOperationResult);
+        }
+
+        if (string.IsNullOrWhiteSpace(transcriptExcerpt))
+        {
+            return string.Empty;
+        }
+
+        foreach (var line in transcriptExcerpt.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Reverse())
+        {
+            if (line.Contains("attach", StringComparison.OrdinalIgnoreCase) || line.Contains("terminal", StringComparison.OrdinalIgnoreCase))
+            {
+                return line;
+            }
+        }
+
+        return string.Empty;
+    }
+
     private static string DescribeFileState(string path)
         => File.Exists(path) ? $"Present: {path}" : $"Missing: {path}";
+
+    private static string FirstFailureLine(ProcessResult result)
+        => result.StandardErrorLines.Concat(result.StandardOutputLines).FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim() ?? $"Exit code {result.ExitCode}";
+
+    private static string ExtractPrimaryFailureLine(string message)
+        => message.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(line => !line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase))
+            ?? message;
 
     private static string ReadTranscriptExcerpt(string filePath)
     {
@@ -1664,7 +1785,7 @@ public sealed class DesktopShellService : IDesktopShellService
         return lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
     }
 
-    private static string BuildTroubleshootingHeadline(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing)
+    private static string BuildTroubleshootingHeadline(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing, bool terminalReadinessProblem)
     {
         if (request.IsOperationInProgress)
         {
@@ -1681,10 +1802,15 @@ public sealed class DesktopShellService : IDesktopShellService
             return "Managed runtime files need repair";
         }
 
+        if (terminalReadinessProblem)
+        {
+            return "Terminal launch readiness failed";
+        }
+
         return string.IsNullOrWhiteSpace(health?.Stage) ? "Workspace troubleshooting" : health.Stage;
     }
 
-    private static string BuildTroubleshootingSummary(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool isOracleWorkspace, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing, bool attachScriptMissing)
+    private static string BuildTroubleshootingSummary(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool isOracleWorkspace, bool hostProblem, bool runtimeStateMissing, bool appliedStateMissing, bool attachScriptMissing, bool terminalReadinessProblem)
     {
         if (request.IsOperationInProgress)
         {
@@ -1703,12 +1829,17 @@ public sealed class DesktopShellService : IDesktopShellService
             return "Managed runtime artifacts are missing or stale after the last operation. Open Workspace can usually repair these safely and continue.";
         }
 
+        if (terminalReadinessProblem)
+        {
+            return "Workspace services are available, but OpenCode terminal could not be prepared. Troubleshoot Workspace can inspect attach scripts and runtime state.";
+        }
+
         return string.IsNullOrWhiteSpace(health?.Summary)
             ? "OpenCode gathered the current workspace evidence so you can see what failed and what to try next."
             : health.Summary;
     }
 
-    private static string BuildTroubleshootingRecommendation(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool canResetRuntime, bool runtimeStateMissing, bool isOracleWorkspace)
+    private static string BuildTroubleshootingRecommendation(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool hostProblem, bool canResetRuntime, bool runtimeStateMissing, bool isOracleWorkspace, bool terminalReadinessProblem)
     {
         if (request.IsOperationInProgress)
         {
@@ -1727,6 +1858,11 @@ public sealed class DesktopShellService : IDesktopShellService
             return "Open Workspace should safely repair the missing runtime state and continue.";
         }
 
+        if (terminalReadinessProblem)
+        {
+            return "Troubleshoot Workspace can inspect attach scripts and runtime state.";
+        }
+
         if (canResetRuntime)
         {
             return "Investigate the workspace evidence first. Reset Runtime is available in Advanced if cleanup repair is actually needed.";
@@ -1737,7 +1873,7 @@ public sealed class DesktopShellService : IDesktopShellService
             : health.RecommendedAction;
     }
 
-    private static IReadOnlyList<string> BuildSuggestedNextSteps(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool runtimeStateMissing, bool appliedStateMissing, bool hostProblem, bool isOracleWorkspace)
+    private static IReadOnlyList<string> BuildSuggestedNextSteps(WorkspaceTroubleshootingRequest request, WorkspaceProvisioningHealthRecord? health, bool runtimeStateMissing, bool appliedStateMissing, bool hostProblem, bool isOracleWorkspace, bool terminalReadinessProblem)
     {
         if (request.IsOperationInProgress)
         {
@@ -1747,6 +1883,12 @@ public sealed class DesktopShellService : IDesktopShellService
         }
 
         var steps = new List<string>();
+
+        if (terminalReadinessProblem)
+        {
+            steps.Add("Inspect terminal readiness checks before retrying Open Workspace.");
+            steps.Add("Use Troubleshoot Workspace to verify attach scripts, runtime-state, and container exec readiness.");
+        }
         if (runtimeStateMissing || appliedStateMissing)
         {
             steps.Add("Open Workspace to let OpenCode repair the missing managed runtime files.");
@@ -2134,18 +2276,62 @@ public sealed class DesktopShellService : IDesktopShellService
 
         if (!File.Exists(snapshot.Paths.RuntimeStatePath) || !File.Exists(snapshot.Paths.AppliedStatePath))
         {
-            throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+            throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
         }
 
         if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath) || !File.Exists(snapshot.Paths.ComposePath))
         {
-            throw new InvalidOperationException("Runtime files need repair. Run Recover Workspace.");
+            throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
         }
 
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
         {
-            throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+            throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
         }
+    }
+
+    private static bool IsTerminalLaunchReadinessProblem(string message)
+        => !string.IsNullOrWhiteSpace(message)
+            && (message.Contains("terminal-ready state", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("terminal launch readiness", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("could not finish preparing the terminal", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("attach scripts and runtime state", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("runtime files need repair", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("terminal could not be prepared", StringComparison.OrdinalIgnoreCase));
+
+    private static WorkspaceProvisioningHealthRecord BuildTerminalLaunchReadinessHealth(WorkspaceSnapshot snapshot, DateTimeOffset completedUtc, string errorMessage)
+    {
+        var availableApplications = snapshot.Health.Services
+            .Where(item => string.Equals(item.Category, "Application", StringComparison.OrdinalIgnoreCase) && item.Status == WorkspaceHealthStatus.Healthy)
+            .Select(item => item.Name)
+            .ToList();
+        var evidence = availableApplications.Count == 0
+            ? "Attach artifacts exist, but OpenCode terminal launch could not be prepared."
+            : $"Available services: {string.Join(", ", availableApplications)}. Terminal launch artifacts still failed readiness validation.";
+
+        return new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = "Verify terminal launch readiness",
+            Summary = availableApplications.Count == 0
+                ? "Terminal launch readiness failed."
+                : "Workspace services are available, but OpenCode terminal could not be prepared.",
+            Reason = string.IsNullOrWhiteSpace(errorMessage) ? TerminalLaunchReadinessFailureMessage : errorMessage,
+            Evidence = evidence,
+            ProblemScope = "WorkspaceProblem",
+            RecommendedAction = "Troubleshoot Workspace.",
+            Confidence = "HIGH",
+            Timestamp = completedUtc,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.AttachDiagnosticsLogPath,
+            WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
+            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            EstimatedEffort = "Low",
+            EstimatedDuration = "1-2 minutes",
+            LastDiagnosticsTimestamp = completedUtc,
+            RepairHistory = snapshot.Record.LastProvisioningHealth?.RepairHistory ?? Array.Empty<WorkspaceRepairAttemptRecord>(),
+            InvestigationHistory = snapshot.Record.LastProvisioningHealth?.InvestigationHistory ?? Array.Empty<WorkspaceInvestigationRecord>(),
+        };
     }
 
     private async Task RunOpenPhaseAsync(WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, string statusText, TimeSpan timeout, Func<CancellationToken, Task> operation, CancellationToken cancellationToken)

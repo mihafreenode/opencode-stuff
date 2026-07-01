@@ -2319,6 +2319,51 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task TerminalReadyFailure_DoesNotLeakRecoverWorkspaceInPrimaryUi()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace open did not reach a terminal-ready state. Run Recover Workspace.", lastOperationSucceeded: false);
+        snapshot = WithHealth(snapshot, CreateHealthSnapshot(
+            WorkspaceHealthStatus.Attention,
+            "Workspace is running.",
+            "Open Workspace.",
+            services:
+            [
+                CreateServiceHealthSnapshot("pgadmin", "pgAdmin", WorkspaceHealthStatus.Healthy, "pgAdmin is available."),
+            ]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Attention", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.DoesNotContain("Recover Workspace", page.DetailSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Run Recover Workspace", page.DetailRecommendation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServicesAvailableButTerminalNotReady_ShowsLaunchReadinessSummary()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.", lastOperationSucceeded: false);
+        snapshot = WithHealth(snapshot, CreateHealthSnapshot(
+            WorkspaceHealthStatus.Attention,
+            "Workspace is running.",
+            "Open Workspace.",
+            services:
+            [
+                CreateServiceHealthSnapshot("ords", "Oracle REST Data Services", WorkspaceHealthStatus.Healthy, "ORDS is available."),
+                CreateServiceHealthSnapshot("sql-developer-web", "SQL Developer Web", WorkspaceHealthStatus.Healthy, "SQL Developer Web is available."),
+            ]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Attention", page.SelectedWorkspace?.Headline);
+        Assert.Contains("Workspace services are running, but terminal launch is not ready.", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Troubleshoot Workspace.", page.DetailRecommendation);
+    }
+
+    [Fact]
     public async Task ReprovisioningSuppressesPreviousFailureHeadline()
     {
         var previousFailure = "Oracle prerequisite validation failed. XDB status was INVALID.";

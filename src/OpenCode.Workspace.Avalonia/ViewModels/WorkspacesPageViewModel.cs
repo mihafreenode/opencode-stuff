@@ -2355,7 +2355,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return null;
         }
 
-        var reason = ExtractFailureReason(failureMessage);
+        var reason = NormalizeFailureReason(ExtractFailureReason(failureMessage));
         var health = workspace.Record.LastProvisioningHealth;
         var repairability = GetRepairabilityAssessment(workspace);
         var canRetry = CanRetryWorkspace(workspace);
@@ -2442,6 +2442,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string BuildFailureHeadline(string? operationName, string reason)
     {
+        if (IsTerminalLaunchReadinessProblem(reason))
+        {
+            return "Terminal launch readiness failed.";
+        }
+
         if (reason.Contains("runtime state is missing", StringComparison.OrdinalIgnoreCase))
         {
             return "Runtime state is missing.";
@@ -2490,6 +2495,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private string? BuildPrimaryAction(WorkspaceSummaryViewModel workspace, WorkspaceProvisioningHealthRecord? health, string reason, WorkspaceRepairabilityAssessment? repairability, WorkspaceFailureProblemScope scope, bool canRetry, bool canRecover, bool canTroubleshoot, bool canCleanup)
     {
+        if (IsTerminalLaunchReadinessProblem(reason) && canTroubleshoot)
+        {
+            return "Troubleshoot Workspace";
+        }
+
         if (reason.Contains("not running", StringComparison.OrdinalIgnoreCase) && CanStartWorkspace(workspace))
         {
             return "Open Workspace";
@@ -2571,6 +2581,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         if (!string.IsNullOrWhiteSpace(primaryAction))
         {
+            if (IsTerminalLaunchReadinessProblem(reason) && string.Equals(primaryAction, "Troubleshoot Workspace", StringComparison.Ordinal))
+            {
+                return "Troubleshoot Workspace can inspect attach scripts and runtime state.";
+            }
+
             return primaryAction switch
             {
                 "Open Workspace" => "Open Workspace.",
@@ -2616,12 +2631,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private static bool RequiresRecoverWorkspace(string reason, WorkspaceProvisioningHealthRecord? health)
-        => reason.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase)
+        => !IsTerminalLaunchReadinessProblem(reason)
+            && (reason.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase)
             || reason.Contains("generated", StringComparison.OrdinalIgnoreCase)
             || reason.Contains("runtime state is missing", StringComparison.OrdinalIgnoreCase)
             || reason.Contains("runtime files need repair", StringComparison.OrdinalIgnoreCase)
             || string.Equals(health?.Repairability, WorkspaceRepairability.AutomaticRepair.ToString(), StringComparison.Ordinal)
-                && string.Equals(health?.RecommendedAction, "Run Recover Workspace.", StringComparison.Ordinal);
+                && string.Equals(health?.RecommendedAction, "Run Recover Workspace.", StringComparison.Ordinal));
 
     private static bool IsHostProblem(string reason, string evidence, string stage)
         => ContainsAny(reason, evidence, stage,
@@ -2665,6 +2681,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             "runtime state",
             "workspace runtime could not be validated",
             "workspace configuration");
+
+    private static bool IsTerminalLaunchReadinessProblem(string reason)
+        => reason.Contains("terminal-ready state", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("terminal launch readiness", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("could not finish preparing the terminal", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("terminal could not be prepared", StringComparison.OrdinalIgnoreCase)
+            || reason.Contains("attach scripts and runtime state", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeFailureReason(string reason)
+        => IsTerminalLaunchReadinessProblem(reason)
+            ? "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state."
+            : reason.Replace("Run Recover Workspace.", "Troubleshoot Workspace can inspect the runtime files and launch readiness.", StringComparison.Ordinal);
 
     private static bool ContainsAny(string reason, string evidence, string stage, params string[] patterns)
         => patterns.Any(pattern =>

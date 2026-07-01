@@ -275,6 +275,104 @@ public sealed class DesktopShellServiceReprovisionStateTests
     }
 
     [Fact]
+    public async Task TroubleshootWorkspace_IncludesTerminalReadinessChecks()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Terminal Readiness");
+            var runningSnapshot = new WorkspaceSnapshot
+            {
+                Record = new WorkspaceRecord
+                {
+                    Name = fixture.OpenSnapshot.Record.Name,
+                    RootPath = fixture.OpenSnapshot.Record.RootPath,
+                    RepositoryPath = fixture.OpenSnapshot.Record.RepositoryPath,
+                    ConfigurationPath = fixture.OpenSnapshot.Record.ConfigurationPath,
+                    SourceType = fixture.OpenSnapshot.Record.SourceType,
+                    ImportedFromExistingCheckout = fixture.OpenSnapshot.Record.ImportedFromExistingCheckout,
+                    OriginalDefaultBranch = fixture.OpenSnapshot.Record.OriginalDefaultBranch,
+                    SelectedWorkspaceBranch = fixture.OpenSnapshot.Record.SelectedWorkspaceBranch,
+                    RemoteOriginUrl = fixture.OpenSnapshot.Record.RemoteOriginUrl,
+                    CreatedUtc = fixture.OpenSnapshot.Record.CreatedUtc,
+                    LastOpenedUtc = fixture.OpenSnapshot.Record.LastOpenedUtc,
+                    LastPreparedUtc = fixture.OpenSnapshot.Record.LastPreparedUtc,
+                    OracleSoftwareNoticeShown = fixture.OpenSnapshot.Record.OracleSoftwareNoticeShown,
+                    LastOperationName = "Open Workspace",
+                    LastOperationResult = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.",
+                    LastOperationSucceeded = false,
+                    LastOperationUtc = DateTimeOffset.UtcNow,
+                },
+                Definition = fixture.OpenSnapshot.Definition,
+                Paths = fixture.OpenSnapshot.Paths,
+                ConfigurationPath = fixture.OpenSnapshot.ConfigurationPath,
+                RuntimeState = WorkspaceRuntimeState.Running,
+                Safety = fixture.OpenSnapshot.Safety,
+                Session = fixture.OpenSnapshot.Session,
+                AppliedState = fixture.OpenSnapshot.AppliedState,
+                LocalRuntimeState = fixture.OpenSnapshot.LocalRuntimeState,
+                ResolvedRuntimePlan = fixture.OpenSnapshot.ResolvedRuntimePlan,
+                UpdateRequired = false,
+                Health = new WorkspaceHealthSnapshot
+                {
+                    OverallStatus = WorkspaceHealthStatus.Attention,
+                    Summary = "Workspace services are available, but OpenCode terminal could not be prepared.",
+                    Recommendation = "Troubleshoot Workspace.",
+                    Services = [new WorkspaceServiceHealthSnapshot { ServiceId = "pgadmin", Name = "pgAdmin", Category = "Application", Status = WorkspaceHealthStatus.Healthy, StatusLabel = "Available", Summary = "pgAdmin is available.", Recommendation = "Open Workspace.", Timestamp = DateTimeOffset.UtcNow }],
+                },
+            };
+
+            var report = await fixture.Service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });
+
+            Assert.Contains(report.Facts, item => item.Label == "Workspace shell script");
+            Assert.Contains(report.Facts, item => item.Label == "Attach diagnostics log");
+            Assert.Contains(report.Facts, item => item.Label == "Docker exec");
+            Assert.Contains(report.Facts, item => item.Label == "Workspace shell script in container");
+            Assert.Contains(report.Facts, item => item.Label == "Windows Terminal launch readiness");
+            Assert.Contains(report.Facts, item => item.Label == "Last attach failure");
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task OpenWorkspace_AfterAutomaticRepairFailure_RecordsNoEffectAndRecommendsTroubleshootWorkspace()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspaceRoot = Path.Combine(tempRoot, "workspace");
+            Directory.CreateDirectory(workspaceRoot);
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var timelineService = new WorkspaceTimelineService();
+            var checkpointService = new WorkspaceCheckpointService();
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime, terminalLauncher: new FailingTerminalLauncher());
+            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Open Loop"), includeRuntimeInspection: false);
+            await orchestrator.ProvisionAsync(created);
+            File.Delete(created.Paths.RuntimeStatePath);
+            var missingRuntimeStateSnapshot = await orchestrator.LoadSnapshotAsync(created.Paths.RootPath, includeRuntimeInspection: true, includeSessionInspection: false);
+            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, missingRuntimeStateSnapshot));
+            var saved = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+
+            Assert.Contains("preparing the terminal", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.NotNull(saved.LastProvisioningHealth);
+            Assert.Equal("Troubleshoot Workspace.", saved.LastProvisioningHealth!.RecommendedAction);
+            Assert.Contains(saved.LastProvisioningHealth.RepairHistory, item => item.RepairType == "Recover Workspace" && item.Result == WorkspaceRepairOutcome.RepairNoEffect);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Reprovision_FailureThenSuccess_ClearsCurrentFailureAndRetainsHistory()
     {
         var tempRoot = CreateTempRoot();
@@ -429,7 +527,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
         }
     }
 
-    private static WorkspaceOrchestrator CreateOrchestrator(string tempRoot, WorkspaceRepository repository, WorkspaceTimelineService timelineService, IContainerRuntime runtime, IRuntimeResolver? runtimeResolver = null)
+    private static WorkspaceOrchestrator CreateOrchestrator(string tempRoot, WorkspaceRepository repository, WorkspaceTimelineService timelineService, IContainerRuntime runtime, IRuntimeResolver? runtimeResolver = null, ITerminalLauncher? terminalLauncher = null)
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
@@ -452,7 +550,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             runtime,
             new FixedPlatformDetector(),
             runtimeResolver ?? new FixedRuntimeResolver(),
-            new NoOpTerminalLauncher());
+            terminalLauncher ?? new NoOpTerminalLauncher());
     }
 
     private static async Task<WorkspaceOpenFixture> CreateValidNewWorkspaceFixtureAsync(string tempRoot, string workspaceName)
@@ -618,6 +716,12 @@ public sealed class DesktopShellServiceReprovisionStateTests
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class FailingTerminalLauncher : ITerminalLauncher
+    {
+        public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromException(new InvalidOperationException("Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness."));
     }
 
     private sealed class UnavailableRuntimeResolver : IRuntimeResolver

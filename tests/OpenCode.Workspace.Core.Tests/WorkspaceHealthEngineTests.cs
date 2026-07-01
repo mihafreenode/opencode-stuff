@@ -51,11 +51,13 @@ public sealed class WorkspaceHealthEngineTests
     }
 
     [Fact]
-    public void Build_XdbInvalidEvidence_DegradesOnlyAffectedOracleLayer()
+    public async Task Build_XdbInvalidEvidence_DegradesOnlyAffectedOracleLayer()
     {
         var snapshot = CreateSnapshot(
             runtimeState: WorkspaceRuntimeState.Running,
             services: ["oracle-demo", "oracle-ords"],
+            localRuntimeState: CreateRuntimeState(),
+            appliedState: new WorkspaceAppliedState { AppliedUtc = DateTimeOffset.UtcNow, DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition" },
             investigationHistory:
             [
                 new WorkspaceInvestigationRecord
@@ -74,12 +76,87 @@ public sealed class WorkspaceHealthEngineTests
                 },
             ]);
 
-        var health = WorkspaceHealthEngine.Build(snapshot);
+        var health = await WorkspaceHealthEngine.BuildAsync(snapshot, new FakeProbeRunner(
+            tcpResults:
+            [
+                new WorkspaceServiceProbeResult { IsReachable = true },
+            ],
+            httpResults:
+            [
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "Oracle REST Data Services SQL Developer Web Oracle APEX" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "SQL Developer Web" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "REST APIs" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "Oracle APEX" },
+            ]));
 
-        Assert.Equal(WorkspaceHealthStatus.Degraded, health.OverallStatus);
+        Assert.Equal(WorkspaceHealthStatus.Attention, health.OverallStatus);
         Assert.Equal(WorkspaceHealthStatus.Healthy, health.Providers.Single(item => item.ProviderKey == "oracle").Status);
         Assert.Equal(WorkspaceHealthStatus.Attention, health.Providers.Single(item => item.ProviderKey == "oracle-xdb").Status);
         Assert.Contains("APEX", health.Providers.Single(item => item.ProviderKey == "oracle-xdb").WorkspaceImpact, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Build_OracleContainerUnreachable_ReportsUnavailableOracleLayer()
+    {
+        var snapshot = CreateSnapshot(
+            runtimeState: WorkspaceRuntimeState.Running,
+            services: ["oracle-demo", "oracle-ords"],
+            localRuntimeState: CreateRuntimeState(),
+            appliedState: new WorkspaceAppliedState { AppliedUtc = DateTimeOffset.UtcNow, DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition" });
+
+        var health = await WorkspaceHealthEngine.BuildAsync(snapshot, new FakeProbeRunner(
+            tcpResults:
+            [
+                new WorkspaceServiceProbeResult { IsReachable = false, FailureReason = "Connection refused" },
+            ],
+            httpResults: []));
+
+        Assert.Equal(WorkspaceHealthStatus.Unavailable, health.Providers.Single(item => item.ProviderKey == "oracle").Status);
+    }
+
+    [Fact]
+    public async Task Build_ApexUnavailableButOrdsAvailable_StaysAttentionNotUnavailable()
+    {
+        var snapshot = CreateSnapshot(
+            runtimeState: WorkspaceRuntimeState.Running,
+            services: ["oracle-demo", "oracle-ords"],
+            localRuntimeState: CreateRuntimeState(),
+            appliedState: new WorkspaceAppliedState { AppliedUtc = DateTimeOffset.UtcNow, DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition" },
+            investigationHistory:
+            [
+                new WorkspaceInvestigationRecord
+                {
+                    InvestigationId = "inspect-apex",
+                    Title = "Inspect APEX",
+                    Summary = "APEX application is unavailable.",
+                    Evidence = "APEX returned the App Unavailable page.",
+                    Recommendation = "Troubleshoot Workspace.",
+                    Outcome = "APEX evidence collected.",
+                    Confidence = "HIGH",
+                    CompletedUtc = DateTimeOffset.UtcNow,
+                    StartedUtc = DateTimeOffset.UtcNow.AddSeconds(-5),
+                    Duration = TimeSpan.FromSeconds(5),
+                    ProviderName = "Oracle",
+                },
+            ]);
+
+        var health = await WorkspaceHealthEngine.BuildAsync(snapshot, new FakeProbeRunner(
+            tcpResults:
+            [
+                new WorkspaceServiceProbeResult { IsReachable = true },
+            ],
+            httpResults:
+            [
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "Oracle REST Data Services SQL Developer Web" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "SQL Developer Web" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.OK, ContentType = "text/html", ResponseSample = "REST APIs" },
+                new WorkspaceServiceProbeResult { IsReachable = true, StatusCode = System.Net.HttpStatusCode.ServiceUnavailable, ContentType = "text/html", ResponseSample = "App Unavailable" },
+            ]));
+
+        Assert.Equal(WorkspaceHealthStatus.Attention, health.OverallStatus);
+        Assert.Equal(WorkspaceHealthStatus.Healthy, health.Providers.Single(item => item.ProviderKey == "ords").Status);
+        Assert.Equal(WorkspaceHealthStatus.Attention, health.Providers.Single(item => item.ProviderKey == "apex").Status);
+        Assert.DoesNotContain(health.Providers, item => item.ProviderKey == "apex" && item.Status == WorkspaceHealthStatus.Unavailable);
     }
 
     [Fact]
@@ -199,5 +276,41 @@ public sealed class WorkspaceHealthEngineTests
             UpdateRequired = false,
             Health = new WorkspaceHealthSnapshot(),
         };
+    }
+
+    private static WorkspaceRuntimeStateRecord CreateRuntimeState()
+        => new()
+        {
+            ResolvedEngine = "docker",
+            ResolvedPlatform = "linux/amd64",
+            CompatibilityMode = "Native",
+            Resources = new WorkspaceManagedRuntimeResources
+            {
+                Ports =
+                [
+                    new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId, ServiceId = "oracle-database", DisplayName = "Oracle Database", Protocol = "tcp", Host = "localhost", ContainerPort = 1521, PreferredPort = 1521, AllocatedPort = 1521, Endpoint = "tcp://localhost:1521", OpenUrl = "tcp://localhost:1521" },
+                    new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId, ServiceId = "ords", DisplayName = "ORDS", Protocol = "http", Host = "localhost", ContainerPort = 8181, PreferredPort = 8181, AllocatedPort = 8181, Endpoint = "http://localhost:8181/", OpenUrl = "http://localhost:8181/ords/_/landing" },
+                ],
+                ServiceEndpoints =
+                [
+                    new WorkspaceServiceEndpointRecord { ServiceId = "ords", DisplayName = "ORDS", Endpoint = "http://localhost:8181/ords/", OpenUrl = "http://localhost:8181/ords/_/landing" },
+                    new WorkspaceServiceEndpointRecord { ServiceId = "sql-developer-web", DisplayName = "SQL Developer Web", Endpoint = "http://localhost:8181/ords/", OpenUrl = "http://localhost:8181/ords/_/landing" },
+                    new WorkspaceServiceEndpointRecord { ServiceId = "apex", DisplayName = "Oracle APEX", Endpoint = "http://localhost:8181/ords/", OpenUrl = "http://localhost:8181/ords/apex/" },
+                ],
+            },
+        };
+
+    private sealed class FakeProbeRunner(
+        IReadOnlyList<WorkspaceServiceProbeResult> tcpResults,
+        IReadOnlyList<WorkspaceServiceProbeResult> httpResults) : IWorkspaceServiceProbeRunner
+    {
+        private readonly Queue<WorkspaceServiceProbeResult> _tcpResults = new(tcpResults);
+        private readonly Queue<WorkspaceServiceProbeResult> _httpResults = new(httpResults);
+
+        public Task<WorkspaceServiceProbeResult> ProbeTcpAsync(string host, int port, CancellationToken cancellationToken)
+            => Task.FromResult(_tcpResults.Count > 0 ? _tcpResults.Dequeue() : new WorkspaceServiceProbeResult { IsReachable = false, FailureReason = "Connection refused" });
+
+        public Task<WorkspaceServiceProbeResult> ProbeHttpAsync(Uri endpoint, CancellationToken cancellationToken)
+            => Task.FromResult(_httpResults.Count > 0 ? _httpResults.Dequeue() : new WorkspaceServiceProbeResult { IsReachable = false, FailureReason = "Connection refused" });
     }
 }
