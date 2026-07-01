@@ -281,7 +281,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             LoadErrorMessage = exception.Message;
             DetailTitle = "Workspace discovery failed";
             DetailSummary = "The window is available, but workspace discovery did not complete.";
-            DetailRecommendation = "Troubleshoot Workspace reviews workspace and runtime diagnostics without changing durable data.";
+            DetailRecommendation = "Run Diagnostics.";
             DetailItems.Clear();
             DetailItems.Add(new DetailItemViewModel("Error", exception.Message));
             DetailPrimaryAction = null;
@@ -2562,9 +2562,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => HasFailureMessage(workspace) ? workspace?.FailedOperationName : null;
 
     private static string SummarizeTransientOperationMessage(string message)
-        => message.Contains('\n', StringComparison.Ordinal) || message.Contains('\r', StringComparison.Ordinal)
-            ? ExtractFailureReason(message)
-            : message;
+        => SanitizeNormalUserFailureMessage(
+            message.Contains('\n', StringComparison.Ordinal) || message.Contains('\r', StringComparison.Ordinal)
+                ? ExtractFailureReason(message)
+                : message);
 
     private static string ExtractFailureReason(string failureMessage)
     {
@@ -2645,7 +2646,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         if (IsTerminalLaunchReadinessProblem(reason) && canTroubleshoot)
         {
-            return "Troubleshoot Workspace";
+            return "Open Workspace";
         }
 
         if (reason.Contains("not running", StringComparison.OrdinalIgnoreCase) && CanStartWorkspace(workspace))
@@ -2664,7 +2665,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             if (canTroubleshoot)
             {
-                return "Troubleshoot Workspace";
+                return "Run Diagnostics";
             }
         }
 
@@ -2687,7 +2688,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             if (canTroubleshoot)
             {
-                return "Troubleshoot Workspace";
+                return "Run Diagnostics";
             }
         }
 
@@ -2699,12 +2700,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (scope == WorkspaceFailureProblemScope.Unknown && canTroubleshoot)
         {
-            return "Troubleshoot Workspace";
+            return "Run Diagnostics";
         }
 
         if (canTroubleshoot)
         {
-            return scope == WorkspaceFailureProblemScope.HostProblem ? "Run Diagnostics" : "Troubleshoot Workspace";
+            return "Run Diagnostics";
         }
 
         if (CanStartWorkspace(workspace))
@@ -2719,19 +2720,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         if (!string.IsNullOrWhiteSpace(primaryAction))
         {
-            if (IsTerminalLaunchReadinessProblem(reason) && string.Equals(primaryAction, "Troubleshoot Workspace", StringComparison.Ordinal))
-            {
-                return "Troubleshoot Workspace can inspect attach scripts and runtime state.";
-            }
-
             return primaryAction switch
             {
                 "Open Workspace" => "Open Workspace.",
                 "Rebuild Runtime" => "Rebuild Runtime.",
                 "Run Diagnostics" => "Run Diagnostics.",
-                "Troubleshoot Workspace" => reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
-                    ? "Troubleshoot Workspace and stop the conflicting workspace."
-                    : "Troubleshoot Workspace.",
+                "Troubleshoot Workspace" => "Run Diagnostics.",
                 "Retry" => reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
                     ? "Stop the conflicting workspace and retry."
                     : "Retry.",
@@ -2746,7 +2740,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (scope == WorkspaceFailureProblemScope.Unknown && canTroubleshoot)
         {
-            return "Troubleshoot Workspace.";
+            return "Run Diagnostics.";
         }
 
         if (repairability?.Classification == WorkspaceRepairability.ManualRepair && !string.IsNullOrWhiteSpace(repairability.RecommendedNextAction))
@@ -2764,7 +2758,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return "Rebuild Runtime.";
         }
 
-        return "Troubleshoot Workspace.";
+        return "Run Diagnostics.";
     }
 
     private static bool RequiresRecoverWorkspace(string reason, WorkspaceProvisioningHealthRecord? health)
@@ -2828,8 +2822,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string NormalizeFailureReason(string reason)
         => IsTerminalLaunchReadinessProblem(reason)
-            ? "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state."
-            : reason.Replace("Run Recover Workspace.", "Open Workspace will try to repair safe runtime issues automatically.", StringComparison.Ordinal);
+            ? "Terminal launch readiness failed. Open Workspace can try safe repairs again, or Rebuild Runtime is the next normal step."
+            : SanitizeNormalUserFailureMessage(reason);
 
     private static bool ContainsAny(string reason, string evidence, string stage, params string[] patterns)
         => patterns.Any(pattern =>
@@ -2868,12 +2862,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (recommendedAction.Contains("Troubleshoot Workspace", StringComparison.OrdinalIgnoreCase) && canTroubleshoot)
         {
-            return "Troubleshoot Workspace";
+            return "Run Diagnostics";
         }
 
         if (recommendedAction.Contains("Run Diagnostics", StringComparison.OrdinalIgnoreCase) && canTroubleshoot)
         {
-            return scope == WorkspaceFailureProblemScope.HostProblem ? "Run Diagnostics" : "Troubleshoot Workspace";
+            return "Run Diagnostics";
         }
 
         if (recommendedAction.Contains("Retry", StringComparison.OrdinalIgnoreCase) && canRetry)
@@ -2888,6 +2882,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         return null;
     }
+
+    private static string SanitizeNormalUserFailureMessage(string message)
+        => message
+            .Replace("Run Recover Workspace.", "Open Workspace will try to repair safe runtime issues automatically.", StringComparison.Ordinal)
+            .Replace("Run Recover Workspace", "Open Workspace will try to repair safe runtime issues automatically", StringComparison.Ordinal)
+            .Replace("Recover Workspace", "Open Workspace", StringComparison.Ordinal)
+            .Replace("Troubleshoot Workspace can inspect the runtime files and launch readiness.", "Open Workspace can try safe repairs again, or Rebuild Runtime is the next normal step.", StringComparison.Ordinal)
+            .Replace("Troubleshoot Workspace can inspect attach scripts and runtime state.", "Open Workspace can try safe repairs again, or Rebuild Runtime is the next normal step.", StringComparison.Ordinal)
+            .Replace("use Troubleshoot Workspace for details", "see Technical Evidence for details", StringComparison.Ordinal)
+            .Replace("Reprovision", "Open Workspace", StringComparison.Ordinal)
+            .Replace("Start Only", "Open Workspace", StringComparison.Ordinal)
+            .Replace("Attach Only", "Open Workspace", StringComparison.Ordinal);
 
     private static string FormatOperationTranscriptLine(OperationTranscriptLine line)
     {

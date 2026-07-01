@@ -10,8 +10,8 @@ namespace OpenCode.Workspace.Avalonia.Services;
 
 public sealed class DesktopShellService : IDesktopShellService
 {
-    private const string OpenWorkspaceTerminalReadinessFailureMessage = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.";
-    private const string TerminalLaunchReadinessFailureMessage = "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state.";
+    private const string OpenWorkspaceTerminalReadinessFailureMessage = "Open Workspace could not finish preparing the terminal automatically. Open Workspace can try safe repairs again, or Rebuild Runtime is the next normal step.";
+    private const string TerminalLaunchReadinessFailureMessage = "Terminal launch readiness failed. Open Workspace can try safe repairs again, or Rebuild Runtime is the next normal step.";
 
     private static readonly TimeSpan OpenWorkspaceLoadTimeout = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan OpenWorkspaceStartTimeout = TimeSpan.FromMinutes(3);
@@ -321,7 +321,7 @@ public sealed class DesktopShellService : IDesktopShellService
                         throw new InvalidOperationException(BuildRebuildRuntimeMessage());
 
                     case WorkspaceLaunchState.NeedsManual:
-                        throw new InvalidOperationException("Open Workspace could not determine a safe automatic recovery path. Rebuild Runtime is the next clear step, or use Troubleshoot Workspace for details.");
+                        throw new InvalidOperationException("Open Workspace could not determine a safe automatic recovery path. Rebuild Runtime is the next clear step.");
 
                     default:
                         throw new InvalidOperationException(BuildRebuildRuntimeMessage());

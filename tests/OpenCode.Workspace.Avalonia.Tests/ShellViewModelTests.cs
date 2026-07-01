@@ -1038,7 +1038,8 @@ public sealed class ShellViewModelTests
         await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
 
         Assert.Contains("Runtime files need repair. Run Recover Workspace.", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Equal("Runtime files need repair. Run Recover Workspace.", page.DetailSummary);
+        Assert.Equal("Runtime files need repair. Open Workspace will try to repair safe runtime issues automatically.", page.DetailSummary);
+        Assert.DoesNotContain("Recover Workspace", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Workspace");
     }
 
@@ -2729,6 +2730,22 @@ public sealed class ShellViewModelTests
         Assert.Contains("Workspace services are running, but terminal launch is not ready.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.DoesNotContain("Troubleshoot Workspace", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkspaceDiscoveryFailure_UsesRunDiagnosticsInNormalRecommendation()
+    {
+        var desktop = new FakeDesktopShellService([])
+        {
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => throw new InvalidOperationException("discovery failed"),
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        Assert.Equal("Run Diagnostics.", page.DetailRecommendation);
+        Assert.DoesNotContain("Troubleshoot Workspace", page.DetailRecommendation, StringComparison.Ordinal);
     }
 
     [Fact]
