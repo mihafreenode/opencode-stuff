@@ -1526,122 +1526,213 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
         DetailServices.Clear();
-        DetailItems.Add(new DetailItemViewModel("Workspace", presentation.CurrentStatus));
-        DetailItems.Add(new DetailItemViewModel("Current Activity", presentation.CurrentActivity));
-        DetailItems.Add(new DetailItemViewModel("Activity Summary", presentation.ActivitySummary));
-        if (!string.IsNullOrWhiteSpace(presentation.CapabilitiesSummary))
+        var readiness = SelectedWorkspace.Readiness;
+        if (readiness is null)
         {
-            DetailItems.Add(new DetailItemViewModel("Capabilities", presentation.CapabilitiesSummary));
+            DetailItems.Add(new DetailItemViewModel("Workspace", JoinSectionLines(presentation.CurrentStatus, DetailSummary)));
+            DetailItems.Add(new DetailItemViewModel("Current Activity", JoinSectionLines(presentation.CurrentActivity, presentation.ActivitySummary)));
+            DetailItems.Add(new DetailItemViewModel("What You Can Use", "Workspace details are still loading."));
+            DetailItems.Add(new DetailItemViewModel("Needs Attention", string.IsNullOrWhiteSpace(DetailRecommendation) ? "Nothing needs attention right now." : $"Next: {DetailRecommendation}"));
+            DetailItems.Add(new DetailItemViewModel("Development Environment", "Unknown until workspace details load."));
+            DetailItems.Add(new DetailItemViewModel("Technical Evidence", BuildMissingSnapshotTechnicalEvidence(SelectedWorkspace)));
+            ApplyDetailPresentation(presentation);
+            return;
         }
 
-        if (!string.IsNullOrWhiteSpace(presentation.ApplicationsSummary))
-        {
-            DetailItems.Add(new DetailItemViewModel("Applications", presentation.ApplicationsSummary));
-        }
+        DetailItems.Add(new DetailItemViewModel("Workspace", BuildWorkspaceSection(presentation)));
+        DetailItems.Add(new DetailItemViewModel("Current Activity", BuildCurrentActivitySection(presentation)));
+        DetailItems.Add(new DetailItemViewModel("What You Can Use", BuildWhatYouCanUseSection(readiness, presentation)));
+        DetailItems.Add(new DetailItemViewModel("Needs Attention", BuildNeedsAttentionSection(readiness, DetailRecommendation)));
+        DetailItems.Add(new DetailItemViewModel("Development Environment", BuildDevelopmentEnvironmentSection(readiness, presentation)));
+        DetailItems.Add(new DetailItemViewModel("Technical Evidence", BuildTechnicalEvidenceSection(SelectedWorkspace, readiness, presentation, failureGuidance, provisioningHealth)));
 
-        if (!string.IsNullOrWhiteSpace(presentation.DevelopmentEnvironmentSummary))
-        {
-            DetailItems.Add(new DetailItemViewModel("Development Environment", presentation.DevelopmentEnvironmentSummary));
-        }
-
-        DetailItems.Add(new DetailItemViewModel("Runtime", SelectedWorkspace.RuntimeSummary));
-        DetailItems.Add(new DetailItemViewModel("Git", SelectedWorkspace.RepositoryStatus));
-        DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
-        DetailItems.Add(new DetailItemViewModel("Runtime-state status", SelectedWorkspace.LocalRuntimeStateStatus));
-        if (SelectedWorkspace.Snapshot?.LocalRuntimeState?.Resources.Ports.Count > 0)
-        {
-            DetailItems.Add(new DetailItemViewModel("Resources", FormatManagedResources(SelectedWorkspace.Snapshot.LocalRuntimeState.Resources.Ports)));
-        }
-        DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
-        DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
-        DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
-        DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
-        DetailItems.Add(new DetailItemViewModel("Features", SelectedWorkspace.Features));
-        DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.RuntimeTarget));
-        if (!string.IsNullOrWhiteSpace(presentation.RecentHistoryNote))
-        {
-            DetailItems.Add(new DetailItemViewModel("Recent History", presentation.RecentHistoryNote));
-        }
         if (SelectedWorkspace.Health is not null)
         {
-            foreach (var provider in SelectedWorkspace.Health.Providers)
-            {
-                DetailItems.Add(new DetailItemViewModel($"Provider Health: {provider.DisplayName}", provider.Status.ToString()));
-                if (!string.IsNullOrWhiteSpace(provider.WorkspaceImpact))
-                {
-                    DetailItems.Add(new DetailItemViewModel($"Provider Details: {provider.DisplayName}", provider.WorkspaceImpact));
-                }
-            }
-
             foreach (var service in SelectedWorkspace.Health.Services)
             {
                 DetailServices.Add(BuildServiceHealthRow(service));
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(DetailRecommendation))
+        ApplyDetailPresentation(presentation);
+    }
+
+    private static string BuildMissingSnapshotTechnicalEvidence(WorkspaceSummaryViewModel workspace)
+        => JoinSectionLines(
+            $"Root path: {workspace.RootPath}",
+            $"Repository path: {workspace.RepositoryPath}",
+            workspace.HasError ? $"Load failure: {workspace.ErrorMessage}" : string.Empty);
+
+    private static string BuildWorkspaceSection(WorkspacePresentation presentation)
+        => JoinSectionLines(
+            presentation.CurrentStatus,
+            presentation.Summary);
+
+    private static string BuildCurrentActivitySection(WorkspacePresentation presentation)
+        => JoinSectionLines(
+            presentation.CurrentActivity,
+            presentation.ActivitySummary);
+
+    private static string BuildWhatYouCanUseSection(WorkspaceReadinessSnapshot readiness, WorkspacePresentation presentation)
+    {
+        var capabilityLines = readiness.Capabilities
+            .Where(item => item.State is WorkspaceCapabilityState.Available or WorkspaceCapabilityState.Preparing)
+            .Select(item => $"{FormatCapabilityMarker(item.State)} {item.Label}")
+            .ToList();
+        if (capabilityLines.Count == 0)
         {
-            DetailItems.Add(new DetailItemViewModel("Recommendation", DetailRecommendation));
-        }
-        if (SelectedWorkspace.HasError)
-        {
-            DetailItems.Add(new DetailItemViewModel("Load failure", SelectedWorkspace.ErrorMessage));
+            return "Nothing is available yet.";
         }
 
-        if (failureGuidance is not null && ShouldShowFailureEvidence(SelectedWorkspace))
+        return string.Join(Environment.NewLine, capabilityLines);
+    }
+
+    private static string BuildNeedsAttentionSection(WorkspaceReadinessSnapshot readiness, string recommendation)
+    {
+        var lines = readiness.AttentionItems
+            .Where(item => item.Scope != WorkspaceAttentionScope.DevelopmentEnvironment)
+            .Select(item => $"{FormatAttentionMarker(item.Severity)} {item.Label}: {item.Summary}")
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(recommendation))
+        {
+            lines.Add($"Next: {recommendation}");
+        }
+
+        return lines.Count == 0 ? "Nothing needs attention right now." : string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildDevelopmentEnvironmentSection(WorkspaceReadinessSnapshot readiness, WorkspacePresentation presentation)
+    {
+        var lines = readiness.AttentionItems
+            .Where(item => item.Scope == WorkspaceAttentionScope.DevelopmentEnvironment)
+            .Select(item => $"{FormatAttentionMarker(item.Severity)} {item.Summary}")
+            .ToList();
+        if (lines.Count > 0)
+        {
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        return string.IsNullOrWhiteSpace(presentation.DevelopmentEnvironmentSummary)
+            ? "Ready."
+            : presentation.DevelopmentEnvironmentSummary;
+    }
+
+    private string BuildTechnicalEvidenceSection(
+        WorkspaceSummaryViewModel workspace,
+        WorkspaceReadinessSnapshot readiness,
+        WorkspacePresentation presentation,
+        WorkspaceFailureGuidance? failureGuidance,
+        WorkspaceProvisioningHealthRecord? provisioningHealth)
+    {
+        var lines = new List<string>();
+        foreach (var section in readiness.Evidence)
+        {
+            lines.Add($"{section.Label}:");
+            foreach (var item in section.Items)
+            {
+                lines.Add($"- {item.Label}: {item.Value}");
+            }
+        }
+
+        lines.Add($"Runtime: {workspace.RuntimeSummary}");
+        lines.Add($"Git: {workspace.RepositoryStatus}");
+        lines.Add($"Current branch: {workspace.CurrentBranch}");
+        lines.Add($"Runtime-state status: {workspace.LocalRuntimeStateStatus}");
+        if (workspace.Snapshot?.LocalRuntimeState?.Resources.Ports.Count > 0)
+        {
+            lines.Add($"Resources: {FormatManagedResources(workspace.Snapshot.LocalRuntimeState.Resources.Ports)}");
+        }
+
+        lines.Add($"Services: {workspace.Services}");
+        lines.Add($"Protection state: {workspace.ProtectionLabel}");
+        lines.Add($"Root path: {workspace.RootPath}");
+        lines.Add($"Repository path: {workspace.RepositoryPath}");
+        lines.Add($"Features: {workspace.Features}");
+        lines.Add($"Runtime target: {workspace.RuntimeTarget}");
+
+        if (!string.IsNullOrWhiteSpace(presentation.RecentHistoryNote))
+        {
+            lines.Add($"Recent history: {presentation.RecentHistoryNote}");
+        }
+
+        if (workspace.HasError)
+        {
+            lines.Add($"Load failure: {workspace.ErrorMessage}");
+        }
+
+        if (failureGuidance is not null && ShouldShowFailureEvidence(workspace))
         {
             var lastRepairAttempt = provisioningHealth?.RepairHistory.LastOrDefault();
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Stage ?? failureGuidance.Stage))
             {
-                DetailItems.Add(new DetailItemViewModel("Current diagnosis stage", provisioningHealth?.Stage ?? failureGuidance.Stage));
+                lines.Add($"Current diagnosis stage: {provisioningHealth?.Stage ?? failureGuidance.Stage}");
             }
 
-            DetailItems.Add(new DetailItemViewModel("Current diagnosis", failureGuidance.Reason));
+            lines.Add($"Current diagnosis: {failureGuidance.Reason}");
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Evidence ?? failureGuidance.Evidence))
             {
-                DetailItems.Add(new DetailItemViewModel("Evidence", provisioningHealth?.Evidence ?? failureGuidance.Evidence));
+                lines.Add($"Evidence: {provisioningHealth?.Evidence ?? failureGuidance.Evidence}");
             }
 
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Repairability ?? failureGuidance.Repairability))
             {
-                DetailItems.Add(new DetailItemViewModel("Repairability", provisioningHealth?.Repairability ?? failureGuidance.Repairability));
+                lines.Add($"Repairability: {provisioningHealth?.Repairability ?? failureGuidance.Repairability}");
             }
 
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.ProblemScope))
             {
-                DetailItems.Add(new DetailItemViewModel("Problem scope", provisioningHealth.ProblemScope));
+                lines.Add($"Problem scope: {provisioningHealth.ProblemScope}");
             }
 
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.Confidence ?? failureGuidance.Confidence))
             {
-                DetailItems.Add(new DetailItemViewModel("Confidence", provisioningHealth?.Confidence ?? failureGuidance.Confidence));
+                lines.Add($"Confidence: {provisioningHealth?.Confidence ?? failureGuidance.Confidence}");
             }
 
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration))
             {
-                DetailItems.Add(new DetailItemViewModel("Estimated duration", provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration));
+                lines.Add($"Estimated duration: {provisioningHealth?.EstimatedDuration ?? failureGuidance.EstimatedDuration}");
             }
 
             if (lastRepairAttempt is not null)
             {
-                DetailItems.Add(new DetailItemViewModel("Repair attempted", lastRepairAttempt.RepairType));
-                DetailItems.Add(new DetailItemViewModel("Outcome", FormatRepairOutcome(lastRepairAttempt.Result)));
+                lines.Add($"Repair attempted: {lastRepairAttempt.RepairType}");
+                lines.Add($"Outcome: {FormatRepairOutcome(lastRepairAttempt.Result)}");
                 if (!lastRepairAttempt.RootCauseChanged && !string.IsNullOrWhiteSpace(lastRepairAttempt.EvidenceAfter))
                 {
-                    DetailItems.Add(new DetailItemViewModel("Root cause comparison", $"Unchanged: {lastRepairAttempt.EvidenceAfter}"));
+                    lines.Add($"Root cause comparison: Unchanged: {lastRepairAttempt.EvidenceAfter}");
                 }
             }
 
             if (!string.IsNullOrWhiteSpace(provisioningHealth?.PreviousRecommendedAction))
             {
-                DetailItems.Add(new DetailItemViewModel("Previous recommendation", provisioningHealth.PreviousRecommendedAction));
+                lines.Add($"Previous recommendation: {provisioningHealth.PreviousRecommendedAction}");
             }
 
-            DetailItems.Add(new DetailItemViewModel("Detailed recommendation", failureGuidance.RecommendedAction));
+            lines.Add($"Detailed recommendation: {failureGuidance.RecommendedAction}");
         }
 
-        ApplyDetailPresentation(presentation);
+        return string.Join(Environment.NewLine, lines);
     }
+
+    private static string JoinSectionLines(params string[] values)
+        => string.Join(Environment.NewLine, values.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    private static string FormatCapabilityMarker(WorkspaceCapabilityState state)
+        => state switch
+        {
+            WorkspaceCapabilityState.Available => "Available:",
+            WorkspaceCapabilityState.Preparing => "Preparing:",
+            _ => "Unavailable:",
+        };
+
+    private static string FormatAttentionMarker(WorkspaceAttentionSeverity severity)
+        => severity switch
+        {
+            WorkspaceAttentionSeverity.Blocking => "Blocking:",
+            WorkspaceAttentionSeverity.Attention => "Attention:",
+            _ => "Info:",
+        };
 
     private void ApplyDetailPresentation(WorkspacePresentation presentation)
     {

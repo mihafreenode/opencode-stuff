@@ -568,7 +568,8 @@ public sealed class ShellViewModelTests
         page.SelectedWorkspace = page.Workspaces.Last();
 
         Assert.Equal("alpha", page.DetailTitle);
-        Assert.Contains(page.DetailItems, item => item.Label == "Repository path" && item.Value.Contains("alpha", StringComparison.Ordinal));
+        Assert.Equal(["Workspace", "Current Activity", "What You Can Use", "Needs Attention", "Development Environment", "Technical Evidence"], page.DetailItems.Take(6).Select(item => item.Label));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Repository path: ", StringComparison.Ordinal) && item.Value.Contains("alpha", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -578,7 +579,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("beta", page.DetailTitle);
-        Assert.Contains(page.DetailItems, item => item.Label == "Repository path" && item.Value.Contains("beta", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Repository path: ", StringComparison.Ordinal) && item.Value.Contains("beta", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -600,7 +601,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("alpha", page.SelectedWorkspace?.Name);
-        Assert.Contains(page.DetailItems, item => item.Label == "Runtime-state status" && item.Value == "Missing");
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Runtime-state status: Missing", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -628,7 +629,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(2, page.Workspaces.Count);
         Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
-        Assert.Contains(page.DetailItems, item => item.Label == "Load failure" && item.Value.Contains("workspace.yaml missing", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Load failure: workspace.yaml missing", StringComparison.Ordinal));
         Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
     }
 
@@ -2207,7 +2208,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
         Assert.DoesNotContain("Workspace action failed", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("ORDS", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Recent history: Recent issue: Workspace action failed.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2251,8 +2252,8 @@ public sealed class ShellViewModelTests
         Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
         Assert.Equal("Investigate Oracle APEX.", page.DetailRecommendation);
         Assert.DoesNotContain("Repair", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(page.DetailItems, item => item.Label == "Capabilities" && item.Value.Contains("Development Shell", StringComparison.Ordinal));
-        Assert.Contains(page.DetailItems, item => item.Label == "Applications" && item.Value.Contains("Oracle APEX", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "What You Can Use" && item.Value.Contains("Development Shell", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Needs Attention" && item.Value.Contains("Oracle APEX", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2451,7 +2452,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Needs Preparation", page.SelectedWorkspace?.Headline);
         Assert.Equal("Open Workspace can safely regenerate runtime state.", page.DetailSummary);
-        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value == "Needs Preparation");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value.Contains("Needs Preparation", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2516,7 +2517,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Open Workspace will prepare the runtime and open the terminal.", page.DetailSummary);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value == "Not Prepared");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value.Contains("Not Prepared", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2542,7 +2543,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
         Assert.DoesNotContain("Workspace action failed", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Recent history: Recent issue: Workspace action failed.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2897,7 +2898,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Available: Development Shell.", page.DetailSummary);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace is not running", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Recent history: Recent issue: Workspace is not running. Start it first.", StringComparison.Ordinal));
         Assert.NotNull(page.DetailPrimaryAction);
         Assert.Equal("Open Development Shell", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
@@ -3063,7 +3064,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Detailed recommendation" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
+        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Detailed recommendation: Run Diagnostics", StringComparison.Ordinal));
         Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
     }
 
@@ -3160,7 +3161,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Contains(page.DetailItems, item => item.Label == "Recommendation" && item.Value == "Open Workspace.");
+        Assert.Contains(page.DetailItems, item => item.Label == "Needs Attention" && item.Value.Contains("Next: Open Workspace.", StringComparison.Ordinal));
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
@@ -3194,7 +3195,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Open Development Shell.", page.DetailRecommendation);
         Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
-        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Detailed recommendation" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
+        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Detailed recommendation: Run Diagnostics", StringComparison.Ordinal));
     }
 
     [Fact]
