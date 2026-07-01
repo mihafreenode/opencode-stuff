@@ -126,13 +126,13 @@ internal static class WorkspaceHealthAggregator
 
     private static WorkspaceAggregatedState BuildStateFromReadiness(WorkspaceSummaryViewModel workspace, WorkspaceReadinessSnapshot readiness)
     {
-        var primaryActionLabel = FormatPrimaryActionLabel(readiness);
+        var primaryActionLabel = WorkspaceReadinessPresentationFormatter.FormatPrimaryActionLabel(readiness);
         return new WorkspaceAggregatedState
         {
-            Headline = FormatReadinessHeadline(readiness, workspace),
+            Headline = WorkspaceReadinessPresentationFormatter.FormatHeadline(readiness, workspace),
             Summary = readiness.Summary,
-            CurrentStatus = FormatReadinessStatus(readiness, workspace),
-            CurrentActivity = FormatReadinessActivity(readiness.CurrentActivity),
+            CurrentStatus = WorkspaceReadinessPresentationFormatter.FormatStatusLabel(readiness, workspace),
+            CurrentActivity = WorkspaceReadinessPresentationFormatter.FormatActivityLabel(readiness.CurrentActivity),
             ActivitySummary = readiness.IsOperationInProgress ? readiness.Summary : "No active workspace operation.",
             Recommendation = BuildRecommendation(readiness, primaryActionLabel),
             CapabilitiesSummary = BuildCapabilitiesSummary(readiness.Capabilities),
@@ -252,72 +252,6 @@ internal static class WorkspaceHealthAggregator
             WorkspaceCapabilityState.Available => "Available: ",
             WorkspaceCapabilityState.Preparing => "Preparing: ",
             _ => "Unavailable: ",
-        };
-
-    private static string FormatReadinessHeadline(WorkspaceReadinessSnapshot readiness)
-        => readiness.Status == WorkspaceReadinessStatus.Preparing
-            ? FormatReadinessActivity(readiness.CurrentActivity)
-            : FormatReadinessStatus(readiness.Status);
-
-    private static string FormatReadinessHeadline(WorkspaceReadinessSnapshot readiness, WorkspaceSummaryViewModel workspace)
-        => readiness.Status == WorkspaceReadinessStatus.Preparing
-            ? FormatReadinessActivity(readiness.CurrentActivity)
-            : FormatReadinessStatus(readiness, workspace);
-
-    private static string FormatReadinessStatus(WorkspaceReadinessStatus status)
-        => status switch
-        {
-            WorkspaceReadinessStatus.Ready => "Workspace Ready",
-            WorkspaceReadinessStatus.Preparing => "Preparing",
-            WorkspaceReadinessStatus.NeedsRebuild => "Needs Rebuild",
-            _ => "Unavailable",
-        };
-
-    private static string FormatReadinessStatus(WorkspaceReadinessSnapshot readiness, WorkspaceSummaryViewModel workspace)
-    {
-        if (readiness.Status == WorkspaceReadinessStatus.Unavailable
-            && readiness.Capabilities.Any(item => !item.IsPrimaryWorkSurface && item.State == WorkspaceCapabilityState.Available))
-        {
-            return "Workspace Partially Ready";
-        }
-
-        if (readiness.Status == WorkspaceReadinessStatus.Unavailable
-            && workspace.Record.LastPreparedUtc is null
-            && workspace.Record.LastOperationSucceeded == true
-            && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal))
-        {
-            return "Not Prepared";
-        }
-
-        if (readiness.Status == WorkspaceReadinessStatus.Unavailable
-            && (workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.AppliedState is null || workspace.Snapshot?.UpdateRequired == true))
-        {
-            return "Needs Preparation";
-        }
-
-        return FormatReadinessStatus(readiness.Status);
-    }
-
-    private static string FormatReadinessActivity(WorkspaceActivity activity)
-        => activity switch
-        {
-            WorkspaceActivity.Preparing => "Provisioning",
-            WorkspaceActivity.OpeningTerminal => "Opening terminal",
-            WorkspaceActivity.RepairingRuntime => "Repairing runtime",
-            WorkspaceActivity.Investigating => "Investigating",
-            WorkspaceActivity.Discovering => "Discovering",
-            _ => "None",
-        };
-
-    private static string FormatPrimaryActionLabel(WorkspaceReadinessSnapshot readiness)
-        => readiness.PrimaryAction switch
-        {
-            WorkspacePrimaryAction.ViewProgress => "View Progress",
-            WorkspacePrimaryAction.RebuildRuntime => "Rebuild Runtime",
-            WorkspacePrimaryAction.RunDiagnostics => "Run Diagnostics",
-            WorkspacePrimaryAction.OpenFolder => "Open Folder",
-            WorkspacePrimaryAction.OpenWorkspace when readiness.Status == WorkspaceReadinessStatus.Ready => "Open Development Shell",
-            _ => "Open Workspace",
         };
 
     private static bool IsFreshWorkspace(WorkspaceSummaryViewModel workspace)

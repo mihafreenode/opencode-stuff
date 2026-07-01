@@ -2341,6 +2341,142 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForPartiallyReadyWorkspace()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha", includeRuntimeState: true),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Unavailable,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = "Workspace services are running, but terminal launch is not ready. SQL Developer Web is available.",
+                Capabilities =
+                [
+                    new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Unavailable, IsPrimaryWorkSurface = true },
+                    new WorkspaceCapabilitySnapshot { Key = "sql-developer-web", Label = "SQL Developer Web", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available },
+                ],
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Workspace Partially Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Workspace Partially Ready", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForNeedsPreparationWorkspace()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Preparation", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Needs Preparation", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForNotPreparedWorkspace()
+    {
+        var snapshot = CreateSnapshot("alpha", includeRuntimeState: true, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                ConfigurationPath = snapshot.Record.ConfigurationPath,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastOperationName = "Create Workspace",
+                LastOperationSucceeded = true,
+                LastPreparedUtc = null,
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = WorkspaceRuntimeState.Stopped,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = null,
+            LocalRuntimeState = null,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = false,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+        });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Not Prepared", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Not Prepared", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForNeedsRebuildWorkspace()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.NeedsRebuild,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
+                Summary = "Rebuild Runtime is the next normal recovery step.",
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Rebuild", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Needs Rebuild", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForUnavailableWorkspace()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Unavailable,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = "Open Workspace can prepare and open this workspace.",
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Unavailable", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Unavailable", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
+    public async Task ReadinessPresentation_UsesSharedLabel_ForPreparingWorkspace()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Preparing,
+                CurrentActivity = WorkspaceActivity.Preparing,
+                PrimaryAction = WorkspacePrimaryAction.ViewProgress,
+                Summary = "Preparing workspace. This may take several minutes.",
+                IsOperationInProgress = true,
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Preparing", page.SelectedWorkspace?.RuntimeStatusLabel);
+    }
+
+    [Fact]
     public async Task ReadyWorkspaceReadinessLabel_KeepsOpenWorkspaceCommandBehavior()
     {
         var snapshot = WithReadiness(
