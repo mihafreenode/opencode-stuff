@@ -18,8 +18,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.NeedsProvision);
-            Assert.False(plan.NeedsRecover);
+            Assert.Equal(WorkspaceLaunchState.NeedsProvision, plan.State);
         }
         finally
         {
@@ -38,8 +37,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.NeedsStart);
-            Assert.False(plan.NeedsRecover);
+            Assert.Equal(WorkspaceLaunchState.NeedsStart, plan.State);
         }
         finally
         {
@@ -58,7 +56,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.CanAttach);
+            Assert.Equal(WorkspaceLaunchState.NeedsAttach, plan.State);
             Assert.Equal("workspace", plan.PrimaryServiceName);
         }
         finally
@@ -78,8 +76,28 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.NeedsRecover);
+            Assert.Equal(WorkspaceLaunchState.NeedsRecover, plan.State);
             Assert.Equal("Managed runtime files are missing or stale.", plan.Summary);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public void Resolve_UpdateRequiredWithManagedFiles_NeedsProvision()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var snapshot = CreateSnapshot(root, appliedState: new WorkspaceAppliedState(), runtimeState: WorkspaceRuntimeState.Running, includeRuntimeStateFile: true, includeRuntimeState: true, updateRequired: true);
+
+            var plan = _resolver.Resolve(snapshot);
+
+            Assert.Equal(WorkspaceLaunchState.NeedsProvision, plan.State);
+            Assert.Equal("Workspace runtime needs safe reprovisioning before it can open.", plan.Summary);
         }
         finally
         {
@@ -98,8 +116,8 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.NeedsDiagnostics);
-            Assert.Contains("Diagnostics", plan.Summary, StringComparison.Ordinal);
+            Assert.Equal(WorkspaceLaunchState.NeedsManual, plan.State);
+            Assert.Contains("could not be validated", plan.Summary, StringComparison.Ordinal);
         }
         finally
         {
@@ -121,7 +139,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
 
             var plan = _resolver.Resolve(snapshot);
 
-            Assert.True(plan.CanAttach);
+            Assert.Equal(WorkspaceLaunchState.NeedsAttach, plan.State);
             Assert.Equal("workspace", plan.PrimaryServiceName);
         }
         finally
@@ -130,7 +148,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
         }
     }
 
-    private static WorkspaceSnapshot CreateSnapshot(string root, WorkspaceAppliedState? appliedState, WorkspaceRuntimeState runtimeState, bool includeRuntimeStateFile, bool includeRuntimeState, WorkspaceDefinition? definition = null)
+    private static WorkspaceSnapshot CreateSnapshot(string root, WorkspaceAppliedState? appliedState, WorkspaceRuntimeState runtimeState, bool includeRuntimeStateFile, bool includeRuntimeState, WorkspaceDefinition? definition = null, bool updateRequired = false)
     {
         definition ??= CreateDefinition("demo", ["oracle-demo", "oracle-ords"]);
         var paths = CreatePaths(root);
@@ -156,7 +174,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
             AppliedState = appliedState,
             LocalRuntimeState = includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "Native" } : null,
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", CompatibilityMode = RuntimeCompatibilityMode.Native, IsAvailable = true },
-            UpdateRequired = false,
+            UpdateRequired = updateRequired,
         };
     }
 

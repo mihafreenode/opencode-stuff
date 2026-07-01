@@ -13,6 +13,7 @@ public sealed class WorkspaceTroubleshootingContext
     public string TranscriptExcerpt { get; init; } = string.Empty;
     public ProcessResult? VolatileValidation { get; init; }
     public WorkspaceTimelineEvent? LastTimelineEvent { get; init; }
+    public WorkspaceLaunchPlan LaunchPlan { get; init; } = new();
     public IReadOnlyList<WorkspaceTroubleshootingCheck> TerminalReadinessChecks { get; init; } = Array.Empty<WorkspaceTroubleshootingCheck>();
     public string LastAttachFailureReason { get; init; } = string.Empty;
 }

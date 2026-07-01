@@ -246,14 +246,9 @@ public sealed class ShellViewModel : ObservableObject
     private IReadOnlyList<ActionItemViewModel> CreateTroubleshootingAdvancedActions(WorkspaceTroubleshootingReport report)
     {
         var actions = new List<ActionItemViewModel>();
-        if (report.CanRecoverWorkspace)
-        {
-            actions.Add(CreateWorkspaceTroubleshootingAction("Recover Workspace", "Repair generated runtime files and validate the runtime without deleting user work.", true, string.Empty, RecoverWorkspaceFromTroubleshootingAsync));
-        }
-
         if (report.CanResetRuntime)
         {
-            actions.Add(CreateWorkspaceTroubleshootingAction("Reset Runtime", "Delete managed runtime resources and reprovision from a clean state after confirmation.", true, string.Empty, ResetRuntimeFromTroubleshootingAsync));
+            actions.Add(CreateWorkspaceTroubleshootingAction("Rebuild Runtime", "Recreate managed containers and volumes from a clean state while keeping workspace files after confirmation.", true, string.Empty, ResetRuntimeFromTroubleshootingAsync));
         }
 
         if (report.RecommendHostDiagnostics)

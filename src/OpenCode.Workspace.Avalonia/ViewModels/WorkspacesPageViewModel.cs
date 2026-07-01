@@ -1703,15 +1703,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         var failureGuidance = TryBuildFailureGuidance(workspace);
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
+        var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
         var advancedActions = new List<ActionItemViewModel>
         {
-            CreatePresentationAction(workspace, "Recover Workspace", BuildRecoverDescription(workspace), CanRecoverWorkspace(workspace), GetRecoverDisabledReason(workspace), RecoverSelectedWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Reset Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands),
+            rebuildRuntimeAction,
             CreatePresentationAction(workspace, "Start Only", BuildStartDescription(workspace), CanStartWorkspace(workspace), GetStartDisabledReason(workspace), StartSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Attach Only", BuildAttachDescription(workspace), CanAttachWorkspace(workspace), GetAttachDisabledReason(workspace), AttachSelectedWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Reprovision", BuildReprovisionDescription(workspace), CanReprovisionWorkspace(workspace), GetReprovisionDisabledReason(workspace), ReprovisionSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Checkpoint", BuildCheckpointDescription(workspace), CanCreateCheckpointWorkspace(workspace), GetCheckpointDisabledReason(workspace), CreateCheckpointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
@@ -1732,6 +1731,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             new WorkspacePresentationActions
             {
                 OpenWorkspace = openWorkspaceAction,
+                RebuildRuntime = rebuildRuntimeAction,
                 TroubleshootWorkspace = investigateProblemAction,
                 OpenFolder = openFolderAction,
                 AdvancedActions = advancedActions,
@@ -1848,7 +1848,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string GetResetRuntimeDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
-            : CanResetRuntimeWorkspace(workspace) ? string.Empty : "Runtime reset is not available for the current workspace state.";
+            : CanResetRuntimeWorkspace(workspace) ? string.Empty : "Rebuild Runtime is not available for the current workspace state.";
 
     private string GetAttachDisabledReason(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1909,7 +1909,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                     : workspace.Snapshot?.RuntimeState == OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Stopped
                         ? "Start the workspace runtime and open the terminal session."
                         : workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.UpdateRequired == true
-                            ? "Runtime files need repair before the workspace can open."
+                            ? "Open Workspace will repair safe runtime issues automatically before opening the terminal."
                             : "Open the workspace and let OpenCode decide what needs to run.";
 
     private string BuildRecoverDescription(WorkspaceSummaryViewModel workspace)
@@ -1923,8 +1923,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => IsBusyForWorkspaceActions
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanResetRuntimeWorkspace(workspace)
-                ? "Recreate managed runtime resources while keeping workspace files, history, downloads, and user content."
-                : "Runtime reset is not available for the current workspace state.";
+                ? "Recreate managed containers and volumes from workspace.yaml while keeping workspace files, history, downloads, docs, and user scripts."
+                : "Rebuild Runtime is not available for the current workspace state.";
 
     private string BuildAttachDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions
@@ -1989,7 +1989,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (workspace.Snapshot?.LocalRuntimeState is null)
         {
-            return "Runtime state is missing. Reprovision will regenerate local runtime state.";
+            return "Runtime state is missing. Open Workspace will regenerate it automatically.";
         }
 
         if (workspace.IsLoading)
@@ -1999,7 +1999,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (workspace.Snapshot?.UpdateRequired == true || workspace.Snapshot?.AppliedState is null)
         {
-            return "Workspace files are out of date. Reprovision to regenerate runtime files.";
+            return "Workspace files are out of date. Open Workspace will regenerate managed runtime files automatically.";
         }
 
         return "Regenerate runtime files, validate compose, and reprovision the workspace runtime.";
@@ -2028,7 +2028,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (workspace.Snapshot?.LocalRuntimeState is null)
         {
-            return "Runtime state is missing. Reprovision will regenerate local runtime state.";
+            return "Runtime state is missing. Open Workspace will regenerate it automatically.";
         }
 
         if (workspace.IsLoading)
@@ -2038,7 +2038,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (workspace.Snapshot?.UpdateRequired == true || workspace.Snapshot?.AppliedState is null)
         {
-            return "Workspace files are out of date. Reprovision to regenerate runtime files.";
+            return "Workspace files are out of date. Open Workspace will regenerate managed runtime files automatically.";
         }
 
         return workspace.SafetyState;
@@ -2511,18 +2511,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                     || string.Equals(health?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal))
                 && canCleanup)
             {
-                return "Reset Runtime";
+                return "Rebuild Runtime";
             }
 
             if (canTroubleshoot)
             {
                 return "Troubleshoot Workspace";
             }
-        }
-
-        if (reason.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase) && canRecover)
-        {
-            return "Recover Workspace";
         }
 
         if (scope == WorkspaceFailureProblemScope.HostProblem && canTroubleshoot)
@@ -2532,14 +2527,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.UpdateRequired == true)
         {
-            return "Recover Workspace";
+            return "Open Workspace";
         }
 
         if (scope == WorkspaceFailureProblemScope.WorkspaceProblem)
         {
-            if (canRecover && RequiresRecoverWorkspace(reason, health))
+            if (RequiresRecoverWorkspace(reason, health))
             {
-                return "Recover Workspace";
+                return "Open Workspace";
             }
 
             if (canTroubleshoot)
@@ -2557,11 +2552,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (scope == WorkspaceFailureProblemScope.Unknown && canTroubleshoot)
         {
             return "Troubleshoot Workspace";
-        }
-
-        if (canRecover)
-        {
-            return "Recover Workspace";
         }
 
         if (canTroubleshoot)
@@ -2589,7 +2579,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return primaryAction switch
             {
                 "Open Workspace" => "Open Workspace.",
-                "Recover Workspace" => "Run Recover Workspace.",
+                "Rebuild Runtime" => "Rebuild Runtime.",
                 "Run Diagnostics" => "Run Diagnostics.",
                 "Troubleshoot Workspace" => reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
                     ? "Troubleshoot Workspace and stop the conflicting workspace."
@@ -2597,7 +2587,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 "Retry" => reason.Contains("already in use", StringComparison.OrdinalIgnoreCase)
                     ? "Stop the conflicting workspace and retry."
                     : "Retry.",
-                "Reset Runtime" => "Reset Runtime.",
                 _ => primaryAction,
             };
         }
@@ -2624,7 +2613,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (canCleanup)
         {
-            return "Reset Runtime.";
+            return "Rebuild Runtime.";
         }
 
         return "Troubleshoot Workspace.";
@@ -2692,7 +2681,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private static string NormalizeFailureReason(string reason)
         => IsTerminalLaunchReadinessProblem(reason)
             ? "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state."
-            : reason.Replace("Run Recover Workspace.", "Troubleshoot Workspace can inspect the runtime files and launch readiness.", StringComparison.Ordinal);
+            : reason.Replace("Run Recover Workspace.", "Open Workspace will try to repair safe runtime issues automatically.", StringComparison.Ordinal);
 
     private static bool ContainsAny(string reason, string evidence, string stage, params string[] patterns)
         => patterns.Any(pattern =>
@@ -2717,14 +2706,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return null;
         }
 
-        if (recommendedAction.Contains("Reset Runtime", StringComparison.OrdinalIgnoreCase) && canCleanup)
+        if ((recommendedAction.Contains("Rebuild Runtime", StringComparison.OrdinalIgnoreCase)
+                || recommendedAction.Contains("Reset Runtime", StringComparison.OrdinalIgnoreCase))
+            && canCleanup)
         {
-            return "Reset Runtime";
+            return "Rebuild Runtime";
         }
 
-        if (recommendedAction.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase) && canRecover)
+        if (recommendedAction.Contains("Recover Workspace", StringComparison.OrdinalIgnoreCase) && canOpenWorkspace)
         {
-            return "Recover Workspace";
+            return "Open Workspace";
         }
 
         if (recommendedAction.Contains("Troubleshoot Workspace", StringComparison.OrdinalIgnoreCase) && canTroubleshoot)

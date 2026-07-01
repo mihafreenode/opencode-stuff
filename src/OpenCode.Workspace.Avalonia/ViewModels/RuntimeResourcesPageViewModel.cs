@@ -275,7 +275,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         DetailAdvancedActions.Add(new ActionItemViewModel("Start Runtime", "Start the owning workspace runtime.", CanRunWorkspaceAction(), string.Empty, StartRuntimeCommand));
         DetailAdvancedActions.Add(new ActionItemViewModel("Stop Runtime", "Stop the owning workspace runtime.", CanRunWorkspaceAction(), string.Empty, StopRuntimeCommand));
         DetailAdvancedActions.Add(new ActionItemViewModel("Release Resources", "Release managed Docker resources without unregistering the workspace.", CanRunWorkspaceAction(), string.Empty, ReleaseResourcesCommand));
-        DetailAdvancedActions.Add(new ActionItemViewModel("Reset Runtime", "Reset and reprovision managed runtime resources for the owning workspace.", CanRunWorkspaceAction(), string.Empty, ResetRuntimeCommand));
+        DetailAdvancedActions.Add(new ActionItemViewModel("Rebuild Runtime", "Recreate managed runtime resources for the owning workspace from a clean state.", CanRunWorkspaceAction(), string.Empty, ResetRuntimeCommand));
         DetailAdvancedActions.Add(new ActionItemViewModel("Clean Orphaned Resources", "Delete orphaned managed Docker resources that are safe to clean up.", OrphanedResources.Any(item => item.CanCleanUpSafely), string.Empty, CleanOrphanedResourcesCommand));
         ShowAdvancedActions = true;
     }

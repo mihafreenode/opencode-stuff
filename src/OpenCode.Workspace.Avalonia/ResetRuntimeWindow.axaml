@@ -6,11 +6,11 @@
         Height="520"
         MinWidth="680"
         MinHeight="460"
-        Title="Reset Runtime"
+        Title="Rebuild Runtime"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
     <StackPanel Spacing="6">
-      <TextBlock Text="Reset Runtime" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Reset Runtime" />
+      <TextBlock Text="Rebuild Runtime" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Rebuild Runtime" />
       <TextBlock x:Name="SummaryTextBlock" TextWrapping="Wrap" />
     </StackPanel>
 
@@ -30,14 +30,14 @@
 
         <Border Classes="panel-subtle">
           <StackPanel Spacing="8">
-            <TextBlock Text="Reset Runtime will remove:" FontWeight="SemiBold" />
+            <TextBlock Text="Rebuild Runtime will remove:" FontWeight="SemiBold" />
             <ItemsControl x:Name="RemovesItemsControl" />
           </StackPanel>
         </Border>
 
         <Border Classes="panel">
           <StackPanel Spacing="8">
-            <TextBlock Text="Reset Runtime will keep:" FontWeight="SemiBold" />
+            <TextBlock Text="Rebuild Runtime will keep:" FontWeight="SemiBold" />
             <ItemsControl x:Name="KeepsItemsControl" />
           </StackPanel>
         </Border>
@@ -47,8 +47,8 @@
     <Border Grid.Row="2" Classes="dialog-footer">
       <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
         <TextBlock x:Name="ConfirmationTextBlock" VerticalAlignment="Center" TextWrapping="Wrap" />
-        <Button Grid.Column="1" Content="Cancel" IsCancel="True" Click="CancelClicked" automation:AutomationProperties.Name="Cancel Reset Runtime" />
-        <Button Grid.Column="2" Classes="accent" Content="Reset Runtime" IsDefault="True" Click="ConfirmClicked" automation:AutomationProperties.Name="Confirm Reset Runtime" />
+        <Button Grid.Column="1" Content="Cancel" IsCancel="True" Click="CancelClicked" automation:AutomationProperties.Name="Cancel Rebuild Runtime" />
+        <Button Grid.Column="2" Classes="accent" Content="Rebuild Runtime" IsDefault="True" Click="ConfirmClicked" automation:AutomationProperties.Name="Confirm Rebuild Runtime" />
       </Grid>
     </Border>
   </Grid>

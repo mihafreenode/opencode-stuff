@@ -1,13 +1,20 @@
 namespace OpenCode.Workspace.Core.Models;
 
+public enum WorkspaceLaunchState
+{
+    Ready,
+    NeedsProvision,
+    NeedsRecover,
+    NeedsStart,
+    NeedsAttach,
+    NeedsReset,
+    NeedsManual,
+}
+
 public sealed class WorkspaceLaunchPlan
 {
-    public bool NeedsProvision { get; init; }
-    public bool NeedsStart { get; init; }
-    public bool CanAttach { get; init; }
-    public bool NeedsRecover { get; init; }
-    public bool NeedsDiagnostics { get; init; }
-    public bool TerminalUnavailable { get; init; }
+    public WorkspaceLaunchState State { get; init; } = WorkspaceLaunchState.Ready;
     public string PrimaryServiceName { get; init; } = "workspace";
     public string Summary { get; init; } = string.Empty;
+    public string BlockReason { get; init; } = string.Empty;
 }

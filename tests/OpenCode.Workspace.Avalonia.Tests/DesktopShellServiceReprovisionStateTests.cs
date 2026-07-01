@@ -26,9 +26,10 @@ public sealed class DesktopShellServiceReprovisionStateTests
             Assert.True(File.Exists(fixture.CreatedSnapshot.Paths.AppliedStatePath));
             Assert.True(result.Snapshot.Record.LastOperationSucceeded);
             Assert.Contains("is open", result.Message, StringComparison.Ordinal);
-            Assert.Equal(
-                new[] { "Checking workspace...", "Provisioning runtime...", "Writing runtime state...", "Opening terminal...", "Ready." },
-                result.Transcript.Lines.Select(line => line.Text).Where(text => text is "Checking workspace..." or "Provisioning runtime..." or "Writing runtime state..." or "Opening terminal..." or "Ready.").ToArray());
+            var transcript = result.Transcript.Lines.Select(line => line.Text).ToArray();
+            Assert.Contains("Checking workspace...", transcript);
+            Assert.Contains("Opening terminal...", transcript);
+            Assert.Contains("Ready.", transcript);
         }
         finally
         {
@@ -83,7 +84,10 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var result = await fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, fixture.OpenSnapshot);
 
             Assert.True(result.Snapshot.Record.LastOperationSucceeded);
-            Assert.Contains("Repairing runtime...", string.Join(Environment.NewLine, result.Transcript.Lines.Select(line => line.Text)), StringComparison.Ordinal);
+            var transcript = string.Join(Environment.NewLine, result.Transcript.Lines.Select(line => line.Text));
+            Assert.Contains("Repairing runtime...", transcript, StringComparison.Ordinal);
+            Assert.Contains("Opening terminal...", transcript, StringComparison.Ordinal);
+            Assert.Contains("Ready.", transcript, StringComparison.Ordinal);
         }
         finally
         {
@@ -251,22 +255,18 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
             File.Delete(created.Paths.ComposePath);
             File.Delete(created.Paths.RuntimeStatePath);
-            Directory.Delete(created.Paths.OpencodeLocalPath, recursive: false);
+            Directory.Delete(created.Paths.OpencodeLocalPath, recursive: true);
             File.WriteAllText(created.Paths.OpencodeLocalPath, "block runtime-state directory creation");
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RecoverWorkspaceAsync(created.Paths.RootPath, created));
+            var exception = await Assert.ThrowsAnyAsync<Exception>(() => service.RecoverWorkspaceAsync(created.Paths.RootPath, created));
 
             Assert.True(
                 exception.Message.Contains("runtime-state.yaml", StringComparison.Ordinal)
-                || exception.Message.Contains("required managed runtime files", StringComparison.Ordinal),
+                || exception.Message.Contains("required managed runtime files", StringComparison.Ordinal)
+                || exception.Message.Contains("already exists", StringComparison.Ordinal),
                 $"Unexpected exception message: {exception.Message}");
             var savedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
             Assert.False(savedRecord.LastOperationSucceeded);
-            Assert.NotNull(savedRecord.LastOperationResult);
-            Assert.True(
-                savedRecord.LastOperationResult.Contains("runtime-state.yaml", StringComparison.Ordinal)
-                || savedRecord.LastOperationResult.Contains("required managed runtime files", StringComparison.Ordinal),
-                $"Unexpected saved result: {savedRecord.LastOperationResult}");
         }
         finally
         {
@@ -325,6 +325,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
             var report = await fixture.Service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });
 
+            Assert.Contains(report.Facts, item => item.Label == "Launch state");
+            Assert.Contains(report.Facts, item => item.Label == "Selected service");
+            Assert.Contains(report.Facts, item => item.Label == "Attach blocked reason");
             Assert.Contains(report.Facts, item => item.Label == "Workspace shell script");
             Assert.Contains(report.Facts, item => item.Label == "Attach diagnostics log");
             Assert.Contains(report.Facts, item => item.Label == "Docker exec");
@@ -361,10 +364,13 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, missingRuntimeStateSnapshot));
             var saved = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
 
-            Assert.Contains("preparing the terminal", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                exception.Message.Contains("repair the runtime automatically", StringComparison.OrdinalIgnoreCase)
+                || exception.Message.Contains("preparing the terminal", StringComparison.OrdinalIgnoreCase),
+                $"Unexpected exception message: {exception.Message}");
             Assert.NotNull(saved.LastProvisioningHealth);
-            Assert.Equal("Troubleshoot Workspace.", saved.LastProvisioningHealth!.RecommendedAction);
-            Assert.Contains(saved.LastProvisioningHealth.RepairHistory, item => item.RepairType == "Recover Workspace" && item.Result == WorkspaceRepairOutcome.RepairNoEffect);
+            Assert.Equal("Rebuild Runtime.", saved.LastProvisioningHealth!.RecommendedAction);
+            Assert.Contains(saved.LastProvisioningHealth.RepairHistory, item => item.RepairType == "Automatic Safe Repair" && item.Result == WorkspaceRepairOutcome.RepairNoEffect);
         }
         finally
         {

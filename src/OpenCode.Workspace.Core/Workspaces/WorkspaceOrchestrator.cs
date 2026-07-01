@@ -663,6 +663,7 @@ public sealed class WorkspaceOrchestrator
             var result = await _containerRuntime.ValidateAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
             EnsureSuccess(result, "Workspace recovery failed.");
             await EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+            WriteAppliedState(snapshot);
             EnsureRecoveredManagedRuntimeArtifactsExist(snapshot.Paths);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -1008,6 +1009,7 @@ public sealed class WorkspaceOrchestrator
         File.WriteAllText(paths.ProvisionScriptPath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ProvisionScript));
         EnsureGeneratedScriptPermissions(paths.ProvisionScriptPath);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
+        _workspaceAppliedStateService.Write(paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts));
         return generatedArtifacts;
     }
 
@@ -1551,6 +1553,21 @@ public sealed class WorkspaceOrchestrator
         if (!File.Exists(paths.RuntimeStatePath))
         {
             missing.Add(paths.RuntimeStatePath);
+        }
+
+        if (!File.Exists(paths.AppliedStatePath))
+        {
+            missing.Add(paths.AppliedStatePath);
+        }
+
+        if (!File.Exists(paths.AttachWrapperScriptPath))
+        {
+            missing.Add(paths.AttachWrapperScriptPath);
+        }
+
+        if (!File.Exists(paths.OpencodeWorkspaceShellPath))
+        {
+            missing.Add(paths.OpencodeWorkspaceShellPath);
         }
 
         if (missing.Count == 0)

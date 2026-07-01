@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -20,12 +21,19 @@ internal static class WorkspaceHealthAggregator
             secondaryActions.Add(actions.OpenWorkspace);
         }
 
-        if (!ReferenceEquals(primaryAction, actions.TroubleshootWorkspace))
+        if (string.Equals(state.PrimaryActionLabel, "Troubleshoot Workspace", StringComparison.Ordinal))
         {
-            secondaryActions.Add(actions.TroubleshootWorkspace);
+            secondaryActions.Add(actions.OpenFolder);
+        }
+        else if (!ReferenceEquals(primaryAction, actions.RebuildRuntime))
+        {
+            secondaryActions.Add(actions.OpenFolder);
         }
 
-        secondaryActions.Add(actions.OpenFolder);
+        if (string.Equals(state.PrimaryActionLabel, "Rebuild Runtime", StringComparison.Ordinal))
+        {
+            secondaryActions.Add(actions.OpenFolder);
+        }
 
         return new WorkspacePresentation
         {
@@ -69,6 +77,7 @@ internal static class WorkspaceHealthAggregator
         var isFreshWorkspace = IsFreshWorkspace(workspace);
         var hasTransientFailure = workspace.HasTransientOperationFailure && !isOperationInProgress;
         var hasLaunchReadinessProblem = HasLaunchReadinessProblem(workspace, snapshot, health, runtimeRunning);
+        var needsRebuildRuntime = NeedsRebuildRuntime(workspace, hasLaunchReadinessProblem);
         var servicesSummary = BuildServicesSummary(health);
         var currentStatus = BuildCurrentStatus(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, hasLaunchReadinessProblem);
         var currentActivity = isOperationInProgress
@@ -79,9 +88,9 @@ internal static class WorkspaceHealthAggregator
         var summary = isOperationInProgress
             ? BuildActivitySummary(currentOperationName, currentStatusMessage)
             : hasTransientFailure
-                ? BuildTransientFailureSummary(workspace.TransientOperationSummary, hasLaunchReadinessProblem, servicesSummary)
-            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary, hasLaunchReadinessProblem);
-        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName, hasLaunchReadinessProblem);
+                ? BuildTransientFailureSummary(workspace.TransientOperationSummary, hasLaunchReadinessProblem, servicesSummary, needsRebuildRuntime)
+            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary, hasLaunchReadinessProblem, needsRebuildRuntime);
+        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName, hasLaunchReadinessProblem, needsRebuildRuntime);
         var recommendation = BuildRecommendation(primaryActionLabel);
 
         return new WorkspaceAggregatedState
@@ -105,7 +114,7 @@ internal static class WorkspaceHealthAggregator
             return null;
         }
 
-        foreach (var label in new[] { "Open Workspace", "Troubleshoot Workspace", "Recover Workspace", "Reset Runtime", "Run Diagnostics", "Retry" })
+        foreach (var label in new[] { "Open Workspace", "Troubleshoot Workspace", "Rebuild Runtime", "Run Diagnostics", "Retry" })
         {
             if (recommendation.Contains(label, StringComparison.OrdinalIgnoreCase))
             {
@@ -152,11 +161,17 @@ internal static class WorkspaceHealthAggregator
         bool runtimeRunning,
         bool isFreshWorkspace,
         string servicesSummary,
-        bool hasLaunchReadinessProblem)
+        bool hasLaunchReadinessProblem,
+        bool needsRebuildRuntime)
     {
         if (isFreshWorkspace && !runtimeRunning)
         {
             return "Open Workspace will prepare the runtime and open the terminal.";
+        }
+
+        if (needsRebuildRuntime)
+        {
+            return "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready. Rebuild Runtime will recreate managed containers and volumes while keeping your files.";
         }
 
         if (hasLaunchReadinessProblem)
@@ -188,7 +203,7 @@ internal static class WorkspaceHealthAggregator
 
         if (updateRequired)
         {
-            return "Open Workspace will repair managed runtime files before opening the terminal.";
+            return "Open Workspace will fix safe runtime issues automatically before opening the terminal.";
         }
 
         if (!string.IsNullOrWhiteSpace(health?.Summary))
@@ -320,7 +335,7 @@ internal static class WorkspaceHealthAggregator
             "Start" => "Starting Workspace",
             "Attach" => "Opening Terminal",
             "Recover" => "Repairing Runtime",
-            "Reset Runtime" => "Repairing Runtime",
+            "Rebuild Runtime" => "Repairing Runtime",
             "Reprovision" => "Provisioning",
             _ => string.IsNullOrWhiteSpace(operationName) ? "Working" : operationName,
         };
@@ -331,7 +346,7 @@ internal static class WorkspaceHealthAggregator
             ? "Terminal Launch Failed"
             : operationName switch
             {
-                "Reprovision" or "Recover" or "Reset Runtime" or "Open Workspace" => "Troubleshooting Recommended",
+                "Reprovision" or "Recover" or "Rebuild Runtime" or "Open Workspace" => "Troubleshooting Recommended",
                 "Attach" => "Attach Failed",
                 "Backup" => "Backup Failed",
                 "Create Save Point" => "Save Point Failed",
@@ -344,11 +359,16 @@ internal static class WorkspaceHealthAggregator
             && workspace.Record.LastOperationSucceeded == true
             && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
 
-    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName, bool hasLaunchReadinessProblem)
+    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName, bool hasLaunchReadinessProblem, bool needsRebuildRuntime)
     {
         if (isFreshWorkspace || runtimeMissing || !runtimeRunning)
         {
             return "Open Workspace";
+        }
+
+        if (needsRebuildRuntime)
+        {
+            return "Rebuild Runtime";
         }
 
         if (hasLaunchReadinessProblem)
@@ -356,7 +376,7 @@ internal static class WorkspaceHealthAggregator
             return "Troubleshoot Workspace";
         }
 
-        if (hasTransientFailure && failedOperationName is "Reprovision" or "Recover" or "Reset Runtime" or "Open Workspace")
+        if (hasTransientFailure && failedOperationName is "Reprovision" or "Recover" or "Rebuild Runtime" or "Open Workspace")
         {
             return "Troubleshoot Workspace";
         }
@@ -366,8 +386,13 @@ internal static class WorkspaceHealthAggregator
             : "Open Workspace";
     }
 
-    private static string BuildTransientFailureSummary(string summary, bool hasLaunchReadinessProblem, string servicesSummary)
+    private static string BuildTransientFailureSummary(string summary, bool hasLaunchReadinessProblem, string servicesSummary, bool needsRebuildRuntime)
     {
+        if (needsRebuildRuntime)
+        {
+            return "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready. Rebuild Runtime will recreate managed containers and volumes while keeping your files.";
+        }
+
         if (hasLaunchReadinessProblem)
         {
             return BuildLaunchReadinessSummary(servicesSummary);
@@ -384,9 +409,33 @@ internal static class WorkspaceHealthAggregator
     }
 
     private static ActionItemViewModel ResolvePrimaryAction(string primaryActionLabel, WorkspacePresentationActions actions)
-        => string.Equals(primaryActionLabel, "Troubleshoot Workspace", StringComparison.Ordinal)
-            ? actions.TroubleshootWorkspace
-            : actions.OpenWorkspace;
+        => primaryActionLabel switch
+        {
+            "Troubleshoot Workspace" => actions.TroubleshootWorkspace,
+            "Rebuild Runtime" => actions.RebuildRuntime,
+            _ => actions.OpenWorkspace,
+        };
+
+    private static bool NeedsRebuildRuntime(WorkspaceSummaryViewModel workspace, bool hasLaunchReadinessProblem)
+    {
+        if (workspace.Record.LastProvisioningHealth is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(workspace.Record.LastProvisioningHealth.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (hasLaunchReadinessProblem && workspace.Record.LastProvisioningHealth.RepairHistory.LastOrDefault()?.Result == WorkspaceRepairOutcome.RepairNoEffect)
+        {
+            return true;
+        }
+
+        return workspace.Record.LastProvisioningHealth.RecommendedAction.Contains("Rebuild Runtime", StringComparison.OrdinalIgnoreCase)
+            || workspace.Record.LastProvisioningHealth.RecommendedAction.Contains("Reset Runtime", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool HasLaunchReadinessProblem(WorkspaceSummaryViewModel workspace, WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeRunning)
     {
@@ -446,7 +495,7 @@ internal static class WorkspaceHealthAggregator
     private static string NormalizeHistoryReason(string reason)
         => IsLaunchReadinessProblem(reason)
             ? "Terminal launch readiness failed. Troubleshoot Workspace can inspect attach scripts and runtime state."
-            : reason.Replace("Run Recover Workspace.", "Troubleshoot Workspace can inspect attach scripts and runtime state.", StringComparison.Ordinal);
+            : reason.Replace("Run Recover Workspace.", "Open Workspace will try to repair safe runtime issues automatically.", StringComparison.Ordinal);
 
     private static string JoinNames(IReadOnlyList<string> values)
         => values.Count == 0 ? "No applications" : string.Join(", ", values);
@@ -483,6 +532,7 @@ internal sealed class WorkspaceAggregatedState
 internal sealed class WorkspacePresentationActions
 {
     public required ActionItemViewModel OpenWorkspace { get; init; }
+    public required ActionItemViewModel RebuildRuntime { get; init; }
     public required ActionItemViewModel TroubleshootWorkspace { get; init; }
     public required ActionItemViewModel OpenFolder { get; init; }
     public required IReadOnlyList<ActionItemViewModel> AdvancedActions { get; init; }

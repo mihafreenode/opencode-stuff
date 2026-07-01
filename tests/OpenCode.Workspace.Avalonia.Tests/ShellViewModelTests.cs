@@ -193,9 +193,9 @@ public sealed class ShellViewModelTests
         var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ResetRuntimeWindow.axaml"));
         var codeBehind = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ResetRuntimeWindow.axaml.cs"));
 
-        Assert.Contains("Reset Runtime", axaml, StringComparison.Ordinal);
-        Assert.Contains("Reset Runtime will remove:", axaml, StringComparison.Ordinal);
-        Assert.Contains("Reset Runtime will keep:", axaml, StringComparison.Ordinal);
+        Assert.Contains("Rebuild Runtime", axaml, StringComparison.Ordinal);
+        Assert.Contains("Rebuild Runtime will remove:", axaml, StringComparison.Ordinal);
+        Assert.Contains("Rebuild Runtime will keep:", axaml, StringComparison.Ordinal);
         Assert.Contains("IsDefault=\"True\"", axaml, StringComparison.Ordinal);
         Assert.Contains("IsCancel=\"True\"", axaml, StringComparison.Ordinal);
         Assert.Contains("BuildItems", codeBehind, StringComparison.Ordinal);
@@ -208,7 +208,7 @@ public sealed class ShellViewModelTests
         var code = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
 
         Assert.Contains("ResetRuntimeCommand", code, StringComparison.Ordinal);
-        Assert.Contains("Reset Runtime", code, StringComparison.Ordinal);
+        Assert.Contains("Rebuild Runtime", code, StringComparison.Ordinal);
         Assert.DoesNotContain("ResetOracleRuntime", code, StringComparison.Ordinal);
         Assert.DoesNotContain("Reset Oracle Runtime", code, StringComparison.Ordinal);
     }
@@ -915,11 +915,11 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var recover = page.DetailPrimaryAction?.Label == "Recover Workspace"
-                ? page.DetailPrimaryAction
-                : page.DetailActions.Single(item => item.Label == "Recover Workspace");
-            Assert.True(recover.IsEnabled);
-            Assert.Equal(string.Empty, recover.DisabledReason);
+        var recover = page.DetailPrimaryAction?.Label == "Open Workspace"
+            ? page.DetailPrimaryAction
+            : page.DetailActions.Single(item => item.Label == "Open Workspace");
+        Assert.True(recover.IsEnabled);
+        Assert.Equal(string.Empty, recover.DisabledReason);
         }
         finally
         {
@@ -1997,7 +1997,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Contains(page.DetailActions, item => item.Label == "Reprovision");
+        Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reprovision");
     }
 
     [Fact]
@@ -2007,8 +2007,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        var reprovision = page.DetailActions.Single(item => item.Label == "Reprovision");
-        Assert.True(reprovision.IsEnabled);
+        Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reprovision");
     }
 
     [Fact]
@@ -2027,9 +2026,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        var reprovision = page.DetailActions.Single(item => item.Label == "Reprovision");
-        Assert.False(reprovision.IsEnabled);
-        Assert.Contains("configuration must load", reprovision.DisabledReason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reprovision");
     }
 
     [Fact]
@@ -2364,6 +2361,80 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task SafeRepairNoEffect_OffersRebuildRuntimeAsPrimaryAction()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready. Rebuild Runtime will recreate managed containers and volumes while keeping your files.", lastOperationSucceeded: false);
+        snapshot = WithHealth(snapshot, CreateHealthSnapshot(
+            WorkspaceHealthStatus.Attention,
+            "Workspace services are available, but OpenCode terminal could not be prepared.",
+            "Rebuild Runtime.",
+            services:
+            [
+                CreateServiceHealthSnapshot("pgadmin", "pgAdmin", WorkspaceHealthStatus.Healthy, "pgAdmin is available."),
+            ]));
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastOperationName = snapshot.Record.LastOperationName,
+                LastOperationResult = snapshot.Record.LastOperationResult,
+                LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Verify terminal launch readiness",
+                    Summary = "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready.",
+                    Reason = snapshot.Record.LastOperationResult!,
+                    Evidence = "Available services: pgAdmin. Terminal launch artifacts still failed readiness validation.",
+                    ProblemScope = "WorkspaceProblem",
+                    RecommendedAction = "Rebuild Runtime.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Duration = TimeSpan.Zero,
+                    Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                    EstimatedEffort = "Medium",
+                    EstimatedDuration = "4-6 minutes",
+                    LastDiagnosticsTimestamp = DateTimeOffset.UtcNow,
+                    RepairHistory =
+                    [
+                        new WorkspaceRepairAttemptRecord
+                        {
+                            RepairType = "Recover Workspace",
+                            StartedUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+                            CompletedUtc = DateTimeOffset.UtcNow,
+                            Duration = TimeSpan.FromMinutes(1),
+                            Result = WorkspaceRepairOutcome.RepairNoEffect,
+                        },
+                    ],
+                },
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Rebuild Runtime.", page.DetailRecommendation);
+        Assert.Contains("Rebuild Runtime will recreate managed containers and volumes while keeping your files.", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReprovisioningSuppressesPreviousFailureHeadline()
     {
         var previousFailure = "Oracle prerequisite validation failed. XDB status was INVALID.";
@@ -2662,11 +2733,11 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Equal("Rebuild Runtime.", page.DetailRecommendation);
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
-        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
     [Fact]
@@ -2729,9 +2800,9 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
-        Assert.Equal(["Troubleshoot Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
-        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal(["Open Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
     [Fact]
@@ -2762,7 +2833,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Detailed recommendation" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
     }
 
     [Fact]
@@ -2815,7 +2886,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Reset Runtime");
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
     [Fact]
@@ -3114,8 +3185,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Rebuild Runtime.", page.DetailRecommendation);
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -3362,8 +3433,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Open Workspace can safely regenerate runtime state.", page.DetailSummary);
-        var reprovision = page.DetailActions.Single(item => item.Label == "Reprovision");
-        Assert.Contains("Runtime state is missing", reprovision.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
     }
 
     [Fact]

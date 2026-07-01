@@ -91,11 +91,12 @@ public sealed class DesktopShellService : IDesktopShellService
         {
             WorkspaceName = snapshot.Definition.Workspace.Name,
             WorkspaceRoot = snapshot.Paths.RootPath,
-            Summary = "Reset recreates managed runtime resources for this workspace while keeping your workspace files and downloads.",
+            Summary = "Rebuild Runtime recreates managed containers and volumes for this workspace while keeping your files.",
             Removes =
             [
                 "Managed containers for this workspace",
                 "Managed Docker volumes for this workspace",
+                "Managed Docker network for this workspace when it is safe to remove",
                 "Generated runtime state",
             ],
             Keeps =
@@ -104,9 +105,10 @@ public sealed class DesktopShellService : IDesktopShellService
                 "Git history",
                 "Documentation",
                 "Downloads/cache",
+                "User scripts",
                 "workspace.yaml",
             ],
-            ConfirmationMessage = "Reset runtime and continue?",
+            ConfirmationMessage = "Rebuild Runtime and continue?",
         };
 
     public async Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
@@ -222,103 +224,109 @@ public sealed class DesktopShellService : IDesktopShellService
             snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             repairBaseline ??= snapshot.Record.LastProvisioningHealth;
             repairSnapshotBefore ??= snapshot;
-            for (var phaseIndex = 0; phaseIndex < 4; phaseIndex++)
+            const int maxTransitions = 8;
+            for (var phaseIndex = 0; phaseIndex < maxTransitions; phaseIndex++)
             {
                 snapshot = await LoadOpenWorkspaceSnapshotAsync(rootPath, snapshot, append, log, cancellationToken);
-                var plan = _workspaceLaunchPlanResolver.Resolve(snapshot);
+                var plan = _workspaceLaunchPlanResolver.Resolve(snapshot, automaticRepairAttempted);
+                LogOpenTransition(log, snapshot, WorkspaceLaunchState.Ready, plan.State, phaseIndex);
                 LogOpenContext(log, snapshot, plan, phaseIndex);
 
-                if (plan.NeedsRecover)
+                switch (plan.State)
                 {
-                    if (automaticRepairAttempted)
+                    case WorkspaceLaunchState.NeedsRecover:
                     {
-                        throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
-                    }
-
-                    automaticRepairAttempted = true;
-                    await RunOpenPhaseAsync(
-                        snapshot,
-                        append,
-                        log,
-                        "Repairing runtime...",
-                        OpenWorkspaceProvisionTimeout,
-                        token => _workspaceOrchestrator.RecoverAsync(snapshot, log, token),
-                        cancellationToken);
-                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
-                    if (snapshot.LocalRuntimeState is null)
-                    {
-                        append(OperationTranscriptLineKind.Status, "Regenerating runtime state...");
-                        await _workspaceOrchestrator.EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+                        automaticRepairAttempted = true;
+                        await RunOpenPhaseAsync(
+                            snapshot,
+                            append,
+                            log,
+                            "Repairing runtime...",
+                            OpenWorkspaceProvisionTimeout,
+                            token => _workspaceOrchestrator.RecoverAsync(snapshot, log, token),
+                            cancellationToken);
                         snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                        if (snapshot.LocalRuntimeState is null)
+                        {
+                            append(OperationTranscriptLineKind.Status, "Regenerating runtime state...");
+                            await _workspaceOrchestrator.EnsureRuntimeStateCurrentAsync(snapshot, log, cancellationToken);
+                            snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                        }
+
+                        await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                        var postRecoveryPlan = _workspaceLaunchPlanResolver.Resolve(snapshot, automaticRepairAttempted);
+                        LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsRecover, WorkspaceLaunchState.Ready, phaseIndex);
+                        LogOpenContext(log, snapshot, postRecoveryPlan);
+                        LogOpenPostRecoveryFacts(log, snapshot, postRecoveryPlan);
+                        continue;
                     }
 
-                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
-                    continue;
-                }
+                    case WorkspaceLaunchState.NeedsProvision:
+                    {
+                        automaticRepairAttempted = true;
+                        await RunOpenPhaseAsync(
+                            snapshot,
+                            append,
+                            log,
+                            "Provisioning runtime...",
+                            OpenWorkspaceProvisionTimeout,
+                            token => _workspaceOrchestrator.ProvisionAsync(snapshot, log, token),
+                            cancellationToken);
+                        snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                        await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                        LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsProvision, WorkspaceLaunchState.Ready, phaseIndex);
+                        continue;
+                    }
 
-                if (plan.TerminalUnavailable)
-                {
-                    throw new InvalidOperationException("Terminal launch is unavailable. Run Diagnostics.");
-                }
+                    case WorkspaceLaunchState.NeedsStart:
+                    {
+                        await RunOpenPhaseAsync(
+                            snapshot,
+                            append,
+                            log,
+                            "Starting containers...",
+                            OpenWorkspaceStartTimeout,
+                            token => _workspaceOrchestrator.StartAsync(snapshot, log, token),
+                            cancellationToken);
+                        snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                        await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                        LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsStart, WorkspaceLaunchState.Ready, phaseIndex);
+                        continue;
+                    }
 
-                if (plan.NeedsProvision)
-                {
-                    await RunOpenPhaseAsync(
-                        snapshot,
-                        append,
-                        log,
-                        "Provisioning runtime...",
-                        OpenWorkspaceProvisionTimeout,
-                        token => _workspaceOrchestrator.ProvisionAsync(snapshot, log, token),
-                        cancellationToken);
-                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
-                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
-                    continue;
-                }
+                    case WorkspaceLaunchState.NeedsAttach:
+                    {
+                        await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: false);
+                        await EnsureOpenRuntimeRunningAsync(snapshot);
+                        await RunOpenPhaseAsync(
+                            snapshot,
+                            append,
+                            log,
+                            "Opening terminal...",
+                            OpenWorkspaceAttachTimeout,
+                            token => _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, log, token),
+                            cancellationToken);
+                        snapshot = await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+                        LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsAttach, WorkspaceLaunchState.Ready, phaseIndex);
+                        await PersistWorkspaceRecordAsync(snapshot, "Open Workspace", "Opened workspace terminal session.", true, cancellationToken);
+                        append(OperationTranscriptLineKind.Result, "Ready.");
+                        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+                        transcript.Succeeded = true;
+                        return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' is open.", Transcript = transcript };
+                    }
 
-                if (plan.NeedsStart)
-                {
-                    await RunOpenPhaseAsync(
-                        snapshot,
-                        append,
-                        log,
-                        "Starting containers...",
-                        OpenWorkspaceStartTimeout,
-                        token => _workspaceOrchestrator.StartAsync(snapshot, log, token),
-                        cancellationToken);
-                    snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
-                    await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
-                    continue;
-                }
+                    case WorkspaceLaunchState.NeedsReset:
+                        throw new InvalidOperationException(BuildRebuildRuntimeMessage());
 
-                if (plan.NeedsDiagnostics)
-                {
-                    throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
-                }
+                    case WorkspaceLaunchState.NeedsManual:
+                        throw new InvalidOperationException("Open Workspace could not determine a safe automatic recovery path. Rebuild Runtime is the next clear step, or use Troubleshoot Workspace for details.");
 
-                if (!plan.CanAttach)
-                {
-                    throw new InvalidOperationException("Workspace runtime could not be validated. Run Diagnostics.");
+                    default:
+                        throw new InvalidOperationException(BuildRebuildRuntimeMessage());
                 }
-
-                await EnsureOpenRuntimeArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: false);
-                await RunOpenPhaseAsync(
-                    snapshot,
-                    append,
-                    log,
-                    "Opening terminal...",
-                    OpenWorkspaceAttachTimeout,
-                    token => _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, log, token),
-                    cancellationToken);
-                snapshot = await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
-                await PersistWorkspaceRecordAsync(snapshot, "Open Workspace", "Opened workspace terminal session.", true, cancellationToken);
-                append(OperationTranscriptLineKind.Result, "Ready.");
-                transcript.CompletedUtc = DateTimeOffset.UtcNow;
-                transcript.Succeeded = true;
-                return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Workspace '{snapshot.Definition.Workspace.Name}' is open.", Transcript = transcript };
             }
 
-            throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
+            throw new InvalidOperationException("Open Workspace exceeded the maximum automatic repair transitions. Rebuild Runtime will recreate managed containers and volumes while keeping your files.");
         }
         catch (Exception exception)
         {
@@ -329,11 +337,11 @@ public sealed class DesktopShellService : IDesktopShellService
                 if (IsTerminalLaunchReadinessProblem(exception.Message))
                 {
                     var completedUtc = DateTimeOffset.UtcNow;
-                    var terminalReadinessHealth = BuildTerminalLaunchReadinessHealth(snapshot, completedUtc, exception.Message);
+                    var terminalReadinessHealth = BuildTerminalLaunchReadinessHealth(snapshot, completedUtc, automaticRepairAttempted ? BuildRebuildRuntimeMessage() : exception.Message, rebuildRuntimeRecommended: automaticRepairAttempted);
                     provisioningHealth = automaticRepairAttempted
                         ? WorkspaceTroubleshootingEngine.RecordRepairAttempt(
                             repairBaseline,
-                            "Recover Workspace",
+                            "Automatic Safe Repair",
                             transcript.StartedUtc,
                             completedUtc,
                             repairSnapshotBefore,
@@ -1009,7 +1017,7 @@ public sealed class DesktopShellService : IDesktopShellService
 
     public async Task<WorkspaceOperationResult> ResetRuntimeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
-        var transcript = CreateTranscript("Reset Runtime", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
+        var transcript = CreateTranscript("Rebuild Runtime", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
         var snapshot = currentSnapshot;
         var repairBaseline = currentSnapshot?.Record.LastProvisioningHealth;
         var repairSnapshotBefore = currentSnapshot;
@@ -1020,7 +1028,7 @@ public sealed class DesktopShellService : IDesktopShellService
             snapshot = await RefreshVolatileWorkspaceStateAsync(rootPath, snapshot, logSink, cancellationToken);
             repairBaseline ??= snapshot.Record.LastProvisioningHealth;
             repairSnapshotBefore ??= snapshot;
-            append(OperationTranscriptLineKind.Status, "Resetting runtime...");
+            append(OperationTranscriptLineKind.Status, "Rebuilding runtime...");
             await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, log, cancellationToken);
             append(OperationTranscriptLineKind.Status, "Reprovisioning runtime...");
             await _workspaceOrchestrator.ProvisionAsync(snapshot, log, cancellationToken);
@@ -1028,20 +1036,20 @@ public sealed class DesktopShellService : IDesktopShellService
             var completedUtc = DateTimeOffset.UtcNow;
             var health = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
                 repairBaseline,
-                "Reset Runtime",
+                "Rebuild Runtime",
                 transcript.StartedUtc,
                 completedUtc,
                 repairSnapshotBefore,
                 snapshot,
                 BuildCleanupProvisioningHealth(snapshot, transcript.StartedUtc, completedUtc));
-            await PersistWorkspaceRecordAsync(snapshot, "Reset Runtime", "Managed runtime was reset and reprovisioned.", true, cancellationToken, DateTimeOffset.UtcNow, health);
-            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-succeeded", "Reset runtime", BuildProvisioningTimelineDetails(health));
-            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset", "Reset runtime", "Removed and recreated managed runtime resources.");
+            await PersistWorkspaceRecordAsync(snapshot, "Rebuild Runtime", "Managed runtime was rebuilt from workspace.yaml.", true, cancellationToken, DateTimeOffset.UtcNow, health);
+            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-succeeded", "Rebuilt runtime", BuildProvisioningTimelineDetails(health));
+            _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset", "Rebuilt runtime", "Removed and recreated managed runtime resources.");
             AppendRepairOutcomeTranscript(append, health);
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = completedUtc;
             transcript.Succeeded = true;
-            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Runtime for '{snapshot.Definition.Workspace.Name}' was reset.", Transcript = transcript };
+            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Runtime for '{snapshot.Definition.Workspace.Name}' was rebuilt.", Transcript = transcript };
         }
         catch (Exception exception)
         {
@@ -1050,15 +1058,15 @@ public sealed class DesktopShellService : IDesktopShellService
                 var completedUtc = DateTimeOffset.UtcNow;
                 var provisioningHealth = WorkspaceTroubleshootingEngine.RecordRepairAttempt(
                     repairBaseline,
-                    "Reset Runtime",
+                    "Rebuild Runtime",
                     transcript.StartedUtc,
                     completedUtc,
                     repairSnapshotBefore,
                     snapshot,
                     ExtractProvisioningHealth(exception, snapshot.Record.LastProvisioningHealth) ?? BuildFallbackFailureHealth(snapshot, completedUtc, exception.Message),
                     WorkspaceRepairOutcome.RepairFailed);
-                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Reset Runtime", provisioningHealth);
-                _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-failed", "Reset runtime failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Rebuild Runtime", provisioningHealth);
+                _timelineService.Append(snapshot.Paths.TimelinePath, "runtime-reset-failed", "Rebuild runtime failed", BuildProvisioningTimelineDetails(provisioningHealth, exception.Message));
                 AppendRepairOutcomeTranscript(append, provisioningHealth);
             }
 
@@ -1113,12 +1121,7 @@ public sealed class DesktopShellService : IDesktopShellService
             var plan = _workspaceLaunchPlanResolver.Resolve(snapshot);
             LogOpenContext(log, snapshot, plan);
 
-            if (plan.NeedsRecover)
-            {
-                throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
-            }
-
-            if (plan.NeedsDiagnostics)
+            if (plan.State is WorkspaceLaunchState.NeedsRecover or WorkspaceLaunchState.NeedsProvision or WorkspaceLaunchState.NeedsReset or WorkspaceLaunchState.NeedsManual)
             {
                 throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
             }
@@ -1349,6 +1352,8 @@ public sealed class DesktopShellService : IDesktopShellService
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(request.RootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: true);
         }
 
+        var launchPlan = _workspaceLaunchPlanResolver.Resolve(snapshot);
+
         var volatileValidation = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, cancellationToken: cancellationToken);
         var timeline = _timelineService.Load(snapshot.Paths.TimelinePath);
         var transcriptFilePath = ResolveTroubleshootingTranscriptPath(request, snapshot);
@@ -1369,6 +1374,7 @@ public sealed class DesktopShellService : IDesktopShellService
             LastTimelineEvent = timeline.Events.OrderByDescending(item => item.OccurredUtc).FirstOrDefault(),
             TerminalReadinessChecks = terminalReadinessChecks,
             LastAttachFailureReason = lastAttachFailureReason,
+            LaunchPlan = launchPlan,
         };
     }
 
@@ -1390,6 +1396,9 @@ public sealed class DesktopShellService : IDesktopShellService
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Current stage", Value = string.IsNullOrWhiteSpace(stage) ? "Unknown" : stage });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Provisioning state", Value = context.IsProvisioningInProgress ? "Provisioning is still running." : snapshot.Record.LastOperationSucceeded == false ? "Last provisioning attempt exited with an error." : "No active provisioning detected." });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime state", Value = snapshot.RuntimeState.ToString() });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Launch state", Value = context.LaunchPlan.State.ToString() });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Selected service", Value = context.LaunchPlan.PrimaryServiceName });
+        facts.Add(new WorkspaceTroubleshootingFact { Label = "Attach blocked reason", Value = DescribeAttachBlockedReason(context.LaunchPlan) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Runtime-state.yaml", Value = DescribeFileState(snapshot.Paths.RuntimeStatePath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Applied-state.yaml", Value = DescribeFileState(snapshot.Paths.AppliedStatePath) });
         facts.Add(new WorkspaceTroubleshootingFact { Label = "Attach script", Value = DescribeFileState(snapshot.Paths.AttachWrapperScriptPath) });
@@ -1518,7 +1527,7 @@ public sealed class DesktopShellService : IDesktopShellService
             CanKeepWaiting = request.IsOperationInProgress,
             CanViewLog = !string.IsNullOrWhiteSpace(context.TranscriptFilePath),
             CanOpenWorkspace = !request.IsOperationInProgress,
-            CanRecoverWorkspace = !request.IsOperationInProgress,
+            CanRecoverWorkspace = false,
             CanResetRuntime = canResetRuntime,
             TranscriptFilePath = context.TranscriptFilePath,
             TranscriptExcerpt = context.TranscriptExcerpt,
@@ -1560,7 +1569,7 @@ public sealed class DesktopShellService : IDesktopShellService
         var checks = new List<WorkspaceTroubleshootingCheck>
         {
             new() { Label = "Workspace container", Value = snapshot.RuntimeState == WorkspaceRuntimeState.Running ? "Running" : snapshot.RuntimeState.ToString() },
-            new() { Label = "Windows Terminal launch readiness", Value = _workspaceLaunchPlanResolver.Resolve(snapshot).TerminalUnavailable ? "Launch plan reports terminal unavailable." : "Launch plan allows terminal handoff." },
+            new() { Label = "Windows Terminal launch readiness", Value = _workspaceLaunchPlanResolver.Resolve(snapshot).State == WorkspaceLaunchState.NeedsManual ? "Launch validation requires manual review." : "Launch plan allows terminal handoff." },
         };
 
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
@@ -1618,6 +1627,41 @@ public sealed class DesktopShellService : IDesktopShellService
 
     private static string DescribeFileState(string path)
         => File.Exists(path) ? $"Present: {path}" : $"Missing: {path}";
+
+    private static string DescribeAttachBlockedReason(WorkspaceLaunchPlan plan)
+    {
+        if (plan.State is WorkspaceLaunchState.NeedsAttach or WorkspaceLaunchState.Ready)
+        {
+            return "Attach can proceed.";
+        }
+
+        if (plan.State == WorkspaceLaunchState.NeedsRecover)
+        {
+            return "Managed runtime artifacts still require safe recovery before attach can be attempted.";
+        }
+
+        if (plan.State == WorkspaceLaunchState.NeedsProvision)
+        {
+            return "Safe reprovisioning must complete before attach can be attempted.";
+        }
+
+        if (plan.State == WorkspaceLaunchState.NeedsStart)
+        {
+            return "Workspace containers are stopped, so attach was not attempted.";
+        }
+
+        if (plan.State == WorkspaceLaunchState.NeedsReset)
+        {
+            return "Automatic safe repair did not make the workspace ready. Rebuild Runtime is the next clear step.";
+        }
+
+        if (plan.State == WorkspaceLaunchState.NeedsManual)
+        {
+            return "Runtime state could not be validated, so attach was not attempted.";
+        }
+
+        return "Attach was not attempted because launch readiness stayed unresolved.";
+    }
 
     private static string FirstFailureLine(ProcessResult result)
         => result.StandardErrorLines.Concat(result.StandardOutputLines).FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim() ?? $"Exit code {result.ExitCode}";
@@ -1738,8 +1782,9 @@ public sealed class DesktopShellService : IDesktopShellService
         var normalized = recommendation.Trim().TrimEnd('.');
         return normalized switch
         {
-            "Reset Runtime" => "Reset Runtime",
-            "Recover Workspace" => "Recover Workspace",
+            "Rebuild Runtime" => "Rebuild Runtime",
+            "Reset Runtime" => "Rebuild Runtime",
+            "Recover Workspace" => "Open Workspace",
             "Open Workspace" => "Open Workspace",
             "Keep Waiting" => "Keep Waiting",
             "Inspect ORDS" => "Inspect ORDS",
@@ -1865,7 +1910,7 @@ public sealed class DesktopShellService : IDesktopShellService
 
         if (canResetRuntime)
         {
-            return "Investigate the workspace evidence first. Reset Runtime is available in Advanced if cleanup repair is actually needed.";
+            return "Investigate the workspace evidence first. Rebuild Runtime is available if cleanup repair is actually needed.";
         }
 
         return string.IsNullOrWhiteSpace(health?.RecommendedAction)
@@ -2234,7 +2279,7 @@ public sealed class DesktopShellService : IDesktopShellService
         log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Runtime target: {snapshot.ResolvedRuntimePlan?.TargetPlatform ?? snapshot.LocalRuntimeState?.ResolvedPlatform ?? "Unavailable"}" });
         log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Template id: unavailable" });
         log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Selected service: {plan.PrimaryServiceName}" });
-        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Launch plan: provision={plan.NeedsProvision}, start={plan.NeedsStart}, attach={plan.CanAttach}, recover={plan.NeedsRecover}, diagnostics={plan.NeedsDiagnostics}, terminalUnavailable={plan.TerminalUnavailable}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Launch state: {plan.State}" });
     }
 
     private async Task<WorkspaceSnapshot> LoadOpenWorkspaceSnapshotAsync(string rootPath, WorkspaceSnapshot? currentSnapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
@@ -2256,7 +2301,7 @@ public sealed class DesktopShellService : IDesktopShellService
         return snapshot;
     }
 
-    private async Task EnsureOpenRuntimeArtifactsReadyAsync(WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken, bool reportStatus)
+    private async Task EnsureOpenManagedArtifactsReadyAsync(WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken, bool reportStatus)
     {
         if (reportStatus)
         {
@@ -2279,16 +2324,45 @@ public sealed class DesktopShellService : IDesktopShellService
             throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
         }
 
-        if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath) || !File.Exists(snapshot.Paths.ComposePath))
+        if (!File.Exists(snapshot.Paths.AttachWrapperScriptPath)
+            || !File.Exists(snapshot.Paths.ComposePath)
+            || !File.Exists(snapshot.Paths.OpencodeWorkspaceShellPath))
         {
             throw new InvalidOperationException(OpenWorkspaceTerminalReadinessFailureMessage);
         }
+    }
 
+    private static Task EnsureOpenRuntimeRunningAsync(WorkspaceSnapshot snapshot)
+    {
         if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
         {
             throw new InvalidOperationException(TerminalLaunchReadinessFailureMessage);
         }
+
+        return Task.CompletedTask;
     }
+
+    private static void LogOpenPostRecoveryFacts(Action<CommandLogEntry>? log, WorkspaceSnapshot snapshot, WorkspaceLaunchPlan plan)
+    {
+        var prefix = $"[open:{snapshot.Definition.Workspace.Name}:post-recovery]";
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Runtime-state exists: {File.Exists(snapshot.Paths.RuntimeStatePath)}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Applied-state exists: {File.Exists(snapshot.Paths.AppliedStatePath)}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Attach script exists: {File.Exists(snapshot.Paths.AttachWrapperScriptPath)}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Containers running: {snapshot.RuntimeState == WorkspaceRuntimeState.Running}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Selected service: {plan.PrimaryServiceName}" });
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} Launch state: {plan.State}" });
+    }
+
+    private static void LogOpenTransition(Action<CommandLogEntry>? log, WorkspaceSnapshot snapshot, WorkspaceLaunchState fromState, WorkspaceLaunchState toState, int? iteration = null)
+    {
+        var prefix = iteration is null
+            ? $"[open:{snapshot.Definition.Workspace.Name}]"
+            : $"[open:{snapshot.Definition.Workspace.Name}:phase-{iteration.Value + 1}]";
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"{prefix} {fromState} -> {toState}" });
+    }
+
+    private static string BuildRebuildRuntimeMessage()
+        => "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready. Rebuild Runtime will recreate managed containers and volumes while keeping your files.";
 
     private static bool IsTerminalLaunchReadinessProblem(string message)
         => !string.IsNullOrWhiteSpace(message)
@@ -2309,25 +2383,40 @@ public sealed class DesktopShellService : IDesktopShellService
             ? "Attach artifacts exist, but OpenCode terminal launch could not be prepared."
             : $"Available services: {string.Join(", ", availableApplications)}. Terminal launch artifacts still failed readiness validation.";
 
+        return BuildTerminalLaunchReadinessHealth(snapshot, completedUtc, errorMessage, rebuildRuntimeRecommended: false);
+    }
+
+    private static WorkspaceProvisioningHealthRecord BuildTerminalLaunchReadinessHealth(WorkspaceSnapshot snapshot, DateTimeOffset completedUtc, string errorMessage, bool rebuildRuntimeRecommended)
+    {
+        var availableApplications = snapshot.Health.Services
+            .Where(item => string.Equals(item.Category, "Application", StringComparison.OrdinalIgnoreCase) && item.Status == WorkspaceHealthStatus.Healthy)
+            .Select(item => item.Name)
+            .ToList();
+        var evidence = availableApplications.Count == 0
+            ? "Attach artifacts exist, but OpenCode terminal launch could not be prepared."
+            : $"Available services: {string.Join(", ", availableApplications)}. Terminal launch artifacts still failed readiness validation.";
+
         return new WorkspaceProvisioningHealthRecord
         {
             Succeeded = false,
             Stage = "Verify terminal launch readiness",
             Summary = availableApplications.Count == 0
                 ? "Terminal launch readiness failed."
-                : "Workspace services are available, but OpenCode terminal could not be prepared.",
+                : rebuildRuntimeRecommended
+                    ? "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready."
+                    : "Workspace services are available, but OpenCode terminal could not be prepared.",
             Reason = string.IsNullOrWhiteSpace(errorMessage) ? TerminalLaunchReadinessFailureMessage : errorMessage,
             Evidence = evidence,
             ProblemScope = "WorkspaceProblem",
-            RecommendedAction = "Troubleshoot Workspace.",
+            RecommendedAction = rebuildRuntimeRecommended ? "Rebuild Runtime." : "Troubleshoot Workspace.",
             Confidence = "HIGH",
             Timestamp = completedUtc,
             Duration = TimeSpan.Zero,
             RawLogReference = snapshot.Paths.AttachDiagnosticsLogPath,
             WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
-            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            Repairability = rebuildRuntimeRecommended ? WorkspaceRepairability.CleanupRepair.ToString() : WorkspaceRepairability.ManualRepair.ToString(),
             EstimatedEffort = "Low",
-            EstimatedDuration = "1-2 minutes",
+            EstimatedDuration = rebuildRuntimeRecommended ? "4-6 minutes" : "1-2 minutes",
             LastDiagnosticsTimestamp = completedUtc,
             RepairHistory = snapshot.Record.LastProvisioningHealth?.RepairHistory ?? Array.Empty<WorkspaceRepairAttemptRecord>(),
             InvestigationHistory = snapshot.Record.LastProvisioningHealth?.InvestigationHistory ?? Array.Empty<WorkspaceInvestigationRecord>(),
