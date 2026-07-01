@@ -2253,7 +2253,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Investigate Oracle APEX.", page.DetailRecommendation);
         Assert.DoesNotContain("Repair", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(page.DetailItems, item => item.Label == "What You Can Use" && item.Value.Contains("Development Shell", StringComparison.Ordinal));
@@ -2309,7 +2309,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Inspect Development Environment.", page.DetailRecommendation);
         Assert.Contains(page.DetailItems, item => item.Label == "Development Environment" && item.Value.Contains("OpenCode CLI", StringComparison.Ordinal));
     }
@@ -2498,7 +2498,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         await ((AsyncRelayCommand)page.DetailPrimaryAction!.Command).ExecuteAsync();
         Assert.Equal(1, desktop.OpenWorkspaceCallCount);
     }
@@ -2573,8 +2573,8 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
         Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
-        Assert.Equal("View Progress", page.DetailPrimaryAction?.Label);
-        Assert.Equal("View Progress.", page.DetailRecommendation);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
         Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Troubleshoot Workspace");
         Assert.Equal(["Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
@@ -3023,7 +3023,7 @@ public sealed class ShellViewModelTests
         Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Workspace");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -3057,7 +3057,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Available: Development Shell.", page.DetailSummary);
         Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Recent history: Recent issue: Workspace is not running. Start it first.", StringComparison.Ordinal));
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
     }
 
@@ -3273,8 +3273,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
-        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
@@ -3305,8 +3305,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -3350,8 +3350,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
-        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Detailed recommendation: Run Diagnostics", StringComparison.Ordinal));
     }
 

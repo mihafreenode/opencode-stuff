@@ -57,11 +57,10 @@ internal static class WorkspaceReadinessPresentationFormatter
     public static string FormatPrimaryActionLabel(WorkspacePrimaryAction action, WorkspaceReadinessStatus status = WorkspaceReadinessStatus.Unavailable)
         => action switch
         {
-            WorkspacePrimaryAction.ViewProgress => "View Progress",
+            WorkspacePrimaryAction.ViewProgress => "Open Workspace",
             WorkspacePrimaryAction.RebuildRuntime => "Rebuild Runtime",
             WorkspacePrimaryAction.RunDiagnostics => "Run Diagnostics",
             WorkspacePrimaryAction.OpenFolder => "Open Folder",
-            WorkspacePrimaryAction.OpenWorkspace when status == WorkspaceReadinessStatus.Ready => "Open Development Shell",
             _ => "Open Workspace",
         };
 }
