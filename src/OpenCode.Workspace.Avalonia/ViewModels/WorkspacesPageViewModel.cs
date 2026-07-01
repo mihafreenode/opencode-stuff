@@ -1521,6 +1521,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
         DetailSummary = SelectedWorkspace.HasTransientOperationFailure && !HasActiveWorkspaceOperation
             ? SummarizeTransientOperationMessage(SelectedWorkspace.LastActivity)
+            : ShouldPreferLastOperationResultForDetails(SelectedWorkspace)
+                ? SelectedWorkspace.Record.LastOperationResult!
             : presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
         DetailServices.Clear();
@@ -1750,8 +1752,44 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 TroubleshootWorkspace = investigateProblemAction,
                 OpenFolder = openFolderAction,
                 AdvancedActions = advancedActions,
-            });
+            },
+            BuildEffectiveReadiness(workspace));
     }
+
+    private WorkspaceReadinessSnapshot? BuildEffectiveReadiness(WorkspaceSummaryViewModel workspace)
+    {
+        if (workspace.Snapshot is null)
+        {
+            return null;
+        }
+
+        if (!(ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation && IsReadinessTrackedOperation(CurrentWorkspaceOperationName)))
+        {
+            return workspace.Snapshot.Readiness;
+        }
+
+        return WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput
+        {
+            Snapshot = workspace.Snapshot,
+            Health = workspace.Snapshot.Health,
+            Operation = new WorkspaceOperationState
+            {
+                IsInProgress = true,
+                OperationName = CurrentWorkspaceOperationName,
+                StatusMessage = CurrentWorkspaceOperationStatus,
+            },
+        });
+    }
+
+    private static bool IsReadinessTrackedOperation(string operationName)
+        => operationName is "Open Workspace" or "Start" or "Reprovision" or "Recover" or "Rebuild Runtime" or "Attach";
+
+    private static bool ShouldPreferLastOperationResultForDetails(WorkspaceSummaryViewModel workspace)
+        => !string.IsNullOrWhiteSpace(workspace.Record.LastOperationResult)
+            && !string.IsNullOrWhiteSpace(workspace.Record.LastOperationName)
+            && !IsReadinessTrackedOperation(workspace.Record.LastOperationName ?? string.Empty)
+            && workspace.Readiness?.Status == WorkspaceReadinessStatus.Ready
+            && workspace.Record.LastOperationSucceeded == true;
 
     private static bool ShouldShowFailureEvidence(WorkspaceSummaryViewModel workspace)
     {
@@ -1773,7 +1811,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             workspace,
             isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
             currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
-            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty);
+            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty,
+            BuildEffectiveReadiness(workspace));
 
     private ActionItemViewModel CreatePresentationAction(WorkspaceSummaryViewModel workspace, string label, string description, bool isEnabled, string disabledReason, Func<Task> executeAsync, bool useWorkspaceScopedCommands)
         => new(

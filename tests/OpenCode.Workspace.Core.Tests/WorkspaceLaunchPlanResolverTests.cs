@@ -175,6 +175,7 @@ public sealed class WorkspaceLaunchPlanResolverTests
             LocalRuntimeState = includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "Native" } : null,
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", CompatibilityMode = RuntimeCompatibilityMode.Native, IsAvailable = true },
             UpdateRequired = updateRequired,
+            Readiness = new WorkspaceReadinessSnapshot(),
         };
     }
 

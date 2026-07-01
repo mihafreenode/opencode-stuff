@@ -39,6 +39,8 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? _runtimeStatusLabelOverride ?? "Error"
         : !string.IsNullOrWhiteSpace(_runtimeStatusLabelOverride)
         ? _runtimeStatusLabelOverride!
+        : Snapshot?.Readiness is not null
+        ? FormatReadinessStatusLabel(Snapshot.Readiness.Status)
         : FormatHealthStatusLabel(Snapshot!.Health.OverallStatus);
     public string ProtectionLabel => IsLoading
         ? "Loading..."
@@ -72,6 +74,8 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? _lastActivityOverride ?? ErrorMessage
         : !string.IsNullOrWhiteSpace(_lastActivityOverride)
         ? _lastActivityOverride!
+        : Snapshot?.Readiness is not null
+        ? Snapshot.Readiness.Summary
         : !string.IsNullOrWhiteSpace(Snapshot!.Health.Summary)
             ? Snapshot.Health.Summary
             : string.IsNullOrWhiteSpace(Snapshot.Record.LastOperationResult)
@@ -96,6 +100,10 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             : $"Loaded ({Snapshot.LocalRuntimeState.ResolvedPlatform})";
     public string RuntimeTarget => IsLoading ? "Loading..." : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
     public WorkspaceHealthSnapshot? Health => Snapshot?.Health;
+    public WorkspaceReadinessSnapshot? Readiness => Snapshot?.Readiness;
+    public string ReadinessPrimaryActionLabel => Readiness is null ? string.Empty : FormatPrimaryActionLabel(Readiness.PrimaryAction);
+    public string ReadinessActivityLabel => Readiness is null ? string.Empty : FormatReadinessActivityLabel(Readiness.CurrentActivity);
+    public bool IsReadinessOperationInProgress => Readiness?.IsOperationInProgress == true;
     public string SafeWorkspaceName => BuildSafeWorkspaceToken(Name);
     public string RowAutomationId => $"WorkspaceRow_{SafeWorkspaceName}";
     public string RowAutomationName => $"WorkspaceRow_{SafeWorkspaceName}";
@@ -211,10 +219,44 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     {
         RaisePropertyChanged(nameof(RuntimeStatusLabel));
         RaisePropertyChanged(nameof(LastActivity));
+        RaisePropertyChanged(nameof(Readiness));
+        RaisePropertyChanged(nameof(ReadinessPrimaryActionLabel));
+        RaisePropertyChanged(nameof(ReadinessActivityLabel));
+        RaisePropertyChanged(nameof(IsReadinessOperationInProgress));
         RaisePropertyChanged(nameof(Headline));
         RaisePropertyChanged(nameof(Summary));
         RaisePropertyChanged(nameof(Health));
     }
+
+    private static string FormatReadinessStatusLabel(WorkspaceReadinessStatus status)
+        => status switch
+        {
+            WorkspaceReadinessStatus.Ready => "Workspace Ready",
+            WorkspaceReadinessStatus.Preparing => "Preparing",
+            WorkspaceReadinessStatus.NeedsRebuild => "Needs Rebuild",
+            _ => "Unavailable",
+        };
+
+    private static string FormatPrimaryActionLabel(WorkspacePrimaryAction action)
+        => action switch
+        {
+            WorkspacePrimaryAction.ViewProgress => "View Progress",
+            WorkspacePrimaryAction.RebuildRuntime => "Rebuild Runtime",
+            WorkspacePrimaryAction.RunDiagnostics => "Run Diagnostics",
+            WorkspacePrimaryAction.OpenFolder => "Open Folder",
+            _ => "Open Workspace",
+        };
+
+    private static string FormatReadinessActivityLabel(WorkspaceActivity activity)
+        => activity switch
+        {
+            WorkspaceActivity.Preparing => "Preparing",
+            WorkspaceActivity.OpeningTerminal => "Opening terminal",
+            WorkspaceActivity.RepairingRuntime => "Repairing runtime",
+            WorkspaceActivity.Investigating => "Investigating",
+            WorkspaceActivity.Discovering => "Discovering",
+            _ => "None",
+        };
 
     private static string FormatHealthStatusLabel(WorkspaceHealthStatus status)
         => status switch

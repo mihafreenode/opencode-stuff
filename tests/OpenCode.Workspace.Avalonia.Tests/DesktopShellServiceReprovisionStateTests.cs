@@ -59,6 +59,8 @@ public sealed class DesktopShellServiceReprovisionStateTests
                 LocalRuntimeState = provisioned.LocalRuntimeState,
                 ResolvedRuntimePlan = provisioned.ResolvedRuntimePlan,
                 UpdateRequired = false,
+                Health = provisioned.Health,
+                Readiness = provisioned.Readiness,
             };
 
             var result = await fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, stoppedSnapshot);
@@ -321,6 +323,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
                     Recommendation = "Troubleshoot Workspace.",
                     Services = [new WorkspaceServiceHealthSnapshot { ServiceId = "pgadmin", Name = "pgAdmin", Category = "Application", Status = WorkspaceHealthStatus.Healthy, StatusLabel = "Available", Summary = "pgAdmin is available.", Recommendation = "Open Workspace.", Timestamp = DateTimeOffset.UtcNow }],
                 },
+                Readiness = fixture.OpenSnapshot.Readiness,
             };
 
             var report = await fixture.Service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });

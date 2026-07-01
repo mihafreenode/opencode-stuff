@@ -319,6 +319,7 @@ public sealed class WorkspaceTroubleshootingEngineTests
             LocalRuntimeState = new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" },
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
             UpdateRequired = false,
+            Readiness = new WorkspaceReadinessSnapshot(),
         };
     }
 

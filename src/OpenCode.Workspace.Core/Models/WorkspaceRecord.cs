@@ -171,6 +171,7 @@ public sealed class WorkspaceSnapshot
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool UpdateRequired { get; init; }
     public WorkspaceHealthSnapshot Health { get; init; } = new();
+    public WorkspaceReadinessSnapshot Readiness { get; init; } = new();
 }
 
 public sealed class WorkspaceSessionSnapshot

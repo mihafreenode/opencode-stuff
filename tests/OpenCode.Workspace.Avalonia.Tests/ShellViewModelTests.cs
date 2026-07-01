@@ -2045,8 +2045,8 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Loaded (linux/amd64)", page.SelectedWorkspace?.LocalRuntimeStateStatus);
         Assert.Equal("Workspace reprovisioned successfully.", page.ReprovisionStatusMessage);
-        Assert.Equal("Healthy", page.SelectedWorkspace?.RuntimeStatusLabel);
-        Assert.Equal("Workspace reprovisioned successfully.", page.SelectedWorkspace?.LastActivity);
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Available: Development Shell.", page.SelectedWorkspace?.LastActivity);
     }
 
     [Fact]
@@ -2225,6 +2225,24 @@ public sealed class ShellViewModelTests
                     CreateServiceHealthSnapshot("rest-apis", "REST APIs", WorkspaceHealthStatus.Healthy, "REST APIs are available."),
                     CreateServiceHealthSnapshot("oracle-apex", "Oracle APEX", WorkspaceHealthStatus.Attention, "Oracle APEX is not available yet."),
                 ]));
+        snapshot = WithReadiness(snapshot, new WorkspaceReadinessSnapshot
+        {
+            Status = WorkspaceReadinessStatus.Ready,
+            CurrentActivity = WorkspaceActivity.None,
+            PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+            Summary = "Workspace is ready. Available: SQL Developer Web, REST APIs. Development environment needs attention.",
+            Capabilities =
+            [
+                new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
+                new WorkspaceCapabilitySnapshot { Key = "sql-developer-web", Label = "SQL Developer Web", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "SQL Developer Web is available." },
+                new WorkspaceCapabilitySnapshot { Key = "rest-apis", Label = "REST APIs", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "REST APIs are available." },
+                new WorkspaceCapabilitySnapshot { Key = "oracle-apex", Label = "Oracle APEX", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Unavailable, Summary = "Oracle APEX is not available yet." },
+            ],
+            AttentionItems =
+            [
+                new WorkspaceAttentionItem { Key = "oracle-apex", Label = "Oracle APEX", Scope = WorkspaceAttentionScope.Capability, Severity = WorkspaceAttentionSeverity.Attention, Summary = "Oracle APEX is not available yet.", RecommendedActionLabel = "Investigate Oracle APEX" },
+            ],
+        });
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
 
         await page.LoadAsync();
@@ -2264,6 +2282,23 @@ public sealed class ShellViewModelTests
                         new WorkspaceDevelopmentEnvironmentCheck { Name = "screen", Status = "Missing", Summary = "screen is missing." },
                     ],
                 }));
+        snapshot = WithReadiness(snapshot, new WorkspaceReadinessSnapshot
+        {
+            Status = WorkspaceReadinessStatus.Ready,
+            CurrentActivity = WorkspaceActivity.None,
+            PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+            Summary = "Workspace is ready. Development environment needs attention.",
+            Capabilities =
+            [
+                new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
+                new WorkspaceCapabilitySnapshot { Key = "sql-developer-web", Label = "SQL Developer Web", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "SQL Developer Web is available." },
+                new WorkspaceCapabilitySnapshot { Key = "rest-apis", Label = "REST APIs", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "REST APIs are available." },
+            ],
+            AttentionItems =
+            [
+                new WorkspaceAttentionItem { Key = "development-environment", Label = "Development Environment", Scope = WorkspaceAttentionScope.DevelopmentEnvironment, Severity = WorkspaceAttentionSeverity.Attention, Summary = "Development environment needs attention: OpenCode CLI, screen.", RecommendedActionLabel = "Inspect Development Environment" },
+            ],
+        });
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
 
         await page.LoadAsync();
@@ -2272,6 +2307,105 @@ public sealed class ShellViewModelTests
         Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
         Assert.Equal("Inspect Development Environment.", page.DetailRecommendation);
         Assert.Contains(page.DetailItems, item => item.Label == "Development Environment" && item.Value.Contains("OpenCode CLI", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ReadyWorkspaceCard_PrefersCoreReadinessOverHealthStatus()
+    {
+        var snapshot = WithReadiness(
+            WithHealth(
+                CreateSnapshot("alpha"),
+                CreateHealthSnapshot(WorkspaceHealthStatus.Degraded, "Managed runtime files are missing or stale.", "Open Workspace.")),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Ready,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = "Workspace is ready.",
+                Capabilities =
+                [
+                    new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
+                ],
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Workspace is ready.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task ReadyWorkspaceReadinessLabel_KeepsOpenWorkspaceCommandBehavior()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Ready,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = "Workspace is ready.",
+                Capabilities =
+                [
+                    new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
+                ],
+            });
+        var desktop = new FakeDesktopShellService([snapshot]);
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        await ((AsyncRelayCommand)page.DetailPrimaryAction!.Command).ExecuteAsync();
+        Assert.Equal(1, desktop.OpenWorkspaceCallCount);
+    }
+
+    [Fact]
+    public async Task SnapshotReadiness_Present_DoesNotRecomputePrimaryActionFromHealth()
+    {
+        var snapshot = WithReadiness(
+            WithHealth(
+                CreateSnapshot("alpha", includeRuntimeState: false),
+                CreateHealthSnapshot(WorkspaceHealthStatus.Degraded, "Managed runtime files are missing or stale.", "Troubleshoot Workspace.")),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.Unavailable,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = "Open Workspace can prepare and open this workspace.",
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Preparation", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+    }
+
+    [Fact]
+    public async Task SnapshotReadiness_Present_DoesNotRecomputeNeedsRebuildFromHealth()
+    {
+        var snapshot = WithReadiness(
+            WithHealth(
+                CreateSnapshot("alpha"),
+                CreateHealthSnapshot(WorkspaceHealthStatus.Healthy, "Workspace is healthy.", "Open Workspace.")),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.NeedsRebuild,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
+                Summary = "Rebuild Runtime is the next normal recovery step.",
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Needs Rebuild", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Rebuild Runtime.", page.DetailRecommendation);
     }
 
     [Fact]
@@ -2298,8 +2432,8 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
         Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Equal("View Progress", page.DetailPrimaryAction?.Label);
+        Assert.Equal("View Progress.", page.DetailRecommendation);
         Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
         Assert.Equal(["Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
 
@@ -2324,7 +2458,7 @@ public sealed class ShellViewModelTests
     public async Task FreshWorkspaceBeforeOpen_UsesNotPreparedAndOpenWorkspace()
     {
         var snapshot = CreateSnapshot("alpha", includeRuntimeState: true, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -2373,7 +2507,7 @@ public sealed class ShellViewModelTests
                         Timestamp = DateTimeOffset.UtcNow,
                     },
                 ]),
-        };
+        });
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
 
         await page.LoadAsync();
@@ -2468,7 +2602,7 @@ public sealed class ShellViewModelTests
             [
                 CreateServiceHealthSnapshot("pgadmin", "pgAdmin", WorkspaceHealthStatus.Healthy, "pgAdmin is available."),
             ]));
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -2520,7 +2654,7 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
-        };
+        });
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
 
         await page.LoadAsync();
@@ -2773,7 +2907,7 @@ public sealed class ShellViewModelTests
     public async Task CleanupRepairFailure_UsesGenericResetRuntimeAction()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -2821,7 +2955,8 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
-        };
+            Health = snapshot.Health,
+        });
 
         var desktop = new FakeDesktopShellService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
@@ -2840,7 +2975,7 @@ public sealed class ShellViewModelTests
     public async Task CleanupRepairFailure_DemotesOpenWorkspaceAndOrdersVisibleActions()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -2888,7 +3023,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
-        };
+        });
 
         var desktop = new FakeDesktopShellService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
@@ -3225,7 +3360,7 @@ public sealed class ShellViewModelTests
     public async Task CleanupRepairFailure_RecommendationMatchesVisibleEnabledResetRuntimeButton()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -3273,7 +3408,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
-        };
+        });
 
         var desktop = new FakeDesktopShellService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
@@ -3290,7 +3425,7 @@ public sealed class ShellViewModelTests
     public async Task ResetRuntime_RequestsConfirmationWithRemoveAndKeepScope()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Recover", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
-        snapshot = new WorkspaceSnapshot
+        snapshot = WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -3338,7 +3473,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
-        };
+        });
         var desktop = new FakeDesktopShellService([snapshot]);
         var interaction = new FakeWorkspaceInteractionService { ResetRuntimeConfirmed = false };
         var page = new WorkspacesPageViewModel(desktop);
@@ -3802,7 +3937,7 @@ public sealed class ShellViewModelTests
         File.WriteAllText(Path.Combine(root, "compose.yaml"), "services: {}\n");
         File.WriteAllText(Path.Combine(root, "mounts", "config", "provision.sh"), "#!/bin/bash\n");
 
-        return new WorkspaceSnapshot
+        var snapshot = new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -3881,11 +4016,21 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
             UpdateRequired = updateRequired,
             Health = new WorkspaceHealthSnapshot(),
+            Readiness = new WorkspaceReadinessSnapshot
+            {
+                Status = includeRuntimeState && !updateRequired ? WorkspaceReadinessStatus.Ready : WorkspaceReadinessStatus.Unavailable,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
+                Summary = includeRuntimeState && !updateRequired ? "Workspace is ready." : "Open Workspace can prepare and open this workspace.",
+            },
         };
+
+        return WithComputedReadiness(snapshot);
     }
 
     private static WorkspaceSnapshot WithHealth(WorkspaceSnapshot snapshot, WorkspaceHealthSnapshot health, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
-        => new()
+    {
+        var updated = new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -3919,6 +4064,27 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
             Health = health,
+            Readiness = snapshot.Readiness,
+        };
+        return WithComputedReadiness(updated);
+    }
+
+    private static WorkspaceSnapshot WithReadiness(WorkspaceSnapshot snapshot, WorkspaceReadinessSnapshot readiness)
+        => new()
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+            Readiness = readiness,
         };
 
     private static WorkspaceHealthSnapshot CreateHealthSnapshot(
@@ -3965,7 +4131,7 @@ public sealed class ShellViewModelTests
     private static WorkspaceSnapshot CreateOracleSnapshot(string name, bool oracleNoticeShown)
     {
         var snapshot = CreateSnapshot(name);
-        return new WorkspaceSnapshot
+        return WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -4009,11 +4175,12 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
-        };
+            Readiness = snapshot.Readiness,
+        });
     }
 
     private static WorkspaceSnapshot WithProvisioningHealth(WorkspaceSnapshot snapshot, WorkspaceProvisioningHealthRecord health)
-        => new()
+        => WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
             {
@@ -4047,10 +4214,11 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
-        };
+            Readiness = snapshot.Readiness,
+        });
 
     private static WorkspaceSnapshot WithHealthServices(WorkspaceSnapshot snapshot, params WorkspaceServiceHealthSnapshot[] services)
-        => new()
+        => WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = snapshot.Record,
             Definition = snapshot.Definition,
@@ -4073,6 +4241,25 @@ public sealed class ShellViewModelTests
                 Providers = [],
                 Services = services,
             },
+            Readiness = snapshot.Readiness,
+        });
+
+    private static WorkspaceSnapshot WithComputedReadiness(WorkspaceSnapshot snapshot)
+        => new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+            Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = snapshot.Health }),
         };
 
     private sealed class FakeDesktopShellService : IDesktopShellService
@@ -4280,6 +4467,8 @@ public sealed class ShellViewModelTests
                 LocalRuntimeState = snapshot.LocalRuntimeState,
                 ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
                 UpdateRequired = snapshot.UpdateRequired,
+                Health = snapshot.Health,
+                Readiness = snapshot.Readiness,
             });
         }
 
@@ -4382,7 +4571,42 @@ public sealed class ShellViewModelTests
 
             return Task.FromResult(new WorkspaceCheckpointOperationResult
             {
-                Snapshot = currentSnapshot ?? CreateSnapshot("checkpoint"),
+                Snapshot = WithComputedReadiness(new WorkspaceSnapshot
+                {
+                    Record = new WorkspaceRecord
+                    {
+                        Name = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.Name,
+                        RootPath = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.RootPath,
+                        RepositoryPath = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.RepositoryPath,
+                        ConfigurationPath = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.ConfigurationPath,
+                        SourceType = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.SourceType,
+                        ImportedFromExistingCheckout = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.ImportedFromExistingCheckout,
+                        OriginalDefaultBranch = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.OriginalDefaultBranch,
+                        SelectedWorkspaceBranch = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.SelectedWorkspaceBranch,
+                        RemoteOriginUrl = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.RemoteOriginUrl,
+                        CreatedUtc = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.CreatedUtc,
+                        LastOpenedUtc = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.LastOpenedUtc,
+                        LastPreparedUtc = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.LastPreparedUtc,
+                        OracleSoftwareNoticeShown = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.OracleSoftwareNoticeShown,
+                        LastOperationName = "Create Checkpoint",
+                        LastOperationResult = "Checkpoint 'cp-1' created.",
+                        LastOperationSucceeded = true,
+                        LastOperationUtc = DateTimeOffset.UtcNow,
+                        LastProvisioningHealth = (currentSnapshot ?? CreateSnapshot("checkpoint")).Record.LastProvisioningHealth,
+                    },
+                    Definition = (currentSnapshot ?? CreateSnapshot("checkpoint")).Definition,
+                    Paths = (currentSnapshot ?? CreateSnapshot("checkpoint")).Paths,
+                    ConfigurationPath = (currentSnapshot ?? CreateSnapshot("checkpoint")).ConfigurationPath,
+                    RuntimeState = (currentSnapshot ?? CreateSnapshot("checkpoint")).RuntimeState,
+                    Safety = (currentSnapshot ?? CreateSnapshot("checkpoint")).Safety,
+                    Session = (currentSnapshot ?? CreateSnapshot("checkpoint")).Session,
+                    AppliedState = (currentSnapshot ?? CreateSnapshot("checkpoint")).AppliedState,
+                    LocalRuntimeState = (currentSnapshot ?? CreateSnapshot("checkpoint")).LocalRuntimeState,
+                    ResolvedRuntimePlan = (currentSnapshot ?? CreateSnapshot("checkpoint")).ResolvedRuntimePlan,
+                    UpdateRequired = (currentSnapshot ?? CreateSnapshot("checkpoint")).UpdateRequired,
+                    Health = (currentSnapshot ?? CreateSnapshot("checkpoint")).Health,
+                    Readiness = (currentSnapshot ?? CreateSnapshot("checkpoint")).Readiness,
+                }),
                 Message = "Checkpoint 'cp-1' created.",
                 Transcript = new OperationTranscript(),
                 Checkpoint = new WorkspaceCheckpointRecord

@@ -192,10 +192,12 @@ public sealed class WorkspaceOrchestrator
             ResolvedRuntimePlan = resolvedRuntimePlan,
             UpdateRequired = updateRequired,
             Health = new WorkspaceHealthSnapshot(),
+            Readiness = new WorkspaceReadinessSnapshot(),
         };
 
         if (!includeRuntimeInspection)
         {
+            var partialHealth = WorkspaceHealthEngine.Build(snapshot);
             var partialSnapshot = new WorkspaceSnapshot
             {
                 Record = snapshot.Record,
@@ -213,7 +215,8 @@ public sealed class WorkspaceOrchestrator
                 LocalRuntimeState = snapshot.LocalRuntimeState,
                 ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
                 UpdateRequired = snapshot.UpdateRequired,
-                Health = WorkspaceHealthEngine.Build(snapshot),
+                Health = partialHealth,
+                Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = partialHealth }),
             };
             _workspaceAiRuntimeContextService.Write(partialSnapshot);
             return partialSnapshot;
@@ -243,8 +246,10 @@ public sealed class WorkspaceOrchestrator
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
             Health = new WorkspaceHealthSnapshot(),
+            Readiness = snapshot.Readiness,
         };
 
+        var completedHealth = WorkspaceHealthEngine.Build(finalSnapshot);
         var completedSnapshot = new WorkspaceSnapshot
         {
             Record = finalSnapshot.Record,
@@ -258,7 +263,8 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = finalSnapshot.LocalRuntimeState,
             ResolvedRuntimePlan = finalSnapshot.ResolvedRuntimePlan,
             UpdateRequired = finalSnapshot.UpdateRequired,
-            Health = WorkspaceHealthEngine.Build(finalSnapshot),
+            Health = completedHealth,
+            Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = finalSnapshot, Health = completedHealth }),
         };
         _workspaceAiRuntimeContextService.Write(completedSnapshot);
         return completedSnapshot;

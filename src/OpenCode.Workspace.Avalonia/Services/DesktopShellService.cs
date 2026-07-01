@@ -128,6 +128,8 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
         };
     }
 
@@ -1968,7 +1970,10 @@ public sealed class DesktopShellService : IDesktopShellService
             ResolvedRuntimePlan = source.ResolvedRuntimePlan,
             UpdateRequired = source.UpdateRequired,
             Health = new WorkspaceHealthSnapshot(),
+            Readiness = source.Readiness,
         };
+
+        var health = WorkspaceHealthEngine.Build(snapshot);
 
         return new WorkspaceSnapshot
         {
@@ -1983,7 +1988,8 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
-            Health = WorkspaceHealthEngine.Build(snapshot),
+            Health = health,
+            Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = health }),
         };
     }
 

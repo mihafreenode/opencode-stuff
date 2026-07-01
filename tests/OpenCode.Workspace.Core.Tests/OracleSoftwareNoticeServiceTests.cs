@@ -120,6 +120,7 @@ public sealed class OracleSoftwareNoticeServiceTests
             },
             Session = new WorkspaceSessionSnapshot { SessionName = "oracle", State = WorkspaceSessionState.Unknown },
             UpdateRequired = true,
+            Readiness = new WorkspaceReadinessSnapshot(),
         };
     }
 }
