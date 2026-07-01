@@ -495,7 +495,7 @@ public sealed class ShellViewModelTests
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = false });
         await page.LoadAsync();
 
-        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Start").Command).ExecuteAsync();
+        await ((AsyncRelayCommand)page.DetailAdvancedActions.Single(item => item.Label == "Start Only").Command).ExecuteAsync();
 
         Assert.Equal(0, service.StartCallCount);
         Assert.Equal("Workspace start cancelled.", page.DetailSummary);
@@ -510,7 +510,7 @@ public sealed class ShellViewModelTests
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = true });
         await page.LoadAsync();
 
-        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Start").Command).ExecuteAsync();
+        await ((AsyncRelayCommand)page.DetailAdvancedActions.Single(item => item.Label == "Start Only").Command).ExecuteAsync();
 
         Assert.Equal(1, service.StartCallCount);
         Assert.Equal(1, service.AcknowledgeOracleNoticeCallCount);
@@ -846,7 +846,7 @@ public sealed class ShellViewModelTests
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
         await page.LoadAsync();
 
-        var attach = page.DetailActions.Single(item => item.Label == "Attach");
+        var attach = page.DetailAdvancedActions.Single(item => item.Label == "Attach Only");
 
         Assert.True(attach.IsEnabled);
         Assert.Equal(string.Empty, attach.DisabledReason);
@@ -877,7 +877,7 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var start = page.DetailActions.Single(item => item.Label == "Start");
+            var start = page.DetailAdvancedActions.Single(item => item.Label == "Start Only");
             Assert.True(start.IsEnabled);
             Assert.Equal(string.Empty, start.DisabledReason);
         }
@@ -956,7 +956,7 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var attach = page.DetailActions.Single(item => item.Label == "Attach");
+            var attach = page.DetailAdvancedActions.Single(item => item.Label == "Attach Only");
             Assert.True(attach.IsEnabled);
             Assert.Equal(string.Empty, attach.DisabledReason);
         }
@@ -985,7 +985,7 @@ public sealed class ShellViewModelTests
         });
 
         await page.LoadAsync();
-        var attachTask = page.DetailActions.Single(item => item.Label == "Attach").Command is AsyncRelayCommand cmd ? cmd.ExecuteAsync() : throw new InvalidOperationException();
+        var attachTask = page.DetailAdvancedActions.Single(item => item.Label == "Attach Only").Command is AsyncRelayCommand cmd ? cmd.ExecuteAsync() : throw new InvalidOperationException();
         await started.Task;
 
         Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
@@ -1004,7 +1004,7 @@ public sealed class ShellViewModelTests
         });
 
         await page.LoadAsync();
-        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Attach").Command).ExecuteAsync();
+        await ((AsyncRelayCommand)page.DetailAdvancedActions.Single(item => item.Label == "Attach Only").Command).ExecuteAsync();
 
         Assert.Contains("Preparing attach...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("Windows Terminal launch failed.", page.OperationLogText, StringComparison.Ordinal);
@@ -1999,6 +1999,9 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.DoesNotContain(page.DetailActions, item => item.Label == "Reprovision");
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Start Only");
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Attach Only");
     }
 
     [Fact]
@@ -2436,6 +2439,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("View Progress", page.DetailPrimaryAction?.Label);
         Assert.Equal("View Progress.", page.DetailRecommendation);
         Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Troubleshoot Workspace");
         Assert.Equal(["Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
 
         release.SetResult();

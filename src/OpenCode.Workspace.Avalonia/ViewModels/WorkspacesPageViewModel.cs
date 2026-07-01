@@ -1757,16 +1757,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailActions.Add(action);
             DetailAdvancedActions.Add(action);
-
-            if (string.Equals(action.Label, "Start Only", StringComparison.Ordinal))
-            {
-                DetailActions.Add(new ActionItemViewModel("Start", action.Description, action.IsEnabled, action.DisabledReason, action.Command));
-            }
-
-            if (string.Equals(action.Label, "Attach Only", StringComparison.Ordinal))
-            {
-                DetailActions.Add(new ActionItemViewModel("Attach", action.Description, action.IsEnabled, action.DisabledReason, action.Command));
-            }
         }
 
         if (DetailAdvancedActions.Count == 0)
@@ -1816,6 +1806,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var advancedActions = new List<ActionItemViewModel>
         {
             rebuildRuntimeAction,
+            investigateProblemAction,
             CreatePresentationAction(workspace, "Start Only", BuildStartDescription(workspace), CanStartWorkspace(workspace), GetStartDisabledReason(workspace), StartSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Attach Only", BuildAttachDescription(workspace), CanAttachWorkspace(workspace), GetAttachDisabledReason(workspace), AttachSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
