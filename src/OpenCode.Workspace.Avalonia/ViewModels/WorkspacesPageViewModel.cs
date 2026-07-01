@@ -1519,12 +1519,24 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
         var provisioningHealth = SelectedWorkspace.Record.LastProvisioningHealth;
         var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
-        DetailSummary = presentation.Summary;
+        DetailSummary = SelectedWorkspace.HasTransientOperationFailure && !HasActiveWorkspaceOperation
+            ? SummarizeTransientOperationMessage(SelectedWorkspace.LastActivity)
+            : presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
         DetailServices.Clear();
-        DetailItems.Add(new DetailItemViewModel("Current status", presentation.CurrentStatus));
-        DetailItems.Add(new DetailItemViewModel("Current activity", presentation.CurrentActivity));
-        DetailItems.Add(new DetailItemViewModel("Activity summary", presentation.ActivitySummary));
+        DetailItems.Add(new DetailItemViewModel("Workspace", presentation.CurrentStatus));
+        DetailItems.Add(new DetailItemViewModel("Current Activity", presentation.CurrentActivity));
+        DetailItems.Add(new DetailItemViewModel("Activity Summary", presentation.ActivitySummary));
+        if (!string.IsNullOrWhiteSpace(presentation.CapabilitiesSummary))
+        {
+            DetailItems.Add(new DetailItemViewModel("Capabilities", presentation.CapabilitiesSummary));
+        }
+
+        if (!string.IsNullOrWhiteSpace(presentation.ApplicationsSummary))
+        {
+            DetailItems.Add(new DetailItemViewModel("Applications", presentation.ApplicationsSummary));
+        }
+
         DetailItems.Add(new DetailItemViewModel("Runtime", SelectedWorkspace.RuntimeSummary));
         DetailItems.Add(new DetailItemViewModel("Git", SelectedWorkspace.RepositoryStatus));
         DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));
@@ -1533,33 +1545,24 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailItems.Add(new DetailItemViewModel("Resources", FormatManagedResources(SelectedWorkspace.Snapshot.LocalRuntimeState.Resources.Ports)));
         }
-        if (!string.IsNullOrWhiteSpace(presentation.ServicesSummary))
-        {
-            DetailItems.Add(new DetailItemViewModel("Applications", presentation.ServicesSummary));
-        }
         DetailItems.Add(new DetailItemViewModel("Services", SelectedWorkspace.Services));
         DetailItems.Add(new DetailItemViewModel("Protection state", SelectedWorkspace.ProtectionLabel));
         DetailItems.Add(new DetailItemViewModel("Root path", SelectedWorkspace.RootPath));
         DetailItems.Add(new DetailItemViewModel("Repository path", SelectedWorkspace.RepositoryPath));
         DetailItems.Add(new DetailItemViewModel("Features", SelectedWorkspace.Features));
         DetailItems.Add(new DetailItemViewModel("Runtime target", SelectedWorkspace.RuntimeTarget));
-        if (!string.IsNullOrWhiteSpace(DetailRecommendation))
-        {
-            DetailItems.Add(new DetailItemViewModel("Recommended next step", DetailRecommendation));
-        }
-
         if (!string.IsNullOrWhiteSpace(presentation.RecentHistoryNote))
         {
-            DetailItems.Add(new DetailItemViewModel("Recent history", presentation.RecentHistoryNote));
+            DetailItems.Add(new DetailItemViewModel("Recent History", presentation.RecentHistoryNote));
         }
         if (SelectedWorkspace.Health is not null)
         {
             foreach (var provider in SelectedWorkspace.Health.Providers)
             {
-                DetailItems.Add(new DetailItemViewModel($"Provider health: {provider.DisplayName}", provider.Status.ToString()));
+                DetailItems.Add(new DetailItemViewModel($"Provider Health: {provider.DisplayName}", provider.Status.ToString()));
                 if (!string.IsNullOrWhiteSpace(provider.WorkspaceImpact))
                 {
-                    DetailItems.Add(new DetailItemViewModel($"Provider details: {provider.DisplayName}", provider.WorkspaceImpact));
+                    DetailItems.Add(new DetailItemViewModel($"Provider Details: {provider.DisplayName}", provider.WorkspaceImpact));
                 }
             }
 
@@ -1567,6 +1570,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 DetailServices.Add(BuildServiceHealthRow(service));
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(DetailRecommendation))
+        {
+            DetailItems.Add(new DetailItemViewModel("Recommendation", DetailRecommendation));
         }
         if (SelectedWorkspace.HasError)
         {
@@ -1703,6 +1711,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         var failureGuidance = TryBuildFailureGuidance(workspace);
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
+        var openDevelopmentShellAction = CreatePresentationAction(workspace, "Open Development Shell", BuildOpenDevelopmentShellDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
@@ -1731,6 +1740,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             new WorkspacePresentationActions
             {
                 OpenWorkspace = openWorkspaceAction,
+                OpenDevelopmentShell = openDevelopmentShellAction,
                 RebuildRuntime = rebuildRuntimeAction,
                 TroubleshootWorkspace = investigateProblemAction,
                 OpenFolder = openFolderAction,
@@ -1780,6 +1790,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => workspace.IsLoading
             ? "Loading workspace details before diagnostics become available."
             : "Inspect workspace, runtime, Docker, template, and provider diagnostics for this workspace.";
+
+    private string BuildOpenDevelopmentShellDescription(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : workspace.Snapshot?.RuntimeState == OpenCode.Workspace.Core.Models.WorkspaceRuntimeState.Running
+                ? "Open the development shell for the current workspace."
+                : "Start what is needed and open the development shell.";
 
     private bool CanReprovisionSelectedWorkspace()
         => SelectedWorkspace is { HasSnapshot: true } && !IsReprovisioning;
@@ -2417,6 +2434,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string? GetRetryOperationName(WorkspaceSummaryViewModel? workspace)
         => HasFailureMessage(workspace) ? workspace?.FailedOperationName : null;
+
+    private static string SummarizeTransientOperationMessage(string message)
+        => message.Contains('\n', StringComparison.Ordinal) || message.Contains('\r', StringComparison.Ordinal)
+            ? ExtractFailureReason(message)
+            : message;
 
     private static string ExtractFailureReason(string failureMessage)
     {

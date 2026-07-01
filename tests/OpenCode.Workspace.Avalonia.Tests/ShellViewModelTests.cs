@@ -1038,7 +1038,7 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("Runtime files need repair. Run Recover Workspace.", page.OperationLogText, StringComparison.Ordinal);
         Assert.Equal("Runtime files need repair. Run Recover Workspace.", page.DetailSummary);
-        Assert.Contains(page.DetailItems, item => item.Label == "Current status");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace");
     }
 
     [Fact]
@@ -2204,10 +2204,37 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Needs Attention", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
         Assert.DoesNotContain("Workspace action failed", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("ORDS", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent history" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task PartiallyUsableWorkspace_PrioritizesCapabilitiesOverRepairLanguage()
+    {
+        var snapshot = WithHealth(
+            CreateSnapshot("alpha"),
+            CreateHealthSnapshot(
+                WorkspaceHealthStatus.Attention,
+                "Workspace is running. SQL Developer Web and REST APIs are available. Oracle APEX is not available yet.",
+                "Investigate Oracle APEX.",
+                services:
+                [
+                    CreateServiceHealthSnapshot("sql-developer-web", "SQL Developer Web", WorkspaceHealthStatus.Healthy, "SQL Developer Web is available."),
+                    CreateServiceHealthSnapshot("rest-apis", "REST APIs", WorkspaceHealthStatus.Healthy, "REST APIs are available."),
+                    CreateServiceHealthSnapshot("oracle-apex", "Oracle APEX", WorkspaceHealthStatus.Attention, "Oracle APEX is not available yet."),
+                ]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Investigate Oracle APEX.", page.DetailRecommendation);
+        Assert.DoesNotContain("Repair", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(page.DetailItems, item => item.Label == "Capabilities" && item.Value.Contains("Development Shell", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Applications" && item.Value.Contains("Oracle APEX", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2218,9 +2245,9 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Needs Repair", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Needs Preparation", page.SelectedWorkspace?.Headline);
         Assert.Equal("Open Workspace can safely regenerate runtime state.", page.DetailSummary);
-        Assert.Contains(page.DetailItems, item => item.Label == "Current status" && item.Value == "Needs Repair");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value == "Needs Preparation");
     }
 
     [Fact]
@@ -2285,20 +2312,19 @@ public sealed class ShellViewModelTests
         Assert.Equal("Open Workspace will prepare the runtime and open the terminal.", page.DetailSummary);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Contains(page.DetailItems, item => item.Label == "Current status" && item.Value == "Not Prepared");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value == "Not Prepared");
     }
 
     [Fact]
-    public async Task RecommendationAction_MatchesVisiblePrimaryAction()
+    public async Task Recommendation_RemainsSecondaryToPrimaryAction()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
 
         await page.LoadAsync();
 
-        var recommendedAction = WorkspaceHealthAggregator.TryExtractRecommendedActionLabel(page.DetailRecommendation);
-        Assert.NotNull(recommendedAction);
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal(page.DetailPrimaryAction!.Label, recommendedAction);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
     }
 
     [Fact]
@@ -2310,9 +2336,9 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
         Assert.DoesNotContain("Workspace action failed", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent history" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace action failed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2331,8 +2357,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Needs Attention", page.SelectedWorkspace?.Headline);
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Workspace Partially Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.DoesNotContain("Recover Workspace", page.DetailSummary, StringComparison.Ordinal);
         Assert.DoesNotContain("Run Recover Workspace", page.DetailRecommendation, StringComparison.Ordinal);
     }
@@ -2354,10 +2380,10 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Needs Attention", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Workspace Partially Ready", page.SelectedWorkspace?.Headline);
         Assert.Contains("Workspace services are running, but terminal launch is not ready.", page.DetailSummary, StringComparison.Ordinal);
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction?.Label);
-        Assert.Equal("Troubleshoot Workspace.", page.DetailRecommendation);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
     }
 
     [Fact]
@@ -2633,9 +2659,9 @@ public sealed class ShellViewModelTests
         Assert.Contains("/workspace/.env: line 17", page.SelectedWorkspace?.LastActivity, StringComparison.Ordinal);
         Assert.Contains("/workspace/.env: line 17", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("/workspace/.env: line 17", page.OperationLogText, StringComparison.Ordinal);
-        Assert.Contains(page.DetailItems, item => item.Label == "Current status");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace");
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Troubleshoot Workspace", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
         Assert.Contains("Exit code: 127", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh", page.OperationLogText, StringComparison.Ordinal);
@@ -2666,10 +2692,10 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Workspace is running.", page.DetailSummary);
-        Assert.Contains(page.DetailItems, item => item.Label == "Recent history" && item.Value.Contains("Workspace is not running", StringComparison.Ordinal));
+        Assert.Equal("Available: Development Shell.", page.DetailSummary);
+        Assert.Contains(page.DetailItems, item => item.Label == "Recent History" && item.Value.Contains("Workspace is not running", StringComparison.Ordinal));
         Assert.NotNull(page.DetailPrimaryAction);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction!.Label);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction!.Label);
         Assert.True(page.DetailPrimaryAction.IsEnabled);
     }
 
@@ -2884,8 +2910,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
@@ -2916,8 +2942,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
 
@@ -2929,7 +2955,7 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Contains(page.DetailItems, item => item.Label == "Recommended next step" && item.Value == "Open Workspace.");
+        Assert.Contains(page.DetailItems, item => item.Label == "Recommendation" && item.Value == "Open Workspace.");
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.True(page.DetailPrimaryAction?.IsEnabled);
     }
@@ -2961,8 +2987,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Development Shell.", page.DetailRecommendation);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
         Assert.DoesNotContain(page.DetailItems, item => item.Label == "Detailed recommendation" && item.Value.Contains("Run Diagnostics", StringComparison.Ordinal));
     }
 

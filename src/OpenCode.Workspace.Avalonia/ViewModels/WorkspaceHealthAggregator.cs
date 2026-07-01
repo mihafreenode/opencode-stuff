@@ -43,6 +43,8 @@ internal static class WorkspaceHealthAggregator
             CurrentActivity = state.CurrentActivity,
             ActivitySummary = state.ActivitySummary,
             Recommendation = state.Recommendation,
+            CapabilitiesSummary = state.CapabilitiesSummary,
+            ApplicationsSummary = state.ApplicationsSummary,
             ServicesSummary = state.ServicesSummary,
             RecentHistoryNote = state.RecentHistoryNote,
             PrimaryAction = primaryAction,
@@ -78,8 +80,11 @@ internal static class WorkspaceHealthAggregator
         var hasTransientFailure = workspace.HasTransientOperationFailure && !isOperationInProgress;
         var hasLaunchReadinessProblem = HasLaunchReadinessProblem(workspace, snapshot, health, runtimeRunning);
         var needsRebuildRuntime = NeedsRebuildRuntime(workspace, hasLaunchReadinessProblem);
+        var capabilities = BuildCapabilities(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isOperationInProgress, currentOperationName, currentStatusMessage, hasLaunchReadinessProblem);
         var servicesSummary = BuildServicesSummary(health);
-        var currentStatus = BuildCurrentStatus(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, hasLaunchReadinessProblem);
+        var capabilitiesSummary = BuildCapabilitiesSummary(capabilities);
+        var applicationsSummary = BuildApplicationsSummary(capabilities);
+        var currentStatus = BuildCurrentStatus(runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, needsRebuildRuntime, capabilities);
         var currentActivity = isOperationInProgress
             ? DetermineActivityLabel(currentOperationName, currentStatusMessage)
             : hasTransientFailure
@@ -88,10 +93,10 @@ internal static class WorkspaceHealthAggregator
         var summary = isOperationInProgress
             ? BuildActivitySummary(currentOperationName, currentStatusMessage)
             : hasTransientFailure
-                ? BuildTransientFailureSummary(workspace.TransientOperationSummary, hasLaunchReadinessProblem, servicesSummary, needsRebuildRuntime)
-            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary, hasLaunchReadinessProblem, needsRebuildRuntime);
-        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName, hasLaunchReadinessProblem, needsRebuildRuntime);
-        var recommendation = BuildRecommendation(primaryActionLabel);
+                ? BuildTransientFailureSummary(workspace.TransientOperationSummary, workspace.FailedOperationName, hasLaunchReadinessProblem, servicesSummary, needsRebuildRuntime, capabilities)
+            : BuildSummary(snapshot, health, runtimeMissing, updateRequired, runtimeRunning, isFreshWorkspace, servicesSummary, hasLaunchReadinessProblem, needsRebuildRuntime, capabilities);
+        var primaryActionLabel = BuildPrimaryActionLabel(snapshot, health, runtimeMissing, runtimeRunning, isFreshWorkspace, hasTransientFailure, workspace.FailedOperationName, hasLaunchReadinessProblem, needsRebuildRuntime, capabilities);
+        var recommendation = BuildRecommendation(primaryActionLabel, snapshot, health, capabilities, needsRebuildRuntime);
 
         return new WorkspaceAggregatedState
         {
@@ -101,6 +106,8 @@ internal static class WorkspaceHealthAggregator
             CurrentActivity = currentActivity,
             ActivitySummary = isOperationInProgress ? summary : "No active workspace operation.",
             Recommendation = recommendation,
+            CapabilitiesSummary = capabilitiesSummary,
+            ApplicationsSummary = applicationsSummary,
             ServicesSummary = servicesSummary,
             RecentHistoryNote = BuildRecentHistoryNote(workspace, health, runtimeMissing, isOperationInProgress, isFreshWorkspace),
             PrimaryActionLabel = primaryActionLabel,
@@ -114,7 +121,7 @@ internal static class WorkspaceHealthAggregator
             return null;
         }
 
-        foreach (var label in new[] { "Open Workspace", "Troubleshoot Workspace", "Rebuild Runtime", "Run Diagnostics", "Retry" })
+        foreach (var label in new[] { "Open Development Shell", "Open Workspace", "Troubleshoot Workspace", "Rebuild Runtime", "Run Diagnostics", "Retry" })
         {
             if (recommendation.Contains(label, StringComparison.OrdinalIgnoreCase))
             {
@@ -125,32 +132,34 @@ internal static class WorkspaceHealthAggregator
         return null;
     }
 
-    private static string BuildCurrentStatus(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isFreshWorkspace, bool hasLaunchReadinessProblem)
+    private static string BuildCurrentStatus(bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isFreshWorkspace, bool needsRebuildRuntime, IReadOnlyList<WorkspaceCapabilityState> capabilities)
     {
         if (isFreshWorkspace && !runtimeRunning)
         {
             return "Not Prepared";
         }
 
-        if (hasLaunchReadinessProblem)
+        if (runtimeMissing || updateRequired || !runtimeRunning)
         {
-            return "Needs Attention";
+            return "Needs Preparation";
         }
 
-        if (runtimeMissing)
+        if (needsRebuildRuntime)
         {
-            return "Needs Repair";
+            return "Unavailable";
         }
 
-        return health?.OverallStatus switch
+        if (capabilities.Any(item => item.Name == "Development Shell" && item.Availability == WorkspaceCapabilityAvailability.Available))
         {
-            WorkspaceHealthStatus.Unavailable or WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Investigating => "Needs Repair",
-            WorkspaceHealthStatus.Attention => "Needs Attention",
-            WorkspaceHealthStatus.Healthy when runtimeRunning => "Ready",
-            _ when updateRequired => "Not Prepared",
-            _ when runtimeRunning => "Ready",
-            _ => "Not Prepared",
-        };
+            return "Workspace Ready";
+        }
+
+        if (capabilities.Any(item => item.Availability == WorkspaceCapabilityAvailability.Available))
+        {
+            return "Workspace Partially Ready";
+        }
+
+        return "Unavailable";
     }
 
     private static string BuildSummary(
@@ -162,7 +171,8 @@ internal static class WorkspaceHealthAggregator
         bool isFreshWorkspace,
         string servicesSummary,
         bool hasLaunchReadinessProblem,
-        bool needsRebuildRuntime)
+        bool needsRebuildRuntime,
+        IReadOnlyList<WorkspaceCapabilityState> capabilities)
     {
         if (isFreshWorkspace && !runtimeRunning)
         {
@@ -182,6 +192,11 @@ internal static class WorkspaceHealthAggregator
         if (runtimeMissing)
         {
             return "Open Workspace can safely regenerate runtime state.";
+        }
+
+        if (capabilities.Any(item => item.Availability == WorkspaceCapabilityAvailability.Available))
+        {
+            return BuildCapabilityNarrative(capabilities);
         }
 
         if (runtimeRunning)
@@ -244,8 +259,34 @@ internal static class WorkspaceHealthAggregator
         return string.Join(" ", parts);
     }
 
-    private static string BuildRecommendation(string primaryActionLabel)
-        => primaryActionLabel + ".";
+    private static string BuildRecommendation(string primaryActionLabel, WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, IReadOnlyList<WorkspaceCapabilityState> capabilities, bool needsRebuildRuntime)
+    {
+        if (string.Equals(primaryActionLabel, "Open Workspace", StringComparison.Ordinal)
+            || string.Equals(primaryActionLabel, "Rebuild Runtime", StringComparison.Ordinal)
+            || string.Equals(primaryActionLabel, "Run Diagnostics", StringComparison.Ordinal)
+            || string.Equals(primaryActionLabel, "Troubleshoot Workspace", StringComparison.Ordinal))
+        {
+            return primaryActionLabel + ".";
+        }
+
+        if (needsRebuildRuntime)
+        {
+            return "Rebuild Runtime.";
+        }
+
+        var capabilityNeedingAttention = capabilities.FirstOrDefault(item => item.Availability is WorkspaceCapabilityAvailability.Degraded or WorkspaceCapabilityAvailability.Unavailable);
+        if (capabilityNeedingAttention is not null)
+        {
+            return $"Investigate {capabilityNeedingAttention.Name}.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(health?.Recommendation) && !string.Equals(health.Recommendation, "Open Workspace.", StringComparison.Ordinal))
+        {
+            return health.Recommendation;
+        }
+
+        return primaryActionLabel + ".";
+    }
 
     private static string BuildRecentHistoryNote(WorkspaceSummaryViewModel workspace, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool isOperationInProgress, bool isFreshWorkspace)
     {
@@ -325,17 +366,17 @@ internal static class WorkspaceHealthAggregator
 
             if (currentStatusMessage.Contains("checking workspace", StringComparison.OrdinalIgnoreCase))
             {
-                return "Checking Workspace";
+                return "Investigating";
             }
         }
 
         return operationName switch
         {
-            "Open Workspace" => "Opening Terminal",
-            "Start" => "Starting Workspace",
-            "Attach" => "Opening Terminal",
-            "Recover" => "Repairing Runtime",
-            "Rebuild Runtime" => "Repairing Runtime",
+            "Open Workspace" => "Opening terminal",
+            "Start" => "Preparing",
+            "Attach" => "Opening terminal",
+            "Recover" => "Repairing runtime",
+            "Rebuild Runtime" => "Repairing runtime",
             "Reprovision" => "Provisioning",
             _ => string.IsNullOrWhiteSpace(operationName) ? "Working" : operationName,
         };
@@ -359,7 +400,7 @@ internal static class WorkspaceHealthAggregator
             && workspace.Record.LastOperationSucceeded == true
             && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
 
-    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName, bool hasLaunchReadinessProblem, bool needsRebuildRuntime)
+    private static string BuildPrimaryActionLabel(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool runtimeMissing, bool runtimeRunning, bool isFreshWorkspace, bool hasTransientFailure, string? failedOperationName, bool hasLaunchReadinessProblem, bool needsRebuildRuntime, IReadOnlyList<WorkspaceCapabilityState> capabilities)
     {
         if (isFreshWorkspace || runtimeMissing || !runtimeRunning)
         {
@@ -371,9 +412,26 @@ internal static class WorkspaceHealthAggregator
             return "Rebuild Runtime";
         }
 
+        if (IsHostFailure(failedOperationName, snapshot))
+        {
+            return "Open Workspace";
+        }
+
+        if (capabilities.Any(item => item.Name == "Development Shell" && item.Availability == WorkspaceCapabilityAvailability.Available))
+        {
+            return "Open Development Shell";
+        }
+
+        if (capabilities.Any(item => item.Availability == WorkspaceCapabilityAvailability.Available))
+        {
+            return "Open Workspace";
+        }
+
         if (hasLaunchReadinessProblem)
         {
-            return "Troubleshoot Workspace";
+            return capabilities.Any(item => item.Availability == WorkspaceCapabilityAvailability.Available)
+                ? "Open Workspace"
+                : "Troubleshoot Workspace";
         }
 
         if (hasTransientFailure && failedOperationName is "Reprovision" or "Recover" or "Rebuild Runtime" or "Open Workspace")
@@ -386,7 +444,7 @@ internal static class WorkspaceHealthAggregator
             : "Open Workspace";
     }
 
-    private static string BuildTransientFailureSummary(string summary, bool hasLaunchReadinessProblem, string servicesSummary, bool needsRebuildRuntime)
+    private static string BuildTransientFailureSummary(string summary, string? failedOperationName, bool hasLaunchReadinessProblem, string servicesSummary, bool needsRebuildRuntime, IReadOnlyList<WorkspaceCapabilityState> capabilities)
     {
         if (needsRebuildRuntime)
         {
@@ -413,7 +471,150 @@ internal static class WorkspaceHealthAggregator
         {
             "Troubleshoot Workspace" => actions.TroubleshootWorkspace,
             "Rebuild Runtime" => actions.RebuildRuntime,
+            "Open Development Shell" => actions.OpenDevelopmentShell,
             _ => actions.OpenWorkspace,
+        };
+
+    private static IReadOnlyList<WorkspaceCapabilityState> BuildCapabilities(
+        WorkspaceSnapshot? snapshot,
+        WorkspaceHealthSnapshot? health,
+        bool runtimeMissing,
+        bool updateRequired,
+        bool runtimeRunning,
+        bool isOperationInProgress,
+        string currentOperationName,
+        string currentStatusMessage,
+        bool hasLaunchReadinessProblem)
+    {
+        var capabilities = new List<WorkspaceCapabilityState>();
+        capabilities.Add(new WorkspaceCapabilityState(
+            "Development Shell",
+            DetermineShellAvailability(runtimeMissing, updateRequired, runtimeRunning, isOperationInProgress, currentOperationName, currentStatusMessage, hasLaunchReadinessProblem),
+            "Capability"));
+
+        if (health is not null)
+        {
+            foreach (var service in health.Services.Where(item => string.Equals(item.Category, "Application", StringComparison.OrdinalIgnoreCase)))
+            {
+                capabilities.Add(new WorkspaceCapabilityState(service.Name, MapAvailability(service.Status), "Application"));
+            }
+
+            var hasApexApplication = capabilities.Any(item => item.Name.Contains("APEX", StringComparison.OrdinalIgnoreCase));
+            if (!hasApexApplication)
+            {
+                var apexProvider = health.Providers.FirstOrDefault(item => string.Equals(item.ProviderKey, "apex", StringComparison.OrdinalIgnoreCase));
+                if (apexProvider is not null)
+                {
+                    capabilities.Add(new WorkspaceCapabilityState("Oracle APEX", MapAvailability(apexProvider.Status), "Application"));
+                }
+            }
+        }
+
+        return capabilities;
+    }
+
+    private static WorkspaceCapabilityAvailability DetermineShellAvailability(bool runtimeMissing, bool updateRequired, bool runtimeRunning, bool isOperationInProgress, string currentOperationName, string currentStatusMessage, bool hasLaunchReadinessProblem)
+    {
+        if (isOperationInProgress
+            && (string.Equals(currentOperationName, "Open Workspace", StringComparison.Ordinal)
+                || string.Equals(currentOperationName, "Start", StringComparison.Ordinal)
+                || string.Equals(currentOperationName, "Attach", StringComparison.Ordinal)
+                || currentStatusMessage.Contains("opening terminal", StringComparison.OrdinalIgnoreCase)))
+        {
+            return WorkspaceCapabilityAvailability.Preparing;
+        }
+
+        if (runtimeMissing || updateRequired || !runtimeRunning)
+        {
+            return WorkspaceCapabilityAvailability.Unavailable;
+        }
+
+        return hasLaunchReadinessProblem
+            ? WorkspaceCapabilityAvailability.Degraded
+            : WorkspaceCapabilityAvailability.Available;
+    }
+
+    private static WorkspaceCapabilityAvailability MapAvailability(WorkspaceHealthStatus status)
+        => status switch
+        {
+            WorkspaceHealthStatus.Healthy => WorkspaceCapabilityAvailability.Available,
+            WorkspaceHealthStatus.Provisioning or WorkspaceHealthStatus.Investigating => WorkspaceCapabilityAvailability.Preparing,
+            WorkspaceHealthStatus.Attention => WorkspaceCapabilityAvailability.Degraded,
+            _ => WorkspaceCapabilityAvailability.Unavailable,
+        };
+
+    private static string BuildCapabilitiesSummary(IReadOnlyList<WorkspaceCapabilityState> capabilities)
+    {
+        if (capabilities.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        AppendCapabilityLines(lines, "Available", capabilities, WorkspaceCapabilityAvailability.Available, "- ");
+        AppendCapabilityLines(lines, "Attention", capabilities, WorkspaceCapabilityAvailability.Degraded, "- ");
+        AppendCapabilityLines(lines, "Preparing", capabilities, WorkspaceCapabilityAvailability.Preparing, "- ");
+        AppendCapabilityLines(lines, "Unavailable", capabilities, WorkspaceCapabilityAvailability.Unavailable, "- ");
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildApplicationsSummary(IReadOnlyList<WorkspaceCapabilityState> capabilities)
+    {
+        var applications = capabilities.Where(item => string.Equals(item.Kind, "Application", StringComparison.Ordinal)).ToList();
+        if (applications.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        foreach (var application in applications)
+        {
+            lines.Add($"{FormatCapabilityPrefix(application.Availability)}{application.Name}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildCapabilityNarrative(IReadOnlyList<WorkspaceCapabilityState> capabilities)
+    {
+        var available = capabilities.Where(item => item.Availability == WorkspaceCapabilityAvailability.Available).Select(item => item.Name).ToList();
+        var attention = capabilities.Where(item => item.Availability is WorkspaceCapabilityAvailability.Degraded or WorkspaceCapabilityAvailability.Unavailable).Select(item => item.Name).ToList();
+        var parts = new List<string>();
+        if (available.Count > 0)
+        {
+            parts.Add($"Available: {JoinNames(available)}.");
+        }
+
+        if (attention.Count > 0)
+        {
+            parts.Add($"Needs attention: {JoinNames(attention)}.");
+        }
+
+        return string.Join(" ", parts);
+    }
+    private static bool IsHostFailure(string? failedOperationName, WorkspaceSnapshot? snapshot)
+        => string.Equals(snapshot?.Record.LastProvisioningHealth?.ProblemScope, "HostProblem", StringComparison.Ordinal)
+            || string.Equals(failedOperationName, "Run Diagnostics", StringComparison.Ordinal);
+
+    private static void AppendCapabilityLines(List<string> lines, string heading, IReadOnlyList<WorkspaceCapabilityState> capabilities, WorkspaceCapabilityAvailability availability, string marker)
+    {
+        var matches = capabilities.Where(item => item.Availability == availability).Select(item => item.Name).ToList();
+        if (matches.Count == 0)
+        {
+            return;
+        }
+
+        lines.Add(heading);
+        lines.AddRange(matches.Select(item => $"{marker} {item}"));
+    }
+
+    private static string FormatCapabilityPrefix(WorkspaceCapabilityAvailability availability)
+        => availability switch
+        {
+            WorkspaceCapabilityAvailability.Available => "Available: ",
+            WorkspaceCapabilityAvailability.Degraded => "Attention: ",
+            WorkspaceCapabilityAvailability.Preparing => "Preparing: ",
+            _ => "Unavailable: ",
         };
 
     private static bool NeedsRebuildRuntime(WorkspaceSummaryViewModel workspace, bool hasLaunchReadinessProblem)
@@ -524,6 +725,8 @@ internal sealed class WorkspaceAggregatedState
     public string CurrentActivity { get; init; } = string.Empty;
     public string ActivitySummary { get; init; } = string.Empty;
     public string Recommendation { get; init; } = string.Empty;
+    public string CapabilitiesSummary { get; init; } = string.Empty;
+    public string ApplicationsSummary { get; init; } = string.Empty;
     public string ServicesSummary { get; init; } = string.Empty;
     public string RecentHistoryNote { get; init; } = string.Empty;
     public string PrimaryActionLabel { get; init; } = string.Empty;
@@ -532,8 +735,19 @@ internal sealed class WorkspaceAggregatedState
 internal sealed class WorkspacePresentationActions
 {
     public required ActionItemViewModel OpenWorkspace { get; init; }
+    public required ActionItemViewModel OpenDevelopmentShell { get; init; }
     public required ActionItemViewModel RebuildRuntime { get; init; }
     public required ActionItemViewModel TroubleshootWorkspace { get; init; }
     public required ActionItemViewModel OpenFolder { get; init; }
     public required IReadOnlyList<ActionItemViewModel> AdvancedActions { get; init; }
 }
+
+internal enum WorkspaceCapabilityAvailability
+{
+    Available,
+    Unavailable,
+    Preparing,
+    Degraded,
+}
+
+internal sealed record WorkspaceCapabilityState(string Name, WorkspaceCapabilityAvailability Availability, string Kind);
