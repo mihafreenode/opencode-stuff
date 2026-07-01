@@ -1537,6 +1537,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Applications", presentation.ApplicationsSummary));
         }
 
+        if (!string.IsNullOrWhiteSpace(presentation.DevelopmentEnvironmentSummary))
+        {
+            DetailItems.Add(new DetailItemViewModel("Development Environment", presentation.DevelopmentEnvironmentSummary));
+        }
+
         DetailItems.Add(new DetailItemViewModel("Runtime", SelectedWorkspace.RuntimeSummary));
         DetailItems.Add(new DetailItemViewModel("Git", SelectedWorkspace.RepositoryStatus));
         DetailItems.Add(new DetailItemViewModel("Current branch", SelectedWorkspace.CurrentBranch));

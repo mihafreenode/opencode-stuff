@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using System.Text.Json;
 
 namespace OpenCode.Workspace.Core.Workspaces;
 
@@ -17,6 +18,11 @@ public static class WorkspaceHealthEngine
             BuildContainerProvider(snapshot, timestamp),
             BuildGitProvider(snapshot, timestamp),
         };
+        var developmentEnvironment = ReadDevelopmentEnvironment(snapshot.Paths);
+        if (developmentEnvironment is not null)
+        {
+            providers.Add(BuildDevelopmentEnvironmentProvider(developmentEnvironment, timestamp));
+        }
 
         var services = await WorkspaceServiceHealthEngine.BuildAsync(snapshot, probeRunner, cancellationToken).ConfigureAwait(false);
         providers.Add(BuildServicesProvider(services, timestamp));
@@ -26,18 +32,19 @@ public static class WorkspaceHealthEngine
             providers.AddRange(BuildOracleProviders(snapshot, services, timestamp));
         }
 
-        var overallStatus = providers.Select(item => item.Status).DefaultIfEmpty(WorkspaceHealthStatus.Healthy).MaxBy(SeverityRank);
-        var recommendation = providers
+        var headlineProviders = providers.Where(item => !string.Equals(item.ProviderKey, "development-environment", StringComparison.OrdinalIgnoreCase)).ToList();
+        var overallStatus = headlineProviders.Select(item => item.Status).DefaultIfEmpty(WorkspaceHealthStatus.Healthy).MaxBy(SeverityRank);
+        var recommendation = headlineProviders
             .OrderByDescending(item => SeverityRank(item.Status))
             .Select(item => item.RecommendedAction)
             .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item))
             ?? "Open Workspace.";
-        var summary = providers
+        var summary = headlineProviders
             .OrderByDescending(item => SeverityRank(item.Status))
             .Select(item => item.WorkspaceImpact)
             .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item))
             ?? "Workspace can be opened.";
-        var confidence = providers
+        var confidence = headlineProviders
             .OrderByDescending(item => SeverityRank(item.Status))
             .Select(item => item.Confidence)
             .FirstOrDefault(item => !string.IsNullOrWhiteSpace(item))
@@ -52,7 +59,43 @@ public static class WorkspaceHealthEngine
             Timestamp = timestamp,
             Providers = providers,
             Services = services,
+            DevelopmentEnvironment = developmentEnvironment,
         };
+    }
+
+    private static WorkspaceProviderHealthSnapshot BuildDevelopmentEnvironmentProvider(WorkspaceDevelopmentEnvironmentHealthSnapshot developmentEnvironment, DateTimeOffset timestamp)
+        => new()
+        {
+            ProviderKey = "development-environment",
+            DisplayName = "Development Environment",
+            Status = developmentEnvironment.Status,
+            Summary = developmentEnvironment.Summary,
+            Evidence = developmentEnvironment.Checks.Select(item => new WorkspaceHealthFact { Label = item.Name, Value = $"{item.Status}: {item.Summary}" }).ToList(),
+            Confidence = string.IsNullOrWhiteSpace(developmentEnvironment.Confidence) ? "HIGH" : developmentEnvironment.Confidence,
+            Timestamp = developmentEnvironment.Timestamp == default ? timestamp : developmentEnvironment.Timestamp,
+            RefreshInterval = TimeSpan.FromMinutes(5),
+            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            RecommendedAction = string.IsNullOrWhiteSpace(developmentEnvironment.Recommendation) ? "Inspect Development Environment." : developmentEnvironment.Recommendation,
+            IsVolatile = false,
+            WorkspaceImpact = developmentEnvironment.Status == WorkspaceHealthStatus.Healthy ? "Development environment is ready for interactive work." : "Development environment needs attention, but the workspace can still be used.",
+        };
+
+    private static WorkspaceDevelopmentEnvironmentHealthSnapshot? ReadDevelopmentEnvironment(WorkspacePaths paths)
+    {
+        var filePath = Path.Combine(paths.OpencodeLocalPath, "development-environment-health.json");
+        if (!File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<WorkspaceDevelopmentEnvironmentHealthSnapshot>(File.ReadAllText(filePath));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static WorkspaceProviderHealthSnapshot BuildWorkspaceProvider(WorkspaceSnapshot snapshot, DateTimeOffset timestamp)

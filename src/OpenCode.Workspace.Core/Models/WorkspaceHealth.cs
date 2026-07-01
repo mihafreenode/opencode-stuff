@@ -41,6 +41,24 @@ public sealed class WorkspaceHealthSnapshot
     public DateTimeOffset Timestamp { get; init; }
     public IReadOnlyList<WorkspaceProviderHealthSnapshot> Providers { get; init; } = Array.Empty<WorkspaceProviderHealthSnapshot>();
     public IReadOnlyList<WorkspaceServiceHealthSnapshot> Services { get; init; } = Array.Empty<WorkspaceServiceHealthSnapshot>();
+    public WorkspaceDevelopmentEnvironmentHealthSnapshot? DevelopmentEnvironment { get; init; }
+}
+
+public sealed class WorkspaceDevelopmentEnvironmentHealthSnapshot
+{
+    public WorkspaceHealthStatus Status { get; init; } = WorkspaceHealthStatus.Healthy;
+    public string Summary { get; init; } = string.Empty;
+    public string Recommendation { get; init; } = string.Empty;
+    public string Confidence { get; init; } = string.Empty;
+    public DateTimeOffset Timestamp { get; init; }
+    public IReadOnlyList<WorkspaceDevelopmentEnvironmentCheck> Checks { get; init; } = Array.Empty<WorkspaceDevelopmentEnvironmentCheck>();
+}
+
+public sealed class WorkspaceDevelopmentEnvironmentCheck
+{
+    public string Name { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
 }
 
 public enum WorkspaceServiceProbeType

@@ -1,5 +1,6 @@
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using System.Text.Json;
 using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
@@ -187,12 +188,45 @@ public sealed class WorkspaceHealthEngineTests
         Assert.Contains(runtime.Evidence, item => item.Label == "Port 15432" && item.Value.Contains("analytics-demo", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Build_DevelopmentEnvironmentAttention_DoesNotDowngradeWorkspaceHeadline()
+    {
+        var snapshot = CreateSnapshot(
+            runtimeState: WorkspaceRuntimeState.Running,
+            services: Array.Empty<string>(),
+            features: Array.Empty<string>(),
+            localRuntimeState: CreateRuntimeState(),
+            appliedState: new WorkspaceAppliedState { AppliedUtc = DateTimeOffset.UtcNow, DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition" },
+            developmentEnvironment: new WorkspaceDevelopmentEnvironmentHealthSnapshot
+            {
+                Status = WorkspaceHealthStatus.Attention,
+                Summary = "Development environment needs attention: OpenCode CLI, screen.",
+                Recommendation = "Inspect Development Environment.",
+                Confidence = "HIGH",
+                Timestamp = DateTimeOffset.UtcNow,
+                Checks =
+                [
+                    new WorkspaceDevelopmentEnvironmentCheck { Name = "OpenCode CLI", Status = "Missing", Summary = "OpenCode CLI is missing." },
+                    new WorkspaceDevelopmentEnvironmentCheck { Name = "screen", Status = "Missing", Summary = "screen is missing." },
+                ],
+            });
+
+        var health = WorkspaceHealthEngine.Build(snapshot);
+
+        Assert.Equal(WorkspaceHealthStatus.Healthy, health.OverallStatus);
+        Assert.NotNull(health.DevelopmentEnvironment);
+        Assert.Equal(WorkspaceHealthStatus.Attention, health.DevelopmentEnvironment!.Status);
+        Assert.Contains(health.Providers, item => item.ProviderKey == "development-environment" && item.Status == WorkspaceHealthStatus.Attention);
+    }
+
     private static WorkspaceSnapshot CreateSnapshot(
         WorkspaceRuntimeState runtimeState = WorkspaceRuntimeState.Stopped,
         string[]? services = null,
+        string[]? features = null,
         WorkspaceRuntimeStateRecord? localRuntimeState = null,
         WorkspaceAppliedState? appliedState = null,
-        IReadOnlyList<WorkspaceInvestigationRecord>? investigationHistory = null)
+        IReadOnlyList<WorkspaceInvestigationRecord>? investigationHistory = null,
+        WorkspaceDevelopmentEnvironmentHealthSnapshot? developmentEnvironment = null)
     {
         var root = Path.Combine(Path.GetTempPath(), $"workspace-health-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -200,6 +234,11 @@ public sealed class WorkspaceHealthEngineTests
         File.WriteAllText(Path.Combine(root, "compose.yaml"), "services: {}\n");
         Directory.CreateDirectory(Path.Combine(root, "mounts", "config"));
         File.WriteAllText(Path.Combine(root, "mounts", "config", "provision.sh"), "#!/bin/bash\n");
+        Directory.CreateDirectory(Path.Combine(root, ".opencode", "local"));
+        if (developmentEnvironment is not null)
+        {
+            File.WriteAllText(Path.Combine(root, ".opencode", "local", "development-environment-health.json"), JsonSerializer.Serialize(developmentEnvironment));
+        }
 
         return new WorkspaceSnapshot
         {
@@ -218,7 +257,7 @@ public sealed class WorkspaceHealthEngineTests
             Definition = new WorkspaceDefinition
             {
                 Workspace = new WorkspaceMetadata { Name = "alpha", Image = "ubuntu:24.04" },
-                Features = ["core", "apex"],
+                Features = (features ?? ["core", "apex"]).ToList(),
                 Services = (services ?? ["oracle-demo"]).ToList(),
             },
             Paths = new WorkspacePaths

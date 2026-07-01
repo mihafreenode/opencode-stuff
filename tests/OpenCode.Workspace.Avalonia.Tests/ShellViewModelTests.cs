@@ -1061,7 +1061,7 @@ public sealed class ShellViewModelTests
         var openTask = page.OpenSelectedWorkspaceCommand.ExecuteAsync();
         await started.Task;
 
-        Assert.Equal("Provisioning runtime...", page.DetailSummary);
+        Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
 
         release.SetResult();
         await openTask;
@@ -2080,7 +2080,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Reprovisioning", page.SelectedWorkspace?.RuntimeStatusLabel);
         Assert.Contains("Generating runtime files", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.Ordinal);
         Assert.DoesNotContain("Analiza", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.Ordinal);
-        Assert.Contains("Generating runtime files", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
 
         release.SetResult();
         await reprovisionTask;
@@ -2235,6 +2235,76 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("Repair", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(page.DetailItems, item => item.Label == "Capabilities" && item.Value.Contains("Development Shell", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Applications" && item.Value.Contains("Oracle APEX", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DevelopmentEnvironmentAttention_DoesNotOverrideWorkspaceReadiness()
+    {
+        var snapshot = WithHealth(
+            CreateSnapshot("alpha"),
+            CreateHealthSnapshot(
+                WorkspaceHealthStatus.Healthy,
+                "Workspace is running.",
+                "Open Workspace.",
+                services:
+                [
+                    CreateServiceHealthSnapshot("sql-developer-web", "SQL Developer Web", WorkspaceHealthStatus.Healthy, "SQL Developer Web is available."),
+                    CreateServiceHealthSnapshot("rest-apis", "REST APIs", WorkspaceHealthStatus.Healthy, "REST APIs are available."),
+                ],
+                developmentEnvironment: new WorkspaceDevelopmentEnvironmentHealthSnapshot
+                {
+                    Status = WorkspaceHealthStatus.Attention,
+                    Summary = "Development environment needs attention: OpenCode CLI, screen.",
+                    Recommendation = "Inspect Development Environment.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Checks =
+                    [
+                        new WorkspaceDevelopmentEnvironmentCheck { Name = "OpenCode CLI", Status = "Missing", Summary = "OpenCode CLI is missing." },
+                        new WorkspaceDevelopmentEnvironmentCheck { Name = "screen", Status = "Missing", Summary = "screen is missing." },
+                    ],
+                }));
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Equal("Workspace Ready", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Open Development Shell", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Inspect Development Environment.", page.DetailRecommendation);
+        Assert.Contains(page.DetailItems, item => item.Label == "Development Environment" && item.Value.Contains("OpenCode CLI", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ActiveProvisioning_DoesNotShowTroubleshootAsPrimaryOrVisibleAction()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        {
+            ReprovisionResultFactoryAsync = async (_, sink, cancellationToken) =>
+            {
+                sink?.Append(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Generating runtime files..." });
+                started.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+                return new WorkspaceReprovisionResult { Snapshot = CreateSnapshot("alpha"), Succeeded = true, Message = "done", Transcript = new OperationTranscript() };
+            },
+        };
+        var page = new WorkspacesPageViewModel(desktop);
+
+        await page.LoadAsync();
+
+        var reprovisionTask = page.ReprovisionWorkspaceCommand.ExecuteAsync();
+        await started.Task;
+
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.Equal("Open Workspace.", page.DetailRecommendation);
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
+        Assert.Equal(["Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
+
+        release.SetResult();
+        await reprovisionTask;
     }
 
     [Fact]
@@ -2489,7 +2559,7 @@ public sealed class ShellViewModelTests
         await started.Task;
 
         Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
-        Assert.Contains("Installing Oracle APEX", page.DetailSummary, StringComparison.Ordinal);
+        Assert.Equal("Preparing workspace. This may take several minutes.", page.DetailSummary);
         Assert.DoesNotContain("failed", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
 
         release.SetResult();
@@ -3857,6 +3927,7 @@ public sealed class ShellViewModelTests
         string recommendation,
         IReadOnlyList<WorkspaceProviderHealthSnapshot>? providers = null,
         IReadOnlyList<WorkspaceServiceHealthSnapshot>? services = null,
+        WorkspaceDevelopmentEnvironmentHealthSnapshot? developmentEnvironment = null,
         DateTimeOffset? timestamp = null)
         => new()
         {
@@ -3867,6 +3938,7 @@ public sealed class ShellViewModelTests
             Timestamp = timestamp ?? DateTimeOffset.UtcNow,
             Providers = providers ?? Array.Empty<WorkspaceProviderHealthSnapshot>(),
             Services = services ?? Array.Empty<WorkspaceServiceHealthSnapshot>(),
+            DevelopmentEnvironment = developmentEnvironment,
         };
 
     private static WorkspaceServiceHealthSnapshot CreateServiceHealthSnapshot(

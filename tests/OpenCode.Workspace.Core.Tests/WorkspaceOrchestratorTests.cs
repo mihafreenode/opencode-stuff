@@ -1129,7 +1129,7 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
-    public async Task ProvisionAsync_WhenPostProvisionValidationFails_DoesNotMarkRuntimeStateAsProvisioned()
+    public async Task ProvisionAsync_WhenDevelopmentToolValidationFails_RecordsDevelopmentEnvironmentAttention()
     {
         var tempRoot = CreateTempRoot();
 
@@ -1142,11 +1142,15 @@ public sealed class WorkspaceOrchestratorTests
             var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
             var snapshot = orchestrator.CreateWorkspace(tempRoot, CreateAnalizaDefinition());
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
+            await orchestrator.ProvisionAsync(snapshot);
 
             var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
             Assert.NotNull(runtimeState);
-            Assert.Null(runtimeState.LastSuccessfulProvision);
+            Assert.NotNull(runtimeState.LastSuccessfulProvision);
+            var developmentEnvironmentPath = Path.Combine(snapshot.Paths.OpencodeLocalPath, "development-environment-health.json");
+            Assert.True(File.Exists(developmentEnvironmentPath));
+            var developmentEnvironmentJson = File.ReadAllText(developmentEnvironmentPath);
+            Assert.Contains("opencode", developmentEnvironmentJson, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

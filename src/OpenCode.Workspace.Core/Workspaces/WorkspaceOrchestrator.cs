@@ -3,6 +3,7 @@ using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using System.Globalization;
+using System.Text.Json;
 
 namespace OpenCode.Workspace.Core.Workspaces;
 
@@ -1287,23 +1288,83 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", "Validating provisioned workspace tools.");
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
+        var developmentEnvironmentHealth = await ValidateDevelopmentEnvironmentAsync(snapshot, log, cancellationToken);
+        WriteDevelopmentEnvironmentHealth(snapshot.Paths, developmentEnvironmentHealth);
+    }
+
+    private async Task<WorkspaceDevelopmentEnvironmentHealthSnapshot> ValidateDevelopmentEnvironmentAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
         var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
-        var toolCheck = await _containerRuntime.RunSimpleDockerCommandAsync(
-            new[] { "exec", containerName, "bash", "-lc", "command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode" },
-            log,
-            cancellationToken);
-        EnsureSuccess(toolCheck, "Workspace tool validation failed after provisioning.");
+        var checks = new List<WorkspaceDevelopmentEnvironmentCheck>();
+
+        foreach (var (name, command) in new[]
+        {
+            ("OpenCode CLI", "command -v opencode"),
+            ("screen", "command -v screen"),
+            ("Node.js", "command -v node"),
+            ("npm", "command -v npm"),
+            ("Git", "command -v git"),
+            ("Workspace user", "getent passwd opencode"),
+            ("Shell", "command -v bash"),
+        })
+        {
+            var result = await _containerRuntime.RunSimpleDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", command }, log, cancellationToken);
+            checks.Add(new WorkspaceDevelopmentEnvironmentCheck
+            {
+                Name = name,
+                Status = result.IsSuccess ? "Available" : "Missing",
+                Summary = result.IsSuccess ? $"{name} is available." : FirstDiagnosticLine(result, $"{name} is missing."),
+            });
+        }
 
         var nodeCheck = await _containerRuntime.GetNodeToolDiagnosticsAsync(snapshot.Definition, log, cancellationToken);
-        EnsureSuccess(nodeCheck, "Workspace Node.js validation failed after provisioning.");
-
         var actualNodeVersion = nodeCheck.StandardOutputLines.FirstOrDefault(line => line.TrimStart().StartsWith("v", StringComparison.Ordinal));
         var actualNodeMajorVersion = ParseNodeMajorVersion(actualNodeVersion);
         var expectedNodeMajorVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion();
-        if (actualNodeMajorVersion != expectedNodeMajorVersion)
+        checks.Add(new WorkspaceDevelopmentEnvironmentCheck
         {
-            throw new InvalidOperationException($"Workspace runtime validation failed. Expected Node.js {expectedNodeMajorVersion} but container reports {actualNodeVersion ?? "unknown"}.".Trim());
-        }
+            Name = "Node.js version",
+            Status = !nodeCheck.IsSuccess
+                ? "Missing"
+                : actualNodeMajorVersion == expectedNodeMajorVersion
+                    ? "Available"
+                    : "Wrong version",
+            Summary = !nodeCheck.IsSuccess
+                ? FirstDiagnosticLine(nodeCheck, "Node.js diagnostics failed.")
+                : actualNodeMajorVersion == expectedNodeMajorVersion
+                    ? $"Node.js {actualNodeVersion} matches the expected runtime."
+                    : $"Expected Node.js {expectedNodeMajorVersion} but found {actualNodeVersion ?? "unknown"}.",
+        });
+
+        var issueNames = checks.Where(item => item.Status is "Missing" or "Wrong version" or "Not configured").Select(item => item.Name).ToList();
+        return new WorkspaceDevelopmentEnvironmentHealthSnapshot
+        {
+            Status = issueNames.Count == 0 ? WorkspaceHealthStatus.Healthy : WorkspaceHealthStatus.Attention,
+            Summary = issueNames.Count == 0
+                ? "Development environment is ready."
+                : $"Development environment needs attention: {string.Join(", ", issueNames)}.",
+            Recommendation = issueNames.Count == 0 ? "Open Development Shell." : "Inspect Development Environment.",
+            Confidence = "HIGH",
+            Timestamp = DateTimeOffset.UtcNow,
+            Checks = checks,
+        };
+    }
+
+    private static void WriteDevelopmentEnvironmentHealth(WorkspacePaths paths, WorkspaceDevelopmentEnvironmentHealthSnapshot health)
+    {
+        Directory.CreateDirectory(paths.OpencodeLocalPath);
+        File.WriteAllText(GetDevelopmentEnvironmentHealthPath(paths), JsonSerializer.Serialize(health, DevelopmentEnvironmentJsonOptions));
+    }
+
+    private static string GetDevelopmentEnvironmentHealthPath(WorkspacePaths paths)
+        => Path.Combine(paths.OpencodeLocalPath, "development-environment-health.json");
+
+    private static readonly JsonSerializerOptions DevelopmentEnvironmentJsonOptions = new() { WriteIndented = true };
+
+    private static string FirstDiagnosticLine(ProcessResult result, string fallback)
+    {
+        var line = result.StandardErrorLines.Concat(result.StandardOutputLines).FirstOrDefault(item => !string.IsNullOrWhiteSpace(item));
+        return string.IsNullOrWhiteSpace(line) ? fallback : line.Trim();
     }
 
     private async Task EnsureOpencodeUserDirectoriesAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
