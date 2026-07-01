@@ -83,17 +83,17 @@ internal static class WorkspaceHealthAggregator
         {
             return new WorkspaceAggregatedState
             {
-                Headline = "Unavailable",
-                Summary = "Workspace details are unavailable, but Open Workspace can try to load the workspace again.",
-                CurrentStatus = "Unavailable",
+                Headline = "Discovery Failed",
+                Summary = "Workspace details could not be loaded. Run Diagnostics or Refresh to continue.",
+                CurrentStatus = "Discovery Failed",
                 CurrentActivity = "None",
                 ActivitySummary = "No active workspace operation.",
-                Recommendation = "Open Workspace.",
+                Recommendation = "Run Diagnostics.",
                 DevelopmentEnvironmentSummary = string.Empty,
                 ServicesSummary = string.Empty,
                 RecentHistoryNote = string.Empty,
                 IsOperationInProgress = false,
-                PrimaryActionLabel = "Open Workspace",
+                PrimaryActionLabel = "Run Diagnostics",
             };
         }
 

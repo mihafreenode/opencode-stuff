@@ -284,11 +284,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailRecommendation = "Run Diagnostics.";
             DetailItems.Clear();
             DetailItems.Add(new DetailItemViewModel("Error", exception.Message));
-            DetailPrimaryAction = null;
+            DetailPrimaryAction = new ActionItemViewModel("Refresh", "Try workspace discovery again.", !IsBusyForWorkspaceActions, string.Empty, RefreshWorkspacesCommand);
             DetailActions.Clear();
             DetailVisibleActions.Clear();
             DetailAdvancedActions.Clear();
             ShowAdvancedActions = false;
+            var refreshAction = new ActionItemViewModel("Refresh", "Try workspace discovery again.", !IsBusyForWorkspaceActions, string.Empty, RefreshWorkspacesCommand);
+            DetailActions.Add(refreshAction);
+            DetailVisibleActions.Add(refreshAction);
             DetailActions.Add(new ActionItemViewModel("Open Folder", string.Empty, false, "Workspace discovery failed.", DisabledActionCommand));
             SelectedWorkspace = null;
         }
@@ -1803,6 +1806,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
+        var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
+        var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
         var advancedActions = new List<ActionItemViewModel>
         {
             rebuildRuntimeAction,
@@ -1813,12 +1818,28 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             CreatePresentationAction(workspace, "Checkpoint", BuildCheckpointDescription(workspace), CanCreateCheckpointWorkspace(workspace), GetCheckpointDisabledReason(workspace), CreateCheckpointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Publish", BuildPublishDescription(workspace), CanPublishWorkspace(workspace), GetPublishDisabledReason(workspace), PublishWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands),
+            removeAction,
         };
 
         if (failureGuidance?.CanRetry == true)
         {
             advancedActions.Insert(0, CreatePresentationAction(workspace, "Retry", BuildRetryDescription(workspace), CanRetryWorkspace(workspace), GetRetryDisabledReason(workspace), RetrySelectedWorkspaceAsync, useWorkspaceScopedCommands));
+        }
+
+        if (!workspace.HasSnapshot)
+        {
+            return new WorkspacePresentation
+            {
+                Headline = "Discovery Failed",
+                Summary = string.IsNullOrWhiteSpace(workspace.ErrorMessage) ? "Workspace details could not be loaded. Run Diagnostics or Refresh to continue." : workspace.ErrorMessage,
+                CurrentStatus = "Discovery Failed",
+                CurrentActivity = "None",
+                ActivitySummary = "No active workspace operation.",
+                Recommendation = "Run Diagnostics.",
+                PrimaryAction = new ActionItemViewModel("Run Diagnostics", investigateProblemAction.Description, investigateProblemAction.IsEnabled, investigateProblemAction.DisabledReason, investigateProblemAction.Command),
+                SecondaryActions = [refreshAction],
+                AdvancedActions = [investigateProblemAction, openFolderAction, removeAction],
+            };
         }
 
         return WorkspaceHealthAggregator.BuildPresentation(

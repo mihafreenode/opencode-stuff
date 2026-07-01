@@ -275,6 +275,8 @@ public sealed class ShellViewModelTests
         var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
         Assert.True(workspacesPage.HasLoadError);
         Assert.Equal("Workspace discovery failed", workspacesPage.DetailTitle);
+        Assert.Equal("Refresh", workspacesPage.DetailPrimaryAction?.Label);
+        Assert.Equal(["Refresh"], workspacesPage.DetailVisibleActions.Select(item => item.Label));
     }
 
     [Fact]
@@ -629,6 +631,9 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(2, page.Workspaces.Count);
         Assert.Equal("Error", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
+        Assert.Equal(["Refresh"], page.DetailVisibleActions.Select(item => item.Label));
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Open Workspace");
         Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Load failure: workspace.yaml missing", StringComparison.Ordinal));
         Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
     }
@@ -853,7 +858,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task StartAction_IsEnabledForConfigBackedWorkspaceWithoutRuntimeStateSnapshot()
+    public async Task RecordOnlyWorkspace_DoesNotOfferStartOnlyAsNormalAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-start-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -877,9 +882,9 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var start = page.DetailAdvancedActions.Single(item => item.Label == "Start Only");
-            Assert.True(start.IsEnabled);
-            Assert.Equal(string.Empty, start.DisabledReason);
+            Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
+            Assert.Equal(["Refresh"], page.DetailVisibleActions.Select(item => item.Label));
+            Assert.DoesNotContain(page.DetailAdvancedActions, item => item.Label == "Start Only");
         }
         finally
         {
@@ -891,7 +896,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task RecoverAction_IsEnabledForConfigBackedWorkspaceWithoutSnapshotWhenInteractionServiceExists()
+    public async Task RecordOnlyWorkspace_DoesNotOfferOpenWorkspaceRecoveryAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-recover-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -916,11 +921,9 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-        var recover = page.DetailPrimaryAction?.Label == "Open Workspace"
-            ? page.DetailPrimaryAction
-            : page.DetailActions.Single(item => item.Label == "Open Workspace");
-        Assert.True(recover.IsEnabled);
-        Assert.Equal(string.Empty, recover.DisabledReason);
+            Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
+            Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Open Workspace");
+            Assert.Equal(["Refresh"], page.DetailVisibleActions.Select(item => item.Label));
         }
         finally
         {
@@ -932,7 +935,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task AttachAction_IsEnabledForConfigBackedWorkspaceWithoutSnapshot()
+    public async Task RecordOnlyWorkspace_DoesNotOfferAttachOnlyAsNormalAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-attach-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -956,9 +959,8 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var attach = page.DetailAdvancedActions.Single(item => item.Label == "Attach Only");
-            Assert.True(attach.IsEnabled);
-            Assert.Equal(string.Empty, attach.DisabledReason);
+            Assert.DoesNotContain(page.DetailAdvancedActions, item => item.Label == "Attach Only");
+            Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
         }
         finally
         {
@@ -1070,7 +1072,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task SavePointAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    public async Task RecordOnlyWorkspace_DoesNotOfferSavePointAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-savepoint-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -1095,9 +1097,7 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var savePoint = page.DetailActions.Single(item => item.Label == "Save Point");
-            Assert.True(savePoint.IsEnabled);
-            Assert.Equal(string.Empty, savePoint.DisabledReason);
+            Assert.DoesNotContain(page.DetailActions, item => item.Label == "Save Point");
         }
         finally
         {
@@ -1109,7 +1109,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task BackupAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    public async Task RecordOnlyWorkspace_DoesNotOfferBackupAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-backup-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -1134,9 +1134,7 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var backup = page.DetailActions.Single(item => item.Label == "Backup");
-            Assert.True(backup.IsEnabled);
-            Assert.Equal(string.Empty, backup.DisabledReason);
+            Assert.DoesNotContain(page.DetailActions, item => item.Label == "Backup");
         }
         finally
         {
@@ -1273,7 +1271,7 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task PublishAction_IsEnabledForConfigBackedWorkspaceWhenInteractionServiceExists()
+    public async Task RecordOnlyWorkspace_DoesNotOfferPublishAction()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), $"avalonia-publish-enable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(workspaceRoot);
@@ -1298,9 +1296,7 @@ public sealed class ShellViewModelTests
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
-            var publish = page.DetailActions.Single(item => item.Label == "Publish");
-            Assert.True(publish.IsEnabled);
-            Assert.Equal(string.Empty, publish.DisabledReason);
+            Assert.DoesNotContain(page.DetailActions, item => item.Label == "Publish");
         }
         finally
         {
@@ -2746,6 +2742,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal("Run Diagnostics.", page.DetailRecommendation);
         Assert.DoesNotContain("Troubleshoot Workspace", page.DetailRecommendation, StringComparison.Ordinal);
+        Assert.Equal("Refresh", page.DetailPrimaryAction?.Label);
     }
 
     [Fact]
