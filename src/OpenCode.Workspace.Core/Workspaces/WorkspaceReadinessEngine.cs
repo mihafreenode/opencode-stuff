@@ -431,7 +431,8 @@ public static class WorkspaceReadinessEngine
     }
 
     private static bool IsFreshWorkspace(WorkspaceSnapshot? snapshot)
-        => snapshot?.Record.LastPreparedUtc is null
+        => snapshot is not null
+            && snapshot.Record.LastPreparedUtc is null
             && snapshot.Record.LastOperationSucceeded == true
             && string.Equals(snapshot.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
 }
