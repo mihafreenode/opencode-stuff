@@ -32,6 +32,7 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceSafetyService _workspaceSafetyService;
     private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
+    private readonly WorkspaceAiRuntimeContextService _workspaceAiRuntimeContextService;
     private readonly WorkspaceRuntimeResourceManager _workspaceRuntimeResourceManager;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IContainerRuntime _containerRuntime;
@@ -81,6 +82,7 @@ public sealed class WorkspaceOrchestrator
         _workspaceSafetyService = workspaceSafetyService;
         _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
+        _workspaceAiRuntimeContextService = new WorkspaceAiRuntimeContextService();
         _workspaceRuntimeResourceManager = new WorkspaceRuntimeResourceManager(workspaceRepository, workspaceRuntimeStateService);
         _workspaceProvider = workspaceProvider;
         _containerRuntime = containerRuntime;
@@ -193,7 +195,7 @@ public sealed class WorkspaceOrchestrator
 
         if (!includeRuntimeInspection)
         {
-            return new WorkspaceSnapshot
+            var partialSnapshot = new WorkspaceSnapshot
             {
                 Record = snapshot.Record,
                 Definition = snapshot.Definition,
@@ -212,6 +214,8 @@ public sealed class WorkspaceOrchestrator
                 UpdateRequired = snapshot.UpdateRequired,
                 Health = WorkspaceHealthEngine.Build(snapshot),
             };
+            _workspaceAiRuntimeContextService.Write(partialSnapshot);
+            return partialSnapshot;
         }
 
         var runtimeState = await MeasureStageAsync("runtime-inspection", "Runtime inspection", "Inspected current runtime state.", rootPath, workspaceName, () => GetRuntimeStateAsync(snapshot, cancellationToken), loadObserver, stageProgress);
@@ -240,7 +244,7 @@ public sealed class WorkspaceOrchestrator
             Health = new WorkspaceHealthSnapshot(),
         };
 
-        return new WorkspaceSnapshot
+        var completedSnapshot = new WorkspaceSnapshot
         {
             Record = finalSnapshot.Record,
             Definition = finalSnapshot.Definition,
@@ -255,6 +259,8 @@ public sealed class WorkspaceOrchestrator
             UpdateRequired = finalSnapshot.UpdateRequired,
             Health = WorkspaceHealthEngine.Build(finalSnapshot),
         };
+        _workspaceAiRuntimeContextService.Write(completedSnapshot);
+        return completedSnapshot;
     }
 
     private static void MeasureStage(string stageKey, string stageLabel, string details, string rootPath, string workspaceName, Action action, Action<WorkspaceLoadTiming>? loadObserver, Action<WorkspaceLoadStageProgress>? stageProgress)

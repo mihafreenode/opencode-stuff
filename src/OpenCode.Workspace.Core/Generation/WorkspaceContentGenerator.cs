@@ -214,9 +214,11 @@ public sealed class WorkspaceContentGenerator
 
         if (!IsOracleDemoWorkspace(definition))
         {
+            files[Path.Combine(".opencode", "context", "workspace-health.md")] = WithGeneratedHeader(WorkspaceHealthAiContextGuide());
             return files;
         }
 
+        files[Path.Combine(".opencode", "context", "workspace-health.md")] = WithGeneratedHeader(WorkspaceHealthAiContextGuide());
         files[Path.Combine("docs", "oracle-demo.md")] = WithGeneratedHeader(OracleDemoWorkspaceDoc());
         files["ORACLE-DEMO.md"] = WithGeneratedHeader(OracleDemoConnectionGuide());
         files[Path.Combine(".opencode", "context", "oracle-demo.json")] = OracleDemoContextJson();
@@ -3346,6 +3348,42 @@ Then explain `demo_orders_biu_trigger`.
 Suggest read-only verification commands I should run against the local demo database.
 
 Identify useful edge cases and test scenarios for the demo PL/SQL.
+""";
+
+    private static string WorkspaceHealthAiContextGuide() => """
+Workspace Health is the authoritative runtime context for this workspace.
+
+Before diagnosing runtime status, read `.opencode/local/workspace-health.json`.
+
+Use that context first for:
+
+- workspace state
+- runtime state
+- service health
+- application availability
+- runtime resources
+- allocated ports
+- service URLs
+- container names
+- network names
+- last probe results
+- provider evidence
+
+Do not use generic commands such as `systemctl`, `service`, `ps`, or `lsof` to conclude Docker Compose service health when Workspace Health already has HIGH-confidence provider evidence.
+
+For Oracle workspaces, prefer provider-aware context over guessing process names. Workspace Health may already know:
+
+- Oracle Database
+- ORDS
+- SQL Developer Web
+- Oracle APEX
+- XDB state
+- listener readiness
+- container identities
+
+Only run raw shell verification if the user explicitly says `Verify independently` or the health context does not provide sufficient evidence.
+
+If Workspace Health and a generic shell command disagree, trust Workspace Health unless you were explicitly told to verify independently.
 """;
 
     private static string CreateDemoUserSql() => """

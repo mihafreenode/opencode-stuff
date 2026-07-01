@@ -31,6 +31,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.True(File.Exists(snapshot.Paths.ScreenConfigPath));
             Assert.True(File.Exists(snapshot.Paths.AttachWrapperScriptPath));
             Assert.True(File.Exists(snapshot.Paths.TerminalDiagnosticsScriptPath));
+            Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, ".opencode", "context", "workspace-health.md")));
             Assert.True(Directory.Exists(Path.Combine(tempRoot, ".git")));
             Assert.True(File.Exists(snapshot.Paths.TimelinePath));
             Assert.True(File.Exists(snapshot.Paths.CheckpointIndexPath));
@@ -39,6 +40,7 @@ public sealed class WorkspaceOrchestratorTests
             Assert.Contains("npm install -g opencode-ai", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("/home/opencode/.local/share/opencode/log", File.ReadAllText(snapshot.Paths.ProvisionScriptPath));
             Assert.Contains("Initializing OpenCode user directories", File.ReadAllText(snapshot.Paths.OpencodeWorkspaceShellPath));
+            Assert.Contains("Before diagnosing runtime status, read `.opencode/local/workspace-health.json`.", File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, ".opencode", "context", "workspace-health.md")));
             Assert.Equal(WorkspaceSafetyLevel.AtRisk, snapshot.Safety.OverallStatus);
         }
         finally
@@ -999,6 +1001,11 @@ public sealed class WorkspaceOrchestratorTests
 
             Assert.Null(loaded.LocalRuntimeState);
             Assert.Equal(created.Definition.Workspace.Name, loaded.Definition.Workspace.Name);
+            var aiContextPath = Path.Combine(created.Paths.OpencodeLocalPath, "workspace-health.json");
+            Assert.True(File.Exists(aiContextPath));
+            var aiContext = File.ReadAllText(aiContextPath);
+            Assert.Contains("Workspace Health is the authoritative runtime context for this workspace.", aiContext);
+            Assert.Contains("\"ManualOverridePhrase\": \"Verify independently\"", aiContext);
         }
         finally
         {
