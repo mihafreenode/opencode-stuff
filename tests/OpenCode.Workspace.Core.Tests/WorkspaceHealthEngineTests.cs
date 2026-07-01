@@ -15,7 +15,7 @@ public sealed class WorkspaceHealthEngineTests
         var health = WorkspaceHealthEngine.Build(snapshot);
 
         Assert.Equal(WorkspaceHealthStatus.Degraded, health.OverallStatus);
-        var runtime = Assert.Single(health.Providers.Where(item => item.ProviderKey == "runtime"));
+        var runtime = Assert.Single(health.Providers, item => item.ProviderKey == "runtime");
         Assert.Equal(WorkspaceHealthStatus.Degraded, runtime.Status);
         Assert.Equal("Open Workspace.", runtime.RecommendedAction);
     }
