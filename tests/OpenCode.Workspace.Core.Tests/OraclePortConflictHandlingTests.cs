@@ -158,6 +158,57 @@ public sealed class OraclePortConflictHandlingTests
     }
 
     [Fact]
+    public async Task DockerService_StartAsync_UsesAllocatedOracleHostPortFromRuntimeState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"oracle-port-conflict-runtime-state-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            File.WriteAllText(paths.ComposePath, "services:\n  workspace:\n    image: ubuntu:24.04\n");
+            new WorkspaceRuntimeStateService().Write(paths.RuntimeStatePath, new WorkspaceRuntimeStateRecord
+            {
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId, ServiceId = "oracle-database", DisplayName = "Oracle Database", Protocol = "tcp", PreferredPort = 1521, AllocatedPort = 1522, ContainerPort = 1521, Endpoint = "tcp://localhost:1522", OpenUrl = "tcp://localhost:1522" },
+                    ],
+                },
+            });
+
+            var runner = new SequenceProcessRunner(
+                Match(" compose ", ProcessResultFor("docker compose config", 0)),
+                Match("ps --format", ProcessResultFor("docker ps", 0, standardOutput: "other-oracle\t0.0.0.0:1522->1521/tcp")),
+                Match(" compose ", ProcessResultFor("docker compose ps", 0, standardOutput: "NAME STATUS PORTS")),
+                Match(GetHostPortCommandFragment(), ProcessResultFor(GetHostPortCommandFragment(), 0, standardOutput: GetHostPortDiagnosticOutput(1522))));
+
+            var docker = new DockerService(runner, new WorkspaceRuntimeStateService());
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-demo" },
+                Features = new List<string> { "core", "oracle-demo" },
+                Services = new List<string> { "oracle-demo" },
+            };
+
+            var result = await docker.StartAsync(paths, definition);
+
+            Assert.False(result.IsSuccess);
+            Assert.Contains("Oracle port 1522 is already in use.", result.StandardError);
+            Assert.DoesNotContain("Oracle port 1521 is already in use.", result.StandardError, StringComparison.Ordinal);
+            Assert.Contains("Port 1522 currently owned by: other-oracle", result.StandardError);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ProvisionAsync_PortConflictPreservesOracleDataAndDoesNotResetVolumes()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -211,7 +262,8 @@ public sealed class OraclePortConflictHandlingTests
 
             var exception = await Assert.ThrowsAsync<WorkspaceEnvironmentConflictException>(() => orchestrator.ProvisionAsync(snapshot));
 
-            Assert.Contains("Oracle port 1521 is already in use.", exception.Message);
+            Assert.Contains("Oracle port ", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("is already in use.", exception.Message, StringComparison.Ordinal);
             Assert.Contains("Run recovery cleanup for this workspace only", exception.Message);
             Assert.Equal("keep-oracle-data", File.ReadAllText(volumeMarkerPath));
             Assert.DoesNotContain(runner.Commands, command => command.Contains(" down -v ", StringComparison.Ordinal));
@@ -272,10 +324,10 @@ public sealed class OraclePortConflictHandlingTests
     private static string GetHostPortCommandFragment()
         => OperatingSystem.IsWindows() ? "powershell.exe" : "bash";
 
-    private static string GetHostPortDiagnosticOutput()
+    private static string GetHostPortDiagnosticOutput(int port = 1521)
         => OperatingSystem.IsWindows()
-            ? "LISTEN port=1521 pid=123 process=com.docker.backend"
-            : "State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess\nLISTEN 0 4096 0.0.0.0:1521 0.0.0.0:* users:((\"docker-proxy\",pid=123,fd=4))";
+            ? $"LISTEN port={port} pid=123 process=com.docker.backend"
+            : $"State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess\nLISTEN 0 4096 0.0.0.0:{port} 0.0.0.0:* users:((\"docker-proxy\",pid=123,fd=4))";
 
     private sealed record ExpectedCommand(string Fragment, ProcessResult Result);
 

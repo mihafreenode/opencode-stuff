@@ -144,14 +144,16 @@ public sealed class WorkspaceRuntimeResourceManager
 
     private WorkspaceRecord? FindManagedOwner(string currentWorkspaceRootPath, int port)
     {
+        var normalizedCurrentWorkspaceRootPath = WorkspacePathBuilder.NormalizeHostPathForCurrentOs(currentWorkspaceRootPath);
         foreach (var record in _workspaceRepository.LoadAll())
         {
-            if (string.Equals(record.RootPath, currentWorkspaceRootPath, StringComparison.OrdinalIgnoreCase))
+            var normalizedRecordRootPath = WorkspacePathBuilder.NormalizeHostPathForCurrentOs(record.RootPath);
+            if (string.Equals(normalizedRecordRootPath, normalizedCurrentWorkspaceRootPath, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var runtimeStatePath = WorkspacePathBuilder.Build(record.RootPath, record.ConfigurationPath).RuntimeStatePath;
+            var runtimeStatePath = WorkspacePathBuilder.Build(normalizedRecordRootPath, record.ConfigurationPath).RuntimeStatePath;
             var state = _runtimeStateService.Read(runtimeStatePath);
             if (state?.Resources.Ports.Any(item => item.AllocatedPort == port) == true)
             {

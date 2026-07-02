@@ -224,6 +224,7 @@ public sealed class GeneratedArtifactsTests
 
         Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
         Assert.Contains("ords --config \"${config_dir}\" install --config-only", script, StringComparison.Ordinal);
+        Assert.Contains("--gateway-user APEX_PUBLIC_USER", script, StringComparison.Ordinal);
         Assert.Contains("exec ords --config \"${config_dir}\" serve --port 8080", script, StringComparison.Ordinal);
     }
 

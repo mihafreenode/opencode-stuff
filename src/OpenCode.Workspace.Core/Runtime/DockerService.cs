@@ -10,11 +10,13 @@ namespace OpenCode.Workspace.Core.Runtime;
 public sealed class DockerService
 {
     private readonly IProcessRunner _processRunner;
+    private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
     private const string DockerUnavailableMessage = "Docker is not reachable from this environment. Check Docker Desktop / WSL integration.";
 
-    public DockerService(IProcessRunner processRunner)
+    public DockerService(IProcessRunner processRunner, WorkspaceRuntimeStateService? workspaceRuntimeStateService = null)
     {
         _processRunner = processRunner;
+        _workspaceRuntimeStateService = workspaceRuntimeStateService ?? new WorkspaceRuntimeStateService();
     }
 
     public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
@@ -324,16 +326,16 @@ public sealed class DockerService
             return null;
         }
 
-        var oracleSettings = OracleWorkspaceSettings.From(definition);
+        var runtimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
         var ports = new List<OracleHostPortCheck>
         {
-            new(oracleSettings.HostPort, "Oracle", "another Oracle demo workspace is running", "Oracle Database is already running locally"),
+            new(WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId), "Oracle", "another Oracle demo workspace is running", "Oracle Database is already running locally"),
         };
 
         if (OracleWorkspaceFamily.HasApex(definition))
         {
-            ports.Add(new OracleHostPortCheck(oracleSettings.OrdsPort, "Oracle ORDS/APEX", "another Oracle APEX workspace is running", "another service is already using the ORDS/APEX port locally"));
+            ports.Add(new OracleHostPortCheck(WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId), "Oracle ORDS/APEX", "another Oracle APEX workspace is running", "another service is already using the ORDS/APEX port locally"));
         }
 
         var dockerPsResult = await RunDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" }, paths.RootPath, log, cancellationToken);

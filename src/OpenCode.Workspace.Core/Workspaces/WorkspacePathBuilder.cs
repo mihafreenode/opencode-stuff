@@ -4,8 +4,34 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public static class WorkspacePathBuilder
 {
+    public static string NormalizeHostPathForCurrentOs(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            return path.Replace('/', Path.DirectorySeparatorChar);
+        }
+
+        if (path.Length >= 3
+            && char.IsLetter(path[0])
+            && path[1] == ':'
+            && (path[2] == '\\' || path[2] == '/'))
+        {
+            var driveLetter = char.ToLowerInvariant(path[0]);
+            var remainder = path[3..].Replace('\\', '/');
+            return $"/mnt/{driveLetter}/{remainder}";
+        }
+
+        return path.Replace('\\', '/');
+    }
+
     public static WorkspacePaths Build(string workspaceRootPath, string configurationRelativePath = "workspace.yaml")
     {
+        workspaceRootPath = NormalizeHostPathForCurrentOs(workspaceRootPath);
         var opencodePath = Path.Combine(workspaceRootPath, ".opencode");
         var opencodeLocalPath = Path.Combine(opencodePath, "local");
         var mountsRoot = Path.Combine(workspaceRootPath, "mounts");

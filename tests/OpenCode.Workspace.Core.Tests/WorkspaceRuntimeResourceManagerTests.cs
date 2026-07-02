@@ -110,6 +110,89 @@ public sealed class WorkspaceRuntimeResourceManagerTests
     }
 
     [Fact]
+    public void ResolveState_WhenExistingOracleAllocationIsStillValid_PreservesAllocatedPort()
+    {
+        var tempRoot = CreateTempRoot();
+        var appDataRoot = CreateTempRoot();
+
+        try
+        {
+            var manager = new WorkspaceRuntimeResourceManager(new WorkspaceRepository(appDataRoot), new WorkspaceRuntimeStateService(), port => port == 1522 || port == 8182);
+            var existingState = new WorkspaceRuntimeStateRecord
+            {
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId, ServiceId = "oracle-database", DisplayName = "Oracle Database", Protocol = "tcp", PreferredPort = 1521, AllocatedPort = 1522, ContainerPort = 1521, AllocationKind = "Alternative", Automatic = true, Endpoint = "tcp://localhost:1522", OpenUrl = "tcp://localhost:1522" },
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId, ServiceId = "ords", DisplayName = "ORDS", Protocol = "http", PreferredPort = 8181, AllocatedPort = 8182, ContainerPort = 8080, AllocationKind = "Alternative", Automatic = true, Endpoint = "http://localhost:8182/", OpenUrl = "http://localhost:8182/ords/_/landing" },
+                    ],
+                },
+            };
+
+            var state = manager.ResolveState(CreateOracleDefinition(), WorkspacePathBuilder.Build(tempRoot), existingState, inspectHostAvailability: true);
+
+            Assert.Equal(1522, WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(CreateOracleDefinition(), state, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId));
+            Assert.Equal(8182, WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(CreateOracleDefinition(), state, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId));
+        }
+        finally
+        {
+            TestFileSystem.DeleteDirectoryIfExists(tempRoot);
+            TestFileSystem.DeleteDirectoryIfExists(appDataRoot);
+        }
+    }
+
+    [Fact]
+    public void ResolveState_WhenOracleRuntimeStateCollidesWithManagedWorkspace_ReallocatesOracleWithoutDriftingOrds()
+    {
+        var tempRoot = CreateTempRoot();
+        var otherRoot = CreateTempRoot();
+        var appDataRoot = CreateTempRoot();
+
+        try
+        {
+            var repository = new WorkspaceRepository(appDataRoot);
+            var service = new WorkspaceRuntimeStateService();
+            repository.Save(new WorkspaceRecord { Name = "demo-apexlang", RootPath = OperatingSystem.IsWindows() ? otherRoot : "C:\\Users\\miha.pirnat\\source\\opencode-workspaces\\demo-apexlang2", RepositoryPath = otherRoot, CreatedUtc = DateTimeOffset.UtcNow, LastOpenedUtc = DateTimeOffset.UtcNow });
+            service.Write(WorkspacePathBuilder.Build(otherRoot).RuntimeStatePath, new WorkspaceRuntimeStateRecord
+            {
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId, ServiceId = "oracle-database", DisplayName = "Oracle Database", Protocol = "tcp", PreferredPort = 1521, AllocatedPort = 1521, ContainerPort = 1521, Endpoint = "tcp://localhost:1521", OpenUrl = "tcp://localhost:1521" },
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId, ServiceId = "ords", DisplayName = "ORDS", Protocol = "http", PreferredPort = 8181, AllocatedPort = 8181, ContainerPort = 8080, Endpoint = "http://localhost:8181/", OpenUrl = "http://localhost:8181/ords/_/landing" },
+                    ],
+                },
+            });
+
+            var existingState = new WorkspaceRuntimeStateRecord
+            {
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId, ServiceId = "oracle-database", DisplayName = "Oracle Database", Protocol = "tcp", PreferredPort = 1521, AllocatedPort = 1521, ContainerPort = 1521, AllocationKind = "Preferred", Automatic = false, Endpoint = "tcp://localhost:1521", OpenUrl = "tcp://localhost:1521" },
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId, ServiceId = "ords", DisplayName = "ORDS", Protocol = "http", PreferredPort = 8181, AllocatedPort = 8182, ContainerPort = 8080, AllocationKind = "Alternative", Automatic = true, Endpoint = "http://localhost:8182/", OpenUrl = "http://localhost:8182/ords/_/landing" },
+                    ],
+                },
+            };
+
+            var manager = new WorkspaceRuntimeResourceManager(repository, service, port => port == 1522 || port == 8182);
+            var state = manager.ResolveState(CreateOracleDefinition(), WorkspacePathBuilder.Build(tempRoot), existingState, inspectHostAvailability: true);
+
+            Assert.Equal(1522, WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(CreateOracleDefinition(), state, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId));
+            Assert.Equal(8182, WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(CreateOracleDefinition(), state, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId));
+        }
+        finally
+        {
+            TestFileSystem.DeleteDirectoryIfExists(tempRoot);
+            TestFileSystem.DeleteDirectoryIfExists(otherRoot);
+            TestFileSystem.DeleteDirectoryIfExists(appDataRoot);
+        }
+    }
+
+    [Fact]
     public void ResolveState_WhenPreferredAndFallbackPortsAreBusy_UsesDynamicPort()
     {
         var tempRoot = CreateTempRoot();
@@ -179,6 +262,14 @@ public sealed class WorkspaceRuntimeResourceManagerTests
             Workspace = new WorkspaceMetadata { Name = "postgres-demo", Image = "ubuntu:24.04" },
             Features = ["core"],
             Services = ["postgres", "pgadmin"],
+        };
+
+    private static WorkspaceDefinition CreateOracleDefinition()
+        => new()
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-demo", Image = "ubuntu:24.04" },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
         };
 
     private static string CreateTempRoot()

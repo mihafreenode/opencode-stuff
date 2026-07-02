@@ -1037,10 +1037,12 @@ mkdir -p "${config_dir}"
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Initializing managed ORDS config in ${config_dir}." >&2
   rm -rf "${config_dir}/global" "${config_dir}/databases"
-  printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install --config-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --password-stdin
+  printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install --config-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user APEX_PUBLIC_USER --password-stdin
   ords --config "${config_dir}" config set standalone.http.port 8080
   ords --config "${config_dir}" config set standalone.context.path /ords
 fi
+
+printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" config secret --password-stdin db.password
 
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Managed ORDS config initialization did not produce expected files." >&2
