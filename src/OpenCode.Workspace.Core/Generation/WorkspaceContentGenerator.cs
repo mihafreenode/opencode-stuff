@@ -241,6 +241,7 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("test-oracle-connection.ps1")] = TestConnectionScript();
         files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
         files[Path.Combine("scripts", "start-opencode-oracle-demo.ps1")] = StartOpenCodeOracleDemoScript();
+        files[Path.Combine("mounts", "config", "ords", "init-ords-config.sh")] = OrdsConfigBootstrapScript();
 
         foreach (var pair in OracleWorkspaceGeneratedContent.Generate(definition, runtimeState, WithGeneratedHeader, WithGeneratedSqlHeader, WithGeneratedScriptHeader))
         {
@@ -1022,6 +1023,34 @@ Agents should not claim a tool exists merely because documentation mentions it.
             body.TrimStart('\r', '\n'),
             string.Empty,
         ]);
+
+    private static string OrdsConfigBootstrapScript() => WithGeneratedScriptHeader("""
+set -eu
+
+config_dir=/etc/ords/config
+bootstrap_script="${config_dir}/init-ords-config.sh"
+settings_file="${config_dir}/global/settings.xml"
+pool_file="${config_dir}/databases/default/pool.xml"
+
+mkdir -p "${config_dir}"
+
+if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
+  echo "[oracle-ords] Initializing managed ORDS config in ${config_dir}." >&2
+  rm -rf "${config_dir}/global" "${config_dir}/databases"
+  printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install --config-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --password-stdin
+  ords --config "${config_dir}" config set standalone.http.port 8080
+  ords --config "${config_dir}" config set standalone.context.path /ords
+fi
+
+if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
+  echo "[oracle-ords] Managed ORDS config initialization did not produce expected files." >&2
+  echo "[oracle-ords] Expected files: ${settings_file}, ${pool_file}" >&2
+  exit 1
+fi
+
+echo "[oracle-ords] Starting ORDS with managed config from ${config_dir}." >&2
+exec ords --config "${config_dir}" serve --port 8080
+""");
 
     private static string BuildOracleTutorialJson()
     {

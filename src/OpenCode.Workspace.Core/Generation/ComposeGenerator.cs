@@ -72,6 +72,26 @@ public sealed class ComposeGenerator
                 }
             }
 
+            var entryPoint = ResolveEntryPoint(service);
+            if (entryPoint.Count > 0)
+            {
+                builder.AppendLine("    entrypoint:");
+                foreach (var part in entryPoint)
+                {
+                    builder.AppendLine($"      - \"{EscapeYamlDoubleQuoted(part)}\"");
+                }
+            }
+
+            var command = ResolveCommand(service);
+            if (command.Count > 0)
+            {
+                builder.AppendLine("    command:");
+                foreach (var part in command)
+                {
+                    builder.AppendLine($"      - \"{EscapeYamlDoubleQuoted(part)}\"");
+                }
+            }
+
             if (service.Environment.Count > 0)
             {
                 builder.AppendLine("    environment:");
@@ -125,18 +145,18 @@ public sealed class ComposeGenerator
                 }
             }
 
-            if (service.Volumes.Count > 0)
+            var volumes = ResolveServiceVolumes(service, paths);
+            if (volumes.Count > 0)
             {
                 builder.AppendLine("    volumes:");
-                foreach (var volume in service.Volumes)
+                foreach (var volume in volumes)
                 {
-                    builder.AppendLine($"      - {ResolveVolumeBinding(volume, paths)}");
+                    builder.AppendLine($"      - {volume}");
                 }
             }
         }
 
-        var namedVolumes = workspace.Services.SelectMany(service => service.Volumes)
-            .Select(volume => ResolveVolumeBinding(volume, paths))
+        var namedVolumes = workspace.Services.SelectMany(service => ResolveServiceVolumes(service, paths))
             .Select(volume => volume.Split(':', 2)[0])
             .Where(volume => !volume.Contains('/') && !volume.Contains('\\'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -160,7 +180,47 @@ public sealed class ComposeGenerator
         return volume
             .Replace("${WORKSPACE_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(paths.RootPath), StringComparison.Ordinal)
             .Replace("${WORKSPACE_TUTORIAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, "tutorial")), StringComparison.Ordinal)
-            .Replace("${WORKSPACE_LOCAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, ".local")), StringComparison.Ordinal);
+            .Replace("${WORKSPACE_LOCAL_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.RootPath, ".local")), StringComparison.Ordinal)
+            .Replace("${WORKSPACE_CONFIG_DOCKER_PATH}", WorkspacePathBuilder.ToDockerVolumePath(paths.ConfigPath), StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<string> ResolveServiceVolumes(ServiceManifest service, WorkspacePaths paths)
+    {
+        var volumes = service.Volumes.Select(volume => ResolveVolumeBinding(volume, paths)).ToList();
+        if (string.Equals(service.Id, "oracle-ords", StringComparison.OrdinalIgnoreCase))
+        {
+            var managedConfigMount = $"{WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.ConfigPath, "ords"))}:/etc/ords/config";
+            if (!volumes.Contains(managedConfigMount, StringComparer.OrdinalIgnoreCase))
+            {
+                volumes.Add(managedConfigMount);
+            }
+        }
+
+        return volumes;
+    }
+
+    private static IReadOnlyList<string> ResolveEntryPoint(ServiceManifest service)
+    {
+        if (service.EntryPoint.Count > 0)
+        {
+            return service.EntryPoint;
+        }
+
+        return string.Equals(service.Id, "oracle-ords", StringComparison.OrdinalIgnoreCase)
+            ? ["bash", "-lc"]
+            : Array.Empty<string>();
+    }
+
+    private static IReadOnlyList<string> ResolveCommand(ServiceManifest service)
+    {
+        if (service.Command.Count > 0)
+        {
+            return service.Command;
+        }
+
+        return string.Equals(service.Id, "oracle-ords", StringComparison.OrdinalIgnoreCase)
+            ? ["bash /etc/ords/config/init-ords-config.sh"]
+            : Array.Empty<string>();
     }
 
     private static void AppendDependsOn(StringBuilder builder, IReadOnlyList<ServiceManifest> services, Func<ServiceManifest, string?> getCondition)

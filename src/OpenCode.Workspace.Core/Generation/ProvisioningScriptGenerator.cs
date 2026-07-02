@@ -564,6 +564,9 @@ public sealed class ProvisioningScriptGenerator
                 builder.AppendLine("    break");
                 builder.AppendLine("  fi");
                 builder.AppendLine("  if [ \"${attempt}\" -eq 6 ]; then");
+                builder.AppendLine("    if [ ! -f /opt/opencode-workspace/config/ords/global/settings.xml ] || [ ! -f /opt/opencode-workspace/config/ords/databases/default/pool.xml ]; then");
+                builder.AppendLine("      oracle_fail \"Oracle REST Data Services (ORDS) config did not initialize.\" \"Managed ORDS config files were not created under /opt/opencode-workspace/config/ords\" \"Inspect the oracle-ords container logs and regenerate the managed ORDS config before retrying.\" medium");
+                builder.AppendLine("    fi");
                 builder.AppendLine("    oracle_fail \"Oracle REST Data Services (ORDS) did not become reachable.\" \"ORDS endpoint ${oracle_ords_url} did not respond after 6 checks\" \"Check the oracle-ords container logs and recreate the ORDS container if configuration did not complete.\" medium");
                 builder.AppendLine("  fi");
                 builder.AppendLine("  echo \"[oracle] Waiting for ORDS endpoint ${attempt}/6...\" >&2");

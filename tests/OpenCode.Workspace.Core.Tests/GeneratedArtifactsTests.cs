@@ -1,3 +1,4 @@
+using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
@@ -205,6 +206,43 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("ORACLE_DEMO_SERVICE=FREEPDB1", content);
         Assert.Contains("ORACLE_HOST_PORT=1521", content);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", content);
+    }
+
+    [Fact]
+    public void WorkspaceContentGenerator_OracleApexWorkspace_IncludesOrdsBootstrapScript()
+    {
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var resolved = resolver.Resolve(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+        });
+
+        var files = new WorkspaceContentGenerator().Generate(resolved);
+
+        Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
+        Assert.Contains("ords --config \"${config_dir}\" install --config-only", script, StringComparison.Ordinal);
+        Assert.Contains("exec ords --config \"${config_dir}\" serve --port 8080", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProvisioningScriptGenerator_OracleApexWorkspace_ReportsMissingOrdsConfigClearly()
+    {
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var resolved = resolver.Resolve(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+        });
+
+        var script = new ProvisioningScriptGenerator().Generate(resolved);
+
+        Assert.Contains("Oracle REST Data Services (ORDS) config did not initialize.", script, StringComparison.Ordinal);
+        Assert.Contains("Managed ORDS config files were not created under /opt/opencode-workspace/config/ords", script, StringComparison.Ordinal);
     }
 
     [Fact]

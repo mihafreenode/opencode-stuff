@@ -85,9 +85,21 @@ public sealed class WorkspaceRuntimeResourceManager
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, currentAllocation.AllocatedPort, currentAllocation.AllocationKind);
         }
 
-        if (!reservedPorts.Contains(requirement.PreferredPort) && (!inspectHostAvailability || _isPortAvailable(requirement.PreferredPort)))
+        var preferredOwner = FindManagedOwner(currentWorkspaceRootPath, requirement.PreferredPort);
+        if (!reservedPorts.Contains(requirement.PreferredPort)
+            && preferredOwner is null
+            && (!inspectHostAvailability || _isPortAvailable(requirement.PreferredPort)))
         {
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, requirement.PreferredPort, "Preferred");
+        }
+
+        var alternativePort = requirement.AlternativePorts.FirstOrDefault(port => !reservedPorts.Contains(port)
+            && FindManagedOwner(currentWorkspaceRootPath, port) is null
+            && (!inspectHostAvailability || _isPortAvailable(port)));
+        if (alternativePort > 0)
+        {
+            conflicts.Add(BuildConflict(requirement, preferredOwner, $"Allocated alternative port {alternativePort}."));
+            return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, alternativePort, "Alternative");
         }
 
         if (!inspectHostAvailability)
@@ -95,24 +107,18 @@ public sealed class WorkspaceRuntimeResourceManager
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, requirement.PreferredPort, "Preferred");
         }
 
-        var owner = FindManagedOwner(currentWorkspaceRootPath, requirement.PreferredPort);
-        var alternativePort = requirement.AlternativePorts.FirstOrDefault(port => !reservedPorts.Contains(port) && _isPortAvailable(port));
-        if (alternativePort > 0)
-        {
-            conflicts.Add(BuildConflict(requirement, owner, $"Allocated alternative port {alternativePort}."));
-            return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, alternativePort, "Alternative");
-        }
-
         if (requirement.AllowsDynamicAllocation)
         {
             for (var candidate = requirement.PreferredPort + 1; candidate <= requirement.PreferredPort + 100; candidate++)
             {
-                if (reservedPorts.Contains(candidate) || !_isPortAvailable(candidate))
+                if (reservedPorts.Contains(candidate)
+                    || FindManagedOwner(currentWorkspaceRootPath, candidate) is not null
+                    || !_isPortAvailable(candidate))
                 {
                     continue;
                 }
 
-                conflicts.Add(BuildConflict(requirement, owner, $"Allocated dynamic port {candidate}."));
+                conflicts.Add(BuildConflict(requirement, preferredOwner, $"Allocated dynamic port {candidate}."));
                 return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, candidate, "Dynamic");
             }
         }

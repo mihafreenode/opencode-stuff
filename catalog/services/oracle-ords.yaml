@@ -8,6 +8,13 @@ profiles:
   - oracle-ords
 hostPorts:
   - ${ORACLE_ORDS_PORT}:8080
+volumes:
+  - ${WORKSPACE_CONFIG_DOCKER_PATH}/ords:/etc/ords/config
+entrypoint:
+  - bash
+  - -lc
+command:
+  - bash /etc/ords/config/init-ords-config.sh
 environment:
   ORACLE_PWD: ${ORACLE_PASSWORD}
   DBHOST: oracle-demo

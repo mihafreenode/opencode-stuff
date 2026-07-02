@@ -71,6 +71,45 @@ public sealed class WorkspaceRuntimeResourceManagerTests
     }
 
     [Fact]
+    public void ResolveState_WhenPreferredPortIsOwnedByManagedWorkspaceWithoutHostInspection_StillUsesAlternativePort()
+    {
+        var tempRoot = CreateTempRoot();
+        var otherRoot = CreateTempRoot();
+        var appDataRoot = CreateTempRoot();
+
+        try
+        {
+            var repository = new WorkspaceRepository(appDataRoot);
+            var service = new WorkspaceRuntimeStateService();
+            repository.Save(new WorkspaceRecord { Name = "analytics-demo", RootPath = otherRoot, RepositoryPath = otherRoot, CreatedUtc = DateTimeOffset.UtcNow, LastOpenedUtc = DateTimeOffset.UtcNow });
+            service.Write(WorkspacePathBuilder.Build(otherRoot).RuntimeStatePath, new WorkspaceRuntimeStateRecord
+            {
+                Resources = new WorkspaceManagedRuntimeResources
+                {
+                    Ports =
+                    [
+                        new WorkspacePortAllocationRecord { ResourceId = WorkspaceRuntimeResourceCatalog.PostgresResourceId, ServiceId = "postgres", DisplayName = "PostgreSQL", Protocol = "tcp", PreferredPort = 15432, AllocatedPort = 15432, ContainerPort = 5432, Endpoint = "tcp://localhost:15432", OpenUrl = "tcp://localhost:15432" },
+                    ],
+                },
+            });
+
+            var manager = new WorkspaceRuntimeResourceManager(repository, service, port => false);
+            var state = manager.ResolveState(CreatePostgresDefinition(), WorkspacePathBuilder.Build(tempRoot), inspectHostAvailability: false);
+
+            Assert.Equal(15433, WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(CreatePostgresDefinition(), state, WorkspaceRuntimeResourceCatalog.PostgresResourceId));
+            var conflict = Assert.Single(state.Resources.Conflicts);
+            Assert.Equal("ManagedWorkspace", conflict.ConflictKind);
+            Assert.Contains("analytics-demo", conflict.Owner, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TestFileSystem.DeleteDirectoryIfExists(tempRoot);
+            TestFileSystem.DeleteDirectoryIfExists(otherRoot);
+            TestFileSystem.DeleteDirectoryIfExists(appDataRoot);
+        }
+    }
+
+    [Fact]
     public void ResolveState_WhenPreferredAndFallbackPortsAreBusy_UsesDynamicPort()
     {
         var tempRoot = CreateTempRoot();

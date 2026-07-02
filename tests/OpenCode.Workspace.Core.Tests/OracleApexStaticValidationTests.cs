@@ -160,7 +160,11 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("DBHOST: \"oracle-demo\"", apexCompose);
         Assert.Contains("DBPORT: \"1521\"", apexCompose);
         Assert.Contains("DBSERVICENAME: \"FREEPDB1\"", apexCompose);
-        Assert.DoesNotContain("/etc/ords/config", apexCompose);
+        Assert.Contains("/mounts/config/ords:/etc/ords/config", apexCompose, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("entrypoint:", apexCompose);
+        Assert.Contains("- \"bash\"", apexCompose);
+        Assert.Contains("- \"-lc\"", apexCompose);
+        Assert.Contains("- \"bash /etc/ords/config/init-ords-config.sh\"", apexCompose);
         Assert.DoesNotContain("DB_HOSTNAME:", apexCompose);
         Assert.DoesNotContain("DB_PORT:", apexCompose);
         Assert.DoesNotContain("DB_SERVICE:", apexCompose);
@@ -168,7 +172,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("oracle-demo:", apexLangCompose);
         Assert.Contains("oracle-ords:", apexLangCompose);
         Assert.Contains("ORACLE_PWD: \"${ORACLE_PASSWORD}\"", apexLangCompose);
-        Assert.DoesNotContain("/etc/ords/config", apexLangCompose);
+        Assert.Contains("/mounts/config/ords:/etc/ords/config", apexLangCompose, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ORACLE_HOST_PORT=1521", apexEnv);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", apexEnv);
         Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex_admin", apexEnv);
@@ -239,6 +243,20 @@ public sealed class OracleApexStaticValidationTests
 
         Assert.NotEmpty(referencedDependencies);
         Assert.All(referencedDependencies, dependency => Assert.Contains(dependency, definedServices));
+    }
+
+    [Fact]
+    public void OracleApexLangGeneratedWorkspace_ContainsManagedOrdsConfigBootstrapScript()
+    {
+        var snapshot = CreateWorkspaceFromTemplate("oracle-apexlang-demo", "oracle-apexlang-ords-config");
+        var bootstrapScriptPath = Path.Combine(snapshot.Paths.RootPath, "mounts", "config", "ords", "init-ords-config.sh");
+
+        Assert.True(File.Exists(bootstrapScriptPath));
+
+        var bootstrapScript = File.ReadAllText(bootstrapScriptPath);
+        Assert.Contains("ords --config \"${config_dir}\" install --config-only", bootstrapScript, StringComparison.Ordinal);
+        Assert.Contains("global/settings.xml", bootstrapScript, StringComparison.Ordinal);
+        Assert.Contains("databases/default/pool.xml", bootstrapScript, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -45,6 +45,74 @@ public sealed class OraclePortConflictHandlingTests
     }
 
     [Fact]
+    public async Task CreateWorkspaceAsync_TwoOracleApexLangWorkspaces_GetDistinctGeneratedHostPorts()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var root = Path.Combine(Path.GetTempPath(), $"oracle-multi-ports-{Guid.NewGuid():N}");
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"oracle-multi-ports-appdata-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(appDataRoot);
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var ignorePolicyService = new WorkspaceIgnorePolicyService();
+            var orchestrator = new WorkspaceOrchestrator(
+                new WorkspaceYamlService(),
+                new WorkspaceDiscoveryService(),
+                new WorkspaceRepository(appDataRoot),
+                resolver,
+                new ComposeGenerator(),
+                new EnvironmentFileGenerator(),
+                new ProvisioningScriptGenerator(),
+                new TerminalArtifactsGenerator(),
+                new AttachArtifactsGenerator(),
+                new WorkspaceContentGenerator(),
+                new WorkspaceAppliedStateService(),
+                new WorkspaceCheckpointService(),
+                new WorkspaceTimelineService(),
+                new WorkspaceSafetyService(),
+                ignorePolicyService,
+                new GitWorkspaceProvider(new ProcessRunner(), ignorePolicyService),
+                new DockerService(new ProcessRunner()),
+                new NoOpTerminalLauncher());
+
+            var firstDefinition = CreateOracleApexLangDefinition("oracle-apexlang-a");
+            var secondDefinition = CreateOracleApexLangDefinition("oracle-apexlang-b");
+            var firstRoot = Path.Combine(root, "workspace-a");
+            var secondRoot = Path.Combine(root, "workspace-b");
+
+            var first = await orchestrator.CreateWorkspaceAsync(firstRoot, firstDefinition, includeRuntimeInspection: false);
+            var second = await orchestrator.CreateWorkspaceAsync(secondRoot, secondDefinition, includeRuntimeInspection: false);
+
+            var firstEnv = await File.ReadAllTextAsync(first.Paths.EnvironmentFilePath);
+            var secondEnv = await File.ReadAllTextAsync(second.Paths.EnvironmentFilePath);
+
+            Assert.Contains("ORACLE_HOST_PORT=1521", firstEnv);
+            Assert.Contains("ORACLE_ORDS_PORT=8181", firstEnv);
+            Assert.Contains("ORACLE_HOST_PORT=1522", secondEnv);
+            Assert.Contains("ORACLE_ORDS_PORT=8182", secondEnv);
+
+            var secondCompose = await File.ReadAllTextAsync(second.Paths.ComposePath);
+            Assert.Contains("\"${ORACLE_HOST_PORT}:1521\"", secondCompose);
+            Assert.Contains("\"${ORACLE_ORDS_PORT}:8080\"", secondCompose);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+
+            if (Directory.Exists(appDataRoot))
+            {
+                Directory.Delete(appDataRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task DockerService_StartAsync_DetectsOraclePortConflictBeforeComposeUp()
     {
         var root = Path.Combine(Path.GetTempPath(), $"oracle-port-conflict-{Guid.NewGuid():N}");
@@ -244,6 +312,14 @@ public sealed class OraclePortConflictHandlingTests
             });
         }
     }
+
+    private static WorkspaceDefinition CreateOracleApexLangDefinition(string workspaceName)
+        => new()
+        {
+            Workspace = new WorkspaceMetadata { Name = workspaceName, Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+        };
 
     private sealed class NoOpTerminalLauncher : ITerminalLauncher
     {

@@ -193,6 +193,12 @@ public sealed class ServiceManifest
     [YamlMember(Alias = "volumes")]
     public List<string> Volumes { get; init; } = new();
 
+    [YamlMember(Alias = "entrypoint")]
+    public List<string> EntryPoint { get; init; } = new();
+
+    [YamlMember(Alias = "command")]
+    public List<string> Command { get; init; } = new();
+
     [YamlMember(Alias = "dependsOn")]
     public List<string> DependsOn { get; init; } = new();
 
