@@ -182,6 +182,66 @@ public sealed class OracleApexStaticValidationTests
     }
 
     [Fact]
+    public void OracleApexLangCompose_DependsOnOnlyDefinedServices()
+    {
+        var snapshot = CreateWorkspaceFromTemplate("oracle-apexlang-demo", "oracle-apexlang-depends-on");
+        var compose = File.ReadAllText(snapshot.Paths.ComposePath).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        var definedServices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referencedDependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? currentService = null;
+        var inDependsOn = false;
+
+        foreach (var rawLine in compose.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.TrimEnd();
+            if (line.StartsWith("  ") && !line.StartsWith("    ") && line.EndsWith(":", StringComparison.Ordinal))
+            {
+                currentService = line.Trim().TrimEnd(':');
+                definedServices.Add(currentService);
+                inDependsOn = false;
+                continue;
+            }
+
+            if (currentService is null)
+            {
+                continue;
+            }
+
+            if (line.Trim() == "depends_on:")
+            {
+                inDependsOn = true;
+                continue;
+            }
+
+            if (!inDependsOn)
+            {
+                continue;
+            }
+
+            if (!rawLine.StartsWith("      ", StringComparison.Ordinal))
+            {
+                inDependsOn = false;
+                continue;
+            }
+
+            if (rawLine.StartsWith("        ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var dependency = line.Trim().TrimStart('-').Trim().TrimEnd(':');
+            if (!string.IsNullOrWhiteSpace(dependency))
+            {
+                referencedDependencies.Add(dependency);
+            }
+        }
+
+        Assert.NotEmpty(referencedDependencies);
+        Assert.All(referencedDependencies, dependency => Assert.Contains(dependency, definedServices));
+    }
+
+    [Fact]
     public void OracleProvisioningScript_ContainsApexStagesOnlyForApexVariants()
     {
         var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);

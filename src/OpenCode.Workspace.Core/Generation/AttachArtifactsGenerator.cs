@@ -36,7 +36,12 @@ public sealed class AttachArtifactsGenerator
         builder.AppendLine("$disableMouseReporting = \"${ansiEscape}[?1000l${ansiEscape}[?1002l${ansiEscape}[?1003l${ansiEscape}[?1006l\"");
         builder.AppendLine("$dockerExecArgs = @('exec', '-it', '--user', $attachUser, '-w', $workspaceDirectory, $containerName, 'bash', $workspaceShellScript)");
         builder.AppendLine("$dockerPsArgs = @('ps', '--filter', \"name=$containerName\", '--format', 'table {{.Names}}\t{{.Status}}')");
-        builder.AppendLine("$composePsArgs = @('compose', '--project-name', $projectName, '--file', $composeFile, 'ps')");
+        builder.AppendLine("$composePsArgs = @('compose', '--project-name', $projectName, '--file', $composeFile");
+        foreach (var profile in definition.Services.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.AppendLine($"  , '--profile', '{EscapePowerShell(profile)}'");
+        }
+        builder.AppendLine("  , 'ps')");
         builder.AppendLine("$attemptedCommand = \"$dockerExe exec -it --user $attachUser -w $workspaceDirectory $containerName bash $workspaceShellScript\"");
         builder.AppendLine("$originalOutputEncoding = [Console]::OutputEncoding");
         builder.AppendLine("function Write-AttachMessage {");
@@ -78,6 +83,14 @@ public sealed class AttachArtifactsGenerator
         builder.AppendLine("    return $false");
         builder.AppendLine("  }");
         builder.AppendLine("  Write-AttachMessage \"Verified working directory exists: $workspaceDirectory\"");
+        builder.AppendLine("  $opencodeCheck = Invoke-DockerCheck -Arguments @('exec', '--user', $attachUser, '-w', $workspaceDirectory, $containerName, 'bash', '-lc', 'command -v opencode')");
+        builder.AppendLine("  if ($opencodeCheck.ExitCode -ne 0) {");
+        builder.AppendLine("    Write-AttachMessage 'OpenCode CLI is missing from the workspace container PATH.'");
+        builder.AppendLine("    $pathCheck = Invoke-DockerCheck -Arguments @('exec', '--user', $attachUser, '-w', $workspaceDirectory, $containerName, 'bash', '-lc', 'printf \"PATH=%s\\n\" \"$PATH\"; if command -v npm >/dev/null 2>&1; then printf \"npm root -g: %s\\n\" \"$(npm root -g 2>/dev/null || printf unavailable)\"; fi')");
+        builder.AppendLine("    $pathCheck.Output | ForEach-Object { if ($_ -ne $null) { Write-Host $_ } }");
+        builder.AppendLine("    return $false");
+        builder.AppendLine("  }");
+        builder.AppendLine("  Write-AttachMessage 'Verified OpenCode CLI is available in the container PATH.'");
         builder.AppendLine("  return $true");
         builder.AppendLine("}");
         builder.AppendLine("function Write-AttachDiagnostics {");

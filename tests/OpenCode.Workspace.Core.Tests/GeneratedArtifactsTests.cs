@@ -528,6 +528,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("printf '\\e[?1000l\\e[?1002l\\e[?1003l\\e[?1006l'", workspaceShell);
         Assert.Contains("stty sane || true", workspaceShell);
         Assert.Contains("trap cleanup_terminal_state EXIT", workspaceShell);
+        Assert.Contains("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:${PATH}}", workspaceShell);
+        Assert.Contains("OpenCode CLI is missing from PATH. Provision or rebuild the workspace runtime before attaching.", workspaceShell);
+        Assert.Contains("[attach] npm root -g:", workspaceShell);
         Assert.Contains("screen-256color", screenConfig);
         Assert.Contains("defutf8 on", screenConfig);
     }
@@ -559,6 +562,7 @@ public sealed class GeneratedArtifactsTests
         var definition = new WorkspaceDefinition
         {
             Workspace = new WorkspaceMetadata { Name = "attach-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
         };
         var paths = WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "attach-demo"));
         var wrapper = generator.GenerateWindowsTerminalWrapper(definition, paths);
@@ -571,6 +575,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("User $attachUser does not exist.", wrapper);
         Assert.Contains("Working directory missing: $workspaceDirectory", wrapper);
         Assert.Contains("Script is not marked executable", wrapper);
+        Assert.Contains("OpenCode CLI is missing from the workspace container PATH.", wrapper);
+        Assert.Contains("Verified OpenCode CLI is available in the container PATH.", wrapper);
+        Assert.Contains("command -v opencode", wrapper);
+        Assert.Contains("printf \"PATH=%s", wrapper);
         Assert.DoesNotContain("$scriptCheck.Output -notmatch", wrapper);
         Assert.Contains("$attemptedCommand = \"$dockerExe exec -it --user $attachUser -w $workspaceDirectory $containerName bash $workspaceShellScript\"", wrapper);
         Assert.Contains("$attachPrefix = '[attach:attach-demo]'", wrapper);
@@ -578,6 +586,8 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("Write-AttachMessage \"Attempted command: $attemptedCommand\"", wrapper);
         Assert.Contains("Write-AttachMessage \"docker ps:\"", wrapper);
         Assert.Contains("Write-AttachMessage \"docker compose ps:\"", wrapper);
+        Assert.Contains("'--profile', 'oracle-demo'", wrapper);
+        Assert.Contains("'--profile', 'oracle-ords'", wrapper);
         Assert.Contains(paths.AttachDiagnosticsLogPath, wrapper);
         Assert.Contains(paths.ComposePath, wrapper);
         Assert.Contains("/opt/opencode-workspace/config/opencode-workspace-shell.sh", wrapper);

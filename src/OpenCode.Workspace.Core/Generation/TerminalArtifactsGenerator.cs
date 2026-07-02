@@ -127,6 +127,7 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("export COLORTERM=truecolor");
         builder.AppendLine("export LANG=${LANG:-C.UTF-8}");
         builder.AppendLine("export LC_ALL=${LC_ALL:-C.UTF-8}");
+        builder.AppendLine("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:${PATH}}");
         builder.AppendLine("oracle_client_home='' ");
         builder.AppendLine("if [ -d /opt/oracle/instantclient ]; then");
         builder.AppendLine("  oracle_client_home=$(find /opt/oracle/instantclient -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\n' \"$dir\"; break; fi; done)");
@@ -154,6 +155,14 @@ public sealed class TerminalArtifactsGenerator
         builder.AppendLine("mkdir -p /home/opencode/.local/share/opencode/log /home/opencode/.config/opencode /home/opencode/.cache/opencode");
         builder.AppendLine("test -d /home/opencode/.local/share/opencode/log");
         builder.AppendLine("test -w /home/opencode/.local/share/opencode/log");
+        builder.AppendLine("if ! command -v opencode >/dev/null 2>&1; then");
+        builder.AppendLine("  printf '[attach] OpenCode CLI is missing from PATH. Provision or rebuild the workspace runtime before attaching.\\n' >&2");
+        builder.AppendLine("  printf '[attach] PATH=%s\\n' \"$PATH\" >&2");
+        builder.AppendLine("  if command -v npm >/dev/null 2>&1; then");
+        builder.AppendLine("    printf '[attach] npm root -g: %s\\n' \"$(npm root -g 2>/dev/null || printf unavailable)\" >&2");
+        builder.AppendLine("  fi");
+        builder.AppendLine("  exit 127");
+        builder.AppendLine("fi");
         builder.AppendLine("cd /workspace");
         builder.AppendLine();
         builder.AppendLine("resume_session='' ");
