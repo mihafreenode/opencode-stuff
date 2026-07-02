@@ -116,4 +116,12 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         AppWindowIcons.Apply(window, _owner);
         return await window.ShowDialog<bool>(_owner);
     }
+
+    public async Task ShowWorkspaceDiagnosticsAsync(WorkspaceDiagnosticsSession session, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new WorkspaceDiagnosticsWindow(session);
+        AppWindowIcons.Apply(window, _owner);
+        await window.ShowDialog(_owner);
+    }
 }

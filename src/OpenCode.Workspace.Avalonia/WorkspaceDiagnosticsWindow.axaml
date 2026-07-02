@@ -1,0 +1,119 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+        x:Class="OpenCode.Workspace.Avalonia.WorkspaceDiagnosticsWindow"
+        Width="860"
+        Height="720"
+        MinWidth="760"
+        MinHeight="560"
+        Title="Workspace Diagnostics"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="20">
+    <StackPanel Spacing="6">
+      <TextBlock Text="Workspace Diagnostics" FontSize="24" FontWeight="SemiBold" automation:AutomationProperties.Name="Workspace Diagnostics" />
+      <TextBlock Text="{Binding WorkspaceName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding RecommendationLabel, StringFormat=Next: {0}}" IsVisible="{Binding HasRecommendation}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16">
+        <Border Classes="summary-inline">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Header" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+              <TextBlock Text="Operation" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Column="1" Text="{Binding OperationName}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="1" Text="Mode" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ModeLabel}" />
+              <TextBlock Grid.Row="2" Text="Status" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding StatusLabel}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel-subtle">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Session Details" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding SessionDetails}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="140,*" ColumnSpacing="10" Margin="0,0,0,6">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel-subtle" IsVisible="{Binding HasFailureSummary}">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Failure Summary" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+              <TextBlock Text="Summary" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Column="1" Text="{Binding FailureSummaryTitle}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="1" Text="Reason" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FailureReason}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="2" Text="Evidence" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding FailureEvidence}" TextWrapping="Wrap" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel" IsVisible="{Binding HasAttemptedSteps}">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Attempted Steps" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding AttemptedSteps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <Grid ColumnDefinitions="140,120,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+                      <TextBlock Text="{Binding StepLabel}" FontWeight="SemiBold" />
+                      <TextBlock Grid.Column="1" Text="{Binding StatusLabel}" />
+                      <TextBlock Grid.Column="2" Text="{Binding Summary}" TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding TimestampText}" IsVisible="{Binding HasTimestamp}" Foreground="{DynamicResource TextMutedBrush}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="panel">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Timeline / Entries" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding Entries}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="panel-subtle" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <Grid ColumnDefinitions="170,120,*" ColumnSpacing="10">
+                        <TextBlock Text="{Binding TimestampText}" Foreground="{DynamicResource TextMutedBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Kind}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="2" Text="{Binding Source}" Foreground="{DynamicResource TextMutedBrush}" />
+                      </Grid>
+                      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Classes="dialog-footer">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
+        <TextBlock Text="Read-only diagnostics snapshot." VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" />
+        <Button Grid.Column="1" Content="Copy Summary" Command="{Binding CopySummaryCommand}" automation:AutomationProperties.Name="Copy Diagnostics Summary" />
+        <Button Grid.Column="2" Content="Copy Full Log" Command="{Binding CopyFullLogCommand}" automation:AutomationProperties.Name="Copy Diagnostics Full Log" />
+        <Button Grid.Column="3" Content="Export Diagnostics Bundle" Command="{Binding ExportBundleCommand}" IsVisible="{Binding CanExportBundle}" automation:AutomationProperties.Name="Export Diagnostics Bundle" />
+        <Button Grid.Column="4" Content="Close" IsCancel="True" Click="CloseClicked" automation:AutomationProperties.Name="Close Workspace Diagnostics" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

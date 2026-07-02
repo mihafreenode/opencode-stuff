@@ -6,6 +6,9 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using OperationTranscript = OpenCode.Workspace.AppSupport.OperationTranscript;
+using OperationTranscriptLine = OpenCode.Workspace.AppSupport.OperationTranscriptLine;
+using OperationTranscriptLineKind = OpenCode.Workspace.AppSupport.OperationTranscriptLineKind;
 
 namespace OpenCode.Workspace.Avalonia.ViewModels;
 
@@ -636,7 +639,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private async Task TroubleshootWorkspaceInternalAsync()
     {
-        if (SelectedWorkspace is null || TroubleshootWorkspaceAsync is null)
+        if (SelectedWorkspace is null || _interactionService is null)
         {
             return;
         }
@@ -654,7 +657,34 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             SelectWorkspaceByRootPath(rootPath);
         }
 
-        await TroubleshootWorkspaceAsync(rootPath);
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        var session = BuildWorkspaceDiagnosticsSession(SelectedWorkspace);
+        await _interactionService.ShowWorkspaceDiagnosticsAsync(session);
+    }
+
+    private WorkspaceDiagnosticsSession BuildWorkspaceDiagnosticsSession(WorkspaceSummaryViewModel workspace)
+    {
+        var transcript = _lastOperationTranscript is not null
+            && (string.IsNullOrWhiteSpace(_lastOperationTranscript.WorkspaceName)
+                || string.Equals(_lastOperationTranscript.WorkspaceName, workspace.Name, StringComparison.Ordinal))
+            ? _lastOperationTranscript
+            : null;
+
+        return WorkspaceDiagnosticsSessionBuilder.Build(new WorkspaceDiagnosticsSessionBuildInput
+        {
+            Transcript = transcript,
+            ProvisioningHealth = workspace.Snapshot?.Record.LastProvisioningHealth,
+            Readiness = workspace.Snapshot?.Readiness,
+            WorkspaceName = workspace.Name,
+            WorkspaceRootPath = workspace.RootPath,
+            OperationName = string.IsNullOrWhiteSpace(CurrentWorkspaceOperationName)
+                ? workspace.Record.LastOperationName ?? string.Empty
+                : CurrentWorkspaceOperationName,
+        });
     }
 
     private async Task CreateSavePointAsync()
@@ -1534,9 +1564,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailItems.Add(new DetailItemViewModel("Workspace", JoinSectionLines(presentation.CurrentStatus, DetailSummary)));
             DetailItems.Add(new DetailItemViewModel("Current Activity", JoinSectionLines(presentation.CurrentActivity, presentation.ActivitySummary)));
-            DetailItems.Add(new DetailItemViewModel("What You Can Use", "Workspace details are still loading."));
-            DetailItems.Add(new DetailItemViewModel("Needs Attention", string.IsNullOrWhiteSpace(DetailRecommendation) ? "Nothing needs attention right now." : $"Next: {DetailRecommendation}"));
-            DetailItems.Add(new DetailItemViewModel("Development Environment", "Unknown until workspace details load."));
+            DetailItems.Add(new DetailItemViewModel("What You Can Use", "Nothing is available because workspace details could not be loaded."));
+            DetailItems.Add(new DetailItemViewModel("Needs Attention", string.IsNullOrWhiteSpace(DetailRecommendation) ? "Next: Refresh." : $"Next: {DetailRecommendation}"));
+            DetailItems.Add(new DetailItemViewModel("Development Environment", "Unknown because workspace details could not be loaded."));
             DetailItems.Add(new DetailItemViewModel("Technical Evidence", BuildMissingSnapshotTechnicalEvidence(SelectedWorkspace)));
             ApplyDetailPresentation(presentation);
             return;
@@ -1804,7 +1834,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var openDevelopmentShellAction = CreatePresentationAction(workspace, "Open Development Shell", BuildOpenDevelopmentShellDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
-        var investigateProblemAction = CreatePresentationAction(workspace, "Troubleshoot Workspace", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
+        var investigateProblemAction = CreatePresentationAction(workspace, "Run Diagnostics", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
         var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
         var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);

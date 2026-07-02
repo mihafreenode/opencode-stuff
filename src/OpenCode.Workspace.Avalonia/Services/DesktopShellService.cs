@@ -5,6 +5,8 @@ using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Platform.Windows;
+using OperationTranscriptLine = OpenCode.Workspace.AppSupport.OperationTranscriptLine;
+using OperationTranscriptLineKind = OpenCode.Workspace.AppSupport.OperationTranscriptLineKind;
 
 namespace OpenCode.Workspace.Avalonia.Services;
 

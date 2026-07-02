@@ -7,6 +7,9 @@ using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.Platform;
 using OpenCode.Workspace.Platform.Windows;
+using OperationTranscript = OpenCode.Workspace.AppSupport.OperationTranscript;
+using OperationTranscriptLine = OpenCode.Workspace.AppSupport.OperationTranscriptLine;
+using OperationTranscriptLineKind = OpenCode.Workspace.AppSupport.OperationTranscriptLineKind;
 
 namespace OpenCode.Workspace.Avalonia.Tests;
 
@@ -634,6 +637,11 @@ public sealed class ShellViewModelTests
         Assert.Equal("Run Diagnostics", page.DetailPrimaryAction?.Label);
         Assert.Equal(["Refresh"], page.DetailVisibleActions.Select(item => item.Label));
         Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Open Workspace");
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value.Contains("Discovery Failed", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Current Activity" && item.Value.Contains("None", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "What You Can Use" && item.Value.Contains("Nothing is available because workspace details could not be loaded.", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Needs Attention" && item.Value.Contains("Next: Run Diagnostics.", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Development Environment" && item.Value.Contains("Unknown because workspace details could not be loaded.", StringComparison.Ordinal));
         Assert.Contains(page.DetailItems, item => item.Label == "Technical Evidence" && item.Value.Contains("Load failure: workspace.yaml missing", StringComparison.Ordinal));
         Assert.Equal(2, page.WorkspaceLoadReport.ItemsReturnedCount);
     }
@@ -2572,7 +2580,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
         Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Troubleshoot Workspace");
-        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Troubleshoot Workspace");
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Run Diagnostics");
         Assert.Equal(["Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
 
         release.SetResult();
@@ -3353,162 +3361,100 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public async Task TroubleshootWorkspace_RevalidatesVolatileStateBeforeNavigation()
+    public async Task TroubleshootWorkspace_RevalidatesVolatileStateBeforeOpeningDiagnostics()
     {
         var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(desktop);
-        var navigatedRootPath = string.Empty;
-        page.TroubleshootWorkspaceAsync = rootPath =>
-        {
-            navigatedRootPath = rootPath;
-            return Task.CompletedTask;
-        };
+        var interaction = new FakeWorkspaceInteractionService();
+        page.SetInteractionService(interaction);
 
         await page.LoadAsync();
 
         await page.TroubleshootWorkspaceCommand.ExecuteAsync();
 
         Assert.Equal(1, desktop.RefreshVolatileWorkspaceStateCallCount);
-        Assert.Equal(page.SelectedWorkspace?.RootPath, navigatedRootPath);
+        Assert.Equal(page.SelectedWorkspace?.RootPath, interaction.LastWorkspaceDiagnosticsSession?.WorkspaceRootPath);
     }
 
     [Fact]
-    public async Task InvestigateProblem_UsesWorkspaceTroubleshootingPageInsteadOfDiagnostics()
-    {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false)])
-        {
-            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
-            {
-                WorkspaceName = request.WorkspaceName,
-                RootPath = request.RootPath,
-                Headline = "Workspace troubleshooting",
-                Summary = "Workspace-specific failure evidence.",
-                Recommendation = "Open Workspace should retry the safe repair path.",
-                CanOpenWorkspace = true,
-                Facts = [new WorkspaceTroubleshootingFact { Label = "Last failed stage", Value = "Installing APEX" }],
-            }),
-        };
-        var shell = CreateShellWithDesktop(desktop);
-
-        await shell.InitializeAsync();
-        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
-        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
-
-        Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
-        Assert.Equal("Workspace-specific failure evidence.", shell.CurrentPage.DetailSummary);
-    }
-
-    [Fact]
-    public async Task InvestigateProblem_InProgressProvisioning_ShowsKeepWaitingInsteadOfDoctor()
-    {
-        var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
-        {
-            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
-            {
-                WorkspaceName = request.WorkspaceName,
-                RootPath = request.RootPath,
-                Headline = "Provisioning still running",
-                Summary = "Provisioning is still running. APEX installation may take several minutes.",
-                Recommendation = "View Log or Keep Waiting.",
-                IsProvisioningInProgress = true,
-                CanKeepWaiting = true,
-                CanViewLog = true,
-                TranscriptFilePath = request.TranscriptFilePath,
-                TranscriptExcerpt = "[oracle-apex] Stage: Installing APEX",
-            }),
-        };
-        var shell = CreateShellWithDesktop(desktop);
-
-        await shell.InitializeAsync();
-        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
-        workspacesPage.StartOperationTranscriptForTesting("Open Workspace", snapshot.Definition.Workspace.Name);
-        workspacesPage.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Installing APEX..." });
-        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
-
-        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
-        Assert.Equal("Keep Waiting", troubleshootingPage.DetailPrimaryAction?.Label);
-        Assert.Contains("APEX installation may take several minutes", troubleshootingPage.DetailSummary, StringComparison.Ordinal);
-        Assert.DoesNotContain(troubleshootingPage.DetailActions, item => item.Label == "Run Doctor");
-    }
-
-    [Fact]
-    public async Task TroubleshootWorkspace_InteractiveInvestigationUpdatesRecommendation()
+    public async Task RunDiagnostics_OpensDiagnosticsWindow()
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
-        var desktop = new FakeDesktopShellService([snapshot])
+        var interaction = new FakeWorkspaceInteractionService();
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await page.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        Assert.NotNull(interaction.LastWorkspaceDiagnosticsSession);
+        Assert.Equal("alpha", interaction.LastWorkspaceDiagnosticsSession.WorkspaceName);
+        Assert.Equal(snapshot.Paths.RootPath, interaction.LastWorkspaceDiagnosticsSession.WorkspaceRootPath);
+    }
+
+    [Fact]
+    public async Task RunDiagnostics_WithNoSelectedWorkspace_IsSafeNoOp()
+    {
+        var interaction = new FakeWorkspaceInteractionService();
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+        page.SetInteractionService(interaction);
+
+        await page.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        Assert.Null(interaction.LastWorkspaceDiagnosticsSession);
+    }
+
+    [Fact]
+    public async Task RunDiagnostics_UsesCurrentOperationTranscriptForRunningSession()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var interaction = new FakeWorkspaceInteractionService();
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        page.StartOperationTranscriptForTesting("Open Workspace", snapshot.Definition.Workspace.Name);
+        page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Installing APEX..." });
+        await page.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        Assert.NotNull(interaction.LastWorkspaceDiagnosticsSession);
+        Assert.Equal(WorkspaceDiagnosticsMode.Progress, interaction.LastWorkspaceDiagnosticsSession.Mode);
+        Assert.Equal(WorkspaceDiagnosticsStatus.Running, interaction.LastWorkspaceDiagnosticsSession.Status);
+        Assert.Equal("Installing APEX...", interaction.LastWorkspaceDiagnosticsSession.Summary);
+    }
+
+    [Fact]
+    public async Task RunDiagnostics_BuildsSessionFromSelectedWorkspaceState()
+    {
+        var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
+        snapshot = WithProvisioningHealth(snapshot, new WorkspaceProvisioningHealthRecord
         {
-            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
-            {
-                WorkspaceName = request.WorkspaceName,
-                RootPath = request.RootPath,
-                Headline = "Workspace troubleshooting",
-                Summary = "Workspace provisioning stopped.",
-                Recommendation = "Inspect Oracle runtime.",
-                CurrentDiagnosis = "Oracle prerequisite validation failed.",
-                CurrentEvidence = "XDB status = INVALID",
-                Confidence = "HIGH",
-                RecommendedNextStep = "Inspect Oracle runtime",
-                RecommendedNextStepDescription = "Inspect Oracle runtime before repeating repair actions.",
-                RecommendedNextStepDuration = "15-30 seconds",
-                CanOpenWorkspace = true,
-                InvestigationActions =
-                [
-                    new WorkspaceTroubleshootingAction
-                    {
-                        Id = "inspect-oracle-runtime",
-                        Label = "Inspect Oracle runtime",
-                        Description = "Inspect Oracle runtime evidence.",
-                        EstimatedDuration = "15-30 seconds",
-                        ProviderName = "Oracle",
-                    },
-                ],
-            }),
-            TroubleshootingActionFactoryAsync = (request, actionId, _) => Task.FromResult(new WorkspaceTroubleshootingReport
-            {
-                WorkspaceName = request.WorkspaceName,
-                RootPath = request.RootPath,
-                Headline = "Workspace troubleshooting",
-                Summary = "Workspace provisioning stopped.",
-                Recommendation = "Reset Runtime.",
-                CurrentDiagnosis = "Oracle prerequisite validation failed.",
-                CurrentEvidence = "XDB status = INVALID",
-                Confidence = "HIGH",
-                RecommendedNextStep = "Reset Runtime",
-                RecommendedNextStepDescription = "Oracle runtime inspection confirmed that reset runtime is the next safe repair.",
-                RecommendedNextStepDuration = "4-6 minutes",
-                CanResetRuntime = true,
-                InvestigationHistory =
-                [
-                    new WorkspaceTroubleshootingHistoryEntry
-                    {
-                        Title = "Inspect Oracle runtime",
-                        Outcome = "Oracle runtime issue confirmed.",
-                        Summary = "Oracle prerequisite validation failed.",
-                        Evidence = "XDB status = INVALID",
-                        Recommendation = "Reset Runtime.",
-                        Confidence = "HIGH",
-                        EstimatedDuration = "15-30 seconds",
-                        OccurredUtc = DateTimeOffset.UtcNow,
-                        Source = "Oracle",
-                    },
-                ],
-            }),
-        };
-        var shell = CreateShellWithDesktop(desktop);
+            Succeeded = false,
+            Stage = "Validate runtime prerequisites",
+            Summary = "Workspace provisioning stopped.",
+            Reason = "XDB status = INVALID",
+            Evidence = "Oracle validation failed.",
+            RecommendedAction = "Open Workspace.",
+            Confidence = "HIGH",
+            Timestamp = DateTimeOffset.UtcNow,
+            Duration = TimeSpan.FromMinutes(1),
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+            EstimatedEffort = "Low",
+            EstimatedDuration = "1-2 minutes",
+        });
+        var interaction = new FakeWorkspaceInteractionService();
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(interaction);
 
-        await shell.InitializeAsync();
-        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
-        await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
+        await page.LoadAsync();
+        await page.TroubleshootWorkspaceCommand.ExecuteAsync();
 
-        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
-        var investigationAction = Assert.Single(troubleshootingPage.InvestigationActions);
-
-        await ((AsyncRelayCommand)investigationAction.Command).ExecuteAsync();
-
-        troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
-        Assert.Equal("Reset Runtime", troubleshootingPage.RecommendedNextStep);
-        Assert.Single(troubleshootingPage.InvestigationHistory);
+        var session = Assert.IsType<WorkspaceDiagnosticsSession>(interaction.LastWorkspaceDiagnosticsSession);
+        Assert.Equal(WorkspaceDiagnosticsStatus.Failed, session.Status);
+        Assert.Equal(WorkspaceNextActionRecommendation.OpenWorkspace, session.Recommendation);
+        Assert.NotNull(session.FailureSummary);
+        Assert.Contains(session.Entries, entry => entry.IsFailureEvidence);
     }
 
     [Fact]
@@ -3892,52 +3838,16 @@ public sealed class ShellViewModelTests
     public async Task Troubleshooting_ServiceRowsExposeOpenActionForPgAdmin()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
-        {
-            TroubleshootingReportFactoryAsync = (request, _) => Task.FromResult(new WorkspaceTroubleshootingReport
-            {
-                WorkspaceName = request.WorkspaceName,
-                RootPath = request.RootPath,
-                Headline = "Workspace troubleshooting",
-                Summary = "Service health evidence available.",
-                Recommendation = "Open Workspace.",
-                CurrentDiagnosis = "pgAdmin reachable.",
-                CurrentEvidence = "HTTP 200",
-                Confidence = "HIGH",
-                RecommendedNextStep = "Open Workspace",
-                RecommendedNextStepDescription = "Workspace can still be used.",
-                RecommendedNextStepDuration = "Immediate",
-                CanOpenWorkspace = true,
-                Services =
-                [
-                    new WorkspaceTroubleshootingServiceEntry
-                    {
-                        Name = "pgAdmin",
-                        Status = "Available",
-                        Summary = "HTTP service responding.",
-                        Applications = string.Empty,
-                        PrimaryUrl = "http://localhost:18080/",
-                        Highlights = "Latency: 20 ms",
-                        Details = "HTTP status: 200 OK",
-                        ActionLabel = "Open pgAdmin",
-                        OpenUrl = "http://localhost:18080/",
-                    },
-                ],
-            }),
-        };
-        var shell = CreateShellWithDesktop(desktop);
+        var interaction = new FakeWorkspaceInteractionService();
+        var workspacesPage = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        workspacesPage.SetInteractionService(interaction);
 
-        await shell.InitializeAsync();
-        var workspacesPage = (WorkspacesPageViewModel)shell.NavigationItems.Single(item => item.Title == "Workspaces").Page;
+        await workspacesPage.LoadAsync();
         await workspacesPage.TroubleshootWorkspaceCommand.ExecuteAsync();
 
-        var troubleshootingPage = Assert.IsType<WorkspaceTroubleshootingPageViewModel>(shell.CurrentPage);
-        var pgadmin = Assert.Single(troubleshootingPage.DetailServices);
-        Assert.Equal("pgAdmin", pgadmin.Name);
-        Assert.True(pgadmin.CanOpen);
-
-        await pgadmin.OpenCommand!.ExecuteAsync();
-        Assert.Contains("http://localhost:18080/", desktop.OpenedPaths);
+        Assert.NotNull(interaction.LastWorkspaceDiagnosticsSession);
+        Assert.Equal(snapshot.Paths.RootPath, interaction.LastWorkspaceDiagnosticsSession.WorkspaceRootPath);
+        Assert.Equal("Workspace Diagnostics", interaction.LastWorkspaceDiagnosticsSession.OperationName);
     }
 
     [Fact]
@@ -5125,6 +5035,7 @@ public sealed class ShellViewModelTests
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
         public bool ResetRuntimeConfirmed { get; init; } = true;
         public WorkspaceRuntimeResetPrompt? LastResetRuntimePrompt { get; private set; }
+        public WorkspaceDiagnosticsSession? LastWorkspaceDiagnosticsSession { get; private set; }
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateWorkspaceDraft);
@@ -5167,6 +5078,12 @@ public sealed class ShellViewModelTests
         {
             LastResetRuntimePrompt = prompt;
             return Task.FromResult(ResetRuntimeConfirmed);
+        }
+
+        public Task ShowWorkspaceDiagnosticsAsync(WorkspaceDiagnosticsSession session, CancellationToken cancellationToken = default)
+        {
+            LastWorkspaceDiagnosticsSession = session;
+            return Task.CompletedTask;
         }
     }
 
