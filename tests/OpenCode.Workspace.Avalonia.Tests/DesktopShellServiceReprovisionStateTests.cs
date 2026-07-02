@@ -99,6 +99,72 @@ public sealed class DesktopShellServiceReprovisionStateTests
     }
 
     [Fact]
+    public async Task OpenWorkspace_SuccessClearsStaleTerminalReadinessFailure()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Terminal Cleanup");
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var staleRecord = new WorkspaceRecord
+            {
+                Name = fixture.OpenSnapshot.Record.Name,
+                RootPath = fixture.OpenSnapshot.Record.RootPath,
+                RepositoryPath = fixture.OpenSnapshot.Record.RepositoryPath,
+                ConfigurationPath = fixture.OpenSnapshot.Record.ConfigurationPath,
+                SourceType = fixture.OpenSnapshot.Record.SourceType,
+                ImportedFromExistingCheckout = fixture.OpenSnapshot.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = fixture.OpenSnapshot.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = fixture.OpenSnapshot.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = fixture.OpenSnapshot.Record.RemoteOriginUrl,
+                CreatedUtc = fixture.OpenSnapshot.Record.CreatedUtc,
+                LastOpenedUtc = fixture.OpenSnapshot.Record.LastOpenedUtc,
+                LastPreparedUtc = fixture.OpenSnapshot.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = fixture.OpenSnapshot.Record.OracleSoftwareNoticeShown,
+                LastOperationName = "Open Workspace",
+                LastOperationResult = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.",
+                LastOperationSucceeded = false,
+                LastOperationUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                LastProvisioningHealth = new WorkspaceProvisioningHealthRecord
+                {
+                    Succeeded = false,
+                    Stage = "Verify terminal launch readiness",
+                    Summary = "Workspace services are available, but OpenCode terminal could not be prepared.",
+                    Reason = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.",
+                    Evidence = "Available services: Development Shell. Terminal launch artifacts still failed readiness validation.",
+                    ProblemScope = "WorkspaceProblem",
+                    RecommendedAction = "Troubleshoot Workspace.",
+                    Confidence = "HIGH",
+                    Timestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+                    Duration = TimeSpan.Zero,
+                    RawLogReference = fixture.OpenSnapshot.Paths.AttachDiagnosticsLogPath,
+                    Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+                    EstimatedEffort = "Low",
+                    EstimatedDuration = "1-2 minutes",
+                    LastDiagnosticsTimestamp = DateTimeOffset.UtcNow.AddMinutes(-5),
+                },
+            };
+
+            await repository.SaveAsync(staleRecord, CancellationToken.None);
+            var staleSnapshot = await fixture.Orchestrator.LoadSnapshotAsync(fixture.CreatedSnapshot.Paths.RootPath, includeRuntimeInspection: true, includeSessionInspection: false);
+
+            var result = await fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, staleSnapshot);
+
+            Assert.Contains("is open", result.Message, StringComparison.Ordinal);
+
+            var saved = repository.LoadAll().Single(record => string.Equals(record.RootPath, fixture.CreatedSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+            Assert.True(saved.LastOperationSucceeded);
+            Assert.Equal("Opened workspace terminal session.", saved.LastOperationResult);
+            Assert.Null(saved.LastProvisioningHealth);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Recover_RegeneratesComposeAndRuntimeState_WithoutChangingUserFile()
     {
         var tempRoot = CreateTempRoot();

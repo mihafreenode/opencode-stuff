@@ -312,7 +312,7 @@ public sealed class DesktopShellService : IDesktopShellService
                             cancellationToken);
                         snapshot = await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
                         LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsAttach, WorkspaceLaunchState.Ready, phaseIndex);
-                        await PersistWorkspaceRecordAsync(snapshot, "Open Workspace", "Opened workspace terminal session.", true, cancellationToken);
+                        await PersistWorkspaceRecordAsync(snapshot, "Open Workspace", "Opened workspace terminal session.", true, cancellationToken, clearProvisioningHealthOnSuccess: true);
                         append(OperationTranscriptLineKind.Result, "Ready.");
                         transcript.CompletedUtc = DateTimeOffset.UtcNow;
                         transcript.Succeeded = true;
@@ -1138,7 +1138,7 @@ public sealed class DesktopShellService : IDesktopShellService
             append(OperationTranscriptLineKind.Status, "Opening terminal...");
             await _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, log, cancellationToken);
             snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
-            await PersistWorkspaceRecordAsync(snapshot, "Attach", "Opened workspace attach session.", true, cancellationToken);
+            await PersistWorkspaceRecordAsync(snapshot, "Attach", "Opened workspace attach session.", true, cancellationToken, clearProvisioningHealthOnSuccess: true);
             append(OperationTranscriptLineKind.Result, "Completed.");
             transcript.CompletedUtc = DateTimeOffset.UtcNow;
             transcript.Succeeded = true;
@@ -1328,15 +1328,19 @@ public sealed class DesktopShellService : IDesktopShellService
         return BuildWorkspaceTroubleshootingReport(updatedRequest, updatedContext);
     }
 
-    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null)
+    private Task PersistWorkspaceRecordAsync(WorkspaceSnapshot snapshot, string operationName, string operationResult, bool succeeded, CancellationToken cancellationToken, DateTimeOffset? lastPreparedUtc = null, WorkspaceProvisioningHealthRecord? provisioningHealth = null, bool clearProvisioningHealthOnSuccess = false)
     {
+        var health = clearProvisioningHealthOnSuccess && succeeded
+            ? provisioningHealth
+            : provisioningHealth ?? snapshot.Record.LastProvisioningHealth;
+
         var record = CloneRecord(
             snapshot.Record,
             operationName,
             operationResult,
             succeeded,
             lastPreparedUtc ?? snapshot.Record.LastPreparedUtc,
-            provisioningHealth ?? snapshot.Record.LastProvisioningHealth);
+            health);
 
         return _workspaceRepository.SaveAsync(record, cancellationToken);
     }
