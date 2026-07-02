@@ -41,7 +41,7 @@ public static class WorkspaceDiagnosticsSessionBuilder
             ?? health?.Timestamp
             ?? entries.Select(static item => (DateTimeOffset?)item.Timestamp).OrderBy(static item => item).FirstOrDefault()
             ?? DateTimeOffset.UtcNow;
-        var completedUtc = transcript?.CompletedUtc;
+        var completedUtc = ResolveCompletedUtc(status, transcript, health, entries);
 
         return new WorkspaceDiagnosticsSession
         {
@@ -301,10 +301,23 @@ public static class WorkspaceDiagnosticsSessionBuilder
         return WorkspaceNextActionRecommendation.None;
     }
 
+    private static DateTimeOffset? ResolveCompletedUtc(WorkspaceDiagnosticsStatus status, TranscriptProjection? transcript, WorkspaceProvisioningHealthRecord? health, IReadOnlyList<WorkspaceDiagnosticsEntry> entries)
+    {
+        if (status == WorkspaceDiagnosticsStatus.Running)
+        {
+            return null;
+        }
+
+        return transcript?.CompletedUtc
+            ?? health?.Timestamp
+            ?? entries.Select(static item => (DateTimeOffset?)item.Timestamp).OrderByDescending(static item => item).FirstOrDefault()
+            ?? transcript?.StartedUtc;
+    }
+
     private static WorkspaceDiagnosticsBundleInfo BuildBundleInfo(string workspaceName, string operationName, DateTimeOffset timestamp, bool hasEntries)
         => new()
         {
-            SuggestedFileName = $"{Sanitize(workspaceName)}-{Sanitize(operationName)}-diagnostics-{timestamp:yyyyMMdd-HHmmss}.txt",
+            SuggestedFileName = $"{Sanitize(workspaceName)}-diagnostics-{timestamp:yyyyMMdd-HHmmss}.zip",
             CanCopyToClipboard = hasEntries,
             CanExportToFile = hasEntries,
         };

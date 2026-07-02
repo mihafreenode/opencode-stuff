@@ -66,6 +66,30 @@ public sealed class WorkspaceDiagnosticsWindowViewModelTests
         Assert.Equal("Safe Repair", Assert.Single(viewModel.AttemptedSteps).StepLabel);
         Assert.Equal("Failed", Assert.Single(viewModel.AttemptedSteps).StatusLabel);
         Assert.True(Assert.Single(viewModel.Entries).IsFailureEvidence);
+        Assert.Contains(viewModel.SessionDetails, item => item.Label == "Completed" && item.Value == viewModel.CompletedUtcText);
+    }
+
+    [Fact]
+    public void ViewModel_FailedSession_NeverDisplaysCompletedAsInProgress()
+    {
+        var session = OpenCode.Workspace.Core.Workspaces.WorkspaceDiagnosticsSessionBuilder.Build(new WorkspaceDiagnosticsSessionBuildInput
+        {
+            WorkspaceName = "alpha",
+            ProvisioningHealth = new WorkspaceProvisioningHealthRecord
+            {
+                Succeeded = false,
+                Summary = "Workspace provisioning stopped.",
+                Reason = "XDB status = INVALID",
+                Evidence = "Oracle validation failed.",
+                Timestamp = new DateTimeOffset(2026, 7, 2, 12, 5, 0, TimeSpan.Zero),
+            },
+        });
+
+        var viewModel = new WorkspaceDiagnosticsWindowViewModel(session);
+
+        Assert.Equal(WorkspaceDiagnosticsStatus.Failed.ToString(), viewModel.StatusLabel);
+        Assert.False(string.IsNullOrWhiteSpace(viewModel.CompletedUtcText));
+        Assert.DoesNotContain(viewModel.SessionDetails, item => item.Label == "Completed" && item.Value == "In progress");
     }
 
     [Fact]
@@ -119,6 +143,7 @@ public sealed class WorkspaceDiagnosticsWindowViewModelTests
         Assert.NotNull(exportedSession);
         Assert.Equal("alpha", exportedSession!.WorkspaceName);
         Assert.EndsWith(".zip", exportedPath, StringComparison.Ordinal);
+        Assert.EndsWith("alpha-diagnostics-20260702-120000.zip", exportedPath, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -178,7 +203,7 @@ public sealed class WorkspaceDiagnosticsWindowViewModelTests
             ],
             BundleInfo = new WorkspaceDiagnosticsBundleInfo
             {
-                SuggestedFileName = "alpha-open-workspace-diagnostics.zip",
+                SuggestedFileName = "alpha-diagnostics-20260702-120000.zip",
                 CanExportToFile = true,
             },
         };

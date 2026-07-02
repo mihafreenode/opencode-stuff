@@ -127,7 +127,7 @@ public sealed class WorkspaceDiagnosticsSessionBuilderTests
             Transcript = transcript,
         });
 
-        Assert.Equal("alpha-workspace-open-workspace-diagnostics-20260702-120000.txt", session.BundleInfo.SuggestedFileName);
+        Assert.Equal("alpha-workspace-diagnostics-20260702-120000.zip", session.BundleInfo.SuggestedFileName);
         Assert.True(session.BundleInfo.CanCopyToClipboard);
         Assert.True(session.BundleInfo.CanExportToFile);
     }

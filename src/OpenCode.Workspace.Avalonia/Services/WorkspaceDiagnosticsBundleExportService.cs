@@ -18,6 +18,8 @@ public sealed class WorkspaceDiagnosticsBundleExportService
             throw new ArgumentException("Diagnostics bundle destination is required.", nameof(destinationPath));
         }
 
+        destinationPath = EnsureZipExtension(destinationPath);
+
         var destinationDirectory = Path.GetDirectoryName(destinationPath);
         if (string.IsNullOrWhiteSpace(destinationDirectory))
         {
@@ -45,6 +47,16 @@ public sealed class WorkspaceDiagnosticsBundleExportService
         {
             await AddEntryAsync(archive, "provisioning-health.json", JsonSerializer.Serialize(session.ProvisioningHealth, JsonOptions), cancellationToken);
         }
+    }
+
+    private static string EnsureZipExtension(string destinationPath)
+    {
+        if (destinationPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return destinationPath;
+        }
+
+        return Path.ChangeExtension(destinationPath, ".zip");
     }
 
     private static async Task AddEntryAsync(ZipArchive archive, string path, string content, CancellationToken cancellationToken)

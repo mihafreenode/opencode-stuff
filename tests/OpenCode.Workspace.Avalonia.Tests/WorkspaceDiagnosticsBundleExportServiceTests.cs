@@ -42,6 +42,27 @@ public sealed class WorkspaceDiagnosticsBundleExportServiceTests
     }
 
     [Fact]
+    public async Task ExportAsync_UsesZipExtensionForBundlePath()
+    {
+        var service = new WorkspaceDiagnosticsBundleExportService();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"diagnostics-bundle-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var archivePath = Path.Combine(tempRoot, "alpha-diagnostics-20260702-120000.txt");
+
+        try
+        {
+            await service.ExportAsync(CreateSession(), archivePath);
+
+            Assert.False(File.Exists(archivePath));
+            Assert.True(File.Exists(Path.Combine(tempRoot, "alpha-diagnostics-20260702-120000.zip")));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ExportAsync_OmitsOptionalJsonFilesWhenUnavailable()
     {
         var service = new WorkspaceDiagnosticsBundleExportService();
