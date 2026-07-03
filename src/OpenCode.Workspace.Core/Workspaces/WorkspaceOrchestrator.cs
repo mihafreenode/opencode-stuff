@@ -1303,9 +1303,19 @@ public sealed class WorkspaceOrchestrator
         var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
         var checks = new List<WorkspaceDevelopmentEnvironmentCheck>();
 
+        var opencodeResult = await _containerRuntime.RunSimpleDockerCommandAsync(
+            ["exec", "--user", "opencode", "-w", "/workspace", containerName, "bash", "-lc", "command -v opencode && opencode --version"],
+            log,
+            cancellationToken);
+        checks.Add(new WorkspaceDevelopmentEnvironmentCheck
+        {
+            Name = "OpenCode CLI",
+            Status = opencodeResult.IsSuccess ? "Available" : "Missing",
+            Summary = opencodeResult.IsSuccess ? "OpenCode CLI is available for the workspace attach user." : FirstDiagnosticLine(opencodeResult, "OpenCode CLI is missing for the workspace attach user."),
+        });
+
         foreach (var (name, command) in new[]
         {
-            ("OpenCode CLI", "command -v opencode"),
             ("screen", "command -v screen"),
             ("Node.js", "command -v node"),
             ("npm", "command -v npm"),

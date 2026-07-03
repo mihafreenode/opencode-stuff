@@ -908,12 +908,29 @@ public sealed class DesktopShellServiceReprovisionStateTests
                 return Task.FromResult(Success("docker ps", containerName));
             }
 
-            if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[3] == "-lc")
+            if (argumentList.Count >= 8 && argumentList[0] == "exec" && argumentList[1] == "--user" && argumentList[4] == "-w" && argumentList[7] == "-lc")
+            {
+                var shellCommand = argumentList[8];
+                if (shellCommand.Contains("command -v opencode && opencode --version", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(Success("docker exec opencode-check", "/usr/local/bin/opencode\n1.17.13"));
+                }
+
+                return Task.FromResult(Success("docker exec user-shell"));
+            }
+
+            if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "-lc")
             {
                 var shellCommand = argumentList[4];
-                if (shellCommand.Contains("command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode", StringComparison.Ordinal))
+
+                if (shellCommand.Contains("command -v screen", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v node", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v npm", StringComparison.Ordinal)
+                    || shellCommand.Contains("getent passwd opencode", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v git", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v bash", StringComparison.Ordinal))
                 {
-                    return Task.FromResult(Success("docker exec tool-check", "/usr/local/bin/opencode\n/usr/bin/screen\n/usr/bin/node\n/usr/bin/npm\nopencode:x:1001:1001::/home/opencode:/bin/bash"));
+                    return Task.FromResult(Success("docker exec tool-check", "/usr/bin/screen\n/usr/bin/node\n/usr/bin/npm\nopencode:x:1001:1001::/home/opencode:/bin/bash\n/usr/bin/git\n/usr/bin/bash"));
                 }
 
                 if (shellCommand.Contains("command -v starship", StringComparison.Ordinal))

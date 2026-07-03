@@ -611,6 +611,10 @@ public sealed class ProvisioningScriptGenerator
         builder.AppendLine();
         builder.AppendLine("# Install OpenCode from the official npm package so the workspace stays close to upstream distribution.");
         builder.AppendLine("npm install -g opencode-ai");
+        builder.AppendLine("opencode_global_prefix=$(npm prefix -g 2>/dev/null || printf '')");
+        builder.AppendLine("if [ -n \"${opencode_global_prefix}\" ] && [ -d \"${opencode_global_prefix}/bin\" ]; then");
+        builder.AppendLine("  export PATH=\"${opencode_global_prefix}/bin:${PATH}\"");
+        builder.AppendLine("fi");
 
         if (workspace.Definition.Terminal.InstallIfMissing && string.Equals(workspace.Definition.Terminal.Prompt.Provider, "starship", StringComparison.OrdinalIgnoreCase))
         {
@@ -684,7 +688,9 @@ public sealed class ProvisioningScriptGenerator
         builder.AppendLine("node --version");
         builder.AppendLine("node -e \"console.log(process.version)\"");
         builder.AppendLine("npm --version");
+        builder.AppendLine("command -v opencode");
         builder.AppendLine("opencode --version");
+        builder.AppendLine("su -s /bin/bash -c 'command -v opencode && opencode --version' opencode");
         builder.AppendLine("su -s /bin/bash -c 'screen --version' opencode");
 
         if (workspace.Definition.Terminal.InstallIfMissing && string.Equals(workspace.Definition.Terminal.Prompt.Provider, "starship", StringComparison.OrdinalIgnoreCase))

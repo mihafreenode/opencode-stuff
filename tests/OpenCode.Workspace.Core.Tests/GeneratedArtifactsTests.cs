@@ -363,9 +363,13 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("which python3", script);
         Assert.Contains("node -e \"console.log(process.version)\"", script);
         Assert.Contains("npm install -g opencode-ai", script);
+        Assert.Contains("opencode_global_prefix=$(npm prefix -g 2>/dev/null || printf '')", script);
+        Assert.Contains("export PATH=\"${opencode_global_prefix}/bin:${PATH}\"", script);
         Assert.Contains("curl -sS https://starship.rs/install.sh | sh -s -- -y", script);
         Assert.Contains("source /opt/opencode-workspace/config/opencode-shell-init.sh", script);
+        Assert.Contains("command -v opencode", script);
         Assert.Contains("opencode --version", script);
+        Assert.Contains("su -s /bin/bash -c 'command -v opencode && opencode --version' opencode", script);
         Assert.DoesNotContain(". /workspace/.env", script, StringComparison.Ordinal);
         Assert.Contains("env_line=${env_line%$'\\r'}", script, StringComparison.Ordinal);
         Assert.Contains("export \"${env_key}=${env_value}\"", script, StringComparison.Ordinal);
@@ -568,8 +572,12 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("stty sane || true", workspaceShell);
         Assert.Contains("trap cleanup_terminal_state EXIT", workspaceShell);
         Assert.Contains("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:${PATH}}", workspaceShell);
+        Assert.Contains("npm_global_prefix=$(npm prefix -g 2>/dev/null || printf '')", workspaceShell);
+        Assert.Contains("export PATH=${npm_global_prefix}/bin:${PATH}", workspaceShell);
         Assert.Contains("OpenCode CLI is missing from PATH. Provision or rebuild the workspace runtime before attaching.", workspaceShell);
+        Assert.Contains("[attach] npm prefix -g:", workspaceShell);
         Assert.Contains("[attach] npm root -g:", workspaceShell);
+        Assert.Contains("[attach] candidate:", workspaceShell);
         Assert.Contains("screen-256color", screenConfig);
         Assert.Contains("defutf8 on", screenConfig);
     }
@@ -617,7 +625,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("OpenCode CLI is missing from the workspace container PATH.", wrapper);
         Assert.Contains("Verified OpenCode CLI is available in the container PATH.", wrapper);
         Assert.Contains("command -v opencode", wrapper);
+        Assert.Contains("npm prefix -g:", wrapper);
         Assert.Contains("printf \"PATH=%s", wrapper);
+        Assert.Contains("candidate: %s", wrapper);
         Assert.DoesNotContain("$scriptCheck.Output -notmatch", wrapper);
         Assert.Contains("$attemptedCommand = \"$dockerExe exec -it --user $attachUser -w $workspaceDirectory $containerName bash $workspaceShellScript\"", wrapper);
         Assert.Contains("$attachPrefix = '[attach:attach-demo]'", wrapper);

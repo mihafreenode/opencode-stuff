@@ -1751,6 +1751,17 @@ public sealed class WorkspaceOrchestratorTests
                     return Task.FromResult(CreateResult(command, 0));
                 }
 
+                if (argumentList.Count >= 8 && argumentList[0] == "exec" && argumentList[1] == "--user" && argumentList[4] == "-w" && argumentList[7] == "-lc")
+                {
+                    var shellCommand = argumentList[8];
+                    if (shellCommand.Contains("command -v opencode && opencode --version", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult(ProvisioningRan
+                            ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/opencode", "1.17.13"))
+                            : CreateResult(command, 1, standardError: "OpenCode CLI is missing for the workspace attach user."));
+                    }
+                }
+
                 if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[2] == "bash" && argumentList[3] == "-lc")
                 {
                     var shellCommand = argumentList[4];
@@ -1771,10 +1782,15 @@ public sealed class WorkspaceOrchestratorTests
                         return Task.FromResult(CreateResult(command, 0, standardOutput: "PRETTY_NAME=\"Ubuntu 24.04 LTS\""));
                     }
 
-                    if (shellCommand.Contains("command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode", StringComparison.Ordinal))
+                    if (shellCommand.Contains("command -v screen", StringComparison.Ordinal)
+                        || shellCommand.Contains("command -v node", StringComparison.Ordinal)
+                        || shellCommand.Contains("command -v npm", StringComparison.Ordinal)
+                        || shellCommand.Contains("getent passwd opencode", StringComparison.Ordinal)
+                        || shellCommand.Contains("command -v git", StringComparison.Ordinal)
+                        || shellCommand.Contains("command -v bash", StringComparison.Ordinal))
                     {
                         return Task.FromResult(ProvisioningRan
-                            ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/opencode", "/usr/bin/screen", "/usr/bin/node", "/usr/bin/npm", "opencode:x:1001:1001::/home/opencode:/bin/bash"))
+                            ? CreateResult(command, 0, standardOutput: string.Join(Environment.NewLine, "/usr/bin/screen", "/usr/bin/node", "/usr/bin/npm", "opencode:x:1001:1001::/home/opencode:/bin/bash", "/usr/bin/git", "/usr/bin/bash"))
                             : CreateResult(command, 1, standardError: "Workspace container is running but not provisioned. Run Prepare Workspace or Repair Runtime."));
                     }
 
@@ -1945,12 +1961,26 @@ public sealed class WorkspaceOrchestratorTests
                 return Task.FromResult(Success("docker ps", "odip-analiza-workspace"));
             }
 
+            if (argumentList.Count >= 8 && argumentList[0] == "exec" && argumentList[1] == "--user" && argumentList[4] == "-w" && argumentList[7] == "-lc")
+            {
+                var shellCommand = argumentList[8];
+                if (shellCommand.Contains("command -v opencode && opencode --version", StringComparison.Ordinal))
+                {
+                    return Task.FromResult(ToolValidationResultFactory?.Invoke() ?? Success("docker exec opencode-check", "/usr/local/bin/opencode\n1.17.13"));
+                }
+            }
+
             if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[3] == "-lc")
             {
                 var shellCommand = argumentList[4];
-                if (shellCommand.Contains("command -v opencode && command -v screen && command -v node && command -v npm && getent passwd opencode", StringComparison.Ordinal))
+                if (shellCommand.Contains("command -v screen", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v node", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v npm", StringComparison.Ordinal)
+                    || shellCommand.Contains("getent passwd opencode", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v git", StringComparison.Ordinal)
+                    || shellCommand.Contains("command -v bash", StringComparison.Ordinal))
                 {
-                    return Task.FromResult(ToolValidationResultFactory?.Invoke() ?? Success("docker exec tool-check", "/usr/local/bin/opencode\n/usr/bin/screen\n/usr/bin/node\n/usr/bin/npm\nopencode:x:1001:1001::/home/opencode:/bin/bash"));
+                    return Task.FromResult(Success("docker exec tool-check", "/usr/bin/screen\n/usr/bin/node\n/usr/bin/npm\nopencode:x:1001:1001::/home/opencode:/bin/bash\n/usr/bin/git\n/usr/bin/bash"));
                 }
 
                 if (shellCommand.Contains("command -v starship", StringComparison.Ordinal))
