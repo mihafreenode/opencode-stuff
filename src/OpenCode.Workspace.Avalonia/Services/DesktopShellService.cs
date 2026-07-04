@@ -187,9 +187,25 @@ public sealed class DesktopShellService : IDesktopShellService
     public async Task<WorkspaceSnapshot> RefreshVolatileWorkspaceStateAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
-        var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        var snapshot = currentSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = await LoadSnapshotWithTimingAsync(rootPath, (_, _) => { }, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+        }
+        else
+        {
+            log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}:check] Using cached workspace snapshot for volatile revalidation." });
+        }
+
         var volatileFailureWasCurrent = HasCurrentVolatileFailure(snapshot.Record);
-        var volatileEnvironmentFailure = await _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, log, cancellationToken);
+        var validationStartedAt = DateTimeOffset.UtcNow;
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}:check] Starting volatile environment revalidation." });
+        var volatileEnvironmentFailure = await RunOpenTimedAsync(
+            cancellationToken,
+            OpenWorkspaceLoadTimeout,
+            token => _workspaceOrchestrator.RevalidateVolatileEnvironmentAsync(snapshot, log, token),
+            "Workspace volatile environment revalidation timed out.");
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}:check] Volatile environment revalidation completed in {(DateTimeOffset.UtcNow - validationStartedAt).TotalSeconds:F1}s." });
 
         if (volatileEnvironmentFailure is not null)
         {
@@ -2303,12 +2319,53 @@ public sealed class DesktopShellService : IDesktopShellService
     private async Task<WorkspaceSnapshot> LoadSnapshotWithTimingAsync(string rootPath, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken, bool includeRuntimeInspection, bool includeSessionInspection, TimeSpan timeout)
     {
         var startedAt = DateTimeOffset.UtcNow;
-        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{Path.GetFileName(rootPath)}] Loading workspace snapshot. includeRuntimeInspection={includeRuntimeInspection} includeSessionInspection={includeSessionInspection}" });
-        var snapshot = await RunOpenTimedAsync(
-            cancellationToken,
-            timeout,
-            token => _workspaceOrchestrator.LoadSnapshotAsync(rootPath, token, includeRuntimeInspection: includeRuntimeInspection, includeSessionInspection: includeSessionInspection),
-            $"Workspace open snapshot load timed out after {timeout.TotalMinutes:F0} minutes.");
+        var workspaceLabel = Path.GetFileName(rootPath);
+        var latestStageKey = string.Empty;
+        var latestStageLabel = string.Empty;
+        log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{workspaceLabel}:check] Loading workspace snapshot. includeRuntimeInspection={includeRuntimeInspection} includeSessionInspection={includeSessionInspection}" });
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        var snapshotTask = _workspaceOrchestrator.LoadSnapshotAsync(
+            rootPath,
+            timeoutCts.Token,
+            includeRuntimeInspection: includeRuntimeInspection,
+            loadObserver: timing =>
+            {
+                var failureSuffix = timing.Succeeded || string.IsNullOrWhiteSpace(timing.FailureMessage)
+                    ? string.Empty
+                    : $" failure='{timing.FailureMessage}'";
+                var stageName = string.IsNullOrWhiteSpace(timing.StageLabel) ? timing.StageKey : timing.StageLabel;
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = $"[open:{workspaceLabel}:check] Stage {(timing.Succeeded ? "completed" : "failed")}: {stageName} ({timing.StageKey}) in {timing.Duration.TotalSeconds:F2}s.{failureSuffix}",
+                });
+            },
+            includeSessionInspection: includeSessionInspection,
+            stageProgress: stage =>
+            {
+                latestStageKey = stage.StageKey;
+                latestStageLabel = stage.StageLabel;
+                var stageName = string.IsNullOrWhiteSpace(stage.StageLabel) ? stage.StageKey : stage.StageLabel;
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = $"[open:{workspaceLabel}:check] Stage start: {stageName} ({stage.StageKey}).",
+                });
+            });
+        var completedTask = await Task.WhenAny(snapshotTask, Task.Delay(timeout));
+        if (completedTask != snapshotTask)
+        {
+            timeoutCts.Cancel();
+            _ = snapshotTask.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            var stageName = string.IsNullOrWhiteSpace(latestStageLabel)
+                ? "workspace snapshot"
+                : $"stage '{latestStageLabel}'";
+            throw new TimeoutException($"Workspace open snapshot load timed out after {timeout.TotalMinutes:F0} minutes during {stageName}.");
+        }
+
+        var snapshot = await snapshotTask;
         log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}] Workspace snapshot loaded in {(DateTimeOffset.UtcNow - startedAt).TotalSeconds:F1}s." });
         return snapshot;
     }
@@ -2448,9 +2505,18 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
+        var operationTask = operation(timeoutCts.Token);
+        var completedTask = await Task.WhenAny(operationTask, Task.Delay(timeout));
+        if (completedTask != operationTask)
+        {
+            timeoutCts.Cancel();
+            _ = operationTask.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            throw new TimeoutException(timeoutMessage);
+        }
+
         try
         {
-            await operation(timeoutCts.Token);
+            await operationTask;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -2462,9 +2528,18 @@ public sealed class DesktopShellService : IDesktopShellService
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
+        var operationTask = operation(timeoutCts.Token);
+        var completedTask = await Task.WhenAny(operationTask, Task.Delay(timeout));
+        if (completedTask != operationTask)
+        {
+            timeoutCts.Cancel();
+            _ = operationTask.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            throw new TimeoutException(timeoutMessage);
+        }
+
         try
         {
-            return await operation(timeoutCts.Token);
+            return await operationTask;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {

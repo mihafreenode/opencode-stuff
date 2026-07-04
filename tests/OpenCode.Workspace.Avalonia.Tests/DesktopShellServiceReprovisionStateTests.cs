@@ -165,6 +165,27 @@ public sealed class DesktopShellServiceReprovisionStateTests
     }
 
     [Fact]
+    public async Task OpenWorkspace_LogsWorkspaceLoadStagesDuringInitialCheck()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidNewWorkspaceFixtureAsync(tempRoot, "Stage Logging");
+
+            var result = await fixture.Service.OpenWorkspaceAsync(fixture.CreatedSnapshot.Paths.RootPath, currentSnapshot: null);
+
+            var transcript = string.Join(Environment.NewLine, result.Transcript.Lines.Select(line => line.Text));
+            Assert.Contains("Stage start: Workspace definition (workspace-definition).", transcript, StringComparison.Ordinal);
+            Assert.Contains("Stage completed: Runtime inspection (runtime-inspection)", transcript, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task Recover_RegeneratesComposeAndRuntimeState_WithoutChangingUserFile()
     {
         var tempRoot = CreateTempRoot();
@@ -195,6 +216,27 @@ public sealed class DesktopShellServiceReprovisionStateTests
             Assert.True(File.Exists(created.Paths.RuntimeStatePath));
             Assert.Equal(userFileHashBefore, ComputeFileHash(userFile));
             Assert.Equal($"Workspace '{created.Definition.Workspace.Name}' runtime was repaired.", result.Message);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task RefreshVolatileWorkspaceStateAsync_UsesCachedSnapshotWhenProvided()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Cached Snapshot");
+            File.Delete(fixture.OpenSnapshot.Paths.WorkspaceYamlPath);
+
+            var refreshed = await fixture.Service.RefreshVolatileWorkspaceStateAsync(fixture.OpenSnapshot.Paths.RootPath, fixture.OpenSnapshot);
+
+            Assert.Equal(fixture.OpenSnapshot.Definition.Workspace.Name, refreshed.Definition.Workspace.Name);
+            Assert.Equal(fixture.OpenSnapshot.Paths.RootPath, refreshed.Paths.RootPath);
         }
         finally
         {
