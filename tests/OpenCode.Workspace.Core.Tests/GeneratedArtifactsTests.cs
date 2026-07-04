@@ -373,6 +373,15 @@ public sealed class GeneratedArtifactsTests
         Assert.DoesNotContain(". /workspace/.env", script, StringComparison.Ordinal);
         Assert.Contains("env_line=${env_line%$'\\r'}", script, StringComparison.Ordinal);
         Assert.Contains("export \"${env_key}=${env_value}\"", script, StringComparison.Ordinal);
+        Assert.Contains("begin_stage()", script);
+        Assert.Contains("complete_stage()", script);
+        Assert.Contains("fail_stage()", script);
+        Assert.Contains("run_with_timeout()", script);
+        Assert.Contains("wait_for_command()", script);
+        Assert.Contains("trap 'fail_stage \"Provisioning command failed.\"", script);
+        Assert.Contains("begin_stage 'Initialize workspace user'", script);
+        Assert.Contains("begin_stage 'Install base packages'", script);
+        Assert.Contains("begin_stage 'Install Node.js runtime'", script);
     }
 
     [Fact]
@@ -421,7 +430,8 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("/etc/ld.so.conf.d/oracle-instantclient.conf", script);
         Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", script);
         Assert.Contains("sqlplus -S \"${oracle_connection}\" @\"${oracle_sqlplus_probe_script}\"", script);
-        Assert.Contains("SQL*Plus validation query failed", script);
+        Assert.Contains("wait_for_command 300 10 'Oracle SQL*Plus readiness'", script);
+        Assert.Contains("run_with_timeout 120 'Oracle demo user setup'", script);
         Assert.Contains("validate_sqlcl_install()", script);
         Assert.Contains("if validate_sqlcl_install /opt/sqlcl; then", script);
         Assert.Contains("SQLcl already installed and valid; skipping reinstall.", script);
@@ -434,7 +444,7 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/", script);
         Assert.Contains("sql -v", script);
         Assert.Contains("SELECT 'Connection OK' AS status FROM dual;", script);
-        Assert.Contains("SQLcl connectivity probe failed on attempt ${attempt}/5", script);
+        Assert.Contains("wait_for_command 300 10 'Oracle SQLcl readiness'", script);
         Assert.Contains("Staged SQLcl install failed runtime validation", script);
         Assert.Contains("Reinstalled SQLcl failed runtime validation after activation", script);
         Assert.Contains("java -version", script);
@@ -465,11 +475,17 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
         Assert.Contains("oracle_apex_url=http://oracle-ords:8080/ords/apex_admin", script);
         Assert.Contains("oracle_ords_landing_url=http://oracle-ords:8080/ords/", script);
+        Assert.Contains("oracle_demo_user_setup_script=/tmp/oracle-demo-user-setup.sql", script);
+        Assert.Contains("ensure_demo_user_ready()", script);
+        Assert.Contains("ALTER USER demo_user IDENTIFIED BY \"demo_password\" ACCOUNT UNLOCK", script);
+        Assert.Contains("[oracle] Oracle administrator password does not match the running database.", script);
+        Assert.Contains("[oracle] Recommended action: Rebuild Runtime.", script);
+        Assert.True(script.IndexOf("ensure_demo_user_ready", StringComparison.Ordinal) < script.IndexOf("wait_for_command 300 10 'Oracle SQL*Plus readiness'", StringComparison.Ordinal));
         Assert.Contains("wait_for_ords_runtime()", script);
         Assert.Contains("verify_apex_login_route()", script);
-        Assert.Contains("oracle_fail \"Oracle REST Data Services (ORDS) did not become reachable.\"", script);
+        Assert.Contains("wait_for_command 180 10 'ORDS readiness'", script);
+        Assert.Contains("wait_for_command 180 10 'APEX login readiness'", script);
         Assert.Contains("ORDS landing page is reachable after APEX validation", script);
-        Assert.Contains("oracle_fail \"Oracle APEX route is not reachable.\"", script);
         Assert.Contains("validate_oracle_environment()", script);
         Assert.Contains("validate_oracle_prerequisites()", script);
         Assert.Contains("SELECT status FROM dba_registry WHERE comp_id = 'XDB';", script);
