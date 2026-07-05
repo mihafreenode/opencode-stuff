@@ -187,13 +187,14 @@ public sealed class DesktopShellService : IDesktopShellService
     public async Task<WorkspaceSnapshot> RefreshVolatileWorkspaceStateAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         Action<CommandLogEntry>? log = entry => logSink?.Append(new OperationTranscriptLine { Kind = MapLineKind(entry), Text = entry.Message });
-        var snapshot = currentSnapshot;
-        if (snapshot is null)
+        WorkspaceSnapshot snapshot;
+        if (!CanReuseSnapshotForVolatileRevalidation(currentSnapshot))
         {
             snapshot = await LoadSnapshotWithTimingAsync(rootPath, (_, _) => { }, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
         }
         else
         {
+            snapshot = currentSnapshot!;
             log?.Invoke(new CommandLogEntry { Source = "app", Message = $"[open:{snapshot.Definition.Workspace.Name}:check] Using cached workspace snapshot for volatile revalidation." });
         }
 
@@ -2028,6 +2029,11 @@ public sealed class DesktopShellService : IDesktopShellService
             || failureText.Contains("port conflict", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool CanReuseSnapshotForVolatileRevalidation(WorkspaceSnapshot? snapshot)
+        => snapshot is not null
+            && snapshot.AppliedState is not null
+            && !snapshot.UpdateRequired;
+
     private static string BuildVolatileSuccessMessage(WorkspaceRecord record)
         => HasCurrentVolatileFailure(record)
             ? "Volatile runtime checks passed. Previous port conflict is no longer present."
@@ -2311,7 +2317,9 @@ public sealed class DesktopShellService : IDesktopShellService
     }
 
     private async Task<WorkspaceSnapshot> LoadOpenWorkspaceSnapshotAsync(string rootPath, WorkspaceSnapshot? currentSnapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
-        => currentSnapshot ?? await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+        => currentSnapshot is { RuntimeState: not WorkspaceRuntimeState.Unknown }
+            ? currentSnapshot
+            : await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
 
     private async Task<WorkspaceSnapshot> ReloadSnapshotAfterOpenPhaseAsync(string rootPath, WorkspaceSnapshot snapshot, Action<OperationTranscriptLineKind, string> append, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
         => await LoadSnapshotWithTimingAsync(rootPath, append, log, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
