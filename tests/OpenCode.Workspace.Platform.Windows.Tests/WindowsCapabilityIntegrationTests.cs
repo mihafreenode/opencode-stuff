@@ -8,27 +8,30 @@ namespace OpenCode.Workspace.Platform.Windows.Tests;
 
 public sealed class WindowsCapabilityIntegrationTests
 {
-    [Fact]
+    [SkippableFact]
     public async Task DockerDesktopDetection_ReturnsExplicitAvailabilityState()
     {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Windows capability integration probes require Windows.");
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var result = await capabilities.CheckDockerDesktopAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WindowsTerminalDetection_ReturnsExplicitAvailabilityState()
     {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Windows capability integration probes require Windows.");
         var capabilities = new WindowsHostCapabilities(new ProcessRunner());
         var result = await capabilities.CheckWindowsTerminalAsync();
 
         Assert.False(string.IsNullOrWhiteSpace(result.Reason));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DetectAsync_ReturnsStructuredCapabilityReport()
     {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Windows capability integration probes require Windows.");
         var capabilities = (IHostCapabilities)new WindowsHostCapabilities(new ProcessRunner());
 
         var report = await capabilities.DetectAsync();

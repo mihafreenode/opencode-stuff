@@ -19,6 +19,7 @@ public interface IWindowsHostCapabilities
 
 public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCapabilities
 {
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
     private readonly ICommandProbe _commandProbe;
 
     public WindowsHostCapabilities(ProcessRunner processRunner)
@@ -121,7 +122,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
     {
         try
         {
-            var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "docker", "info"], cancellationToken);
+            var result = await RunProbeAsync("cmd.exe", ["/c", "docker", "info"], cancellationToken);
             return result.IsSuccess
                 ? PrerequisiteCheckResult.Available("Docker Desktop is reachable.")
                 : PrerequisiteCheckResult.Unavailable("Docker Desktop not installed or not running.");
@@ -136,7 +137,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
     {
         try
         {
-            var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "where", "wt"], cancellationToken);
+            var result = await RunProbeAsync("cmd.exe", ["/c", "where", "wt"], cancellationToken);
             return result.IsSuccess
                 ? PrerequisiteCheckResult.Available("Windows Terminal command is available.")
                 : PrerequisiteCheckResult.Unavailable("Windows Terminal not installed or App Execution Alias disabled.");
@@ -233,7 +234,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
 
     private async Task<HostCapabilityEntry> DetectCommandCapabilityAsync(string id, string displayName, string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var result = await _commandProbe.RunAsync(fileName, arguments, cancellationToken);
+        var result = await RunProbeAsync(fileName, arguments, cancellationToken);
         return new HostCapabilityEntry
         {
             Id = id,
@@ -246,7 +247,7 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
 
     private async Task<HostCapabilityEntry> DetectDockerComposeCapabilityAsync(CancellationToken cancellationToken)
     {
-        var result = await _commandProbe.RunAsync("cmd.exe", ["/c", "docker", "compose", "version"], cancellationToken);
+        var result = await RunProbeAsync("cmd.exe", ["/c", "docker", "compose", "version"], cancellationToken);
         return new HostCapabilityEntry
         {
             Id = "container.docker-compose",
@@ -267,7 +268,14 @@ public sealed class WindowsHostCapabilities : IWindowsHostCapabilities, IHostCap
         };
 
     private async Task<bool> IsWslAvailableAsync(CancellationToken cancellationToken)
-        => (await _commandProbe.RunAsync("cmd.exe", ["/c", "where", "wsl"], cancellationToken)).IsSuccess;
+        => (await RunProbeAsync("cmd.exe", ["/c", "where", "wsl"], cancellationToken)).IsSuccess;
+
+    private async Task<CommandProbeResult> RunProbeAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(ProbeTimeout);
+        return await _commandProbe.RunAsync(fileName, arguments, timeoutCts.Token);
+    }
 
     private HostCapabilityEntry DetectWindowsFont(string id, string displayName, string fontDisplayName)
     {
