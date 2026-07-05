@@ -289,8 +289,9 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("ALTER SESSION SET CONTAINER = CDB$ROOT;", apexScript);
         Assert.Contains("EXECUTE dbms_registry_sys.validate_components;", apexScript);
         Assert.Contains("cat /tmp/oracle-utlrp.out >&2 || true", apexScript);
-        Assert.Contains("ORDS landing page is reachable after APEX validation", apexScript);
-        Assert.Contains("oracle_fail \"Oracle APEX route is not reachable.\"", apexScript);
+        Assert.Contains("if curl -fsSI \"${oracle_apex_url}\" >/dev/null 2>&1; then", apexScript);
+        Assert.Contains("ORDS landing page is reachable after APEX validation; continuing without apex_admin route probe.", apexScript);
+        Assert.Contains("wait_for_command 180 10 'APEX login readiness'", apexScript);
         Assert.True(apexScript.IndexOf("recompile_invalid_oracle_components >/tmp/oracle-utlrp.out 2>&1 || true", StringComparison.Ordinal) < apexScript.IndexOf("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", StringComparison.Ordinal));
         Assert.True(apexScript.IndexOf("oracle_set_stage 'Install APEX'", StringComparison.Ordinal) > apexScript.IndexOf("validate_oracle_prerequisites", StringComparison.Ordinal));
         Assert.Contains("oracle_fail \"SYSDBA connection to Oracle failed.\"", apexScript);
