@@ -288,7 +288,7 @@ public sealed class WindowsDockerIntegrationTests
             Assert.False(result.IsSuccess);
             Assert.Contains("invalid mount config", result.StandardError, StringComparison.Ordinal);
             Assert.Single(runner.Commands);
-            Assert.Contains("wsl.exe -- docker compose", runner.Commands[0], StringComparison.Ordinal);
+            Assert.Contains("docker compose", runner.Commands[0], StringComparison.Ordinal);
         }
         finally
         {

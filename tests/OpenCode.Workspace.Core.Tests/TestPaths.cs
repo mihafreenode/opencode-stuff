@@ -47,7 +47,7 @@ internal static class TestPaths
 
         if (Directory.Exists(targetRoot))
         {
-            return targetRoot;
+            Directory.Delete(targetRoot, recursive: true);
         }
 
         foreach (var sourceDirectory in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.TopDirectoryOnly))

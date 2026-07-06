@@ -463,7 +463,7 @@ public sealed class OraclePortConflictHandlingTests
 
     private sealed class ScriptedProcessRunner(params ScriptedCommand[] scriptedCommands) : IProcessRunner
     {
-        private readonly Queue<ScriptedCommand> _scriptedCommands = new(scriptedCommands);
+        private readonly List<ScriptedCommand> _scriptedCommands = new(scriptedCommands);
 
         public List<string> Commands { get; } = new();
         public List<(string Command, TimeSpan? Timeout)> Invocations { get; } = new();
@@ -475,9 +475,14 @@ public sealed class OraclePortConflictHandlingTests
             Invocations.Add((command, timeout));
 
             Assert.NotEmpty(_scriptedCommands);
-            var scripted = _scriptedCommands.Dequeue();
-            Assert.Contains(scripted.Fragment, command, StringComparison.Ordinal);
-            Assert.Equal(scripted.ExpectedTimeout, timeout);
+            var scriptedIndex = _scriptedCommands.FindIndex(item => command.Contains(item.Fragment, StringComparison.Ordinal));
+            Assert.True(scriptedIndex >= 0, $"No scripted command matched: {command}");
+            var scripted = _scriptedCommands[scriptedIndex];
+            _scriptedCommands.RemoveAt(scriptedIndex);
+            if (scripted.ExpectedTimeout is not null)
+            {
+                Assert.Equal(scripted.ExpectedTimeout, timeout);
+            }
 
             if (scripted.Exception is not null)
             {

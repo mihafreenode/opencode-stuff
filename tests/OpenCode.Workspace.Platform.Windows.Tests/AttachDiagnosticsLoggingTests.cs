@@ -1,5 +1,6 @@
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using System.Reflection;
 
 namespace OpenCode.Workspace.Platform.Windows.Tests;
 
@@ -147,5 +148,27 @@ public sealed class AttachDiagnosticsLoggingTests
         Assert.Contains(messages, message => message.Contains("Windows Terminal launch accepted; attach transcript is authoritative.", StringComparison.Ordinal));
         Assert.Contains(messages, message => message.Contains("Post-start launcher verification raised a warning", StringComparison.Ordinal));
         Assert.DoesNotContain(messages, message => message.Contains("Windows Terminal launch failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TryDeleteAttachDiagnosticsLog_WhenFileLocked_LogsWarningAndDoesNotThrow()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"ocwm-attach-lock-{Guid.NewGuid():N}.log");
+        File.WriteAllText(logPath, "locked");
+        var entries = new List<CommandLogEntry>();
+
+        using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var method = typeof(WindowsTerminalLauncher).GetMethod("TryDeleteAttachDiagnosticsLog", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var exception = Record.Exception(() => method.Invoke(null, [logPath, (Action<CommandLogEntry>?)(entry => entries.Add(entry)), "[attach:Odip Analiza]"]));
+
+        Assert.Null(exception);
+        Assert.True(File.Exists(logPath));
+        Assert.Contains(entries, entry => entry.Message.Contains("Attach diagnostics log is locked and will be preserved", StringComparison.Ordinal));
+
+        stream.Dispose();
+        File.Delete(logPath);
     }
 }

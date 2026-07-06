@@ -201,8 +201,9 @@ public sealed class DockerService
     private async Task<ProcessResult> RunDockerCommandAsync(IEnumerable<string> arguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         var argumentList = arguments.ToList();
+        var preferWslForThisCommand = _preferWslDocker && SupportsWslDockerFallback(argumentList) && !IsComposeCommand(argumentList);
 
-        if (OperatingSystem.IsWindows() && _preferWslDocker && SupportsWslDockerFallback(argumentList))
+        if (OperatingSystem.IsWindows() && preferWslForThisCommand)
         {
             var preferredWslResult = await TryRunWslDockerCommandAsync(argumentList, workingDirectory, log, cancellationToken, timeout);
             if (preferredWslResult is not null)
@@ -236,7 +237,11 @@ public sealed class DockerService
                 var wslResult = await TryRunWslDockerCommandAsync(argumentList, workingDirectory, log, cancellationToken, timeout);
                 if (wslResult is { IsSuccess: true })
                 {
-                    _preferWslDocker = true;
+                    if (!IsComposeCommand(argumentList))
+                    {
+                        _preferWslDocker = true;
+                    }
+
                     log?.Invoke(new CommandLogEntry
                     {
                         Source = "app",
@@ -323,7 +328,6 @@ public sealed class DockerService
             var wslResult = await TryRunWslDockerCommandAsync(arguments, workingDirectory, log, cancellationToken, timeout);
             if (wslResult is { IsSuccess: true })
             {
-                _preferWslDocker = true;
                 log?.Invoke(new CommandLogEntry
                 {
                     Source = "app",
@@ -401,7 +405,7 @@ public sealed class DockerService
     {
         if (OperatingSystem.IsWindows())
         {
-            var wslResult = knownWslResult ?? await TryRunWslDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}" }, null, log, cancellationToken, DockerAvailabilityProbeTimeout);
+            var wslResult = await TryRunWslDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}" }, null, log, cancellationToken, DockerAvailabilityProbeTimeout);
             if (wslResult is { IsSuccess: true })
             {
                 return WindowsDockerUnavailableButWslAvailableMessage;
@@ -426,6 +430,9 @@ public sealed class DockerService
 
     private static bool SupportsWslDockerFallback(IReadOnlyList<string> arguments)
         => arguments.Count > 0 && !IsDockerExecCommand(arguments);
+
+    private static bool IsComposeCommand(IReadOnlyList<string> arguments)
+        => arguments.Count > 0 && string.Equals(arguments[0], "compose", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsDockerExecCommand(IReadOnlyList<string> arguments)
         => arguments.Count > 0 && string.Equals(arguments[0], "exec", StringComparison.OrdinalIgnoreCase);

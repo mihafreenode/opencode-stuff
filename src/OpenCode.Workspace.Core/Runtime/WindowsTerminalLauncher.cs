@@ -29,7 +29,7 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
             throw new InvalidOperationException($"The attach wrapper file is missing. Regenerate the workspace artifacts and try again.{Environment.NewLine}Expected file: {snapshot.Paths.AttachWrapperScriptPath}");
         }
 
-        TryDeleteAttachDiagnosticsLog(snapshot.Paths.AttachDiagnosticsLogPath);
+        TryDeleteAttachDiagnosticsLog(snapshot.Paths.AttachDiagnosticsLogPath, log, attachPrefix);
 
         var startInfo = CreateStartInfo(command);
 
@@ -182,14 +182,33 @@ public sealed class WindowsTerminalLauncher : ITerminalLauncher
         yield return $"{attachPrefix} Post-start launcher verification raised a warning.";
     }
 
-    private static void TryDeleteAttachDiagnosticsLog(string attachDiagnosticsLogPath)
+    private static void TryDeleteAttachDiagnosticsLog(string attachDiagnosticsLogPath, Action<CommandLogEntry>? log = null, string attachPrefix = "[attach]")
     {
         if (string.IsNullOrWhiteSpace(attachDiagnosticsLogPath) || !File.Exists(attachDiagnosticsLogPath))
         {
             return;
         }
 
-        File.Delete(attachDiagnosticsLogPath);
+        try
+        {
+            File.Delete(attachDiagnosticsLogPath);
+        }
+        catch (IOException exception)
+        {
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Attach diagnostics log is locked and will be preserved: {exception.Message}",
+            });
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            log?.Invoke(new CommandLogEntry
+            {
+                Source = "app",
+                Message = $"{attachPrefix} Attach diagnostics log could not be replaced and will be preserved: {exception.Message}",
+            });
+        }
     }
 
     private static string GetAttachPrefix(WorkspaceSnapshot snapshot)
