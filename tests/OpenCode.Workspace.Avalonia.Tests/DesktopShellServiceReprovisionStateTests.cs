@@ -29,7 +29,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
             Assert.Contains("is open", result.Message, StringComparison.Ordinal);
             var transcript = result.Transcript.Lines.Select(line => line.Text).ToArray();
             Assert.Contains("Checking workspace...", transcript);
+            Assert.Contains("Provisioning runtime...", transcript);
             Assert.Contains("Opening terminal...", transcript);
+            Assert.True(Array.IndexOf(transcript, "Provisioning runtime...") < Array.IndexOf(transcript, "Opening terminal..."));
             Assert.Contains("Ready.", transcript);
         }
         finally
@@ -178,6 +180,37 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var transcript = string.Join(Environment.NewLine, result.Transcript.Lines.Select(line => line.Text));
             Assert.Contains("Stage start: Workspace definition (workspace-definition).", transcript, StringComparison.Ordinal);
             Assert.Contains("Stage completed: Runtime inspection (runtime-inspection)", transcript, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task OpenWorkspace_WhenProvisioningFails_DoesNotAdvanceToTerminalPhase()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var workspaceRoot = Path.Combine(tempRoot, "workspace");
+            Directory.CreateDirectory(workspaceRoot);
+            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
+            var timelineService = new WorkspaceTimelineService();
+            var checkpointService = new WorkspaceCheckpointService();
+            var runtime = new StubContainerRuntime
+            {
+                ProvisionScriptResultFactory = () => Failure("docker exec provision", "Workspace provisioning stopped.\nStage: Oracle: Install APEX\nReason: Oracle APEX registry is not valid after installation.\nRecommended action: Rebuild Runtime to recreate the Oracle data volume, or manually repair the Oracle APEX registry before retrying.\nConfidence: high"),
+            };
+            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
+            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Provision Failure"), includeRuntimeInspection: false);
+            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
+
+            Assert.Contains("Oracle APEX registry is not valid after installation.", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Opening terminal", exception.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -905,6 +938,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
         public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(Success("docker compose logs"));
 
+        public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker compose restart"));
+
         public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         {
             var result = ProvisionScriptResultFactory?.Invoke() ?? Success("docker exec provision");
@@ -915,6 +951,12 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
             return Task.FromResult(result);
         }
+
+        public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec ords repair"));
+
+        public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("docker exec probe", "status=200\nlocation=\nbody=ok"));
 
         public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(Success("docker inspect image", "sha256:test-image"));

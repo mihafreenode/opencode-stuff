@@ -242,6 +242,7 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("run-tutorial-query.ps1")] = RunTutorialQueryScript();
         files[Path.Combine("scripts", "start-opencode-oracle-demo.ps1")] = StartOpenCodeOracleDemoScript();
         files[Path.Combine("mounts", "config", "ords", "init-ords-config.sh")] = OrdsConfigBootstrapScript();
+        files[Path.Combine("mounts", "config", "ords", "repair-ords-db.sh")] = OrdsDbRepairScript();
 
         foreach (var pair in OracleWorkspaceGeneratedContent.Generate(definition, runtimeState, WithGeneratedHeader, WithGeneratedSqlHeader, WithGeneratedScriptHeader))
         {
@@ -1031,8 +1032,11 @@ config_dir=/etc/ords/config
 bootstrap_script="${config_dir}/init-ords-config.sh"
 settings_file="${config_dir}/global/settings.xml"
 pool_file="${config_dir}/databases/default/pool.xml"
+ords_public_password="${ORACLE_PWD:-change-on-first-demo}"
+ords_log_dir="${config_dir}/logs"
 
 mkdir -p "${config_dir}"
+mkdir -p "${ords_log_dir}"
 
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Initializing managed ORDS config in ${config_dir}." >&2
@@ -1042,7 +1046,12 @@ if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   ords --config "${config_dir}" config set standalone.context.path /ords
 fi
 
-printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" config secret --password-stdin db.password
+cat <<EOF | ords --config "${config_dir}" install --db-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user APEX_PUBLIC_USER --proxy-user --password-stdin --log-folder "${ords_log_dir}"
+${ORACLE_PWD}
+${ords_public_password}
+EOF
+
+printf '%s\n' "${ords_public_password}" | ords --config "${config_dir}" config secret --password-stdin db.password
 
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Managed ORDS config initialization did not produce expected files." >&2
@@ -1052,6 +1061,26 @@ fi
 
 echo "[oracle-ords] Starting ORDS with managed config from ${config_dir}." >&2
 exec ords --config "${config_dir}" serve --port 8080
+""");
+
+    private static string OrdsDbRepairScript() => WithGeneratedScriptHeader("""
+set -eu
+
+config_dir=/etc/ords/config
+settings_file="${config_dir}/global/settings.xml"
+pool_file="${config_dir}/databases/default/pool.xml"
+ords_log_dir="${config_dir}/logs"
+
+if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
+  echo "[oracle-ords] Managed ORDS config files are missing. Cannot repair ORDS database metadata." >&2
+  echo "[oracle-ords] Expected files: ${settings_file}, ${pool_file}" >&2
+  exit 1
+fi
+
+mkdir -p "${ords_log_dir}"
+
+printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install repair --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --password-stdin --log-folder "${ords_log_dir}"
+echo "[oracle-ords] ORDS database repair completed." >&2
 """);
 
     private static string BuildOracleTutorialJson()

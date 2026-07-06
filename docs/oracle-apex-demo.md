@@ -12,7 +12,7 @@ Place the official Oracle APEX ZIP under `.local/oracle/downloads/apex/` as `ape
 
 This workspace focuses on the traditional Oracle APEX Builder workflow.
 
-The goal is to let a new teammate provision a reproducible local Oracle environment, open `http://localhost:8181/ords`, open `http://localhost:8181/ords/apex_admin`, and continue learning from there without manually rebuilding Oracle setup details.
+The goal is to let a new teammate provision a reproducible local Oracle environment, open the ORDS landing URL, open the APEX runtime URL, and continue learning from there without manually rebuilding Oracle setup details. When running on the host, read `compose.yaml` for the published ORDS port and use `http://localhost:<published-port>/ords/_/landing` plus `http://localhost:<published-port>/ords/apex`.
 
 ## Progression
 

@@ -371,7 +371,10 @@ public static class WorkspaceReadinessEngine
 
         if (operation.StatusMessage.Contains("terminal", StringComparison.OrdinalIgnoreCase)
             || string.Equals(operation.OperationName, "Attach", StringComparison.Ordinal)
-            || string.Equals(operation.OperationName, "Open Workspace", StringComparison.Ordinal))
+            || (string.Equals(operation.OperationName, "Open Workspace", StringComparison.Ordinal)
+                && (operation.StatusMessage.Contains("open", StringComparison.OrdinalIgnoreCase)
+                    || operation.StatusMessage.Contains("attach", StringComparison.OrdinalIgnoreCase)
+                    || operation.StatusMessage.Contains("terminal", StringComparison.OrdinalIgnoreCase))))
         {
             return WorkspaceActivity.OpeningTerminal;
         }
@@ -382,7 +385,7 @@ public static class WorkspaceReadinessEngine
             return WorkspaceActivity.Investigating;
         }
 
-        return WorkspaceActivity.OpeningTerminal;
+        return WorkspaceActivity.Preparing;
     }
 
     private static bool NeedsRebuild(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health)

@@ -7,6 +7,7 @@ namespace OpenCode.Workspace.AppSupport;
 public sealed class WorkspaceDiscoveryReportService
 {
     private const int MaxConcurrentWorkspaceLoads = 3;
+    private static readonly TimeSpan WorkspaceSnapshotTimeout = TimeSpan.FromSeconds(45);
     private readonly WorkspaceOrchestrator _workspaceOrchestrator;
     private readonly WorkspaceRepository _workspaceRepository;
 
@@ -195,15 +196,36 @@ public sealed class WorkspaceDiscoveryReportService
 
             var snapshotStartedUtc = DateTimeOffset.UtcNow;
             var snapshotStopwatch = Stopwatch.StartNew();
+            var latestStageKey = string.Empty;
+            var latestStageLabel = string.Empty;
             try
             {
-                var snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(WorkspaceSnapshotTimeout);
+                var snapshotTask = _workspaceOrchestrator.LoadSnapshotAsync(
                     record.RootPath,
-                    cancellationToken,
+                    timeoutCts.Token,
                     includeRuntimeInspection,
                     timing => AddTiming(sync, timings, timing),
                     includeSessionInspection: false,
-                    stageProgress: stage => PublishProgress(progress, displayName, index, totalCount, BuildStageMessage(stage.StageKey, stage.StageLabel), CreateLoadingItem(record, BuildStageMessage(stage.StageKey, stage.StageLabel))));
+                    stageProgress: stage =>
+                    {
+                        latestStageKey = stage.StageKey;
+                        latestStageLabel = stage.StageLabel;
+                        PublishProgress(progress, displayName, index, totalCount, BuildStageMessage(stage.StageKey, stage.StageLabel), CreateLoadingItem(record, BuildStageMessage(stage.StageKey, stage.StageLabel)));
+                    });
+                var completedTask = await Task.WhenAny(snapshotTask, Task.Delay(WorkspaceSnapshotTimeout, cancellationToken));
+                if (completedTask != snapshotTask)
+                {
+                    timeoutCts.Cancel();
+                    _ = snapshotTask.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+                    var stageName = string.IsNullOrWhiteSpace(latestStageLabel)
+                        ? string.IsNullOrWhiteSpace(latestStageKey) ? "workspace snapshot" : latestStageKey
+                        : latestStageLabel;
+                    throw new TimeoutException($"Workspace details timed out after {FormatDuration(WorkspaceSnapshotTimeout)} during {stageName}.");
+                }
+
+                var snapshot = await snapshotTask;
                 snapshotStopwatch.Stop();
 
                 AddTiming(sync, timings, new WorkspaceLoadTiming

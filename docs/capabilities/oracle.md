@@ -48,6 +48,55 @@ Common use cases: review application changes in Git, validate exported APEX arti
 - Use SQLcl, ORDS, and Oracle docs to validate the local Oracle environment.
 - Review Oracle examples, lifecycle docs, and source-controlled workflows from the generated guides.
 
+## Environment-Aware ORDS Checks
+
+When asked to check whether APEX or ORDS is running, do not assume `localhost:8181`.
+
+Use this decision order:
+
+1. Determine where you are executing.
+2. Locate `compose.yaml` and `.env`.
+3. Determine the ORDS service name and the correct endpoint.
+4. Verify ORDS landing with `GET /ords/_/landing`.
+5. Verify APEX runtime with `GET /ords/apex`.
+6. If ORDS is unreachable, report the exact endpoint that was tested.
+
+### Inside A Docker Workspace Container
+
+- Detect container execution, for example with `/.dockerenv`.
+- Do not assume `localhost` points at ORDS.
+- `localhost` inside the workspace container is the workspace container itself.
+- Read `compose.yaml` and `.env` to determine the ORDS service name and internal port.
+- Prefer the internal Docker network address.
+
+Container examples:
+
+```text
+http://oracle-ords:8080/ords/_/landing
+http://oracle-ords:8080/ords/apex
+```
+
+If Docker Compose CLI is unavailable inside the workspace container, fall back to reading `compose.yaml` directly.
+
+### On The Host
+
+- Read `compose.yaml` and use the published host port.
+- Do not hardcode `8181` if the compose file publishes a different port.
+
+Host examples:
+
+```text
+http://localhost:<published-port>/ords/_/landing
+http://localhost:<published-port>/ords/apex
+```
+
+### Verification Rules
+
+- ORDS landing success means `GET /ords/_/landing` returns a healthy response.
+- APEX success means `GET /ords/apex` returns a healthy response.
+- Do not claim APEX is down until you have first chosen the correct host or container endpoint.
+- Report the actual URL that was checked in the result.
+
 ## Recommended Learning Path
 
 1. [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
@@ -61,6 +110,7 @@ Common use cases: review application changes in Git, validate exported APEX arti
 
 - Follow `docs/oracle-plsql-demo.md`, then `docs/oracle-apex-demo.md`, then `docs/oracle-apexlang-demo.md`.
 - Use `docs/oracle-tools/README.md` as the Oracle tool index.
+- If the user asks `Can you check if APEX is running?`, first determine whether you are on the host or inside the workspace container, then choose the matching ORDS endpoint before running any `curl` command.
 
 ## Related Documentation
 

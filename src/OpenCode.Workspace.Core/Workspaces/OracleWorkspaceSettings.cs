@@ -20,7 +20,7 @@ public sealed class OracleWorkspaceSettings
 
     public string OrdsBaseUrl => $"http://localhost:{OrdsPort}/ords";
 
-    public string ApexLoginUrl => $"{OrdsBaseUrl}/apex_admin";
+    public string ApexLoginUrl => $"{OrdsBaseUrl}/apex";
 
     public static OracleWorkspaceSettings From(WorkspaceDefinition definition)
     {

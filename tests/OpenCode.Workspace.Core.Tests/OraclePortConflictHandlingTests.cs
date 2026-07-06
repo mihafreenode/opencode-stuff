@@ -22,7 +22,7 @@ public sealed class OraclePortConflictHandlingTests
         Assert.Contains("ORACLE_HOST_PORT=1522", content);
         Assert.Contains("ORACLE_ORDS_PORT=8182", content);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8182/ords", content);
-        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8182/ords/apex_admin", content);
+        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8182/ords/apex", content);
     }
 
     [Fact]
@@ -283,6 +283,94 @@ public sealed class OraclePortConflictHandlingTests
         }
     }
 
+    [Fact]
+    public async Task ValidateVolatileEnvironmentAsync_UsesWslDockerForPortPreflightWhenWindowsDockerPsTimesOut()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var root = Path.Combine(Path.GetTempPath(), $"oracle-wsl-fallback-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            var runner = new ScriptedProcessRunner(
+                ExpectException("docker ps --format", new TimeoutException("docker ps timed out"), TimeSpan.FromSeconds(5)),
+                ExpectResult("wsl.exe -- docker ps --format", ProcessResultFor("wsl docker ps", 0)),
+                ExpectResult("docker compose --project-name oracle-demo --file", ProcessResultFor("docker compose ps", 0, standardOutput: "NAME STATUS PORTS"), TimeSpan.FromSeconds(5)),
+                ExpectResult(GetHostPortCommandFragment(), ProcessResultFor(GetHostPortCommandFragment(), 0)),
+                ExpectResult(GetHostPortCommandFragment(), ProcessResultFor(GetHostPortCommandFragment(), 0)));
+
+            var docker = new DockerService(runner);
+            var result = await docker.ValidateVolatileEnvironmentAsync(paths, CreateOracleApexLangDefinition("oracle-demo"));
+
+            Assert.Null(result);
+            Assert.Contains(runner.Commands, command => command.Contains("wsl.exe -- docker ps --format", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ValidateVolatileEnvironmentAsync_UsesShortTimeoutForDockerPsPreflight()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var root = Path.Combine(Path.GetTempPath(), $"oracle-docker-timeout-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            var runner = new ScriptedProcessRunner(
+                ExpectException("docker ps --format", new TimeoutException("docker ps timed out"), TimeSpan.FromSeconds(5)),
+                ExpectResult("wsl.exe -- docker ps --format", ProcessResultFor("wsl docker ps", 0)),
+                ExpectResult("docker compose --project-name oracle-demo --file", ProcessResultFor("docker compose ps", 0, standardOutput: "NAME STATUS PORTS"), TimeSpan.FromSeconds(5)),
+                ExpectResult(GetHostPortCommandFragment(), ProcessResultFor(GetHostPortCommandFragment(), 0)),
+                ExpectResult(GetHostPortCommandFragment(), ProcessResultFor(GetHostPortCommandFragment(), 0)));
+
+            var docker = new DockerService(runner);
+            await docker.ValidateVolatileEnvironmentAsync(paths, CreateOracleApexLangDefinition("oracle-demo"));
+
+            var dockerPsCall = runner.Invocations.First(invocation => invocation.Command.Contains("docker ps --format", StringComparison.Ordinal));
+            Assert.Equal(TimeSpan.FromSeconds(5), dockerPsCall.Timeout);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunSimpleDockerCommandAsync_WhenWindowsDockerUnavailableButWslDockerAvailable_ThrowsPreciseMessage()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var runner = new ScriptedProcessRunner(
+            ExpectException("docker version", new TimeoutException("docker version timed out")),
+            ExpectResult("wsl.exe -- docker ps --format", ProcessResultFor("wsl docker ps", 0)));
+
+        var docker = new DockerService(runner);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => docker.RunSimpleDockerCommandAsync(["version"]));
+
+        Assert.Equal("Docker is reachable from WSL but not from Windows. Enable Docker Desktop Windows CLI integration or configure this workspace to use WSL Docker.", exception.Message);
+    }
+
     private static bool CanRunGit()
     {
         try
@@ -331,6 +419,8 @@ public sealed class OraclePortConflictHandlingTests
 
     private sealed record ExpectedCommand(string Fragment, ProcessResult Result);
 
+    private sealed record ScriptedCommand(string Fragment, ProcessResult? Result, Exception? Exception, TimeSpan? ExpectedTimeout);
+
     private sealed class SequenceProcessRunner : IProcessRunner
     {
         private readonly Queue<ExpectedCommand> _expectedCommands;
@@ -361,6 +451,50 @@ public sealed class OraclePortConflictHandlingTests
                 StandardErrorLines = expected.Result.StandardErrorLines,
                 Duration = expected.Result.Duration,
                 FailureClassification = expected.Result.FailureClassification,
+            });
+        }
+    }
+
+    private static ScriptedCommand ExpectResult(string fragment, ProcessResult result, TimeSpan? expectedTimeout = null)
+        => new(fragment, result, null, expectedTimeout);
+
+    private static ScriptedCommand ExpectException(string fragment, Exception exception, TimeSpan? expectedTimeout = null)
+        => new(fragment, null, exception, expectedTimeout);
+
+    private sealed class ScriptedProcessRunner(params ScriptedCommand[] scriptedCommands) : IProcessRunner
+    {
+        private readonly Queue<ScriptedCommand> _scriptedCommands = new(scriptedCommands);
+
+        public List<string> Commands { get; } = new();
+        public List<(string Command, TimeSpan? Timeout)> Invocations { get; } = new();
+
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            var command = string.Join(' ', new[] { fileName }.Concat(arguments));
+            Commands.Add(command);
+            Invocations.Add((command, timeout));
+
+            Assert.NotEmpty(_scriptedCommands);
+            var scripted = _scriptedCommands.Dequeue();
+            Assert.Contains(scripted.Fragment, command, StringComparison.Ordinal);
+            Assert.Equal(scripted.ExpectedTimeout, timeout);
+
+            if (scripted.Exception is not null)
+            {
+                throw scripted.Exception;
+            }
+
+            var result = scripted.Result!;
+            return Task.FromResult(new ProcessResult
+            {
+                Command = command,
+                ExitCode = result.ExitCode,
+                StandardOutput = result.StandardOutput,
+                StandardError = result.StandardError,
+                StandardOutputLines = result.StandardOutputLines,
+                StandardErrorLines = result.StandardErrorLines,
+                Duration = result.Duration,
+                FailureClassification = result.FailureClassification,
             });
         }
     }

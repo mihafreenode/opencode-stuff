@@ -340,7 +340,20 @@ public sealed class ShellViewModelTests
     public async Task OracleCreateAcknowledgement_AllowsCreate()
     {
         var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
-        var service = new FakeDesktopShellService([]);
+        WorkspaceSnapshot? createdSnapshot = null;
+        var service = new FakeDesktopShellService([])
+        {
+            CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
+            {
+                createdSnapshot = CreateSnapshot(definition.Workspace.Name);
+                return Task.FromResult(createdSnapshot);
+            },
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = [new WorkspaceShellItem { Record = createdSnapshot!.Record, Snapshot = createdSnapshot }],
+                Report = new WorkspaceLoadReport { RawRecordCount = 1, SnapshotAttemptCount = 1, SnapshotCount = 1, ItemsReturnedCount = 1, Timings = [] },
+            }),
+        };
         var rootPath = Path.Combine(Path.GetTempPath(), $"oracle-demo-{Guid.NewGuid():N}");
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService
@@ -356,14 +369,29 @@ public sealed class ShellViewModelTests
 
         await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
 
-        Assert.Contains("created successfully", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(createdSnapshot);
+        Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
     }
 
     [Fact]
     public async Task NonOracleCreate_DoesNotRequireAcknowledgement()
     {
         var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"], Services = ["postgres"] };
-        var service = new FakeDesktopShellService([]);
+        WorkspaceSnapshot? createdSnapshot = null;
+        var service = new FakeDesktopShellService([])
+        {
+            CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
+            {
+                createdSnapshot = CreateSnapshot(definition.Workspace.Name);
+                return Task.FromResult(createdSnapshot);
+            },
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = [new WorkspaceShellItem { Record = createdSnapshot!.Record, Snapshot = createdSnapshot }],
+                Report = new WorkspaceLoadReport { RawRecordCount = 1, SnapshotAttemptCount = 1, SnapshotCount = 1, ItemsReturnedCount = 1, Timings = [] },
+            }),
+        };
         var interaction = new FakeWorkspaceInteractionService
         {
             OracleNoticeConfirmed = false,
@@ -380,7 +408,81 @@ public sealed class ShellViewModelTests
         await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
 
         Assert.Equal(0, interaction.OracleNoticePromptCount);
+        Assert.NotNull(createdSnapshot);
+        Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
+    }
+
+    [Fact]
+    public async Task CreateWorkspace_AddsCreatedWorkspaceToListAfterRefresh()
+    {
+        WorkspaceSnapshot? createdSnapshot = null;
+        var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
+        var service = new FakeDesktopShellService([])
+        {
+            CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
+            {
+                createdSnapshot = CreateSnapshot(definition.Workspace.Name);
+                return Task.FromResult(createdSnapshot);
+            },
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = [new WorkspaceShellItem { Record = createdSnapshot!.Record, Snapshot = createdSnapshot }],
+                Report = new WorkspaceLoadReport { RawRecordCount = 1, SnapshotAttemptCount = 1, SnapshotCount = 1, ItemsReturnedCount = 1, Timings = [] },
+            }),
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "created-demo",
+                WorkspaceRootPath = Path.Combine(Path.GetTempPath(), $"created-demo-{Guid.NewGuid():N}"),
+                Template = template,
+            },
+        });
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.NotNull(createdSnapshot);
+        Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
         Assert.Contains("created successfully", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateWorkspace_KeepsCreatedWorkspaceVisibleWhenRefreshFails()
+    {
+        WorkspaceSnapshot? createdSnapshot = null;
+        var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
+        var service = new FakeDesktopShellService([])
+        {
+            CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
+            {
+                createdSnapshot = CreateSnapshot(definition.Workspace.Name);
+                return Task.FromResult(createdSnapshot);
+            },
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => throw new InvalidOperationException("simulated discovery failure"),
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "created-demo",
+                WorkspaceRootPath = Path.Combine(Path.GetTempPath(), $"created-demo-{Guid.NewGuid():N}"),
+                Template = template,
+            },
+        });
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.NotNull(createdSnapshot);
+        Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
+        Assert.Contains("was created, but discovery refresh failed", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("simulated discovery failure", page.SelectedWorkspace?.LastActivity ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Created, but discovery refresh failed.", page.OperationLogText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -4335,6 +4437,7 @@ public sealed class ShellViewModelTests
         public Func<bool, Action<WorkspaceLoadProgressUpdate>?, CancellationToken, Task<WorkspaceLoadResult>>? LoadWorkspaceItemsAsyncFactory { get; init; }
         public Func<string, IOperationLogSink?, WorkspaceReprovisionResult>? ReprovisionResultFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceReprovisionResult>>? ReprovisionResultFactoryAsync { get; init; }
+        public Func<string, WorkspaceDefinition, IOperationLogSink?, CancellationToken, Task<WorkspaceSnapshot>>? CreateWorkspaceAsyncFactory { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? OpenWorkspaceResultFactoryAsync { get; init; }
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? AttachResultFactoryAsync { get; init; }
         public Func<CancellationToken, Task<WorkspaceRuntimeExplorerReport>>? RuntimeResourceExplorerFactoryAsync { get; init; }
@@ -4562,7 +4665,7 @@ public sealed class ShellViewModelTests
             => new() { Workspace = new WorkspaceMetadata { Name = draft.WorkspaceName, Image = "ubuntu:24.04" }, Provider = new WorkspaceProviderDefinition { Type = "git" }, Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = WorkspaceRuntimeDefinition.DefaultNodeMajorVersion } };
 
         public Task<WorkspaceSnapshot> CreateWorkspaceAsync(string rootPath, WorkspaceDefinition definition, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(CreateSnapshot(definition.Workspace.Name));
+            => CreateWorkspaceAsyncFactory?.Invoke(rootPath, definition, logSink, cancellationToken) ?? Task.FromResult(CreateSnapshot(definition.Workspace.Name));
 
         public Task<WorkspaceSnapshot> RefreshVolatileWorkspaceStateAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         {

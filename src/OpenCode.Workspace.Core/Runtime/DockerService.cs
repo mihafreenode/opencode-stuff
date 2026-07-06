@@ -1,5 +1,6 @@
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using System.Text.RegularExpressions;
 
 namespace OpenCode.Workspace.Core.Runtime;
 
@@ -9,9 +10,14 @@ namespace OpenCode.Workspace.Core.Runtime;
 /// </summary>
 public sealed class DockerService
 {
+    private static readonly TimeSpan DockerPsPreflightTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DockerComposeDiagnosticTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DockerAvailabilityProbeTimeout = TimeSpan.FromSeconds(5);
     private readonly IProcessRunner _processRunner;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
+    private bool _preferWslDocker;
     private const string DockerUnavailableMessage = "Docker is not reachable from this environment. Check Docker Desktop / WSL integration.";
+    private const string WindowsDockerUnavailableButWslAvailableMessage = "Docker is reachable from WSL but not from Windows. Enable Docker Desktop Windows CLI integration or configure this workspace to use WSL Docker.";
 
     public DockerService(IProcessRunner processRunner, WorkspaceRuntimeStateService? workspaceRuntimeStateService = null)
     {
@@ -54,6 +60,9 @@ public sealed class DockerService
     public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => RunComposeAsync(paths, definition, new[] { "logs", serviceName }, log, cancellationToken);
 
+    public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => RunComposeAsync(paths, definition, new[] { "restart", serviceName }, log, cancellationToken, timeout: TimeSpan.FromMinutes(5));
+
     public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var containerName = GetWorkspaceContainerName(definition);
@@ -62,6 +71,24 @@ public sealed class DockerService
             paths.RootPath,
             log,
             cancellationToken);
+    }
+
+    public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetServiceContainerName(definition, "oracle-ords");
+        return RunDockerCommandAsync(
+            new[] { "exec", containerName, "bash", "/etc/ords/config/repair-ords-db.sh" },
+            paths.RootPath,
+            log,
+            cancellationToken,
+            timeout: TimeSpan.FromMinutes(10));
+    }
+
+    public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetWorkspaceContainerName(definition);
+        var command = "tmp_headers=$(mktemp) && tmp_body=$(mktemp) && http_code=$(curl -sS -D \"$tmp_headers\" -o \"$tmp_body\" -w '%{http_code}' \"$1\" || true) && location=$(grep -i '^Location:' \"$tmp_headers\" | tail -n 1 | cut -d' ' -f2- | tr -d '\\r' | xargs || true) && body=$(head -c 300 \"$tmp_body\" | tr '\\n' ' ') && printf 'status=%s\\nlocation=%s\\nbody=%s\\n' \"$http_code\" \"$location\" \"$body\"";
+        return RunDockerCommandAsync(new[] { "exec", containerName, "bash", "-lc", command, "bash", url }, null, log, cancellationToken);
     }
 
     public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -108,7 +135,12 @@ public sealed class DockerService
         => RunDockerCommandAsync(CreatePermissionRepairArguments(workspaceRootPath), null, log, cancellationToken);
 
     public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-        => RunDockerCommandAsync(arguments, null, log, cancellationToken);
+    {
+        var argumentList = arguments.ToList();
+        return IsDockerPsCommand(argumentList)
+            ? RunDockerPsCommandAsync(argumentList, null, log, cancellationToken, DockerPsPreflightTimeout)
+            : RunDockerCommandAsync(argumentList, null, log, cancellationToken);
+    }
 
     public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
@@ -124,6 +156,8 @@ public sealed class DockerService
     }
 
     public static string GetWorkspaceContainerName(WorkspaceDefinition definition) => $"{WorkspacePathBuilder.Slugify(definition.Workspace.Name)}-workspace";
+
+    public static string GetServiceContainerName(WorkspaceDefinition definition, string serviceName) => $"{WorkspacePathBuilder.Slugify(definition.Workspace.Name)}-{serviceName}-1";
 
     public static IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath)
     {
@@ -141,7 +175,7 @@ public sealed class DockerService
         };
     }
 
-    private Task<ProcessResult> RunComposeAsync(WorkspacePaths paths, WorkspaceDefinition definition, IEnumerable<string> composeArguments, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    private Task<ProcessResult> RunComposeAsync(WorkspacePaths paths, WorkspaceDefinition definition, IEnumerable<string> composeArguments, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
         var arguments = new List<string>
@@ -161,41 +195,378 @@ public sealed class DockerService
 
         arguments.AddRange(composeArguments);
 
-        return RunDockerCommandAsync(arguments, paths.RootPath, log, cancellationToken);
+        return RunDockerCommandAsync(arguments, paths.RootPath, log, cancellationToken, timeout);
     }
 
-    private async Task<ProcessResult> RunDockerCommandAsync(IEnumerable<string> arguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    private async Task<ProcessResult> RunDockerCommandAsync(IEnumerable<string> arguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
+        var argumentList = arguments.ToList();
+
+        if (OperatingSystem.IsWindows() && _preferWslDocker && SupportsWslDockerFallback(argumentList))
+        {
+            var preferredWslResult = await TryRunWslDockerCommandAsync(argumentList, workingDirectory, log, cancellationToken, timeout);
+            if (preferredWslResult is not null)
+            {
+                return preferredWslResult;
+            }
+        }
+
         try
         {
-            var argumentList = arguments.ToList();
-            log?.Invoke(new CommandLogEntry
-            {
-                Source = "docker:cmd",
-                Message = $"docker {string.Join(' ', argumentList.Select(argument => argument.Contains(' ') ? $"\"{argument}\"" : argument))}",
-            });
-
-            return await _processRunner.RunAsync(
+            return await RunCommandWithLoggingAsync(
                 "docker",
                 argumentList,
                 workingDirectory,
-                (isError, line) => log?.Invoke(new CommandLogEntry
-                {
-                    Source = isError ? "docker:err" : "docker",
-                    Message = line,
-                }),
-                cancellationToken);
+                log,
+                cancellationToken,
+                timeout,
+                commandSource: "docker:cmd",
+                outputSource: "docker",
+                errorSource: "docker:err");
         }
         catch (Exception exception)
         {
+            if (cancellationToken.IsCancellationRequested || IsDockerExecCommand(argumentList))
+            {
+                throw;
+            }
+
+            if (OperatingSystem.IsWindows() && SupportsWslDockerFallback(argumentList))
+            {
+                var wslResult = await TryRunWslDockerCommandAsync(argumentList, workingDirectory, log, cancellationToken, timeout);
+                if (wslResult is { IsSuccess: true })
+                {
+                    _preferWslDocker = true;
+                    log?.Invoke(new CommandLogEntry
+                    {
+                        Source = "app",
+                        Message = "Windows Docker CLI is unavailable or hung. Using WSL Docker for this operation.",
+                    });
+                    return wslResult;
+                }
+
+                var wslAwareMessage = await BuildDockerUnavailableMessageAsync(log, cancellationToken, exception, wslResult);
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = wslAwareMessage,
+                });
+
+                throw new InvalidOperationException(wslAwareMessage, exception);
+            }
+
+            var message = await BuildDockerUnavailableMessageAsync(log, cancellationToken, exception);
             log?.Invoke(new CommandLogEntry
             {
                 Source = "app",
-                Message = DockerUnavailableMessage,
+                Message = message,
             });
 
-            throw new InvalidOperationException(DockerUnavailableMessage, exception);
+            throw new InvalidOperationException(message, exception);
         }
+    }
+
+    private Task<ProcessResult> RunCommandWithLoggingAsync(string fileName, IReadOnlyList<string> arguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout, string commandSource, string outputSource, string errorSource)
+    {
+        log?.Invoke(new CommandLogEntry
+        {
+            Source = commandSource,
+            Message = $"{fileName} {string.Join(' ', arguments.Select(argument => argument.Contains(' ') ? $"\"{argument}\"" : argument))}",
+        });
+
+        return _processRunner.RunAsync(
+            fileName,
+            arguments,
+            workingDirectory,
+            (isError, line) => log?.Invoke(new CommandLogEntry
+            {
+                Source = isError ? errorSource : outputSource,
+                Message = line,
+            }),
+            cancellationToken,
+            timeout);
+    }
+
+    private async Task<ProcessResult> RunDockerPsPreflightAsync(string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        var arguments = new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" };
+
+        try
+        {
+            return await RunDockerPsCommandAsync(arguments, workingDirectory, log, cancellationToken, DockerPsPreflightTimeout);
+        }
+        catch (Exception exception)
+        {
+            var message = await BuildDockerUnavailableMessageAsync(log, cancellationToken, exception);
+            log?.Invoke(new CommandLogEntry { Source = "app", Message = message });
+            return CreateDockerUnavailableResult("docker ps --format {{.Names}}\t{{.Ports}}", message);
+        }
+    }
+
+    private async Task<ProcessResult> RunDockerPsCommandAsync(IReadOnlyList<string> arguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan timeout)
+    {
+        try
+        {
+            return await RunCommandWithLoggingAsync(
+                "docker",
+                arguments,
+                workingDirectory,
+                log,
+                cancellationToken,
+                timeout,
+                commandSource: "docker:cmd",
+                outputSource: "docker",
+                errorSource: "docker:err");
+        }
+        catch (Exception windowsException) when (OperatingSystem.IsWindows())
+        {
+            var wslResult = await TryRunWslDockerCommandAsync(arguments, workingDirectory, log, cancellationToken, timeout);
+            if (wslResult is { IsSuccess: true })
+            {
+                _preferWslDocker = true;
+                log?.Invoke(new CommandLogEntry
+                {
+                    Source = "app",
+                    Message = "Windows Docker CLI is unavailable or hung for docker ps. Using WSL Docker for this runtime check.",
+                });
+                return wslResult;
+            }
+
+            var message = await BuildDockerUnavailableMessageAsync(log, cancellationToken, windowsException, wslResult);
+            throw new InvalidOperationException(message, windowsException);
+        }
+    }
+
+    private static bool IsDockerPsCommand(IReadOnlyList<string> arguments)
+        => arguments.Count > 0 && string.Equals(arguments[0], "ps", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<ProcessResult> TryGetComposePsForDiagnosticsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RunComposeAsync(paths, definition, new[] { "ps" }, log, cancellationToken, DockerComposeDiagnosticTimeout);
+        }
+        catch (Exception exception)
+        {
+            var message = $"docker compose ps diagnostics unavailable: {exception.Message}";
+            log?.Invoke(new CommandLogEntry { Source = "app", Message = message });
+            return new ProcessResult
+            {
+                Command = "docker compose ps",
+                ExitCode = 1,
+                StandardOutput = string.Empty,
+                StandardError = message,
+                StandardOutputLines = Array.Empty<string>(),
+                StandardErrorLines = [message],
+                Duration = TimeSpan.Zero,
+                FailureClassification = WorkspaceFailureClassification.EnvironmentDockerUnavailable,
+            };
+        }
+    }
+
+    private Task<ProcessResult?> TryRunWslDockerCommandAsync(IEnumerable<string> dockerArguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Task.FromResult<ProcessResult?>(null);
+        }
+
+        return TryRunWslDockerCommandCoreAsync(dockerArguments.ToArray(), workingDirectory, log, cancellationToken, timeout);
+    }
+
+    private async Task<ProcessResult?> TryRunWslDockerCommandCoreAsync(IReadOnlyList<string> dockerArguments, string? workingDirectory, Action<CommandLogEntry>? log, CancellationToken cancellationToken, TimeSpan? timeout)
+    {
+        try
+        {
+            var arguments = new List<string> { "--", "docker" };
+            arguments.AddRange(PrepareDockerArgumentsForWsl(dockerArguments));
+            return await RunCommandWithLoggingAsync(
+                "wsl.exe",
+                arguments,
+                workingDirectory,
+                log,
+                cancellationToken,
+                timeout,
+                commandSource: "wsl:cmd",
+                outputSource: "wsl",
+                errorSource: "wsl:err");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string> BuildDockerUnavailableMessageAsync(Action<CommandLogEntry>? log, CancellationToken cancellationToken, Exception windowsException, ProcessResult? knownWslResult = null)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var wslResult = knownWslResult ?? await TryRunWslDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}" }, null, log, cancellationToken, DockerAvailabilityProbeTimeout);
+            if (wslResult is { IsSuccess: true })
+            {
+                return WindowsDockerUnavailableButWslAvailableMessage;
+            }
+        }
+
+        return DockerUnavailableMessage;
+    }
+
+    private static ProcessResult CreateDockerUnavailableResult(string command, string message)
+        => new()
+        {
+            Command = command,
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = message,
+            StandardOutputLines = Array.Empty<string>(),
+            StandardErrorLines = [message],
+            Duration = TimeSpan.Zero,
+            FailureClassification = WorkspaceFailureClassification.EnvironmentDockerUnavailable,
+        };
+
+    private static bool SupportsWslDockerFallback(IReadOnlyList<string> arguments)
+        => arguments.Count > 0 && !IsDockerExecCommand(arguments);
+
+    private static bool IsDockerExecCommand(IReadOnlyList<string> arguments)
+        => arguments.Count > 0 && string.Equals(arguments[0], "exec", StringComparison.OrdinalIgnoreCase);
+
+    private IReadOnlyList<string> PrepareDockerArgumentsForWsl(IReadOnlyList<string> arguments)
+    {
+        var translated = new List<string>(arguments.Count);
+
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            var previous = index == 0 ? string.Empty : arguments[index - 1];
+
+            if (string.Equals(previous, "--file", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(previous, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                translated.Add(PrepareComposeFileForWsl(argument));
+                continue;
+            }
+
+            if (string.Equals(previous, "--volume", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(previous, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                translated.Add(TranslatePotentialPathArgumentForWsl(argument));
+                continue;
+            }
+
+            translated.Add(argument);
+        }
+
+        return translated;
+    }
+
+    private string PrepareComposeFileForWsl(string composePath)
+    {
+        if (!File.Exists(composePath))
+        {
+            return TranslateWindowsPathToWsl(composePath);
+        }
+
+        var content = File.ReadAllText(composePath);
+        var translatedContent = TranslateWindowsBindMountSourcesInComposeText(content);
+
+        var workspaceToken = WorkspacePathBuilder.Slugify(Path.GetFileName(Path.GetDirectoryName(composePath) ?? "workspace"));
+        var tempRoot = Path.Combine(Path.GetTempPath(), "OpenCode.Workspace.Manager", "wsl-compose", workspaceToken);
+        Directory.CreateDirectory(tempRoot);
+        var tempComposePath = Path.Combine(tempRoot, "compose.wsl.yaml");
+        File.WriteAllText(tempComposePath, translatedContent);
+
+        var envPath = Path.Combine(Path.GetDirectoryName(composePath)!, ".env");
+        if (File.Exists(envPath))
+        {
+            var envContent = File.ReadAllText(envPath);
+            File.WriteAllText(Path.Combine(tempRoot, ".env"), TranslateWindowsPathsInText(envContent));
+        }
+
+        return TranslateWindowsPathToWsl(tempComposePath);
+    }
+
+    private static string TranslateWindowsBindMountSourcesInComposeText(string value)
+    {
+        var lines = value.Replace("\r\n", "\n").Split('\n');
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            lines[index] = TranslateComposeVolumeLine(lines[index]);
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string TranslateComposeVolumeLine(string line)
+    {
+        var listItemMatch = Regex.Match(
+            line,
+            "^(?<prefix>\\s*-\\s*)(?<quote>[\"']?)(?<source>[A-Za-z]:(?:\\\\|/)[^:\"']*)(?<quoteClose>[\"']?)(?<suffix>:.+)$");
+        if (listItemMatch.Success && QuotesMatch(listItemMatch))
+        {
+            return string.Concat(
+                listItemMatch.Groups["prefix"].Value,
+                listItemMatch.Groups["quote"].Value,
+                TranslateWindowsPathToWsl(listItemMatch.Groups["source"].Value),
+                listItemMatch.Groups["quoteClose"].Value,
+                listItemMatch.Groups["suffix"].Value);
+        }
+
+        var sourceMatch = Regex.Match(
+            line,
+            "^(?<prefix>\\s*source\\s*:\\s*)(?<quote>[\"']?)(?<source>[A-Za-z]:(?:\\\\|/)[^\"']*)(?<quoteClose>[\"']?)\\s*$",
+            RegexOptions.IgnoreCase);
+        if (sourceMatch.Success && QuotesMatch(sourceMatch))
+        {
+            return string.Concat(
+                sourceMatch.Groups["prefix"].Value,
+                sourceMatch.Groups["quote"].Value,
+                TranslateWindowsPathToWsl(sourceMatch.Groups["source"].Value),
+                sourceMatch.Groups["quoteClose"].Value);
+        }
+
+        return line;
+    }
+
+    private static bool QuotesMatch(Match match)
+        => string.Equals(match.Groups["quote"].Value, match.Groups["quoteClose"].Value, StringComparison.Ordinal);
+
+    private static string TranslateWindowsPathsInText(string value)
+        => Regex.Replace(
+            value,
+            @"[A-Za-z]:/[A-Za-z0-9_./-]+",
+            match => TranslateWindowsPathToWsl(match.Value));
+
+    private static string TranslatePotentialPathArgumentForWsl(string argument)
+    {
+        var separatorIndex = argument.IndexOf(':');
+        if (separatorIndex > 1)
+        {
+            var left = argument[..separatorIndex];
+            var translatedLeft = TranslateWindowsPathToWsl(left);
+            if (!string.Equals(left, translatedLeft, StringComparison.Ordinal))
+            {
+                return translatedLeft + argument[separatorIndex..];
+            }
+        }
+
+        return TranslateWindowsPathToWsl(argument);
+    }
+
+    private static string TranslateWindowsPathToWsl(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)
+            || path.Length < 3
+            || !char.IsLetter(path[0])
+            || path[1] != ':'
+            || (path[2] != '\\' && path[2] != '/'))
+        {
+            return path;
+        }
+
+        var drive = char.ToLowerInvariant(path[0]);
+        var remainder = path[2..].Replace('\\', '/');
+        return $"/mnt/{drive}{remainder}";
     }
 
     private async Task<ProcessResult> StartWithCleanupOnFailureAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken, Func<CancellationToken, Task<bool>>? repairComposeAsync)
@@ -338,8 +709,13 @@ public sealed class DockerService
             ports.Add(new OracleHostPortCheck(WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId), "Oracle ORDS/APEX", "another Oracle APEX workspace is running", "another service is already using the ORDS/APEX port locally"));
         }
 
-        var dockerPsResult = await RunDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" }, paths.RootPath, log, cancellationToken);
-        var composePsResult = await GetComposePsAsync(paths, definition, log, cancellationToken);
+        var dockerPsResult = await RunDockerPsPreflightAsync(paths.RootPath, log, cancellationToken);
+        if (!dockerPsResult.IsSuccess)
+        {
+            return dockerPsResult;
+        }
+
+        var composePsResult = await TryGetComposePsForDiagnosticsAsync(paths, definition, log, cancellationToken);
 
         foreach (var port in ports)
         {
@@ -432,8 +808,13 @@ public sealed class DockerService
 
         var analyticsSettings = AnalyticsWorkspaceSettings.From(definition);
         var projectName = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
-        var dockerPsResult = await RunDockerCommandAsync(new[] { "ps", "--format", "{{.Names}}\t{{.Ports}}" }, paths.RootPath, log, cancellationToken);
-        var composePsResult = await GetComposePsAsync(paths, definition, log, cancellationToken);
+        var dockerPsResult = await RunDockerPsPreflightAsync(paths.RootPath, log, cancellationToken);
+        if (!dockerPsResult.IsSuccess)
+        {
+            return dockerPsResult;
+        }
+
+        var composePsResult = await TryGetComposePsForDiagnosticsAsync(paths, definition, log, cancellationToken);
         var containerOwner = dockerPsResult.IsSuccess ? FindPortOwningContainer(dockerPsResult.StandardOutputLines, analyticsSettings.MarimoPort, projectName) : null;
         if (containerOwner?.BelongsToCurrentWorkspace == true)
         {

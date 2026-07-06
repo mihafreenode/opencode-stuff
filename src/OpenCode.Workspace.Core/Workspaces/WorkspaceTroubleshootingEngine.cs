@@ -466,7 +466,7 @@ public static class WorkspaceTroubleshootingEngine
                             ? "APEX installation is still running."
                             : "APEX inspection completed.";
                     var evidence = mediaMissing
-                        ? "APEX ZIP was not available under .local/oracle/downloads/apex/."
+                        ? string.IsNullOrWhiteSpace(context.Health?.Evidence) ? "Oracle APEX media was not available in any configured search location." : context.Health.Evidence
                         : stillInstalling
                             ? "APEX installation output is still active."
                             : string.IsNullOrWhiteSpace(context.TranscriptExcerpt) ? "No recent APEX transcript lines were available." : context.TranscriptExcerpt;

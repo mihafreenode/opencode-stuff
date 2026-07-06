@@ -53,14 +53,19 @@ public static class WorkspaceRepairabilityAnalyzer
                 return Create(WorkspaceRepairability.AutomaticRepair, "MEDIUM", evidence, "Run Diagnostics.", "Low", "1-2 minutes");
             }
 
+            if (reason.Contains("APEX installation media", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(health.RecommendedAction, "Provide Oracle APEX media.", StringComparison.OrdinalIgnoreCase))
+            {
+                return Create(WorkspaceRepairability.ManualRepair, "HIGH", evidence, "Provide Oracle APEX media.", "Low", "1-2 minutes");
+            }
+
             if (reason.Contains("XDB is invalid", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("(XDB) is invalid", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("SYSDBA connection", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("pluggable database", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("not open for writes", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("ORDS) did not become reachable", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("APEX login route is not reachable", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("APEX installation media missing", StringComparison.OrdinalIgnoreCase))
+                || reason.Contains("APEX login route is not reachable", StringComparison.OrdinalIgnoreCase))
             {
                 return Create(WorkspaceRepairability.CleanupRepair, "HIGH", evidence, "Reset Runtime.", "Medium", "4-6 minutes");
             }

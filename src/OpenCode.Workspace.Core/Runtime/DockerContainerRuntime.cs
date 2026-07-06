@@ -49,8 +49,17 @@ public sealed class DockerContainerRuntime : IContainerRuntime
     public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.GetServiceLogsAsync(paths, definition, serviceName, log, cancellationToken);
 
+    public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => _dockerService.RestartServiceAsync(paths, definition, serviceName, log, cancellationToken);
+
     public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.RunProvisionScriptAsync(definition, paths, log, cancellationToken);
+
+    public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => _dockerService.RepairOracleOrdsGatewayAsync(paths, definition, log, cancellationToken);
+
+    public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => _dockerService.ProbeHttpGetFromWorkspaceAsync(definition, url, log, cancellationToken);
 
     public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.InspectContainerImageAsync(definition, log, cancellationToken);

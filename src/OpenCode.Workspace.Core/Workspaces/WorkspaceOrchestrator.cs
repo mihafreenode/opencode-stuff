@@ -16,6 +16,7 @@ public sealed class WorkspaceOrchestrator
 {
     private const string ManagedGitIgnoreStartMarker = "# OpenCode Stuff managed cache";
     private const string ManagedGitIgnoreEndMarker = "# End OpenCode Stuff managed cache";
+    private static readonly TimeSpan HostPlatformDetectionTimeout = TimeSpan.FromSeconds(20);
 
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly WorkspaceDiscoveryService _workspaceDiscoveryService;
@@ -35,6 +36,7 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
     private readonly WorkspaceAiRuntimeContextService _workspaceAiRuntimeContextService;
     private readonly WorkspaceRuntimeResourceManager _workspaceRuntimeResourceManager;
+    private readonly IOracleMediaLocator _oracleMediaLocator;
     private readonly IWorkspaceProvider _workspaceProvider;
     private readonly IContainerRuntime _containerRuntime;
     private readonly IPlatformDetector _platformDetector;
@@ -65,7 +67,8 @@ public sealed class WorkspaceOrchestrator
         IContainerRuntime containerRuntime,
         IPlatformDetector platformDetector,
         IRuntimeResolver runtimeResolver,
-        ITerminalLauncher terminalLauncher)
+        ITerminalLauncher terminalLauncher,
+        IOracleMediaLocator? oracleMediaLocator = null)
     {
         _workspaceYamlService = workspaceYamlService;
         _workspaceDiscoveryService = workspaceDiscoveryService;
@@ -85,6 +88,7 @@ public sealed class WorkspaceOrchestrator
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
         _workspaceAiRuntimeContextService = new WorkspaceAiRuntimeContextService();
         _workspaceRuntimeResourceManager = new WorkspaceRuntimeResourceManager(workspaceRepository, workspaceRuntimeStateService);
+        _oracleMediaLocator = oracleMediaLocator ?? new OracleMediaLocator();
         _workspaceProvider = workspaceProvider;
         _containerRuntime = containerRuntime;
         _platformDetector = platformDetector;
@@ -738,6 +742,7 @@ public sealed class WorkspaceOrchestrator
     public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        EnsureOracleMediaPrepared(snapshot, log);
         Log(log, "app", $"Preparing workspace '{snapshot.Definition.Workspace.Name}'.");
         var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before provisioning.");
@@ -923,6 +928,12 @@ public sealed class WorkspaceOrchestrator
         await EnsureProvisionedForAttachAsync(snapshot, log, cancellationToken);
         LogAttach(log, snapshot, "Handing off to terminal attach wrapper.");
         await _terminalLauncher.LaunchAttachSessionAsync(snapshot, log, cancellationToken);
+    }
+
+    public async Task<bool> NeedsProvisioningForAttachAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var userCheck = await _containerRuntime.CheckOpencodeUserAsync(snapshot.Definition, log, cancellationToken);
+        return snapshot.AppliedState is null || snapshot.UpdateRequired || !userCheck.IsSuccess;
     }
 
     public void SaveRecord(WorkspaceRecord record) => _workspaceRepository.Save(record);
@@ -1398,6 +1409,7 @@ public sealed class WorkspaceOrchestrator
 
         if (requiresProvisioning)
         {
+            EnsureOracleMediaPrepared(snapshot, log);
             Log(log, "app", "Workspace container is running but not provisioned. Running provisioning before attach.");
             LogAttach(log, snapshot, "Provisioning status: running provisioning before attach.");
             await ProvisionRunningWorkspaceAsync(snapshot, log, cancellationToken);
@@ -1412,15 +1424,125 @@ public sealed class WorkspaceOrchestrator
 
     private async Task ProvisionRunningWorkspaceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
+        EnsureOracleMediaPrepared(snapshot, log);
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
         Log(log, "app", "Running provisioning script inside the workspace container.");
         var provisionResult = await _containerRuntime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
         EnsureProvisionSuccess(provisionResult, snapshot);
+        await RepairAndValidateOracleOrdsGatewayAsync(snapshot, log, cancellationToken);
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
         await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
     }
+
+    private async Task RepairAndValidateOracleOrdsGatewayAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        if (!OracleWorkspaceFamily.HasApex(snapshot.Definition)
+            || !snapshot.Definition.Services.Contains(OracleWorkspaceFamily.OracleOrdsServiceId, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Log(log, "app", "Repairing Oracle REST Data Services gateway metadata after APEX installation.");
+        var repairResult = await _containerRuntime.RepairOracleOrdsGatewayAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        EnsureSuccess(repairResult, "Oracle REST Data Services gateway repair failed.");
+
+        Log(log, "app", "Restarting Oracle REST Data Services after gateway repair.");
+        var restartResult = await _containerRuntime.RestartServiceAsync(snapshot.Paths, snapshot.Definition, OracleWorkspaceFamily.OracleOrdsServiceId, log, cancellationToken);
+        EnsureSuccess(restartResult, "Oracle REST Data Services restart failed after gateway repair.");
+
+        var landingProbe = await ProbeWorkspaceRouteAsync(snapshot, "http://oracle-ords:8080/ords/_/landing", log, cancellationToken);
+        if (landingProbe.StatusCode != 200)
+        {
+            throw CreateOracleOrdsGatewayConfigurationException(
+                snapshot,
+                "Oracle REST Data Services landing endpoint is not reachable.",
+                $"GET http://oracle-ords:8080/ords/_/landing returned HTTP {landingProbe.StatusCode}.",
+                "Inspect the ORDS container logs and confirm ORDS started successfully before retrying.");
+        }
+
+        foreach (var route in new[] { "http://oracle-ords:8080/ords/apex", "http://oracle-ords:8080/ords/f?p=4550" })
+        {
+            var probe = await ProbeWorkspaceRouteAsync(snapshot, route, log, cancellationToken);
+            if (probe.StatusCode == 200 || probe.StatusCode == 302)
+            {
+                return;
+            }
+        }
+
+        throw CreateOracleOrdsGatewayConfigurationException(
+            snapshot,
+            "Oracle REST Data Services landing is healthy, but APEX runtime routing is still unavailable.",
+            await BuildOracleOrdsGatewayFailureEvidenceAsync(snapshot, log, cancellationToken),
+            "Re-run ORDS database installation after APEX is installed, or inspect ORDS gateway configuration for the APEX runtime routes.");
+    }
+
+    private async Task<string> BuildOracleOrdsGatewayFailureEvidenceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        var ordsLogsResult = await _containerRuntime.GetServiceLogsAsync(snapshot.Paths, snapshot.Definition, OracleWorkspaceFamily.OracleOrdsServiceId, log, cancellationToken);
+        if (ordsLogsResult.IsSuccess && (ordsLogsResult.StandardError.Contains("PL/SQL Gateway mode", StringComparison.OrdinalIgnoreCase)
+            || ordsLogsResult.StandardOutput.Contains("PL/SQL Gateway mode", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "ORDS logs report that proxied gateway configuration could not be read from the database.";
+        }
+
+        return "GET /ords/apex and /ords/f?p=4550 both failed after ORDS gateway repair.";
+    }
+
+    private async Task<WorkspaceHttpProbeResult> ProbeWorkspaceRouteAsync(WorkspaceSnapshot snapshot, string url, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        var result = await _containerRuntime.ProbeHttpGetFromWorkspaceAsync(snapshot.Definition, url, log, cancellationToken);
+        EnsureSuccess(result, $"HTTP GET probe failed for {url}.");
+
+        var statusCode = 0;
+        var location = string.Empty;
+        var body = string.Empty;
+        foreach (var line in result.StandardOutputLines)
+        {
+            if (line.StartsWith("status=", StringComparison.Ordinal))
+            {
+                _ = int.TryParse(line[7..], out statusCode);
+            }
+            else if (line.StartsWith("location=", StringComparison.Ordinal))
+            {
+                location = line[9..];
+            }
+            else if (line.StartsWith("body=", StringComparison.Ordinal))
+            {
+                body = line[5..];
+            }
+        }
+
+        return new WorkspaceHttpProbeResult(statusCode, location, body);
+    }
+
+    private static WorkspaceProvisioningException CreateOracleOrdsGatewayConfigurationException(WorkspaceSnapshot snapshot, string reason, string evidence, string recommendedAction)
+    {
+        var healthRecord = new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = "Oracle: Configure ORDS",
+            Summary = "Workspace provisioning stopped.",
+            Reason = reason,
+            Evidence = evidence,
+            ProblemScope = "WorkspaceRuntime",
+            RecommendedAction = recommendedAction,
+            Confidence = "HIGH",
+            Timestamp = DateTimeOffset.UtcNow,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            WorkspaceRuntimeVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(CultureInfo.InvariantCulture),
+            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            EstimatedEffort = "Medium",
+            EstimatedDuration = "5-10 minutes",
+            LastDiagnosticsTimestamp = DateTimeOffset.UtcNow,
+        };
+
+        return new WorkspaceProvisioningException(healthRecord, $"Workspace provisioning stopped.{Environment.NewLine}Stage: Oracle: Configure ORDS{Environment.NewLine}Reason: {reason}{Environment.NewLine}Evidence: {evidence}{Environment.NewLine}Recommended action: {recommendedAction}{Environment.NewLine}Confidence: high");
+    }
+
+    private sealed record WorkspaceHttpProbeResult(int StatusCode, string Location, string Body);
 
     private async Task LogWorkspaceRuntimeDiagnosticsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
@@ -1659,11 +1781,49 @@ public sealed class WorkspaceOrchestrator
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        Task<HostPlatformInfo> detectionTask;
+
         lock (_hostPlatformLock)
         {
-            _cachedHostPlatformDetectionTask ??= _platformDetector.DetectAsync(CancellationToken.None);
-            return _cachedHostPlatformDetectionTask;
+            if (_cachedHostPlatformDetectionTask is null
+                || _cachedHostPlatformDetectionTask.IsFaulted
+                || _cachedHostPlatformDetectionTask.IsCanceled)
+            {
+                _cachedHostPlatformDetectionTask = DetectHostPlatformWithTimeoutAsync();
+            }
+
+            detectionTask = _cachedHostPlatformDetectionTask;
         }
+
+        return AwaitCachedHostPlatformAsync(detectionTask, cancellationToken);
+    }
+
+    private async Task<HostPlatformInfo> AwaitCachedHostPlatformAsync(Task<HostPlatformInfo> detectionTask, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await detectionTask.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            lock (_hostPlatformLock)
+            {
+                if (ReferenceEquals(_cachedHostPlatformDetectionTask, detectionTask)
+                    && detectionTask.IsCompleted
+                    && !detectionTask.IsCompletedSuccessfully)
+                {
+                    _cachedHostPlatformDetectionTask = null;
+                }
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<HostPlatformInfo> DetectHostPlatformWithTimeoutAsync()
+    {
+        using var timeoutCts = new CancellationTokenSource(HostPlatformDetectionTimeout);
+        return await _platformDetector.DetectAsync(timeoutCts.Token);
     }
 
     private static void EnsureSuccess(ProcessResult result, string failureMessage)
@@ -1697,6 +1857,79 @@ public sealed class WorkspaceOrchestrator
         }
 
         EnsureSuccess(result, "Workspace provisioning failed.");
+    }
+
+    private void EnsureOracleMediaPrepared(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log)
+    {
+        if (!OracleWorkspaceFamily.HasApex(snapshot.Definition))
+        {
+            return;
+        }
+
+        var apexMedia = _oracleMediaLocator.LocateApexMedia(snapshot.Paths);
+        if (string.IsNullOrWhiteSpace(apexMedia.ResolvedPath))
+        {
+            throw CreateMissingOracleApexMediaException(snapshot, apexMedia);
+        }
+
+        Directory.CreateDirectory(apexMedia.WorkspaceLocalDirectory);
+        var destinationPath = Path.Combine(apexMedia.WorkspaceLocalDirectory, Path.GetFileName(apexMedia.ResolvedPath));
+
+        if (!string.Equals(apexMedia.ResolvedPath, destinationPath, StringComparison.OrdinalIgnoreCase))
+        {
+            var source = new FileInfo(apexMedia.ResolvedPath);
+            var destination = new FileInfo(destinationPath);
+            if (!destination.Exists || destination.Length != source.Length || destination.LastWriteTimeUtc != source.LastWriteTimeUtc)
+            {
+                File.Copy(source.FullName, destination.FullName, overwrite: true);
+                File.SetLastWriteTimeUtc(destination.FullName, source.LastWriteTimeUtc);
+                Log(log, "app", $"Staged Oracle APEX media from '{source.FullName}' into '{destination.FullName}'.");
+            }
+        }
+
+        Log(log, "app", $"Oracle APEX media located at '{apexMedia.ResolvedPath}'.");
+    }
+
+    private static WorkspaceProvisioningException CreateMissingOracleApexMediaException(WorkspaceSnapshot snapshot, OracleMediaLocationResult location)
+    {
+        var evidenceLines = new List<string>
+        {
+            "Search locations:",
+        };
+
+        evidenceLines.AddRange(location.SearchedLocations.Select(path => $"- {path}"));
+        evidenceLines.Add(string.Empty);
+        evidenceLines.Add("Accepted filenames:");
+        evidenceLines.AddRange(location.AcceptedFileNames.Select(pattern => $"- {pattern}"));
+        evidenceLines.Add(string.Empty);
+        evidenceLines.Add("Actions:");
+        evidenceLines.Add($"- Open download folder: {location.PreferredSharedDirectory}");
+        evidenceLines.Add("- Open Oracle download page: https://www.oracle.com/tools/downloads/apex-downloads.html");
+        evidenceLines.Add("- Retry");
+        evidenceLines.Add(string.Empty);
+        evidenceLines.Add("Oracle APEX cannot legally be redistributed by opencode-stuff. Download it manually and place it in one of the search locations.");
+
+        var healthRecord = new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = "Oracle prerequisites",
+            Summary = "Missing prerequisite: Oracle APEX installation media.",
+            Reason = "Oracle APEX installation media is required before provisioning can continue.",
+            Evidence = string.Join(Environment.NewLine, evidenceLines),
+            ProblemScope = "WorkspacePrerequisite",
+            RecommendedAction = "Provide Oracle APEX media.",
+            Confidence = "HIGH",
+            Timestamp = DateTimeOffset.UtcNow,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            WorkspaceRuntimeVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(CultureInfo.InvariantCulture),
+            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            EstimatedEffort = "Low",
+            EstimatedDuration = "1-2 minutes",
+            LastDiagnosticsTimestamp = DateTimeOffset.UtcNow,
+        };
+
+        return new WorkspaceProvisioningException(healthRecord, string.Join(Environment.NewLine, evidenceLines));
     }
 
     private static WorkspaceProvisioningHealthRecord? TryBuildProvisioningHealthRecord(ProcessResult result, WorkspaceSnapshot snapshot)

@@ -36,7 +36,7 @@ public sealed class EnvironmentFileGenerator
                 $"ORACLE_HOST_PORT={oraclePort}",
                 $"ORACLE_ORDS_PORT={ordsPort}",
                 $"ORACLE_ORDS_BASE_URL=http://localhost:{ordsPort}/ords",
-                $"ORACLE_APEX_LOGIN_URL=http://localhost:{ordsPort}/ords/apex_admin",
+                $"ORACLE_APEX_LOGIN_URL=http://localhost:{ordsPort}/ords/apex",
             ]);
         }
 

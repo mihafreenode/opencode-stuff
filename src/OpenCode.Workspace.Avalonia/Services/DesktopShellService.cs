@@ -18,6 +18,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private static readonly TimeSpan OpenWorkspaceLoadTimeout = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan OpenWorkspaceStartTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan OpenWorkspaceProvisionTimeout = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan OpenWorkspaceOracleApexProvisionTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan OpenWorkspaceAttachTimeout = TimeSpan.FromMinutes(2);
 
     private const string DeleteWorkspaceFilesUnavailableMessage = "Delete workspace files is not available in this version. Use File Explorer or terminal after creating a backup.";
@@ -290,7 +291,7 @@ public sealed class DesktopShellService : IDesktopShellService
                             append,
                             log,
                             "Provisioning runtime...",
-                            OpenWorkspaceProvisionTimeout,
+                            GetOpenWorkspaceProvisionTimeout(snapshot),
                             token => _workspaceOrchestrator.ProvisionAsync(snapshot, log, token),
                             cancellationToken);
                         snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
@@ -319,6 +320,22 @@ public sealed class DesktopShellService : IDesktopShellService
                     {
                         await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: false);
                         await EnsureOpenRuntimeRunningAsync(snapshot);
+                        if (await _workspaceOrchestrator.NeedsProvisioningForAttachAsync(snapshot, log, cancellationToken))
+                        {
+                            automaticRepairAttempted = true;
+                            await RunOpenPhaseAsync(
+                                snapshot,
+                                append,
+                                log,
+                                "Provisioning runtime...",
+                                GetOpenWorkspaceProvisionTimeout(snapshot),
+                                token => _workspaceOrchestrator.ProvisionAsync(snapshot, log, token),
+                                cancellationToken);
+                            snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                            await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                            continue;
+                        }
+
                         await RunOpenPhaseAsync(
                             snapshot,
                             append,
@@ -2046,13 +2063,20 @@ public sealed class DesktopShellService : IDesktopShellService
             .SkipWhile(line => string.IsNullOrWhiteSpace(line) || string.Equals(line.Trim(), reason, StringComparison.Ordinal))
             .Where(line => !string.IsNullOrWhiteSpace(line))
             .ToArray();
+        var dockerUnavailable = failure.FailureClassification == WorkspaceFailureClassification.EnvironmentDockerUnavailable;
 
         return new WorkspaceProvisioningHealthRecord
         {
             Succeeded = false,
             Stage = "Volatile environment revalidation",
-            Summary = "Workspace runtime is currently blocked by a volatile host conflict.",
-            Reason = string.IsNullOrWhiteSpace(reason) ? "Workspace runtime is blocked by a volatile host conflict." : reason,
+            Summary = dockerUnavailable
+                ? "Workspace runtime checks could not reach Docker from this host environment."
+                : "Workspace runtime is currently blocked by a volatile host conflict.",
+            Reason = string.IsNullOrWhiteSpace(reason)
+                ? dockerUnavailable
+                    ? "Workspace runtime checks could not reach Docker from this host environment."
+                    : "Workspace runtime is blocked by a volatile host conflict."
+                : reason,
             Evidence = string.Join(Environment.NewLine, evidenceLines),
             ProblemScope = "WorkspaceProblem",
             RecommendedAction = "Troubleshoot Workspace.",
@@ -2062,7 +2086,7 @@ public sealed class DesktopShellService : IDesktopShellService
             Duration = TimeSpan.Zero,
             RawLogReference = snapshot.Paths.ComposePath,
             WorkspaceRuntimeVersion = snapshot.ResolvedRuntimePlan?.TargetPlatform ?? string.Empty,
-            Repairability = WorkspaceRepairability.AutomaticRepair.ToString(),
+            Repairability = dockerUnavailable ? WorkspaceRepairability.ManualRepair.ToString() : WorkspaceRepairability.AutomaticRepair.ToString(),
             EstimatedEffort = "Low",
             EstimatedDuration = "1-2 minutes",
             LastDiagnosticsTimestamp = checkedAt,
@@ -2554,4 +2578,9 @@ public sealed class DesktopShellService : IDesktopShellService
             throw new TimeoutException(timeoutMessage);
         }
     }
+
+    private static TimeSpan GetOpenWorkspaceProvisionTimeout(WorkspaceSnapshot snapshot)
+        => OracleWorkspaceFamily.HasApex(snapshot.Definition)
+            ? OpenWorkspaceOracleApexProvisionTimeout
+            : OpenWorkspaceProvisionTimeout;
 }

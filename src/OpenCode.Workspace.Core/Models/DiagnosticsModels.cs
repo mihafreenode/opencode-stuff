@@ -39,6 +39,7 @@ public enum WorkspaceFailureClassification
 {
     None,
     EnvironmentPortConflict,
+    EnvironmentDockerUnavailable,
 }
 
 public sealed class CommandLogEntry

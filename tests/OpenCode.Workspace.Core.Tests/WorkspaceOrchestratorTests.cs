@@ -597,6 +597,143 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public async Task ProvisionAsync_WhenOracleApexMediaMissing_DoesNotStartProvisioning()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(
+                tempRoot,
+                resolver,
+                new FakeWorkspaceProvider(),
+                runtime,
+                oracleMediaLocator: new MissingOracleMediaLocator());
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "oracle-apexlang-demo",
+                    Image = "ubuntu:24.04",
+                },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            };
+            var snapshot = await orchestrator.CreateWorkspaceAsync(
+                tempRoot,
+                definition,
+                includeRuntimeInspection: false);
+
+            var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.Contains("Missing prerequisite: Oracle APEX installation media.", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Search locations:", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Accepted filenames:", exception.Message, StringComparison.Ordinal);
+            Assert.Equal(0, runtime.StartCallCount);
+            Assert.Equal(0, runtime.ProvisionCallCount);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenOracleApexWorkspace_RepairsOrdsGatewayAfterProvisioning()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var runtime = new StubContainerRuntime
+            {
+                RepairOracleOrdsGatewayResultFactory = () => Success("docker exec ords repair"),
+                RestartServiceResultFactory = _ => Success("docker compose restart oracle-ords"),
+                ProbeHttpGetFromWorkspaceResultFactory = url => url.Contains("_/landing", StringComparison.Ordinal)
+                    ? Success("docker exec probe", "status=200\nlocation=\nbody=<html>landing</html>")
+                    : Success("docker exec probe", url.Contains("f?p=4550", StringComparison.Ordinal)
+                        ? "status=302\nlocation=http://oracle-ords:8080/ords/r/apex/workspace/home\nbody="
+                        : "status=302\nlocation=http://oracle-ords:8080/ords/r/apex/workspace-sign-in/oracle-apex-sign-in?session=1\nbody="),
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, resolver, new FakeWorkspaceProvider(), runtime, oracleMediaLocator: new PresentOracleMediaLocator(tempRoot));
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            };
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            Assert.Equal(1, runtime.ProvisionCallCount);
+            Assert.Equal(1, runtime.RepairOrdsGatewayCallCount);
+            Assert.Equal(1, runtime.RestartServiceCallCount);
+            Assert.Contains(runtime.ProbedUrls, url => url.EndsWith("/ords/_/landing", StringComparison.Ordinal));
+            Assert.Contains(runtime.ProbedUrls, url => url.EndsWith("/ords/apex", StringComparison.Ordinal));
+            Assert.DoesNotContain(runtime.ProbedUrls, url => url.EndsWith("/ords/apex/", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenOrdsProxyMetadataMissing_ThrowsPreciseGatewayFailure()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var runtime = new StubContainerRuntime
+            {
+                RepairOracleOrdsGatewayResultFactory = () => Success("docker exec ords repair"),
+                RestartServiceResultFactory = _ => Success("docker compose restart oracle-ords"),
+                ServiceLogsResultFactory = _ => Success("docker compose logs", standardOutput: "PL/SQL Gateway mode of pool |default|lo| is set to proxied but ORDS could not read the proxy configuration from the database"),
+                ProbeHttpGetFromWorkspaceResultFactory = url => url.Contains("_/landing", StringComparison.Ordinal)
+                    ? Success("docker exec probe", "status=200\nlocation=\nbody=<html>landing</html>")
+                    : Success("docker exec probe", "status=404\nlocation=\nbody=not found"),
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, resolver, new FakeWorkspaceProvider(), runtime, oracleMediaLocator: new PresentOracleMediaLocator(tempRoot));
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            };
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.Contains("APEX runtime routing is still unavailable", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("proxied gateway configuration could not be read", exception.Message, StringComparison.Ordinal);
+            Assert.Equal(1, runtime.RepairOrdsGatewayCallCount);
+            Assert.NotEmpty(runtime.ProbedUrls);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public void OpenFolderAsWorkspace_InitializesGitAndCreatesWorkspaceWithoutBlockingSavePoint()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -1466,7 +1603,7 @@ public sealed class WorkspaceOrchestratorTests
             new NoOpTerminalLauncher());
     }
 
-    private static WorkspaceOrchestrator CreateOrchestratorWithRuntimeAbstractions(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime, WorkspaceTimelineService? timelineService = null, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null)
+    private static WorkspaceOrchestrator CreateOrchestratorWithRuntimeAbstractions(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime, WorkspaceTimelineService? timelineService = null, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null, IOracleMediaLocator? oracleMediaLocator = null)
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
@@ -1489,7 +1626,8 @@ public sealed class WorkspaceOrchestratorTests
             containerRuntime,
             new FixedPlatformDetector(),
             new FixedRuntimeResolver(),
-            terminalLauncher ?? new NoOpTerminalLauncher());
+            terminalLauncher ?? new NoOpTerminalLauncher(),
+            oracleMediaLocator);
     }
 
     private static string CreateTempRoot() => Path.Combine(Path.GetTempPath(), $"opencode-workspace-manager-{Guid.NewGuid():N}");
@@ -1876,18 +2014,39 @@ public sealed class WorkspaceOrchestratorTests
 
         public Func<ProcessResult>? ProvisionScriptResultFactory { get; init; }
 
+        public Func<ProcessResult>? RepairOracleOrdsGatewayResultFactory { get; init; }
+
+        public Func<string, ProcessResult>? RestartServiceResultFactory { get; init; }
+
+        public Func<string, ProcessResult>? ProbeHttpGetFromWorkspaceResultFactory { get; init; }
+
+        public Func<string, ProcessResult>? ServiceLogsResultFactory { get; init; }
+
         public Func<ProcessResult>? ToolValidationResultFactory { get; init; }
 
         public Func<CancellationToken, Task<ProcessResult>>? ListOpenCodeSessionsAsyncFactory { get; init; }
 
         public Func<string, CancellationToken, Task<ProcessResult>>? ExportOpenCodeSessionAsyncFactory { get; init; }
 
+        public int StartCallCount { get; private set; }
+
+        public int ProvisionCallCount { get; private set; }
+
+        public int RepairOrdsGatewayCallCount { get; private set; }
+
+        public int RestartServiceCallCount { get; private set; }
+
+        public List<string> ProbedUrls { get; } = new();
+
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
 
         public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => DockerService.CreatePermissionRepairArguments(workspaceRootPath);
 
         public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
-            => Task.FromResult(Success("docker compose up"));
+        {
+            StartCallCount++;
+            return Task.FromResult(Success("docker compose up"));
+        }
 
         public Task<ProcessResult> ValidateAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
             => Task.FromResult(Success("docker compose config"));
@@ -1905,16 +2064,23 @@ public sealed class WorkspaceOrchestratorTests
             => Task.FromResult<ProcessResult?>(null);
 
         public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker compose ps", "workspace"));
+            => Task.FromResult(Success("docker compose ps", string.Join('\n', new[] { "workspace" }.Concat(definition.Services))));
 
         public Task<ProcessResult> GetComposePsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker compose ps"));
+            => Task.FromResult(Success("docker compose ps", string.Join('\n', new[] { "workspace" }.Concat(definition.Services))));
 
         public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker compose logs"));
+            => Task.FromResult(ServiceLogsResultFactory?.Invoke(serviceName) ?? Success("docker compose logs"));
+
+        public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            RestartServiceCallCount++;
+            return Task.FromResult(RestartServiceResultFactory?.Invoke(serviceName) ?? Success("docker compose restart"));
+        }
 
         public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         {
+            ProvisionCallCount++;
             var result = ProvisionScriptResultFactory?.Invoke() ?? Success("docker exec provision");
             if (result.IsSuccess)
             {
@@ -1922,6 +2088,18 @@ public sealed class WorkspaceOrchestratorTests
             }
 
             return Task.FromResult(result);
+        }
+
+        public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            RepairOrdsGatewayCallCount++;
+            return Task.FromResult(RepairOracleOrdsGatewayResultFactory?.Invoke() ?? Success("docker exec ords repair"));
+        }
+
+        public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            ProbedUrls.Add(url);
+            return Task.FromResult(ProbeHttpGetFromWorkspaceResultFactory?.Invoke(url) ?? Success("docker exec probe", "status=200\nlocation=\nbody=ok"));
         }
 
         public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -1958,7 +2136,9 @@ public sealed class WorkspaceOrchestratorTests
             var argumentList = arguments.ToList();
             if (argumentList.Count > 0 && argumentList[0] == "ps")
             {
-                return Task.FromResult(Success("docker ps", "odip-analiza-workspace"));
+                var filter = argumentList.FirstOrDefault(item => item.StartsWith("name=", StringComparison.Ordinal));
+                var containerName = filter is null ? "workspace" : filter[5..];
+                return Task.FromResult(Success("docker ps", containerName));
             }
 
             if (argumentList.Count >= 8 && argumentList[0] == "exec" && argumentList[1] == "--user" && argumentList[4] == "-w" && argumentList[7] == "-lc")
@@ -2039,5 +2219,45 @@ public sealed class WorkspaceOrchestratorTests
             StandardErrorLines = string.IsNullOrWhiteSpace(standardError) ? Array.Empty<string>() : standardError.Split(Environment.NewLine),
             Duration = TimeSpan.FromMilliseconds(10),
         };
+    }
+
+    private sealed class MissingOracleMediaLocator : IOracleMediaLocator
+    {
+        public OracleMediaLocationResult LocateApexMedia(WorkspacePaths paths)
+            => new()
+            {
+                WorkspaceLocalDirectory = OracleMediaLocator.GetWorkspaceLocalApexDirectory(paths),
+                PreferredSharedDirectory = OracleMediaLocator.GetSharedApexCacheDirectory(Path.Combine(Path.GetTempPath(), "localappdata")),
+                SearchedLocations =
+                [
+                    OracleMediaLocator.GetWorkspaceLocalApexDirectory(paths),
+                    OracleMediaLocator.GetSharedApexCacheDirectory(Path.Combine(Path.GetTempPath(), "localappdata")),
+                    OracleMediaLocator.GetHomeApexCacheDirectory(Path.Combine(Path.GetTempPath(), "userprofile")),
+                ],
+                AcceptedFileNames = ["apex.zip", "apex_*.zip", "apex*.zip"],
+            };
+    }
+
+    private sealed class PresentOracleMediaLocator(string rootPath) : IOracleMediaLocator
+    {
+        public OracleMediaLocationResult LocateApexMedia(WorkspacePaths paths)
+        {
+            var mediaDirectory = Path.Combine(rootPath, "oracle-media");
+            Directory.CreateDirectory(mediaDirectory);
+            var mediaPath = Path.Combine(mediaDirectory, "apex.zip");
+            if (!File.Exists(mediaPath))
+            {
+                File.WriteAllText(mediaPath, "apex");
+            }
+
+            return new OracleMediaLocationResult
+            {
+                WorkspaceLocalDirectory = OracleMediaLocator.GetWorkspaceLocalApexDirectory(paths),
+                PreferredSharedDirectory = mediaDirectory,
+                ResolvedPath = mediaPath,
+                SearchedLocations = [OracleMediaLocator.GetWorkspaceLocalApexDirectory(paths), mediaDirectory],
+                AcceptedFileNames = ["apex.zip", "apex_*.zip", "apex*.zip"],
+            };
+        }
     }
 }

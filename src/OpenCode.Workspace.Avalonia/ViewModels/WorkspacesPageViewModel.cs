@@ -549,16 +549,47 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        var snapshot = await _desktopShellService.CreateWorkspaceAsync(draft.WorkspaceRootPath, definition, new OperationTranscriptSink(this));
-        FlushPendingOperationLogToUi(forceDrainAll: true);
-        if (_desktopShellService.BuildOracleSoftwareNotice(draft.Template, draft.WorkspaceName) is not null)
+        try
         {
-            snapshot = await _desktopShellService.AcknowledgeOracleSoftwareNoticeAsync(snapshot.Paths.RootPath, snapshot);
-        }
+            var snapshot = await _desktopShellService.CreateWorkspaceAsync(draft.WorkspaceRootPath, definition, new OperationTranscriptSink(this));
+            FlushPendingOperationLogToUi(forceDrainAll: true);
+            if (_desktopShellService.BuildOracleSoftwareNotice(draft.Template, draft.WorkspaceName) is not null)
+            {
+                snapshot = await _desktopShellService.AcknowledgeOracleSoftwareNoticeAsync(snapshot.Paths.RootPath, snapshot);
+            }
 
-        await LoadAsync();
-        SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
-        DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
+            await LoadAsync();
+            if (HasLoadError || !Workspaces.Any(item => string.Equals(item.RootPath, snapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                var refreshFailure = HasLoadError
+                    ? $"Workspace '{snapshot.Definition.Workspace.Name}' was created, but discovery refresh failed: {LoadErrorMessage}"
+                    : $"Workspace '{snapshot.Definition.Workspace.Name}' was created, but the refreshed workspace list did not include it.";
+
+                HasLoadError = false;
+                LoadErrorMessage = string.Empty;
+                ApplyWorkspaceItem(new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }));
+                SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
+                SelectedWorkspace?.SetOperationFailureState(refreshFailure, "Create Workspace");
+                DetailSummary = refreshFailure;
+                DetailRecommendation = "Refresh.";
+                AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = refreshFailure });
+                AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Created, but discovery refresh failed." });
+                UpdateDetailPanel();
+                return;
+            }
+
+            SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
+            DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
+        }
+        catch (Exception exception)
+        {
+            Services.StartupLog.WriteGlobalException($"Create Workspace failed for '{draft.WorkspaceName}'", exception);
+            FlushPendingOperationLogToUi(forceDrainAll: true);
+            DetailSummary = exception.Message;
+            DetailRecommendation = "Run Diagnostics.";
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.StandardError, Text = exception.Message });
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Failed." });
+        }
     }
 
     private async Task OpenExistingRepositoryAsync()
@@ -1856,6 +1887,22 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             advancedActions.Insert(0, CreatePresentationAction(workspace, "Retry", BuildRetryDescription(workspace), CanRetryWorkspace(workspace), GetRetryDisabledReason(workspace), RetrySelectedWorkspaceAsync, useWorkspaceScopedCommands));
         }
 
+        if (IsOracleApexMediaMissing(workspace))
+        {
+            advancedActions.Insert(0, new ActionItemViewModel(
+                "Open Oracle Download Page",
+                "Open the official Oracle APEX download page because Oracle media must be downloaded manually.",
+                true,
+                string.Empty,
+                new AsyncRelayCommand(OpenOracleApexDownloadPageAsync)));
+            advancedActions.Insert(0, new ActionItemViewModel(
+                "Open Download Folder",
+                "Open the shared OpenCode Stuff Oracle APEX download cache folder.",
+                true,
+                string.Empty,
+                new AsyncRelayCommand(OpenOracleApexDownloadFolderAsync)));
+        }
+
         if (!workspace.HasSnapshot)
         {
             return new WorkspacePresentation
@@ -2611,6 +2658,30 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string? GetRetryOperationName(WorkspaceSummaryViewModel? workspace)
         => HasFailureMessage(workspace) ? workspace?.FailedOperationName : null;
+
+    private static bool IsOracleApexMediaMissing(WorkspaceSummaryViewModel? workspace)
+    {
+        var health = workspace?.Record.LastProvisioningHealth;
+        if (health is null)
+        {
+            return false;
+        }
+
+        return health.Reason.Contains("Oracle APEX installation media", StringComparison.OrdinalIgnoreCase)
+            || health.Evidence.Contains("Oracle APEX installation media", StringComparison.OrdinalIgnoreCase)
+            || health.RecommendedAction.Contains("Provide Oracle APEX media", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task OpenOracleApexDownloadFolderAsync()
+    {
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var path = OracleMediaLocator.GetSharedApexCacheDirectory(localApplicationData);
+        Directory.CreateDirectory(path);
+        await _desktopShellService.OpenPathAsync(path);
+    }
+
+    private Task OpenOracleApexDownloadPageAsync()
+        => _desktopShellService.OpenPathAsync("https://www.oracle.com/tools/downloads/apex-downloads.html");
 
     private static string SummarizeTransientOperationMessage(string message)
         => SanitizeNormalUserFailureMessage(

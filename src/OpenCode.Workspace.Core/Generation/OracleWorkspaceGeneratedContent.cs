@@ -45,7 +45,7 @@ internal static class OracleWorkspaceGeneratedContent
         if (kind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang)
         {
             var ordsBaseUrl = $"http://localhost:{WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId)}/ords";
-            var apexLoginUrl = ordsBaseUrl + "/apex_admin";
+            var apexLoginUrl = ordsBaseUrl + "/apex";
             files[Path.Combine("docs", "oracle-apex-demo.md")] = withGeneratedHeader(OracleApexDemoDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-books.md")] = withGeneratedHeader(OracleApexBooksDoc());
             files[Path.Combine("docs", "reference", "oracle-apex-api-reference.md")] = withGeneratedHeader(OracleApexApiReferenceDoc());
@@ -1638,7 +1638,7 @@ Oracle REST Data Services (ORDS) is the HTTP delivery layer that serves Oracle A
 
 ```bash
 curl -fsSL http://localhost:8181/ords
- curl -fsSL http://localhost:8181/ords/apex_admin
+ curl -fsSL http://localhost:8181/ords/apex
 ```
 
 ### Relationship To Other Tools
@@ -1950,7 +1950,7 @@ printf 'ORDS reachable at %s\n' "$ords_url"
 """;
 
     private static string HealthCheckApexScript() => """
-apex_url=${ORACLE_APEX_LOGIN_URL:-http://oracle-ords:8080/ords/apex_admin}
+apex_url=${ORACLE_APEX_LOGIN_URL:-http://oracle-ords:8080/ords/apex}
 curl -fsSL "$apex_url" >/dev/null
 printf 'APEX login reachable at %s\n' "$apex_url"
 """;

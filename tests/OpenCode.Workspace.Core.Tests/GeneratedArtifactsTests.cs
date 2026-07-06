@@ -432,6 +432,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("sqlplus -S \"${oracle_connection}\" @\"${oracle_sqlplus_probe_script}\"", script);
         Assert.Contains("wait_for_command 300 10 'Oracle SQL*Plus readiness'", script);
         Assert.Contains("run_with_timeout 120 'Oracle demo user setup'", script);
+        Assert.Contains("local setup_script=/tmp/oracle-demo-user-setup.sql", script);
+        Assert.Contains("@\"${setup_script}\"", script);
+        Assert.Contains("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' bash -lc \"$(declare -f ensure_demo_user_ready); ensure_demo_user_ready\"", script);
+        Assert.DoesNotContain("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' ensure_demo_user_ready", script, StringComparison.Ordinal);
         Assert.Contains("validate_sqlcl_install()", script);
         Assert.Contains("if validate_sqlcl_install /opt/sqlcl; then", script);
         Assert.Contains("SQLcl already installed and valid; skipping reinstall.", script);
@@ -443,6 +447,9 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("rm -rf /opt/sqlcl", script);
         Assert.Contains("cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/", script);
         Assert.Contains("sql -v", script);
+        Assert.Contains("ln -sf \"${sqlcl_launcher}\" /usr/local/bin/sqlcl", script);
+        Assert.Contains("ln -sf /opt/sqlcl/sqlcl/bin/sql /usr/local/bin/sqlcl", script);
+        Assert.Contains("sqlcl -v", script);
         Assert.Contains("SELECT 'Connection OK' AS status FROM dual;", script);
         Assert.Contains("wait_for_command 300 10 'Oracle SQLcl readiness'", script);
         Assert.Contains("Staged SQLcl install failed runtime validation", script);
@@ -473,19 +480,37 @@ public sealed class GeneratedArtifactsTests
         });
 
         Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
-        Assert.Contains("oracle_apex_url=http://oracle-ords:8080/ords/apex_admin", script);
-        Assert.Contains("oracle_ords_landing_url=http://oracle-ords:8080/ords/", script);
+        Assert.Contains("oracle_ords_landing_url=http://oracle-ords:8080/ords/_/landing", script);
         Assert.Contains("oracle_demo_user_setup_script=/tmp/oracle-demo-user-setup.sql", script);
         Assert.Contains("ensure_demo_user_ready()", script);
+        Assert.Contains("bash -lc \"$(declare -f ensure_demo_user_ready); ensure_demo_user_ready\"", script);
+        Assert.Contains("apex_registry_status=$(printf '%s' \"${apex_registry}\" | awk -F'|' '{print $3}')", script);
+        Assert.Contains("if [ -n \"${apex_registry}\" ] && [ \"${apex_registry_status}\" = 'VALID' ]", script);
+        Assert.Contains("[oracle-apex] APEX already installed: ${apex_registry}", script);
+        Assert.Contains("Oracle APEX is partially installed or inconsistent.", script);
+        Assert.Contains("Rebuild Runtime to recreate the Oracle data volume, or manually repair the Oracle APEX registry before retrying.", script);
         Assert.Contains("ALTER USER demo_user IDENTIFIED BY \"demo_password\" ACCOUNT UNLOCK", script);
         Assert.Contains("[oracle] Oracle administrator password does not match the running database.", script);
         Assert.Contains("[oracle] Recommended action: Rebuild Runtime.", script);
         Assert.True(script.IndexOf("ensure_demo_user_ready", StringComparison.Ordinal) < script.IndexOf("wait_for_command 300 10 'Oracle SQL*Plus readiness'", StringComparison.Ordinal));
         Assert.Contains("wait_for_ords_runtime()", script);
-        Assert.Contains("verify_apex_login_route()", script);
-        Assert.Contains("wait_for_command 180 10 'ORDS readiness'", script);
-        Assert.Contains("wait_for_command 180 10 'APEX login readiness'", script);
-        Assert.Contains("ORDS landing page is reachable after APEX validation", script);
+        Assert.Contains("ensure_ords_public_user_ready()", script);
+        Assert.Contains("validate_ords_installation()", script);
+        Assert.Contains("SELECT COUNT(*) FROM dba_users WHERE username = 'ORDS_PUBLIC_USER';", script);
+        Assert.Contains("SELECT COUNT(*) FROM dba_users WHERE username = 'ORDS_METADATA';", script);
+        Assert.Contains("Oracle REST Data Services is not installed in the database.", script);
+        Assert.Contains("ALTER USER ords_public_user IDENTIFIED BY \"${ords_public_password}\" ACCOUNT UNLOCK;", script);
+        Assert.Contains("oracle_set_stage 'Validate ORDS installation'", script);
+        Assert.Contains("oracle_set_stage 'Synchronize ORDS credentials'", script);
+        Assert.Contains("pool.xml does not use ORDS_PUBLIC_USER for db.username", script);
+        Assert.Contains("ORDS returned HTTP 574 DatabaseCredentialError for ORDS_PUBLIC_USER.", script);
+        Assert.Contains("Oracle REST Data Services database credentials are invalid.", script);
+        Assert.Contains("ords_redirect_location=$(grep -i '^Location:' /tmp/ords-health-headers.txt", script);
+        Assert.Contains("if [ \"${ords_http_status}\" = '302' ] && printf '%s' \"${ords_redirect_location}\" | grep -Fq '/ords/_/landing'; then", script);
+        Assert.DoesNotContain("/ords/apex_admin", script, StringComparison.Ordinal);
+        Assert.True(script.IndexOf("oracle_set_stage 'Validate ORDS installation'", StringComparison.Ordinal) < script.IndexOf("oracle_set_stage 'Synchronize ORDS credentials'", StringComparison.Ordinal));
+        Assert.True(script.IndexOf("validate_ords_installation", StringComparison.Ordinal) < script.IndexOf("wait_for_ords_runtime", StringComparison.Ordinal));
+        Assert.DoesNotContain("Route ${oracle_apex_url}", script, StringComparison.Ordinal);
         Assert.Contains("validate_oracle_environment()", script);
         Assert.Contains("validate_oracle_prerequisites()", script);
         Assert.Contains("SELECT status FROM dba_registry WHERE comp_id = 'XDB';", script);
@@ -497,6 +522,70 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("cat /tmp/oracle-utlrp.out >&2 || true", script);
         Assert.True(script.IndexOf("recompile_invalid_oracle_components >/tmp/oracle-utlrp.out 2>&1 || true", StringComparison.Ordinal) < script.IndexOf("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", StringComparison.Ordinal));
         Assert.True(script.IndexOf("oracle_set_stage 'Install APEX'", StringComparison.Ordinal) > script.IndexOf("validate_oracle_prerequisites", StringComparison.Ordinal));
+        Assert.Contains("Oracle APEX registry is not valid after installation.", script);
+        Assert.Contains("Oracle APEX did not register in the database.", script);
+        Assert.Contains("Oracle APEX schema users were not created.", script);
+    }
+
+    [Fact]
+    public void ProvisioningGenerator_ForOracleApexlangWorkspace_UsesShellContextForOracleDemoUserTimeout()
+    {
+        var generator = new ProvisioningScriptGenerator();
+        var script = generator.Generate(new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = new[] { "curl", "rlwrap", "unzip" },
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        });
+
+        Assert.Contains("ensure_demo_user_ready()", script);
+        Assert.Contains("local setup_script=/tmp/oracle-demo-user-setup.sql", script);
+        Assert.Contains("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' bash -lc \"$(declare -f ensure_demo_user_ready); ensure_demo_user_ready\"", script);
+        Assert.DoesNotContain("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' ensure_demo_user_ready", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspaceContentGenerator_OrdsBootstrap_UsesManagedDbPasswordSecret()
+    {
+        var files = new WorkspaceContentGenerator().Generate(new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        });
+
+        Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
+        Assert.True(files.ContainsKey(Path.Combine("mounts", "config", "ords", "repair-ords-db.sh")));
+        Assert.Contains("ords_public_password=\"${ORACLE_PWD:-change-on-first-demo}\"", script, StringComparison.Ordinal);
+        Assert.Contains("install --db-only", script, StringComparison.Ordinal);
+        Assert.Contains("--proxy-user --password-stdin", script, StringComparison.Ordinal);
+        Assert.Contains("config secret --password-stdin db.password", script, StringComparison.Ordinal);
+        Assert.Contains("printf '%s\\n' \"${ords_public_password}\"", script, StringComparison.Ordinal);
+
+        var repairScript = files[Path.Combine("mounts", "config", "ords", "repair-ords-db.sh")];
+        Assert.Contains("install repair", repairScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("install --db-only", repairScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("--proxy-user", repairScript, StringComparison.Ordinal);
     }
 
     [Fact]

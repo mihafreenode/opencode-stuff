@@ -21,9 +21,51 @@ Use ORDS when you want to:
 ## Example Commands
 
 ```bash
-curl -fsSL http://localhost:8181/ords
-curl -fsSL http://localhost:8181/ords/apex_admin
+curl -fsSL http://localhost:8181/ords/_/landing
+curl -fsSL http://localhost:8181/ords/apex
 ```
+
+## Endpoint Discovery
+
+ORDS has two different address styles in this project:
+
+- internal Docker service address
+- host published address
+
+Choose the address based on where the command is running.
+
+### Inside The Workspace Container
+
+- `localhost` is the workspace container itself, not ORDS
+- use the internal Docker service name and internal ORDS port from `compose.yaml`
+
+Example:
+
+```text
+http://oracle-ords:8080/ords/_/landing
+http://oracle-ords:8080/ords/apex
+```
+
+### On The Host
+
+- use the published host port from `compose.yaml`
+- do not assume the published port is always `8181`
+
+Example:
+
+```text
+http://localhost:<published-port>/ords/_/landing
+http://localhost:<published-port>/ords/apex
+```
+
+## Recommended Verification Flow
+
+1. determine whether you are on the host or inside the workspace container
+2. locate `compose.yaml`
+3. determine the ORDS endpoint
+4. run `GET /ords/_/landing`
+5. run `GET /ords/apex`
+6. if ORDS is unreachable, report the exact endpoint that was tested
 
 ## Relationship To Other Tools
 
