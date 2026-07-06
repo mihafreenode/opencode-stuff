@@ -691,6 +691,119 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public async Task ProvisionAsync_WhenOrdsLandingStartsAfterRetries_WaitsUntilReady()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var originalTimeout = GetOrdsRestartReadinessTimeout();
+            var originalDelay = GetOrdsRestartReadinessRetryDelay();
+            SetOrdsRestartReadinessTimeout(TimeSpan.FromMilliseconds(50));
+            SetOrdsRestartReadinessRetryDelay(TimeSpan.FromMilliseconds(1));
+
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var landingProbeCount = 0;
+            var runtime = new StubContainerRuntime
+            {
+                RepairOracleOrdsGatewayResultFactory = () => Success("docker exec ords repair"),
+                RestartServiceResultFactory = _ => Success("docker compose restart oracle-ords"),
+                ProbeHttpGetFromWorkspaceResultFactory = url =>
+                {
+                    if (url.Contains("_/landing", StringComparison.Ordinal))
+                    {
+                        landingProbeCount++;
+                        return landingProbeCount < 4
+                            ? Success("docker exec probe", "status=0\nlocation=\nbody=", standardError: "curl: Couldn't connect to server")
+                            : Success("docker exec probe", "status=200\nlocation=\nbody=<html>landing</html>");
+                    }
+
+                    return Success("docker exec probe", "status=302\nlocation=http://oracle-ords:8080/ords/r/apex/workspace-sign-in/oracle-apex-sign-in?session=1\nbody=");
+                },
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, resolver, new FakeWorkspaceProvider(), runtime, oracleMediaLocator: new PresentOracleMediaLocator(tempRoot));
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            };
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            Assert.True(landingProbeCount >= 4);
+            Assert.Equal(1, runtime.RestartServiceCallCount);
+
+            SetOrdsRestartReadinessTimeout(originalTimeout);
+            SetOrdsRestartReadinessRetryDelay(originalDelay);
+        }
+        finally
+        {
+            SetOrdsRestartReadinessTimeout(TimeSpan.FromSeconds(60));
+            SetOrdsRestartReadinessRetryDelay(TimeSpan.FromSeconds(2));
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenOrdsLandingNeverStarts_ThrowsPreciseRestartDiagnostics()
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var originalTimeout = GetOrdsRestartReadinessTimeout();
+            var originalDelay = GetOrdsRestartReadinessRetryDelay();
+            SetOrdsRestartReadinessTimeout(TimeSpan.FromMilliseconds(20));
+            SetOrdsRestartReadinessRetryDelay(TimeSpan.FromMilliseconds(1));
+
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var runtime = new StubContainerRuntime
+            {
+                RepairOracleOrdsGatewayResultFactory = () => Success("docker exec ords repair"),
+                RestartServiceResultFactory = _ => Success("docker compose restart oracle-ords"),
+                GetComposePsResultFactory = () => Success("docker compose ps", "oracle-demo\noracle-ords\nworkspace"),
+                ServiceLogsResultFactory = _ => Success("docker compose logs", standardOutput: "ords line 1\nords line 2"),
+                ProbeHttpGetFromWorkspaceResultFactory = url => Success("docker exec probe", "status=0\nlocation=\nbody=", standardError: "curl: Couldn't connect to server"),
+            };
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, resolver, new FakeWorkspaceProvider(), runtime, oracleMediaLocator: new PresentOracleMediaLocator(tempRoot));
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+                Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+                Services = new List<string> { "oracle-demo", "oracle-ords" },
+                Skills = new List<string>(),
+                Mcp = new List<string>(),
+            };
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.Contains("did not become reachable after gateway repair restart", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("last_http_code=0", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("last_curl_error=curl: Couldn't connect to server", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("docker_compose_ps=oracle-demo | oracle-ords | workspace", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("ords_logs_tail=ords line 1 | ords line 2", exception.Message, StringComparison.Ordinal);
+
+            SetOrdsRestartReadinessTimeout(originalTimeout);
+            SetOrdsRestartReadinessRetryDelay(originalDelay);
+        }
+        finally
+        {
+            SetOrdsRestartReadinessTimeout(TimeSpan.FromSeconds(60));
+            SetOrdsRestartReadinessRetryDelay(TimeSpan.FromSeconds(2));
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task ProvisionAsync_WhenOrdsProxyMetadataMissing_ThrowsPreciseGatewayFailure()
     {
         Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
@@ -2022,6 +2135,8 @@ public sealed class WorkspaceOrchestratorTests
 
         public Func<string, ProcessResult>? ServiceLogsResultFactory { get; init; }
 
+        public Func<ProcessResult>? GetComposePsResultFactory { get; init; }
+
         public Func<ProcessResult>? ToolValidationResultFactory { get; init; }
 
         public Func<CancellationToken, Task<ProcessResult>>? ListOpenCodeSessionsAsyncFactory { get; init; }
@@ -2067,7 +2182,7 @@ public sealed class WorkspaceOrchestratorTests
             => Task.FromResult(Success("docker compose ps", string.Join('\n', new[] { "workspace" }.Concat(definition.Services))));
 
         public Task<ProcessResult> GetComposePsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(Success("docker compose ps", string.Join('\n', new[] { "workspace" }.Concat(definition.Services))));
+            => Task.FromResult(GetComposePsResultFactory?.Invoke() ?? Success("docker compose ps", string.Join('\n', new[] { "workspace" }.Concat(definition.Services))));
 
         public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.FromResult(ServiceLogsResultFactory?.Invoke(serviceName) ?? Success("docker compose logs"));
@@ -2183,15 +2298,15 @@ public sealed class WorkspaceOrchestratorTests
                 : Task.FromResult(Success("docker exec opencode session export"));
     }
 
-    private static ProcessResult Success(string command, string standardOutput = "")
+    private static ProcessResult Success(string command, string standardOutput = "", string standardError = "")
         => new()
         {
             Command = command,
             ExitCode = 0,
             StandardOutput = standardOutput,
-            StandardError = string.Empty,
+            StandardError = standardError,
             StandardOutputLines = string.IsNullOrWhiteSpace(standardOutput) ? Array.Empty<string>() : standardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            StandardErrorLines = Array.Empty<string>(),
+            StandardErrorLines = string.IsNullOrWhiteSpace(standardError) ? Array.Empty<string>() : standardError.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             Duration = TimeSpan.FromMilliseconds(10),
         };
 
@@ -2219,6 +2334,32 @@ public sealed class WorkspaceOrchestratorTests
             StandardErrorLines = string.IsNullOrWhiteSpace(standardError) ? Array.Empty<string>() : standardError.Split(Environment.NewLine),
             Duration = TimeSpan.FromMilliseconds(10),
         };
+    }
+
+    private static TimeSpan GetOrdsRestartReadinessTimeout()
+        => GetOrdsRestartReadinessField("OrdsRestartReadinessTimeout");
+
+    private static void SetOrdsRestartReadinessTimeout(TimeSpan value)
+        => SetOrdsRestartReadinessField("OrdsRestartReadinessTimeout", value);
+
+    private static TimeSpan GetOrdsRestartReadinessRetryDelay()
+        => GetOrdsRestartReadinessField("OrdsRestartReadinessRetryDelay");
+
+    private static void SetOrdsRestartReadinessRetryDelay(TimeSpan value)
+        => SetOrdsRestartReadinessField("OrdsRestartReadinessRetryDelay", value);
+
+    private static TimeSpan GetOrdsRestartReadinessField(string name)
+    {
+        var field = typeof(WorkspaceOrchestrator).GetField(name, System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(field);
+        return Assert.IsType<TimeSpan>(field.GetValue(null));
+    }
+
+    private static void SetOrdsRestartReadinessField(string name, TimeSpan value)
+    {
+        var field = typeof(WorkspaceOrchestrator).GetField(name, System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(field);
+        field.SetValue(null, value);
     }
 
     private sealed class MissingOracleMediaLocator : IOracleMediaLocator

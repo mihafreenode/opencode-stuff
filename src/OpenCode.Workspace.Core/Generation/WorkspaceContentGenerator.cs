@@ -368,7 +368,6 @@ public sealed class WorkspaceContentGenerator
             : OracleWorkspaceSettings.From(definition).OrdsPort;
         return content
             .Replace("http://localhost:8181/ords/apex", $"http://localhost:{ordsPort}/ords/apex", StringComparison.Ordinal)
-            .Replace("http://localhost:8181/ords/apex_admin", $"http://localhost:{ordsPort}/ords/apex_admin", StringComparison.Ordinal)
             .Replace("http://localhost:8181/ords", $"http://localhost:{ordsPort}/ords", StringComparison.Ordinal)
             .Replace("//localhost:1521/", $"//localhost:{hostPort}/", StringComparison.Ordinal);
     }

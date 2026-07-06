@@ -49,8 +49,6 @@ public static class OracleRuntimeSmokeCli
     [
         "/ords",
         "/ords/",
-        "/ords/apex_admin",
-        "/ords/apex_admin/",
         "/ords/apex",
         "/ords/apex/",
         "/ords/r",
@@ -456,7 +454,7 @@ public static class OracleRuntimeSmokeCli
         var ordsPs = await RunDockerDiagnosticAsync(["ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}" ]);
         var databaseInspect = await RunDockerDiagnosticAsync(["inspect", databaseContainerName]);
         var workspaceCurl = await RunDockerDiagnosticAsync(["exec", workspaceContainerName, "bash", "-lc", $"curl -s -o /dev/null -w '%{{http_code}}' http://oracle-ords:{OracleWorkspaceSettings.ContainerOrdsPort}/ords || true"]);
-        var workspaceApexCurl = await RunDockerDiagnosticAsync(["exec", workspaceContainerName, "bash", "-lc", $"curl -s -o /dev/null -w '%{{http_code}}' http://oracle-ords:{OracleWorkspaceSettings.ContainerOrdsPort}/ords/apex_admin || true"]);
+        var workspaceApexCurl = await RunDockerDiagnosticAsync(["exec", workspaceContainerName, "bash", "-lc", $"curl -s -o /dev/null -w '%{{http_code}}' http://oracle-ords:{OracleWorkspaceSettings.ContainerOrdsPort}/ords/apex || true"]);
         var hostHttpProbe = await ProbeOracleHostEndpointsAsync(oracleSettings);
 
         var ordsState = DockerContainerRuntimeState.FromInspectJson(ordsInspect.Output);

@@ -525,6 +525,12 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("Oracle APEX registry is not valid after installation.", script);
         Assert.Contains("Oracle APEX did not register in the database.", script);
         Assert.Contains("Oracle APEX schema users were not created.", script);
+        Assert.Contains("APEX_INSTANCE_ADMIN.CREATE_OR_UPDATE_ADMIN_USER(", script);
+        Assert.Contains("APEX_INSTANCE_ADMIN.UNLOCK_USER(", script);
+        Assert.Contains("APEX_INSTANCE_ADMIN.SET_PARAMETER('STRONG_SITE_ADMIN_PASSWORD', 'N');", script);
+        Assert.Contains("APEX_INSTANCE_ADMIN.SET_PARAMETER('EXPIRE_FND_USER_ACCOUNTS', 'N');", script);
+        Assert.Contains("UPDATE apex_260100.wwv_flow_fnd_user", script);
+        Assert.DoesNotContain("@apxchpwd.sql", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -586,6 +592,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("install repair", repairScript, StringComparison.Ordinal);
         Assert.DoesNotContain("install --db-only", repairScript, StringComparison.Ordinal);
         Assert.DoesNotContain("--proxy-user", repairScript, StringComparison.Ordinal);
+
+        var runtimeSmokeScript = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "scripts", "smoke-oracle-apex-runtime.sh"));
+        Assert.Contains("http://localhost:8181/ords/apex", runtimeSmokeScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("http://localhost:8181/ords/apex_admin", runtimeSmokeScript, StringComparison.Ordinal);
     }
 
     [Fact]

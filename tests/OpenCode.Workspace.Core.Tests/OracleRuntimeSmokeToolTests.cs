@@ -105,11 +105,11 @@ public sealed class OracleRuntimeSmokeToolTests
     public void FormatApexRouteDiagnostics_EmitsExpectedFields()
     {
         var content = OracleRuntimeSmokeCli.FormatApexRouteDiagnostics([
-            new RouteProbeResult("/ords/apex_admin", "http://localhost:8181/ords/apex_admin", 200, null, "<html>admin</html>"),
+            new RouteProbeResult("/ords/apex", "http://localhost:8181/ords/apex", 200, null, "<html>apex</html>"),
             new RouteProbeResult("/ords/apex", "http://localhost:8181/ords/apex", 404, null, "not found"),
         ]);
 
-        Assert.Contains("URL=http://localhost:8181/ords/apex_admin", content);
+        Assert.Contains("URL=http://localhost:8181/ords/apex", content);
         Assert.Contains("STATUS=200", content);
         Assert.Contains("URL=http://localhost:8181/ords/apex", content);
         Assert.Contains("STATUS=404", content);
@@ -189,7 +189,7 @@ public sealed class OracleRuntimeSmokeToolTests
                 OrdsHostPort = 8181,
                 OrdsContainerPort = 8080,
                 OrdsBaseUrlTested = "http://localhost:8181/ords",
-                ApexUrlTested = "http://localhost:8181/ords/apex_admin",
+                ApexUrlTested = "http://localhost:8181/ords/apex",
                 OrdsHttpStatusCode = 200,
                 ApexHttpStatusCode = 302,
                 ApexMediaFound = true,
@@ -214,7 +214,7 @@ public sealed class OracleRuntimeSmokeToolTests
             Assert.Contains("ords_host_port=8181", content);
             Assert.Contains("ords_container_port=8080", content);
             Assert.Contains("ords_base_url_tested=http://localhost:8181/ords", content);
-            Assert.Contains("apex_url_tested=http://localhost:8181/ords/apex_admin", content);
+            Assert.Contains("apex_url_tested=http://localhost:8181/ords/apex", content);
             Assert.Contains("ords_http_status_code=200", content);
             Assert.Contains("apex_http_status_code=302", content);
             Assert.Contains("apex_media_found=True", content);

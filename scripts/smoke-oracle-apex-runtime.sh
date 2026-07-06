@@ -114,7 +114,7 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do
 done
 
 printf '[smoke] Checking APEX login URL...\n'
-apex_http_code=$(curl -k -L -s -o /dev/null -w '%{http_code}' http://localhost:8181/ords/apex_admin || true)
+apex_http_code=$(curl -k -L -s -o /dev/null -w '%{http_code}' http://localhost:8181/ords/apex || true)
 if [[ "$apex_http_code" != "200" && "$apex_http_code" != "301" && "$apex_http_code" != "302" && "$apex_http_code" != "303" ]]; then
   printf '[smoke] APEX login URL failed. HTTP code: %s\n' "$apex_http_code" >&2
   exit 1

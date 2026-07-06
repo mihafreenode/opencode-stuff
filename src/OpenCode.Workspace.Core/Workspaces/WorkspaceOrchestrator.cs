@@ -14,6 +14,9 @@ namespace OpenCode.Workspace.Core.Workspaces;
 /// </summary>
 public sealed class WorkspaceOrchestrator
 {
+    internal static TimeSpan OrdsRestartReadinessTimeout = TimeSpan.FromSeconds(60);
+    internal static TimeSpan OrdsRestartReadinessRetryDelay = TimeSpan.FromSeconds(2);
+
     private const string ManagedGitIgnoreStartMarker = "# OpenCode Stuff managed cache";
     private const string ManagedGitIgnoreEndMarker = "# End OpenCode Stuff managed cache";
     private static readonly TimeSpan HostPlatformDetectionTimeout = TimeSpan.FromSeconds(20);
@@ -1452,15 +1455,7 @@ public sealed class WorkspaceOrchestrator
         var restartResult = await _containerRuntime.RestartServiceAsync(snapshot.Paths, snapshot.Definition, OracleWorkspaceFamily.OracleOrdsServiceId, log, cancellationToken);
         EnsureSuccess(restartResult, "Oracle REST Data Services restart failed after gateway repair.");
 
-        var landingProbe = await ProbeWorkspaceRouteAsync(snapshot, "http://oracle-ords:8080/ords/_/landing", log, cancellationToken);
-        if (landingProbe.StatusCode != 200)
-        {
-            throw CreateOracleOrdsGatewayConfigurationException(
-                snapshot,
-                "Oracle REST Data Services landing endpoint is not reachable.",
-                $"GET http://oracle-ords:8080/ords/_/landing returned HTTP {landingProbe.StatusCode}.",
-                "Inspect the ORDS container logs and confirm ORDS started successfully before retrying.");
-        }
+        await WaitForOrdsLandingAfterRestartAsync(snapshot, log, cancellationToken);
 
         foreach (var route in new[] { "http://oracle-ords:8080/ords/apex", "http://oracle-ords:8080/ords/f?p=4550" })
         {
@@ -1476,6 +1471,37 @@ public sealed class WorkspaceOrchestrator
             "Oracle REST Data Services landing is healthy, but APEX runtime routing is still unavailable.",
             await BuildOracleOrdsGatewayFailureEvidenceAsync(snapshot, log, cancellationToken),
             "Re-run ORDS database installation after APEX is installed, or inspect ORDS gateway configuration for the APEX runtime routes.");
+    }
+
+    private async Task WaitForOrdsLandingAfterRestartAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+        WorkspaceHttpProbeResult? lastProbe = null;
+
+        while (DateTimeOffset.UtcNow - startedAt < OrdsRestartReadinessTimeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lastProbe = await ProbeWorkspaceRouteAsync(snapshot, "http://oracle-ords:8080/ords/_/landing", log, cancellationToken);
+            if (lastProbe.StatusCode == 200 || lastProbe.StatusCode == 302)
+            {
+                return;
+            }
+
+            var elapsedSeconds = (int)Math.Floor((DateTimeOffset.UtcNow - startedAt).TotalSeconds);
+            Log(log, "app", $"Waiting for Oracle REST Data Services to start after restart. elapsed_seconds={elapsedSeconds} status={lastProbe.StatusCode} error={lastProbe.Error}");
+            await Task.Delay(OrdsRestartReadinessRetryDelay, cancellationToken);
+        }
+
+        var composePsResult = await _containerRuntime.GetComposePsAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var ordsLogsResult = await _containerRuntime.GetServiceLogsAsync(snapshot.Paths, snapshot.Definition, OracleWorkspaceFamily.OracleOrdsServiceId, log, cancellationToken);
+        var elapsed = (int)Math.Round((DateTimeOffset.UtcNow - startedAt).TotalSeconds);
+        var logsTail = string.Join(" | ", ordsLogsResult.StandardOutputLines.Concat(ordsLogsResult.StandardErrorLines).TakeLast(12));
+        var evidence = $"elapsed_seconds={elapsed}; last_http_code={lastProbe?.StatusCode ?? 0}; last_curl_error={lastProbe?.Error ?? "missing"}; docker_compose_ps={string.Join(" | ", composePsResult.StandardOutputLines)}; ords_logs_tail={logsTail}";
+        throw CreateOracleOrdsGatewayConfigurationException(
+            snapshot,
+            "Oracle REST Data Services did not become reachable after gateway repair restart.",
+            evidence,
+            "Inspect docker compose ps and recent ORDS logs to determine why ORDS is still not listening after restart.");
     }
 
     private async Task<string> BuildOracleOrdsGatewayFailureEvidenceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
@@ -1514,7 +1540,7 @@ public sealed class WorkspaceOrchestrator
             }
         }
 
-        return new WorkspaceHttpProbeResult(statusCode, location, body);
+        return new WorkspaceHttpProbeResult(statusCode, location, body, result.StandardError.Trim());
     }
 
     private static WorkspaceProvisioningException CreateOracleOrdsGatewayConfigurationException(WorkspaceSnapshot snapshot, string reason, string evidence, string recommendedAction)
@@ -1542,7 +1568,7 @@ public sealed class WorkspaceOrchestrator
         return new WorkspaceProvisioningException(healthRecord, $"Workspace provisioning stopped.{Environment.NewLine}Stage: Oracle: Configure ORDS{Environment.NewLine}Reason: {reason}{Environment.NewLine}Evidence: {evidence}{Environment.NewLine}Recommended action: {recommendedAction}{Environment.NewLine}Confidence: high");
     }
 
-    private sealed record WorkspaceHttpProbeResult(int StatusCode, string Location, string Body);
+    private sealed record WorkspaceHttpProbeResult(int StatusCode, string Location, string Body, string Error);
 
     private async Task LogWorkspaceRuntimeDiagnosticsAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
