@@ -390,6 +390,16 @@ public static class WorkspaceReadinessEngine
 
     private static bool NeedsRebuild(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health)
     {
+        if (snapshot is not null
+            && snapshot.RuntimeState == WorkspaceRuntimeState.Running
+            && snapshot.LocalRuntimeState is not null
+            && snapshot.AppliedState is not null
+            && !snapshot.UpdateRequired
+            && snapshot.Record.LastOperationSucceeded == true)
+        {
+            return false;
+        }
+
         if (string.Equals(snapshot?.Record.LastProvisioningHealth?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal))
         {
             return true;

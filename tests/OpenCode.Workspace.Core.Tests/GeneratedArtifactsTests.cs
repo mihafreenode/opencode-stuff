@@ -229,6 +229,43 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void WorkspaceContentGenerator_GeneratesWorkspaceServicesGuide()
+    {
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var resolved = resolver.Resolve(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+        });
+
+        var files = new WorkspaceContentGenerator().Generate(resolved);
+
+        Assert.True(files.TryGetValue(Path.Combine("docs", "workspace-services.md"), out var guide));
+        Assert.Contains("# Available Services", guide, StringComparison.Ordinal);
+        Assert.Contains("APEX Builder", guide, StringComparison.Ordinal);
+        Assert.Contains("ORDS Landing", guide, StringComparison.Ordinal);
+        Assert.Contains("SQLcl", guide, StringComparison.Ordinal);
+        Assert.Contains("Development Shell", guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspaceServiceCatalog_GenericWorkspace_ExposesTerminalFolderAndCli()
+    {
+        var services = WorkspaceServiceCatalog.Build(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "general-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core" },
+            Services = new List<string>(),
+        }, workspaceRootPath: @"C:\workspaces\general-demo");
+
+        Assert.Contains(services, item => item.Name == "Development Shell");
+        Assert.Contains(services, item => item.Name == "Repository Folder");
+        Assert.Contains(services, item => item.Name == "OpenCode CLI");
+    }
+
+    [Fact]
     public void ProvisioningScriptGenerator_OracleApexWorkspace_ReportsMissingOrdsConfigClearly()
     {
         var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);

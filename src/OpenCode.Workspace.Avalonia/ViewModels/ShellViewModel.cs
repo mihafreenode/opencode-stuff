@@ -87,6 +87,8 @@ public sealed class ShellViewModel : ObservableObject
         {
             if (SetProperty(ref _currentPage, value))
             {
+                RaisePropertyChanged(nameof(IsWorkspacePageSelected));
+                RaisePropertyChanged(nameof(IsStandardPageSelected));
                 RefreshStatusBar();
             }
         }
@@ -112,6 +114,8 @@ public sealed class ShellViewModel : ObservableObject
     public string StatusBarBranch => _workspacesPage.SelectedWorkspace is null ? "Branch unknown" : $"Branch: {_workspacesPage.SelectedWorkspace.CurrentBranch}";
     public string StatusBarRuntime => _workspacesPage.SelectedWorkspace is null || string.Equals(_workspacesPage.SelectedWorkspace.RuntimeTarget, "Unavailable", StringComparison.Ordinal) ? "Runtime target unknown" : $"Runtime: {_workspacesPage.SelectedWorkspace.RuntimeTarget}";
     public string StatusBarProtection => _workspacesPage.SelectedWorkspace is null ? "Protection unknown" : $"Protection: {_workspacesPage.SelectedWorkspace.ProtectionLabel}";
+    public bool IsWorkspacePageSelected => ReferenceEquals(CurrentPage, _workspacesPage);
+    public bool IsStandardPageSelected => !IsWorkspacePageSelected;
 
     public static ShellViewModel Create(
         IDesktopShellService desktopShellService,
@@ -173,7 +177,22 @@ public sealed class ShellViewModel : ObservableObject
     }
 
     private NavigationItemViewModel CreateNavigationItem(PageViewModel page)
-        => new(page.Title, page, new RelayCommand(() => CurrentPage = page));
+        => new(page.Title, ResolveNavigationIconGlyph(page.Title), page, new RelayCommand(() => CurrentPage = page));
+
+    private static string ResolveNavigationIconGlyph(string title)
+        => title switch
+        {
+            "Workspaces" => "\uE8A5",
+            "Runtime" => "\uE945",
+            "Remote Targets" => "\uE774",
+            "Templates" => "\uE8F1",
+            "Timeline" => "\uE823",
+            "Transcripts" => "\uE70B",
+            "Diagnostics" => "\uE9D9",
+            "Documentation" => "\uE8A5",
+            "Settings" => "\uE713",
+            _ => "\uE10F",
+        };
 
     private async Task TroubleshootWorkspaceFromOverviewAsync(string workspacePath)
     {

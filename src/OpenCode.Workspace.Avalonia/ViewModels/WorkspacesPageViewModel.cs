@@ -44,6 +44,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private readonly DispatcherTimer _operationLogFlushTimer;
     private TranscriptBuffer? _operationTranscriptBuffer;
     private bool _isOperationLogVisible;
+    private bool _operationLogVisibilityOverriddenByUser;
     private IWorkspaceInteractionService? _interactionService;
     private bool _isWorkspaceActionRunning;
     private string _workspaceActionStatusMessage = string.Empty;
@@ -80,6 +81,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     public ObservableCollection<WorkspaceSummaryViewModel> Workspaces { get; } = [];
+    public ObservableCollection<WorkspaceRecentActivityItemViewModel> RecentActivity { get; } = [];
     public AsyncRelayCommand CreateWorkspaceCommand { get; }
     public AsyncRelayCommand OpenExistingRepositoryCommand { get; }
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
@@ -184,10 +186,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public string OperationLogToggleLabel => IsOperationLogVisible ? "Hide Operation Log" : "Show Operation Log";
 
     public bool HasWorkspaces => Workspaces.Count > 0;
+    public bool HasSelectedWorkspace => SelectedWorkspace is not null;
     public bool ShowEmptyState => !IsLoading && !HasLoadError && !HasWorkspaces;
     public bool ShowLoadingState => IsLoading;
     public bool ShowErrorState => HasLoadError && !HasWorkspaces;
     public bool ShowOperationLogPanel => HasOperationLog && IsOperationLogVisible;
+    public bool HasRecentActivity => RecentActivity.Count > 0;
+    public string SelectedWorkspaceTypeLabel => SelectedWorkspace?.WorkspaceTypeLabel ?? "Workspace";
+    public string SelectedWorkspaceStateLabel => SelectedWorkspace?.RuntimeStatusLabel ?? "Unavailable";
     public string LoadingTitle
     {
         get => _loadingTitle;
@@ -246,6 +252,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
                 ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
                 RetryWorkspaceCommand.RaiseCanExecuteChanged();
+                RaisePropertyChanged(nameof(HasSelectedWorkspace));
+                RaisePropertyChanged(nameof(SelectedWorkspaceTypeLabel));
+                RaisePropertyChanged(nameof(SelectedWorkspaceStateLabel));
             }
         }
     }
@@ -1204,6 +1213,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         _clipboardService = clipboardService;
         CopyOperationLogCommand.RaiseCanExecuteChanged();
+        UpdateDetailPanel();
     }
 
     public void SetInteractionService(IWorkspaceInteractionService interactionService)
@@ -1252,6 +1262,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private void ToggleOperationLogVisibility()
     {
+        _operationLogVisibilityOverriddenByUser = true;
         IsOperationLogVisible = !IsOperationLogVisible;
     }
 
@@ -1466,6 +1477,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             UpdateDetailPanel();
         }
+
+        UpdateOperationLogAutoVisibility();
     }
 
     private void TrimVisibleOperationLogTail()
@@ -1565,11 +1578,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private void UpdateDetailPanel()
     {
         DetailItems.Clear();
+        RecentActivity.Clear();
+        RaisePropertyChanged(nameof(HasRecentActivity));
 
         if (SelectedWorkspace is null)
         {
             DetailPrimaryAction = null;
             DetailActions.Clear();
+            DetailAvailableServices.Clear();
             DetailServices.Clear();
             DetailAdvancedActions.Clear();
             DetailRecommendation = string.Empty;
@@ -1589,6 +1605,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 ? SelectedWorkspace.Record.LastOperationResult!
             : presentation.Summary;
         DetailRecommendation = presentation.Recommendation;
+        DetailAvailableServices.Clear();
         DetailServices.Clear();
         var readiness = SelectedWorkspace.Readiness;
         if (readiness is null)
@@ -1618,7 +1635,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             }
         }
 
+        foreach (var service in SelectedWorkspace.Snapshot?.AvailableServices ?? [])
+        {
+            DetailAvailableServices.Add(BuildAvailableServiceRow(service, SelectedWorkspace));
+        }
+
+        PopulateRecentActivity(SelectedWorkspace, presentation);
         ApplyDetailPresentation(presentation);
+        UpdateOperationLogAutoVisibility();
     }
 
     private static string BuildMissingSnapshotTechnicalEvidence(WorkspaceSummaryViewModel workspace)
@@ -1626,6 +1650,143 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             $"Root path: {workspace.RootPath}",
             $"Repository path: {workspace.RepositoryPath}",
             workspace.HasError ? $"Load failure: {workspace.ErrorMessage}" : string.Empty);
+
+    private void PopulateRecentActivity(WorkspaceSummaryViewModel workspace, WorkspacePresentation presentation)
+    {
+        RecentActivity.Clear();
+
+        foreach (var item in BuildRecentActivityItems(workspace, presentation))
+        {
+            RecentActivity.Add(item);
+        }
+
+        RaisePropertyChanged(nameof(HasRecentActivity));
+    }
+
+    private IReadOnlyList<WorkspaceRecentActivityItemViewModel> BuildRecentActivityItems(WorkspaceSummaryViewModel workspace, WorkspacePresentation presentation)
+    {
+        var items = new List<WorkspaceRecentActivityItemViewModel>();
+        var transcript = LastOperationTranscript is not null
+            && string.Equals(LastOperationTranscript.WorkspaceName, workspace.Name, StringComparison.Ordinal)
+            ? LastOperationTranscript
+            : null;
+
+        if (transcript?.Lines.Count > 0)
+        {
+            foreach (var line in transcript.Lines
+                         .Where(line => line.Kind is OperationTranscriptLineKind.Result or OperationTranscriptLineKind.Status or OperationTranscriptLineKind.Comment)
+                         .Reverse()
+                         .Take(4)
+                         .Reverse())
+            {
+                items.Add(new WorkspaceRecentActivityItemViewModel(
+                    SimplifyActivityTitle(line.Text, transcript.OperationName),
+                    line.Kind == OperationTranscriptLineKind.Result ? string.Empty : line.Text,
+                    FormatRelativeTimestamp(line.Timestamp)));
+            }
+        }
+
+        if (items.Count == 0 && !string.IsNullOrWhiteSpace(workspace.Record.LastOperationName) && workspace.Record.LastOperationUtc is not null)
+        {
+            items.Add(new WorkspaceRecentActivityItemViewModel(
+                SimplifyActivityTitle(workspace.Record.LastOperationName!, workspace.Record.LastOperationName!),
+                workspace.Record.LastOperationResult ?? presentation.Summary,
+                FormatRelativeTimestamp(workspace.Record.LastOperationUtc.Value)));
+        }
+
+        if (workspace.Record.LastOpenedUtc != default)
+        {
+            items.Add(new WorkspaceRecentActivityItemViewModel("Workspace opened", string.Empty, FormatRelativeTimestamp(workspace.Record.LastOpenedUtc)));
+        }
+
+        if (workspace.Record.LastPreparedUtc is not null)
+        {
+            items.Add(new WorkspaceRecentActivityItemViewModel("Provisioning completed", string.Empty, FormatRelativeTimestamp(workspace.Record.LastPreparedUtc.Value)));
+        }
+
+        return items
+            .DistinctBy(item => item.Title + "|" + item.TimeLabel)
+            .Take(4)
+            .ToList();
+    }
+
+    private void UpdateOperationLogAutoVisibility()
+    {
+        if (!HasOperationLog)
+        {
+            _operationLogVisibilityOverriddenByUser = false;
+            IsOperationLogVisible = false;
+            return;
+        }
+
+        if (HasActiveWorkspaceOperation)
+        {
+            _operationLogVisibilityOverriddenByUser = false;
+            IsOperationLogVisible = true;
+            return;
+        }
+
+        if (!_operationLogVisibilityOverriddenByUser && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Ready)
+        {
+            IsOperationLogVisible = false;
+        }
+    }
+
+    private static string SimplifyActivityTitle(string text, string fallbackOperationName)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return fallbackOperationName;
+        }
+
+        if (text.Equals("Cancelled.", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{fallbackOperationName} cancelled";
+        }
+
+        if (text.Equals("Failed.", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{fallbackOperationName} failed";
+        }
+
+        if (text.Contains("ready", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Workspace ready";
+        }
+
+        if (text.Contains("attach", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Terminal attached";
+        }
+
+        if (text.Contains("provision", StringComparison.OrdinalIgnoreCase) || text.Contains("validating workspace", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Provisioning completed";
+        }
+
+        return text.Length <= 48 ? text : fallbackOperationName;
+    }
+
+    private static string FormatRelativeTimestamp(DateTimeOffset timestamp)
+    {
+        var elapsed = DateTimeOffset.UtcNow - timestamp;
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return "Just now";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            return $"{Math.Max(1, (int)elapsed.TotalMinutes)} min ago";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            return $"{Math.Max(1, (int)elapsed.TotalHours)} hr ago";
+        }
+
+        return timestamp.ToLocalTime().ToString("d MMM HH:mm", CultureInfo.InvariantCulture);
+    }
 
     private static string BuildWorkspaceSection(WorkspacePresentation presentation)
         => JoinSectionLines(
@@ -1838,6 +1999,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         {
             DetailPrimaryAction = null;
             DetailActions.Clear();
+            DetailAvailableServices.Clear();
             DetailServices.Clear();
             DetailVisibleActions.Clear();
             DetailAdvancedActions.Clear();
@@ -1861,6 +2023,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private WorkspacePresentation BuildWorkspacePresentation(WorkspaceSummaryViewModel workspace, bool useWorkspaceScopedCommands)
     {
+        var effectiveReadiness = BuildEffectiveReadiness(workspace);
         var failureGuidance = TryBuildFailureGuidance(workspace);
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var openDevelopmentShellAction = CreatePresentationAction(workspace, "Open Development Shell", BuildOpenDevelopmentShellDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
@@ -1869,9 +2032,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
         var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
         var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
-        var advancedActions = new List<ActionItemViewModel>
+        var shouldShowRebuildRuntime = effectiveReadiness?.Status != WorkspaceReadinessStatus.Ready
+            || workspace.Record.LastProvisioningHealth is not null
+            || workspace.Record.LastOperationSucceeded == false;
+        var advancedActions = new List<ActionItemViewModel>();
+        if (shouldShowRebuildRuntime)
         {
-            rebuildRuntimeAction,
+            advancedActions.Add(rebuildRuntimeAction);
+        }
+
+        advancedActions.AddRange(
+        [
             investigateProblemAction,
             CreatePresentationAction(workspace, "Start Only", BuildStartDescription(workspace), CanStartWorkspace(workspace), GetStartDisabledReason(workspace), StartSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Attach Only", BuildAttachDescription(workspace), CanAttachWorkspace(workspace), GetAttachDisabledReason(workspace), AttachSelectedWorkspaceAsync, useWorkspaceScopedCommands),
@@ -1880,7 +2051,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Publish", BuildPublishDescription(workspace), CanPublishWorkspace(workspace), GetPublishDisabledReason(workspace), PublishWorkspaceAsync, useWorkspaceScopedCommands),
             removeAction,
-        };
+        ]);
 
         if (failureGuidance?.CanRetry == true)
         {
@@ -1933,7 +2104,59 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 OpenFolder = openFolderAction,
                 AdvancedActions = advancedActions,
             },
-            BuildEffectiveReadiness(workspace));
+            effectiveReadiness);
+    }
+
+    private AvailableWorkspaceServiceRowViewModel BuildAvailableServiceRow(WorkspaceServiceInfo service, WorkspaceSummaryViewModel workspace)
+    {
+        var status = workspace.Health?.Services.FirstOrDefault(item => string.Equals(item.ServiceId, service.ServiceId, StringComparison.OrdinalIgnoreCase))?.StatusLabel
+            ?? (workspace.Readiness?.Status == WorkspaceReadinessStatus.Ready ? "Ready" : string.Empty);
+        var primaryCommand = service.Commands.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Command))?.Command ?? string.Empty;
+        var openOrCommand = !string.IsNullOrWhiteSpace(service.HostUrl)
+            ? service.HostUrl
+            : string.IsNullOrWhiteSpace(primaryCommand)
+                ? "Open Workspace"
+                : primaryCommand;
+        var docsPath = string.IsNullOrWhiteSpace(service.DocsPath)
+            ? string.Empty
+            : Path.Combine(workspace.RootPath, service.DocsPath.Replace('/', Path.DirectorySeparatorChar));
+
+        AsyncRelayCommand? openServiceCommand = null;
+        if (string.Equals(service.ServiceId, "development-shell", StringComparison.OrdinalIgnoreCase))
+        {
+            openServiceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync);
+        }
+        else if (!string.IsNullOrWhiteSpace(service.HostUrl))
+        {
+            openServiceCommand = new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(service.HostUrl));
+        }
+
+        AsyncRelayCommand? copyUrlCommand = !string.IsNullOrWhiteSpace(service.HostUrl) && _clipboardService is not null
+            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(service.HostUrl))
+            : null;
+        AsyncRelayCommand? copyCredentialsCommand = !string.IsNullOrWhiteSpace(service.Credentials) && _clipboardService is not null
+            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(service.Credentials))
+            : null;
+        AsyncRelayCommand? copyCommandCommand = !string.IsNullOrWhiteSpace(primaryCommand) && _clipboardService is not null
+            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(primaryCommand))
+            : null;
+        AsyncRelayCommand? openDocsCommand = !string.IsNullOrWhiteSpace(docsPath)
+            ? new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(docsPath))
+            : null;
+
+        return new AvailableWorkspaceServiceRowViewModel(
+            service.Name,
+            service.Category,
+            service.Description,
+            status,
+            openOrCommand,
+            service.Credentials,
+            docsPath,
+            openServiceCommand,
+            copyUrlCommand,
+            copyCredentialsCommand,
+            copyCommandCommand,
+            openDocsCommand);
     }
 
     private WorkspaceReadinessSnapshot? BuildEffectiveReadiness(WorkspaceSummaryViewModel workspace)

@@ -90,6 +90,7 @@ public sealed class WorkspaceContentGenerator
         files["AGENTS.md"] = BuildAgentsCapabilityGuidance(workspace);
         files[Path.Combine("docs", "team-onboarding.md")] = WithGeneratedHeader(BuildTeamOnboardingDoc(workspace));
         files[Path.Combine("docs", "troubleshooting", "workspace-sessions.md")] = WithGeneratedHeader(BuildWorkspaceSessionsTroubleshootingDoc(workspace));
+        files[Path.Combine("docs", "workspace-services.md")] = WithGeneratedHeader(WorkspaceServiceCatalog.BuildMarkdown(workspace.Definition, runtimeState));
 
         if (HasKnowledgePack(workspace, "oracle-documentation-pack") || IsOracleDemoWorkspace(definition))
         {

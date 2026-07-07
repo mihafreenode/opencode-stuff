@@ -2448,6 +2448,56 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ReadyWorkspace_ShowsAvailableServicesAndHidesRebuildRuntime()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "Development Shell");
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "Repository Folder");
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "OpenCode CLI");
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.DoesNotContain(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
+    }
+
+    [Fact]
+    public async Task OracleReadyWorkspace_ShowsApexOrdsAndSqlclServices()
+    {
+        var baseSnapshot = CreateSnapshot("oracle-apexlang-demo");
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+        };
+        var snapshot = WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = baseSnapshot.Record,
+            Definition = definition,
+            Paths = baseSnapshot.Paths,
+            ConfigurationPath = baseSnapshot.ConfigurationPath,
+            RuntimeState = baseSnapshot.RuntimeState,
+            Safety = baseSnapshot.Safety,
+            Session = baseSnapshot.Session,
+            AppliedState = baseSnapshot.AppliedState,
+            LocalRuntimeState = baseSnapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = baseSnapshot.ResolvedRuntimePlan,
+            UpdateRequired = baseSnapshot.UpdateRequired,
+            Health = baseSnapshot.Health,
+            Readiness = baseSnapshot.Readiness,
+            AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
+        });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+
+        await page.LoadAsync();
+
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "APEX Builder");
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "ORDS Landing");
+        Assert.Contains(page.DetailAvailableServices, item => item.Service == "SQLcl");
+    }
+
+    [Fact]
     public async Task ReadinessPresentation_UsesSharedLabel_ForPartiallyReadyWorkspace()
     {
         var snapshot = WithReadiness(
@@ -4190,6 +4240,12 @@ public sealed class ShellViewModelTests
                 PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
                 Summary = includeRuntimeState && !updateRequired ? "Workspace is ready." : "Open Workspace can prepare and open this workspace.",
             },
+            AvailableServices = WorkspaceServiceCatalog.Build(new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = name, Image = "ubuntu:24.04" },
+                Features = ["core"],
+                Services = [],
+            }, includeRuntimeState ? new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" } : null, root),
         };
 
         return WithComputedReadiness(snapshot);
@@ -4232,6 +4288,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = health,
             Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
         };
         return WithComputedReadiness(updated);
     }
@@ -4252,6 +4309,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
             Readiness = readiness,
+            AvailableServices = snapshot.AvailableServices,
         };
 
     private static WorkspaceHealthSnapshot CreateHealthSnapshot(
@@ -4298,6 +4356,18 @@ public sealed class ShellViewModelTests
     private static WorkspaceSnapshot CreateOracleSnapshot(string name, bool oracleNoticeShown)
     {
         var snapshot = CreateSnapshot(name);
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = snapshot.Definition.Workspace,
+            Provider = snapshot.Definition.Provider,
+            Runtime = snapshot.Definition.Runtime,
+            Features = [OracleWorkspaceFamily.OracleBaseFeatureId],
+            Services = [OracleWorkspaceFamily.OracleDatabaseServiceId],
+            Skills = snapshot.Definition.Skills,
+            Mcp = snapshot.Definition.Mcp,
+            Agent = snapshot.Definition.Agent,
+            Terminal = snapshot.Definition.Terminal,
+        };
         return WithComputedReadiness(new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord
@@ -4320,18 +4390,7 @@ public sealed class ShellViewModelTests
                 LastOperationSucceeded = snapshot.Record.LastOperationSucceeded,
                 LastOperationUtc = snapshot.Record.LastOperationUtc,
             },
-            Definition = new WorkspaceDefinition
-            {
-                Workspace = snapshot.Definition.Workspace,
-                Provider = snapshot.Definition.Provider,
-                Runtime = snapshot.Definition.Runtime,
-                Features = [OracleWorkspaceFamily.OracleBaseFeatureId],
-                Services = [OracleWorkspaceFamily.OracleDatabaseServiceId],
-                Skills = snapshot.Definition.Skills,
-                Mcp = snapshot.Definition.Mcp,
-                Agent = snapshot.Definition.Agent,
-                Terminal = snapshot.Definition.Terminal,
-            },
+            Definition = definition,
             Paths = snapshot.Paths,
             ConfigurationPath = snapshot.ConfigurationPath,
             RuntimeState = snapshot.RuntimeState,
@@ -4343,6 +4402,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
             Readiness = snapshot.Readiness,
+            AvailableServices = WorkspaceServiceCatalog.Build(definition, snapshot.LocalRuntimeState, snapshot.Paths.RootPath),
         });
     }
 
@@ -4382,6 +4442,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
             Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
         });
 
     private static WorkspaceSnapshot WithHealthServices(WorkspaceSnapshot snapshot, params WorkspaceServiceHealthSnapshot[] services)
@@ -4409,6 +4470,7 @@ public sealed class ShellViewModelTests
                 Services = services,
             },
             Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
         });
 
     private static WorkspaceSnapshot WithComputedReadiness(WorkspaceSnapshot snapshot)
@@ -4427,6 +4489,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = snapshot.Health }),
+            AvailableServices = snapshot.AvailableServices,
         };
 
     private sealed class FakeDesktopShellService : IDesktopShellService

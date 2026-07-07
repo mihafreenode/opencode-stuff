@@ -129,6 +129,62 @@ public sealed class WorkspaceReadinessEngineTests
         Assert.Contains(readiness.AttentionItems, item => item.Scope == WorkspaceAttentionScope.DevelopmentEnvironment);
     }
 
+    [Fact]
+    public void Build_ReadyWorkspace_IgnoresStaleCleanupRepairRecommendation()
+    {
+        var original = CreateSnapshot(
+            runtimeState: WorkspaceRuntimeState.Running,
+            localRuntimeState: CreateRuntimeState(),
+            appliedState: CreateAppliedState(),
+            provisioningHealth: new WorkspaceProvisioningHealthRecord
+            {
+                Repairability = WorkspaceRepairability.CleanupRepair.ToString(),
+                RecommendedAction = "Rebuild Runtime.",
+            });
+        var snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = original.Record.Name,
+                RootPath = original.Record.RootPath,
+                RepositoryPath = original.Record.RepositoryPath,
+                CreatedUtc = original.Record.CreatedUtc,
+                LastOpenedUtc = original.Record.LastOpenedUtc,
+                LastProvisioningHealth = original.Record.LastProvisioningHealth,
+                LastOperationName = "Open Workspace",
+                LastOperationSucceeded = true,
+            },
+            Definition = original.Definition,
+            Paths = original.Paths,
+            ConfigurationPath = original.ConfigurationPath,
+            RuntimeState = original.RuntimeState,
+            Safety = original.Safety,
+            Session = original.Session,
+            AppliedState = original.AppliedState,
+            LocalRuntimeState = original.LocalRuntimeState,
+            ResolvedRuntimePlan = original.ResolvedRuntimePlan,
+            UpdateRequired = original.UpdateRequired,
+            Health = original.Health,
+        };
+        var health = CreateHealth(
+            providers:
+            [
+                new WorkspaceProviderHealthSnapshot
+                {
+                    ProviderKey = "runtime",
+                    DisplayName = "Runtime",
+                    Status = WorkspaceHealthStatus.Healthy,
+                    RecommendedAction = "Open Workspace.",
+                },
+            ]);
+
+        var readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = health });
+
+        Assert.Equal(WorkspaceReadinessStatus.Ready, readiness.Status);
+        Assert.Equal(WorkspacePrimaryAction.OpenWorkspace, readiness.PrimaryAction);
+        Assert.False(readiness.CanRebuildRuntime);
+    }
+
     private static WorkspaceHealthSnapshot CreateHealth(
         IReadOnlyList<WorkspaceProviderHealthSnapshot>? providers = null,
         IReadOnlyList<WorkspaceServiceHealthSnapshot>? services = null,

@@ -172,6 +172,7 @@ public sealed class WorkspaceSnapshot
     public bool UpdateRequired { get; init; }
     public WorkspaceHealthSnapshot Health { get; init; } = new();
     public WorkspaceReadinessSnapshot Readiness { get; init; } = new();
+    public IReadOnlyList<WorkspaceServiceInfo> AvailableServices { get; init; } = Array.Empty<WorkspaceServiceInfo>();
 }
 
 public sealed class WorkspaceSessionSnapshot

@@ -68,6 +68,13 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             : Snapshot.Safety.AdvancedGit.CurrentBranch;
     public string Services => IsLoading ? "Loading details..." : !HasSnapshot ? "Unavailable" : Snapshot!.Definition.Services.Count == 0 ? "No services" : string.Join(", ", Snapshot.Definition.Services);
     public string Features => IsLoading ? "Loading details..." : !HasSnapshot ? "Unavailable" : Snapshot!.Definition.Features.Count == 0 ? "No features" : string.Join(", ", Snapshot.Definition.Features);
+    public string WorkspaceTypeLabel => IsLoading
+        ? "Loading workspace type..."
+        : !HasSnapshot
+        ? "Workspace"
+        : FormatWorkspaceTypeLabel(Snapshot!.Definition);
+    public IReadOnlyList<string> ServiceDisplayItems => IsLoading ? [] : BuildServiceDisplayItems();
+    public bool HasServiceDisplayItems => ServiceDisplayItems.Count > 0;
     public string LastActivity => IsLoading
         ? string.IsNullOrWhiteSpace(Item.LoadingStatusMessage) ? "Loading details..." : Item.LoadingStatusMessage
         : HasError
@@ -238,5 +245,51 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             WorkspaceHealthStatus.Provisioning => "Provisioning",
             WorkspaceHealthStatus.Investigating => "Investigating",
             _ => "Healthy",
+        };
+
+    private static string FormatWorkspaceTypeLabel(WorkspaceDefinition definition)
+        => OracleWorkspaceFamily.Detect(definition) switch
+        {
+            OracleWorkspaceKind.ApexLang => "Oracle APEX Workspace",
+            OracleWorkspaceKind.Apex => "Oracle APEX Workspace",
+            OracleWorkspaceKind.PlSql => "Oracle Database Workspace",
+            _ when definition.Services.Contains("postgres", StringComparer.OrdinalIgnoreCase) => "Postgres Workspace",
+            _ when definition.Services.Contains("pgadmin", StringComparer.OrdinalIgnoreCase) => "Postgres Workspace",
+            _ when definition.Services.Count > 0 => "Service Workspace",
+            _ => "Workspace",
+        };
+
+    private IReadOnlyList<string> BuildServiceDisplayItems()
+    {
+        if (!HasSnapshot)
+        {
+            return [];
+        }
+
+        if (Snapshot!.AvailableServices.Count > 0)
+        {
+            return Snapshot.AvailableServices
+                .Select(service => service.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        return Snapshot.Definition.Services
+            .Where(service => !string.IsNullOrWhiteSpace(service))
+            .Select(FormatFallbackServiceName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string FormatFallbackServiceName(string serviceId)
+        => serviceId switch
+        {
+            "oracle-ords" => "REST APIs",
+            "oracle-demo" => "Oracle Database",
+            "postgres" => "Postgres",
+            "pgadmin" => "pgAdmin",
+            _ => string.Join(' ', serviceId.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(segment => char.ToUpperInvariant(segment[0]) + segment[1..]))
         };
 }

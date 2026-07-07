@@ -200,6 +200,7 @@ public sealed class WorkspaceOrchestrator
             UpdateRequired = updateRequired,
             Health = new WorkspaceHealthSnapshot(),
             Readiness = new WorkspaceReadinessSnapshot(),
+            AvailableServices = Array.Empty<WorkspaceServiceInfo>(),
         };
 
         if (!includeRuntimeInspection)
@@ -224,6 +225,7 @@ public sealed class WorkspaceOrchestrator
                 UpdateRequired = snapshot.UpdateRequired,
                 Health = partialHealth,
                 Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = partialHealth }),
+                AvailableServices = WorkspaceServiceCatalog.Build(snapshot.Definition, snapshot.LocalRuntimeState, snapshot.Paths.RootPath),
             };
             _workspaceAiRuntimeContextService.Write(partialSnapshot);
             return partialSnapshot;
@@ -272,6 +274,7 @@ public sealed class WorkspaceOrchestrator
             UpdateRequired = finalSnapshot.UpdateRequired,
             Health = completedHealth,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = finalSnapshot, Health = completedHealth }),
+            AvailableServices = WorkspaceServiceCatalog.Build(finalSnapshot.Definition, finalSnapshot.LocalRuntimeState, finalSnapshot.Paths.RootPath),
         };
         _workspaceAiRuntimeContextService.Write(completedSnapshot);
         return completedSnapshot;

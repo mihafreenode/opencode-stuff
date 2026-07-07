@@ -133,6 +133,7 @@ public sealed class DesktopShellService : IDesktopShellService
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
             Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
         };
     }
 
@@ -2011,6 +2012,7 @@ public sealed class DesktopShellService : IDesktopShellService
             UpdateRequired = source.UpdateRequired,
             Health = new WorkspaceHealthSnapshot(),
             Readiness = source.Readiness,
+            AvailableServices = source.AvailableServices,
         };
 
         var health = WorkspaceHealthEngine.Build(snapshot);
@@ -2030,6 +2032,7 @@ public sealed class DesktopShellService : IDesktopShellService
             UpdateRequired = snapshot.UpdateRequired,
             Health = health,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = health }),
+            AvailableServices = WorkspaceServiceCatalog.Build(snapshot),
         };
     }
 
