@@ -6,7 +6,7 @@
 
   <Style Selector="Border.panel">
     <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="12" />
     <Setter Property="Padding" Value="16" />
@@ -17,27 +17,65 @@
   </Style>
 
   <Style Selector="Border.panel-subtle">
-    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PanelMutedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="10" />
     <Setter Property="Padding" Value="12" />
   </Style>
 
   <Style Selector="Border.list-row">
-    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="CornerRadius" Value="12" />
     <Setter Property="Padding" Value="14" />
+  </Style>
+
+  <Style Selector="Border.list-row.workspace-list-card-selected">
+    <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.list-row.service-tile">
+    <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="Padding" Value="16" />
   </Style>
 
   <Style Selector="Border.status-chip">
     <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="999" />
     <Setter Property="Padding" Value="10,4" />
+  </Style>
+
+  <Style Selector="Border.status-chip.ready-chip">
+    <Setter Property="Background" Value="{DynamicResource SuccessSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="Border.status-chip.warning-chip">
+    <Setter Property="Background" Value="{DynamicResource WarningSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="Border.status-chip.unavailable-chip">
+    <Setter Property="Background" Value="{DynamicResource DangerSubtleBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.status-chip-text.ready-chip">
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.status-chip-text.warning-chip">
+    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.status-chip-text.unavailable-chip">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
   </Style>
 
   <Style Selector="Border.mini-chip">
@@ -49,9 +87,9 @@
   </Style>
 
   <Style Selector="Button">
-    <Setter Property="Background" Value="{DynamicResource PanelSubtleBrush}" />
+    <Setter Property="Background" Value="{DynamicResource PanelMutedBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Padding" Value="12,8" />
@@ -63,12 +101,28 @@
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
 
+  <Style Selector="Button.quiet-action">
+    <Setter Property="Background" Value="{DynamicResource PanelMutedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="Button.toolbar-action">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+  </Style>
+
   <Style Selector="Button.nav-item">
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="Padding" Value="10,10" />
     <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="Button.nav-item.nav-item-selected">
+    <Setter Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
 
   <Style Selector="Button.nav-item:pointerover">
@@ -76,8 +130,8 @@
   </Style>
 
   <Style Selector="Border.header-stat">
-    <Setter Property="Background" Value="#141A22" />
-    <Setter Property="BorderBrush" Value="#2B3442" />
+    <Setter Property="Background" Value="#171F29" />
+    <Setter Property="BorderBrush" Value="#2F3A49" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="10" />
     <Setter Property="Padding" Value="{DynamicResource HeaderStatPadding}" />
@@ -86,6 +140,7 @@
   <Style Selector="TextBlock.section-title">
     <Setter Property="FontSize" Value="20" />
     <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,2,0,2" />
   </Style>
 
   <Style Selector="ComboBox">

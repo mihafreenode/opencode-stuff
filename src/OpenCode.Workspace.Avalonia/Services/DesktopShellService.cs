@@ -355,7 +355,26 @@ public sealed class DesktopShellService : IDesktopShellService
                     }
 
                     case WorkspaceLaunchState.NeedsReset:
-                        throw new InvalidOperationException(BuildRebuildRuntimeMessage());
+                    {
+                        automaticRepairAttempted = true;
+                        await RunOpenPhaseAsync(
+                            snapshot,
+                            append,
+                            log,
+                            "Rebuilding runtime...",
+                            OpenWorkspaceProvisionTimeout,
+                            async token =>
+                            {
+                                await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, log, token);
+                                var resetSnapshot = await LoadSnapshotWithTimingAsync(rootPath, append, log, token, includeRuntimeInspection: true, includeSessionInspection: false, OpenWorkspaceLoadTimeout);
+                                await _workspaceOrchestrator.ProvisionAsync(resetSnapshot, log, token);
+                            },
+                            cancellationToken);
+                        snapshot = await ReloadSnapshotAfterOpenPhaseAsync(rootPath, snapshot, append, log, cancellationToken);
+                        await EnsureOpenManagedArtifactsReadyAsync(snapshot, append, log, cancellationToken, reportStatus: true);
+                        LogOpenTransition(log, snapshot, WorkspaceLaunchState.NeedsReset, WorkspaceLaunchState.Ready, phaseIndex);
+                        continue;
+                    }
 
                     case WorkspaceLaunchState.NeedsManual:
                         throw new InvalidOperationException("Open Workspace could not determine a safe automatic recovery path. Rebuild Runtime is the next clear step.");

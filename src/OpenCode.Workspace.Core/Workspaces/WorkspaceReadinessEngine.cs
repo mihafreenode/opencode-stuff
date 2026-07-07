@@ -77,7 +77,9 @@ public static class WorkspaceReadinessEngine
 
         if (status == WorkspaceReadinessStatus.NeedsRebuild)
         {
-            return WorkspacePrimaryAction.RebuildRuntime;
+            return canOpenWorkspace
+                ? WorkspacePrimaryAction.OpenWorkspace
+                : WorkspacePrimaryAction.RebuildRuntime;
         }
 
         if (hostBlocked)
@@ -300,7 +302,7 @@ public static class WorkspaceReadinessEngine
                 WorkspaceActivity.OpeningTerminal => "Opening terminal.",
                 _ => "Preparing workspace. This may take several minutes.",
             },
-            WorkspaceReadinessStatus.NeedsRebuild => "Open Workspace tried to repair the runtime automatically, but the workspace is still not ready. Rebuild Runtime will recreate managed containers and volumes while keeping your files.",
+            WorkspaceReadinessStatus.NeedsRebuild => "Open Workspace can safely rebuild the runtime automatically before opening this workspace.",
             _ => hostBlocked
                 ? "Host prerequisites are blocking this workspace. Run Diagnostics to continue."
                 : launchReadinessProblem

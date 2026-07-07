@@ -7,13 +7,18 @@
       <SolidColorBrush x:Key="ShellFooterBrush" Color="#FCFCFD" />
       <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
       <SolidColorBrush x:Key="PanelSubtleBrush" Color="#F8F9FB" />
+      <SolidColorBrush x:Key="PanelMutedBrush" Color="#FCFCFD" />
       <SolidColorBrush x:Key="BorderBrush" Color="#D0D5DD" />
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#E4E7EC" />
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1F2937" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#475467" />
       <SolidColorBrush x:Key="TextMutedBrush" Color="#667085" />
       <SolidColorBrush x:Key="AccentBrush" Color="#F28C28" />
       <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1F2937" />
       <SolidColorBrush x:Key="NavSelectedBrush" Color="#FFF3E4" />
+      <SolidColorBrush x:Key="SuccessSubtleBrush" Color="#ECFDF3" />
+      <SolidColorBrush x:Key="WarningSubtleBrush" Color="#FFF7E8" />
+      <SolidColorBrush x:Key="DangerSubtleBrush" Color="#FEF3F2" />
       <SolidColorBrush x:Key="SuccessBrush" Color="#1D7A3E" />
       <SolidColorBrush x:Key="WarningBrush" Color="#B7791F" />
       <SolidColorBrush x:Key="DangerBrush" Color="#B42318" />
@@ -26,13 +31,18 @@
       <SolidColorBrush x:Key="ShellFooterBrush" Color="#151B24" />
       <SolidColorBrush x:Key="PanelBrush" Color="#161D27" />
       <SolidColorBrush x:Key="PanelSubtleBrush" Color="#1B2430" />
+      <SolidColorBrush x:Key="PanelMutedBrush" Color="#202A36" />
       <SolidColorBrush x:Key="BorderBrush" Color="#2B3442" />
+      <SolidColorBrush x:Key="BorderSubtleBrush" Color="#364152" />
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F8FAFC" />
       <SolidColorBrush x:Key="TextSecondaryBrush" Color="#CBD5E1" />
       <SolidColorBrush x:Key="TextMutedBrush" Color="#94A3B8" />
       <SolidColorBrush x:Key="AccentBrush" Color="#F28C28" />
       <SolidColorBrush x:Key="AccentForegroundBrush" Color="#10161D" />
       <SolidColorBrush x:Key="NavSelectedBrush" Color="#2C2419" />
+      <SolidColorBrush x:Key="SuccessSubtleBrush" Color="#13271C" />
+      <SolidColorBrush x:Key="WarningSubtleBrush" Color="#312510" />
+      <SolidColorBrush x:Key="DangerSubtleBrush" Color="#33191A" />
       <SolidColorBrush x:Key="SuccessBrush" Color="#4ADE80" />
       <SolidColorBrush x:Key="WarningBrush" Color="#FBBF24" />
       <SolidColorBrush x:Key="DangerBrush" Color="#F87171" />

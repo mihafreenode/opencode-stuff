@@ -16,6 +16,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 {
     private const string DeleteWorkspaceFilesUnavailableMessage = "Delete workspace files is not available in this version. Use File Explorer or terminal after creating a backup.";
     private const int VisibleOperationLogLineLimit = 5000;
+    private const int OverviewTabIndex = 0;
+    private const int ProgressTabIndex = 1;
+    private const int OperationLogTabIndex = 2;
     private const int NormalOperationLogFlushBatchSize = 600;
     private static readonly TimeSpan NormalOperationLogFlushInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MediumOperationLogFlushInterval = TimeSpan.FromSeconds(2);
@@ -43,8 +46,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private readonly List<string> _visibleOperationLogLines = [];
     private readonly DispatcherTimer _operationLogFlushTimer;
     private TranscriptBuffer? _operationTranscriptBuffer;
-    private bool _isOperationLogVisible;
-    private bool _operationLogVisibilityOverriddenByUser;
+    private int _selectedWorkspaceTabIndex;
+    private bool _suppressWorkspaceTabSelectionTracking;
+    private bool _workspaceTabAutoSwitchedForOperation;
+    private bool _workspaceTabUserOverrodeDuringOperation;
+    private bool _hadActiveWorkspaceOperation;
     private IWorkspaceInteractionService? _interactionService;
     private bool _isWorkspaceActionRunning;
     private string _workspaceActionStatusMessage = string.Empty;
@@ -149,12 +155,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 RaisePropertyChanged(nameof(HasOperationLog));
                 RaisePropertyChanged(nameof(ShowOperationLogToggleButton));
+                RaisePropertyChanged(nameof(ShowOperationLogPanel));
                 CopyOperationLogCommand.RaiseCanExecuteChanged();
                 ClearOperationLogCommand.RaiseCanExecuteChanged();
-                if (HasOperationLog)
-                {
-                    IsOperationLogVisible = true;
-                }
             }
         }
     }
@@ -162,6 +165,23 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool HasOperationLog => !string.IsNullOrWhiteSpace(OperationLogText);
     public bool ShowOperationLogToggleButton => HasOperationLog;
     public bool IsBusyForWorkspaceActions => _isWorkspaceActionRunning || IsReprovisioning;
+    public int SelectedWorkspaceTabIndex
+    {
+        get => _selectedWorkspaceTabIndex;
+        set
+        {
+            if (SetProperty(ref _selectedWorkspaceTabIndex, value))
+            {
+                if (!_suppressWorkspaceTabSelectionTracking && _workspaceTabAutoSwitchedForOperation)
+                {
+                    _workspaceTabUserOverrodeDuringOperation = true;
+                }
+
+                RaisePropertyChanged(nameof(IsOperationLogVisible));
+                RaisePropertyChanged(nameof(ShowOperationLogPanel));
+            }
+        }
+    }
 
     public OperationTranscript? LastOperationTranscript
     {
@@ -169,19 +189,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         private set => SetProperty(ref _lastOperationTranscript, value);
     }
 
-    public bool IsOperationLogVisible
-    {
-        get => _isOperationLogVisible;
-        private set
-        {
-            if (SetProperty(ref _isOperationLogVisible, value))
-            {
-                RaisePropertyChanged(nameof(OperationLogToggleLabel));
-                RaisePropertyChanged(nameof(ShowOperationLogPanel));
-                RaisePropertyChanged(nameof(ShowOperationLogToggleButton));
-            }
-        }
-    }
+    public bool IsOperationLogVisible => SelectedWorkspaceTabIndex == OperationLogTabIndex;
 
     public string OperationLogToggleLabel => IsOperationLogVisible ? "Hide Operation Log" : "Show Operation Log";
 
@@ -194,6 +202,22 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool HasRecentActivity => RecentActivity.Count > 0;
     public string SelectedWorkspaceTypeLabel => SelectedWorkspace?.WorkspaceTypeLabel ?? "Workspace";
     public string SelectedWorkspaceStateLabel => SelectedWorkspace?.RuntimeStatusLabel ?? "Unavailable";
+    public bool IsSelectedWorkspacePreparing => HasSelectedWorkspace && (HasActiveWorkspaceOperation || SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Preparing);
+    public bool IsSelectedWorkspaceReady => HasSelectedWorkspace && !IsSelectedWorkspacePreparing && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Ready;
+    public bool IsSelectedWorkspaceNeedsRebuild => HasSelectedWorkspace && !IsSelectedWorkspacePreparing && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.NeedsRebuild;
+    public bool IsSelectedWorkspaceUnavailable => HasSelectedWorkspace
+        && !IsSelectedWorkspacePreparing
+        && (SelectedWorkspace?.Readiness is null || SelectedWorkspace.Readiness.Status == WorkspaceReadinessStatus.Unavailable);
+    public bool ShowHeroPrimaryAction => HasSelectedWorkspace && ShowDetailPrimaryAction;
+    public bool ShowMainAvailableServicesSection => HasDetailAvailableServices && !IsSelectedWorkspacePreparing;
+    public bool ShowMainRecentActivitySection => IsSelectedWorkspaceReady && HasRecentActivity;
+    public bool ShowMainQuickActionsSection => IsSelectedWorkspaceReady && HasDetailVisibleActions;
+    public bool ShowMainProgressSection => IsSelectedWorkspacePreparing;
+    public bool ShowMainOperationLogSection => IsSelectedWorkspacePreparing && ShowOperationLogPanel;
+    public bool ShowMainRecoverySection => IsSelectedWorkspaceNeedsRebuild && !string.IsNullOrWhiteSpace(DetailSummary);
+    public bool ShowMainTroubleshootingSection => IsSelectedWorkspaceUnavailable && HasDetailAdvancedActions;
+    public string WorkspaceProgressTitle => string.IsNullOrWhiteSpace(CurrentWorkspaceOperationName) ? "No active workspace operation" : CurrentWorkspaceOperationName;
+    public string WorkspaceProgressCurrentStep => string.IsNullOrWhiteSpace(CurrentWorkspaceOperationStatus) ? DetailSummary : CurrentWorkspaceOperationStatus;
     public string LoadingTitle
     {
         get => _loadingTitle;
@@ -255,6 +279,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 RaisePropertyChanged(nameof(HasSelectedWorkspace));
                 RaisePropertyChanged(nameof(SelectedWorkspaceTypeLabel));
                 RaisePropertyChanged(nameof(SelectedWorkspaceStateLabel));
+                _workspaceTabAutoSwitchedForOperation = false;
+                _workspaceTabUserOverrodeDuringOperation = false;
+                _hadActiveWorkspaceOperation = false;
+                SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
+                RaiseWorkspaceSectionPropertyChanges();
             }
         }
     }
@@ -1262,8 +1291,43 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private void ToggleOperationLogVisibility()
     {
-        _operationLogVisibilityOverriddenByUser = true;
-        IsOperationLogVisible = !IsOperationLogVisible;
+        SetSelectedWorkspaceTab(IsOperationLogVisible ? OverviewTabIndex : OperationLogTabIndex, markAsManual: true);
+    }
+
+    private void SetSelectedWorkspaceTab(int tabIndex, bool markAsManual)
+    {
+        _suppressWorkspaceTabSelectionTracking = !markAsManual;
+        try
+        {
+            SelectedWorkspaceTabIndex = tabIndex;
+        }
+        finally
+        {
+            _suppressWorkspaceTabSelectionTracking = false;
+        }
+    }
+
+    private void UpdateWorkspaceTabsForOperationState()
+    {
+        var hasActiveOperation = HasActiveWorkspaceOperation;
+        if (hasActiveOperation && !_hadActiveWorkspaceOperation)
+        {
+            _workspaceTabAutoSwitchedForOperation = true;
+            _workspaceTabUserOverrodeDuringOperation = false;
+            SetSelectedWorkspaceTab(ProgressTabIndex, markAsManual: false);
+        }
+        else if (!hasActiveOperation && _hadActiveWorkspaceOperation)
+        {
+            if (_workspaceTabAutoSwitchedForOperation && !_workspaceTabUserOverrodeDuringOperation)
+            {
+                SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
+            }
+
+            _workspaceTabAutoSwitchedForOperation = false;
+            _workspaceTabUserOverrodeDuringOperation = false;
+        }
+
+        _hadActiveWorkspaceOperation = hasActiveOperation;
     }
 
     public void AppendOperationTranscriptLine(OperationTranscriptLine line)
@@ -1479,6 +1543,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         UpdateOperationLogAutoVisibility();
+        RaiseWorkspaceSectionPropertyChanges();
     }
 
     private void TrimVisibleOperationLogTail()
@@ -1517,7 +1582,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         _visibleOperationTranscriptLines.Clear();
         _visibleOperationLogLines.Clear();
         OperationLogText = string.Empty;
-        IsOperationLogVisible = false;
+        if (SelectedWorkspaceTabIndex == OperationLogTabIndex)
+        {
+            SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
+        }
     }
 
     private static int DetermineOperationLogFlushBatchSize(int pendingLineCount)
@@ -1643,6 +1711,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         PopulateRecentActivity(SelectedWorkspace, presentation);
         ApplyDetailPresentation(presentation);
         UpdateOperationLogAutoVisibility();
+        RaiseWorkspaceSectionPropertyChanges();
     }
 
     private static string BuildMissingSnapshotTechnicalEvidence(WorkspaceSummaryViewModel workspace)
@@ -1714,22 +1783,34 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         if (!HasOperationLog)
         {
-            _operationLogVisibilityOverriddenByUser = false;
-            IsOperationLogVisible = false;
+            if (SelectedWorkspaceTabIndex == OperationLogTabIndex)
+            {
+                SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
+            }
+
             return;
         }
 
         if (HasActiveWorkspaceOperation)
         {
-            _operationLogVisibilityOverriddenByUser = false;
-            IsOperationLogVisible = true;
             return;
         }
+    }
 
-        if (!_operationLogVisibilityOverriddenByUser && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Ready)
-        {
-            IsOperationLogVisible = false;
-        }
+    private void RaiseWorkspaceSectionPropertyChanges()
+    {
+        RaisePropertyChanged(nameof(IsSelectedWorkspacePreparing));
+        RaisePropertyChanged(nameof(IsSelectedWorkspaceReady));
+        RaisePropertyChanged(nameof(IsSelectedWorkspaceNeedsRebuild));
+        RaisePropertyChanged(nameof(IsSelectedWorkspaceUnavailable));
+        RaisePropertyChanged(nameof(ShowHeroPrimaryAction));
+        RaisePropertyChanged(nameof(ShowMainAvailableServicesSection));
+        RaisePropertyChanged(nameof(ShowMainRecentActivitySection));
+        RaisePropertyChanged(nameof(ShowMainQuickActionsSection));
+        RaisePropertyChanged(nameof(ShowMainProgressSection));
+        RaisePropertyChanged(nameof(ShowMainOperationLogSection));
+        RaisePropertyChanged(nameof(ShowMainRecoverySection));
+        RaisePropertyChanged(nameof(ShowMainTroubleshootingSection));
     }
 
     private static string SimplifyActivityTitle(string text, string fallbackOperationName)
@@ -2109,8 +2190,21 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private AvailableWorkspaceServiceRowViewModel BuildAvailableServiceRow(WorkspaceServiceInfo service, WorkspaceSummaryViewModel workspace)
     {
-        var status = workspace.Health?.Services.FirstOrDefault(item => string.Equals(item.ServiceId, service.ServiceId, StringComparison.OrdinalIgnoreCase))?.StatusLabel
-            ?? (workspace.Readiness?.Status == WorkspaceReadinessStatus.Ready ? "Ready" : string.Empty);
+        var readinessStatus = workspace.Readiness?.Status;
+        var actionsEnabled = readinessStatus == WorkspaceReadinessStatus.Ready;
+        var status = workspace.Health?.Services.FirstOrDefault(item => string.Equals(item.ServiceId, service.ServiceId, StringComparison.OrdinalIgnoreCase))?.StatusLabel;
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            status = readinessStatus switch
+            {
+                WorkspaceReadinessStatus.Ready => "Ready",
+                WorkspaceReadinessStatus.NeedsRebuild => "Unavailable until rebuild",
+                WorkspaceReadinessStatus.Unavailable => "Unavailable",
+                WorkspaceReadinessStatus.Preparing => "Preparing",
+                _ => string.Empty,
+            };
+        }
+
         var primaryCommand = service.Commands.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Command))?.Command ?? string.Empty;
         var openOrCommand = !string.IsNullOrWhiteSpace(service.HostUrl)
             ? service.HostUrl
@@ -2149,6 +2243,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             service.Category,
             service.Description,
             status,
+            actionsEnabled,
             openOrCommand,
             service.Credentials,
             docsPath,
@@ -3385,6 +3480,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private void RaiseWorkspaceActionCommandStates()
     {
+        UpdateWorkspaceTabsForOperationState();
+        RaisePropertyChanged(nameof(WorkspaceProgressTitle));
+        RaisePropertyChanged(nameof(WorkspaceProgressCurrentStep));
         CreateWorkspaceCommand.RaiseCanExecuteChanged();
         OpenExistingRepositoryCommand.RaiseCanExecuteChanged();
         RefreshWorkspacesCommand.RaiseCanExecuteChanged();

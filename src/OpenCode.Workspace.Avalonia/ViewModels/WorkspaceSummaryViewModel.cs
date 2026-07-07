@@ -7,6 +7,7 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 
 public sealed class WorkspaceSummaryViewModel : ObservableObject
 {
+    private const int MaxServiceDisplayItemCount = 4;
     private string? _runtimeStatusLabelOverride;
     private string? _lastActivityOverride;
     private string? _failedOperationNameOverride;
@@ -40,8 +41,15 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         : !string.IsNullOrWhiteSpace(_runtimeStatusLabelOverride)
         ? _runtimeStatusLabelOverride!
         : Snapshot?.Readiness is not null
-        ? WorkspaceReadinessPresentationFormatter.FormatStatusLabel(Snapshot.Readiness, this)
+            ? WorkspaceReadinessPresentationFormatter.FormatStatusLabel(Snapshot.Readiness, this)
         : FormatHealthStatusLabel(Snapshot!.Health.OverallStatus);
+    public bool IsReadyStatus => RuntimeStatusLabel.Contains("Ready", StringComparison.OrdinalIgnoreCase);
+    public bool IsWarningStatus => RuntimeStatusLabel.Contains("Rebuild", StringComparison.OrdinalIgnoreCase)
+        || RuntimeStatusLabel.Contains("Update", StringComparison.OrdinalIgnoreCase)
+        || RuntimeStatusLabel.Contains("Attention", StringComparison.OrdinalIgnoreCase);
+    public bool IsUnavailableStatus => RuntimeStatusLabel.Contains("Unavailable", StringComparison.OrdinalIgnoreCase)
+        || RuntimeStatusLabel.Contains("Error", StringComparison.OrdinalIgnoreCase)
+        || RuntimeStatusLabel.Contains("Failed", StringComparison.OrdinalIgnoreCase);
     public string ProtectionLabel => IsLoading
         ? "Loading..."
         : HasError
@@ -225,6 +233,9 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     private void RaiseWorkspaceDisplayChanged()
     {
         RaisePropertyChanged(nameof(RuntimeStatusLabel));
+        RaisePropertyChanged(nameof(IsReadyStatus));
+        RaisePropertyChanged(nameof(IsWarningStatus));
+        RaisePropertyChanged(nameof(IsUnavailableStatus));
         RaisePropertyChanged(nameof(LastActivity));
         RaisePropertyChanged(nameof(Readiness));
         RaisePropertyChanged(nameof(ReadinessPrimaryActionLabel));
@@ -266,20 +277,33 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
             return [];
         }
 
+        List<string> items;
         if (Snapshot!.AvailableServices.Count > 0)
         {
-            return Snapshot.AvailableServices
+            items = Snapshot.AvailableServices
                 .Select(service => service.Name)
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
-        return Snapshot.Definition.Services
-            .Where(service => !string.IsNullOrWhiteSpace(service))
-            .Select(FormatFallbackServiceName)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        else
+        {
+            items = Snapshot.Definition.Services
+                .Where(service => !string.IsNullOrWhiteSpace(service))
+                .Select(FormatFallbackServiceName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        if (items.Count <= MaxServiceDisplayItemCount)
+        {
+            return items;
+        }
+
+        var visibleItems = items.Take(MaxServiceDisplayItemCount).ToList();
+        visibleItems.Add($"+ {items.Count - MaxServiceDisplayItemCount} more");
+        return visibleItems;
     }
 
     private static string FormatFallbackServiceName(string serviceId)
