@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
+using OpenCode.Workspace.Core.Knowledge;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
@@ -1409,6 +1410,85 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public async Task ProvisionAsync_WhenOptionalKnowledgePackFails_Continues()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var baseDefinition = CreateAnalizaDefinition();
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = baseDefinition.Workspace,
+                Provider = baseDefinition.Provider,
+                Runtime = baseDefinition.Runtime,
+                Features = baseDefinition.Features,
+                Services = baseDefinition.Services,
+                Skills = baseDefinition.Skills,
+                Mcp = baseDefinition.Mcp,
+                Terminal = baseDefinition.Terminal,
+                Agent = baseDefinition.Agent,
+                Oracle = baseDefinition.Oracle,
+                Analytics = baseDefinition.Analytics,
+                KnowledgePacks = [new WorkspaceKnowledgePackDefinition { Provider = "fake-provider" }],
+            };
+            var knowledgePackProvisioner = new KnowledgePackProvisioner([new FailingKnowledgePackProvider()]);
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime, knowledgePackProvisioner: knowledgePackProvisioner);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, definition);
+
+            await orchestrator.ProvisionAsync(snapshot);
+
+            var statePath = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "fake-provider", "state.json");
+            Assert.False(File.Exists(statePath));
+            var runtimeState = new WorkspaceRuntimeStateService().Read(snapshot.Paths.RuntimeStatePath);
+            Assert.NotNull(runtimeState?.LastSuccessfulProvision);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task ProvisionAsync_WhenRequiredKnowledgePackFails_Throws()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var baseDefinition = CreateAnalizaDefinition();
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = baseDefinition.Workspace,
+                Provider = baseDefinition.Provider,
+                Runtime = baseDefinition.Runtime,
+                Features = baseDefinition.Features,
+                Services = baseDefinition.Services,
+                Skills = baseDefinition.Skills,
+                Mcp = baseDefinition.Mcp,
+                Terminal = baseDefinition.Terminal,
+                Agent = baseDefinition.Agent,
+                Oracle = baseDefinition.Oracle,
+                Analytics = baseDefinition.Analytics,
+                KnowledgePacks = [new WorkspaceKnowledgePackDefinition { Provider = "fake-provider", Mode = WorkspaceKnowledgePackModes.Required }],
+            };
+            var knowledgePackProvisioner = new KnowledgePackProvisioner([new FailingKnowledgePackProvider()]);
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime, knowledgePackProvisioner: knowledgePackProvisioner);
+            var snapshot = orchestrator.CreateWorkspace(tempRoot, definition);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
+
+            Assert.Contains("Required host-side Knowledge Pack generation failed", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task LaunchAttachForRunningWorkspaceAsync_WhenProvisioningSucceeds_WritesRuntimeState()
     {
         var tempRoot = CreateTempRoot();
@@ -1716,7 +1796,7 @@ public sealed class WorkspaceOrchestratorTests
             new NoOpTerminalLauncher());
     }
 
-    private static WorkspaceOrchestrator CreateOrchestratorWithRuntimeAbstractions(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime, WorkspaceTimelineService? timelineService = null, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null, IOracleMediaLocator? oracleMediaLocator = null)
+    private static WorkspaceOrchestrator CreateOrchestratorWithRuntimeAbstractions(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime, WorkspaceTimelineService? timelineService = null, WorkspaceIgnorePolicyService? ignorePolicyService = null, ITerminalLauncher? terminalLauncher = null, IOracleMediaLocator? oracleMediaLocator = null, KnowledgePackProvisioner? knowledgePackProvisioner = null)
     {
         return new WorkspaceOrchestrator(
             new WorkspaceYamlService(),
@@ -1740,7 +1820,8 @@ public sealed class WorkspaceOrchestratorTests
             new FixedPlatformDetector(),
             new FixedRuntimeResolver(),
             terminalLauncher ?? new NoOpTerminalLauncher(),
-            oracleMediaLocator);
+            oracleMediaLocator,
+            knowledgePackProvisioner);
     }
 
     private static string CreateTempRoot() => Path.Combine(Path.GetTempPath(), $"opencode-workspace-manager-{Guid.NewGuid():N}");
@@ -2296,6 +2377,19 @@ public sealed class WorkspaceOrchestratorTests
             => ExportOpenCodeSessionAsyncFactory is not null
                 ? ExportOpenCodeSessionAsyncFactory(sessionId, cancellationToken)
                 : Task.FromResult(Success("docker exec opencode session export"));
+    }
+
+    private sealed class FailingKnowledgePackProvider : IKnowledgePackProvider
+    {
+        public string ProviderId => "fake-provider";
+
+        public string Version => "1";
+
+        public bool IsApplicable(WorkspaceDefinition definition, WorkspaceKnowledgePackDefinition configuration)
+            => true;
+
+        public Task<ProvisionedKnowledgePackContent> GenerateAsync(KnowledgePackContext context, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("knowledge pack failed");
     }
 
     private static ProcessResult Success(string command, string standardOutput = "", string standardError = "")

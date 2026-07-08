@@ -1,5 +1,6 @@
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using YamlDotNet.RepresentationModel;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -194,5 +195,170 @@ customSection:
         {
             File.Delete(filePath);
         }
+    }
+
+    [Fact]
+    public void ReadAndWrite_PreservesNestedKnowledgePackSettings()
+    {
+        var service = new WorkspaceYamlService();
+        var filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(filePath, """
+workspace:
+  name: knowledge-workspace
+provider:
+  type: git
+runtime:
+  default: default
+features:
+  - core
+services: []
+skills: []
+mcp: []
+knowledgePacks:
+  - provider: apexlang-atlas
+    enabled: true
+    mode: optional
+    settings:
+      buildId: "26.1.0+3102"
+      metadataUrl: "https://example.test/meta.json"
+      builtinCatalogUrl: "https://example.test/catalog.json"
+      nested:
+        keep:
+          - one
+          - two
+        flags:
+          strict: true
+      customObject:
+        child:
+          value: test
+agent:
+  profile: opencode-default
+terminal:
+  font:
+    provider: nerd-fonts
+    family: JetBrainsMono Nerd Font
+  prompt:
+    provider: starship
+  installIfMissing: true
+  utilities:
+    zoxide: false
+    fzf: false
+""");
+
+            var definition = service.Read(filePath);
+
+            Assert.Single(definition.KnowledgePacks);
+            var pack = definition.KnowledgePacks[0];
+            Assert.Equal("apexlang-atlas", pack.Provider);
+            Assert.True(pack.Enabled);
+            Assert.Equal(WorkspaceKnowledgePackModes.Optional, pack.Mode);
+            Assert.NotNull(pack.Settings);
+
+            service.WriteToFile(filePath, new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "knowledge-workspace-updated",
+                    Image = "ubuntu:24.04",
+                },
+                Provider = definition.Provider,
+                Runtime = definition.Runtime,
+                Features = definition.Features,
+                Services = ["postgres"],
+                Skills = definition.Skills,
+                Mcp = definition.Mcp,
+                Agent = definition.Agent,
+                Terminal = definition.Terminal,
+                Oracle = definition.Oracle,
+                Analytics = definition.Analytics,
+                KnowledgePacks = definition.KnowledgePacks,
+            });
+
+            var updatedYaml = File.ReadAllText(filePath);
+
+            Assert.Contains("knowledgePacks:", updatedYaml);
+            Assert.Contains("provider: apexlang-atlas", updatedYaml);
+            Assert.Contains("buildId: \"26.1.0+3102\"", updatedYaml);
+            Assert.Contains("metadataUrl: \"https://example.test/meta.json\"", updatedYaml);
+            Assert.Contains("builtinCatalogUrl: \"https://example.test/catalog.json\"", updatedYaml);
+            Assert.Contains("nested:", updatedYaml);
+            Assert.Contains("- one", updatedYaml);
+            Assert.Contains("strict: true", updatedYaml);
+            Assert.Contains("value: test", updatedYaml);
+            Assert.Contains("name: knowledge-workspace-updated", updatedYaml);
+            Assert.Contains("- postgres", updatedYaml);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public void Write_RoundTripsKnowledgePackSettingsNode()
+    {
+        var service = new WorkspaceYamlService();
+        var settings = ParseYamlNode("""
+buildId: "26.1.0+3102"
+metadataUrl: "https://example.test/meta.json"
+nested:
+  order:
+    - first
+    - second
+""");
+
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata
+            {
+                Name = "knowledge-write",
+                Image = "ubuntu:24.04",
+            },
+            Provider = new WorkspaceProviderDefinition { Type = "git" },
+            Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+            Features = ["core"],
+            Services = [],
+            Skills = [],
+            Mcp = [],
+            Agent = new AgentPreferences { Profile = AgentProfileResolver.BuiltInDefault.ProfileId },
+            Terminal = new TerminalPreferences
+            {
+                InstallIfMissing = true,
+                Font = new TerminalFontPreferences { Provider = "nerd-fonts", Family = "JetBrainsMono Nerd Font" },
+                Prompt = new TerminalPromptPreferences { Provider = "starship" },
+                Utilities = new TerminalUtilityPreferences(),
+            },
+            KnowledgePacks =
+            [
+                new WorkspaceKnowledgePackDefinition
+                {
+                    Provider = "apexlang-atlas",
+                    Enabled = true,
+                    Mode = WorkspaceKnowledgePackModes.Required,
+                    Settings = settings,
+                },
+            ],
+        };
+
+        var yaml = service.Write(definition);
+
+        Assert.Contains("knowledgePacks:", yaml);
+        Assert.Contains("provider: apexlang-atlas", yaml);
+        Assert.Contains("mode: required", yaml);
+        Assert.Contains("buildId: \"26.1.0+3102\"", yaml);
+        Assert.Contains("metadataUrl: \"https://example.test/meta.json\"", yaml);
+        Assert.Contains("- first", yaml);
+        Assert.Contains("- second", yaml);
+    }
+
+    private static YamlNode ParseYamlNode(string yaml)
+    {
+        var stream = new YamlStream();
+        using var reader = new StringReader(yaml);
+        stream.Load(reader);
+        return stream.Documents[0].RootNode;
     }
 }

@@ -59,6 +59,19 @@ oracle:
 analytics:
   marimoPort: 3818
 
+knowledgePacks:
+  - provider: apexlang-atlas
+    enabled: true
+    mode: optional
+    settings:
+      buildId: "26.1.0+3102"
+      metadataUrl: "https://example.test/meta.json"
+      builtinCatalogUrl: "https://example.test/catalog.json"
+      nested:
+        keep:
+          - one
+          - two
+
 agent:
   profile: opencode-default
 
@@ -101,6 +114,7 @@ x-company:
                 Agent = snapshot.Definition.Agent,
                 Oracle = snapshot.Definition.Oracle,
                 Analytics = snapshot.Definition.Analytics,
+                KnowledgePacks = snapshot.Definition.KnowledgePacks,
             };
 
             var updatedSnapshot = new WorkspaceSnapshot
@@ -128,6 +142,11 @@ x-company:
             Assert.Contains("hostPort: 1522", yaml);
             Assert.Contains("ordsPort: 8182", yaml);
             Assert.Contains("marimoPort: 3818", yaml);
+            Assert.Contains("knowledgePacks:", yaml);
+            Assert.Contains("provider: apexlang-atlas", yaml);
+            Assert.Contains("buildId: \"26.1.0+3102\"", yaml);
+            Assert.Contains("- one", yaml);
+            Assert.Contains("- two", yaml);
             Assert.Contains("- postgres", yaml);
             Assert.False(!string.Equals(relativePath, "workspace.yaml", StringComparison.Ordinal) && File.Exists(Path.Combine(repositoryRoot, "workspace.yaml")));
         }

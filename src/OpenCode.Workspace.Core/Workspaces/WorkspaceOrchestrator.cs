@@ -1,5 +1,7 @@
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
+using OpenCode.Workspace.Core.Knowledge;
+using OpenCode.Workspace.Core.Knowledge.Providers;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using System.Globalization;
@@ -45,6 +47,7 @@ public sealed class WorkspaceOrchestrator
     private readonly IPlatformDetector _platformDetector;
     private readonly IRuntimeResolver _runtimeResolver;
     private readonly ITerminalLauncher _terminalLauncher;
+    private readonly KnowledgePackProvisioner _knowledgePackProvisioner;
     private readonly OpenCodeSessionService _openCodeSessionService = new();
     private readonly object _hostPlatformLock = new();
     private Task<HostPlatformInfo>? _cachedHostPlatformDetectionTask;
@@ -71,7 +74,8 @@ public sealed class WorkspaceOrchestrator
         IPlatformDetector platformDetector,
         IRuntimeResolver runtimeResolver,
         ITerminalLauncher terminalLauncher,
-        IOracleMediaLocator? oracleMediaLocator = null)
+        IOracleMediaLocator? oracleMediaLocator = null,
+        KnowledgePackProvisioner? knowledgePackProvisioner = null)
     {
         _workspaceYamlService = workspaceYamlService;
         _workspaceDiscoveryService = workspaceDiscoveryService;
@@ -97,6 +101,7 @@ public sealed class WorkspaceOrchestrator
         _platformDetector = platformDetector;
         _runtimeResolver = runtimeResolver;
         _terminalLauncher = terminalLauncher;
+        _knowledgePackProvisioner = knowledgePackProvisioner ?? new KnowledgePackProvisioner([new ApexlangAtlasKnowledgePackProvider()]);
     }
 
     public WorkspaceOrchestrator(
@@ -117,7 +122,8 @@ public sealed class WorkspaceOrchestrator
         WorkspaceIgnorePolicyService workspaceIgnorePolicyService,
         IWorkspaceProvider workspaceProvider,
         DockerService dockerService,
-        ITerminalLauncher terminalLauncher)
+        ITerminalLauncher terminalLauncher,
+        KnowledgePackProvisioner? knowledgePackProvisioner = null)
         : this(
             workspaceYamlService,
             workspaceDiscoveryService,
@@ -139,7 +145,8 @@ public sealed class WorkspaceOrchestrator
             new DockerContainerRuntime(dockerService),
             new PlatformDetector(new ProcessRunner()),
             new RuntimeResolver(),
-            terminalLauncher)
+            terminalLauncher,
+            knowledgePackProvisioner: knowledgePackProvisioner)
     {
     }
 
@@ -668,7 +675,7 @@ public sealed class WorkspaceOrchestrator
     {
         WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
         WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, inspectHostAvailability: false);
-        await Task.CompletedTask;
+        await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, explicitRegenerationRequested: true, cancellationToken: cancellationToken);
     }
 
     public async Task RecoverAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -1438,8 +1445,18 @@ public sealed class WorkspaceOrchestrator
         await RepairAndValidateOracleOrdsGatewayAsync(snapshot, log, cancellationToken);
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
+        await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, log: log, cancellationToken: cancellationToken);
         await ValidateProvisionedWorkspaceAsync(snapshot, log, cancellationToken);
         await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+    }
+
+    private async Task RunKnowledgePackProvisioningAsync(WorkspaceDefinition definition, WorkspacePaths paths, bool explicitRegenerationRequested = false, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var result = await _knowledgePackProvisioner.ProvisionAsync(definition, paths, explicitRegenerationRequested, log, cancellationToken);
+        if (result.HasRequiredFailures)
+        {
+            throw new InvalidOperationException($"Required host-side Knowledge Pack generation failed.{Environment.NewLine}{string.Join(Environment.NewLine, result.Errors)}");
+        }
     }
 
     private async Task RepairAndValidateOracleOrdsGatewayAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)

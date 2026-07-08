@@ -35,8 +35,11 @@ public sealed class WorkspaceYamlService
     {
         try
         {
-            using var reader = File.OpenText(filePath);
-            var definition = _deserializer.Deserialize<WorkspaceDefinition>(reader);
+            var yaml = File.ReadAllText(filePath);
+            var definition = _deserializer.Deserialize<WorkspaceDefinition>(yaml);
+            var rootMapping = ParseMapping(yaml);
+            var knowledgePacks = ReadKnowledgePacks(rootMapping);
+            definition = CopyDefinition(definition, knowledgePacks);
             return Normalize(definition);
         }
         catch (Exception exception) when (exception is YamlException or InvalidCastException or FormatException)
@@ -47,7 +50,10 @@ public sealed class WorkspaceYamlService
 
     public string Write(WorkspaceDefinition definition)
     {
-        return _serializer.Serialize(Normalize(definition));
+        var normalizedDefinition = Normalize(definition);
+        var rootMapping = ParseMapping(_serializer.Serialize(WriteableWorkspaceDefinition.From(normalizedDefinition)));
+        WriteKnowledgePacks(rootMapping, normalizedDefinition.KnowledgePacks);
+        return SaveYaml(rootMapping);
     }
 
     public void WriteToFile(string filePath, WorkspaceDefinition definition)
@@ -157,6 +163,218 @@ public sealed class WorkspaceYamlService
             {
                 MarimoPort = definition.Analytics.MarimoPort is > 0 ? definition.Analytics.MarimoPort.Value : null,
             },
+            KnowledgePacks = definition.KnowledgePacks
+                .Where(pack => !string.IsNullOrWhiteSpace(pack.Provider))
+                .Select(pack => new WorkspaceKnowledgePackDefinition
+                {
+                    Provider = pack.Provider.Trim(),
+                    Enabled = pack.Enabled,
+                    Mode = WorkspaceKnowledgePackModes.Normalize(pack.Mode),
+                    Settings = CloneYamlNode(pack.Settings),
+                })
+                .ToList(),
         };
+    }
+
+    private static WorkspaceDefinition CopyDefinition(WorkspaceDefinition definition, List<WorkspaceKnowledgePackDefinition> knowledgePacks)
+    {
+        return new WorkspaceDefinition
+        {
+            Workspace = definition.Workspace,
+            Provider = definition.Provider,
+            Runtime = definition.Runtime,
+            Features = definition.Features,
+            Skills = definition.Skills,
+            Services = definition.Services,
+            Mcp = definition.Mcp,
+            Terminal = definition.Terminal,
+            Agent = definition.Agent,
+            Oracle = definition.Oracle,
+            Analytics = definition.Analytics,
+            KnowledgePacks = knowledgePacks,
+        };
+    }
+
+    private static List<WorkspaceKnowledgePackDefinition> ReadKnowledgePacks(YamlMappingNode rootMapping)
+    {
+        if (!TryGetChild(rootMapping, "knowledgePacks", out var packsNode) || packsNode is not YamlSequenceNode sequence)
+        {
+            return new List<WorkspaceKnowledgePackDefinition>();
+        }
+
+        var results = new List<WorkspaceKnowledgePackDefinition>();
+        foreach (var child in sequence.Children.OfType<YamlMappingNode>())
+        {
+            var provider = ReadScalar(child, "provider");
+            if (string.IsNullOrWhiteSpace(provider))
+            {
+                continue;
+            }
+
+            var enabled = ReadBool(child, "enabled") ?? true;
+            var mode = WorkspaceKnowledgePackModes.Normalize(ReadScalar(child, "mode"));
+            TryGetChild(child, "settings", out var settingsNode);
+
+            results.Add(new WorkspaceKnowledgePackDefinition
+            {
+                Provider = provider,
+                Enabled = enabled,
+                Mode = mode,
+                Settings = CloneYamlNode(settingsNode),
+            });
+        }
+
+        return results;
+    }
+
+    private static void WriteKnowledgePacks(YamlMappingNode rootMapping, IReadOnlyList<WorkspaceKnowledgePackDefinition> knowledgePacks)
+    {
+        if (knowledgePacks.Count == 0)
+        {
+            RemoveChild(rootMapping, "knowledgePacks");
+            return;
+        }
+
+        var sequence = new YamlSequenceNode();
+        foreach (var pack in knowledgePacks)
+        {
+            if (string.IsNullOrWhiteSpace(pack.Provider))
+            {
+                continue;
+            }
+
+            var item = new YamlMappingNode
+            {
+                { "provider", pack.Provider },
+                { "enabled", pack.Enabled ? "true" : "false" },
+                { "mode", WorkspaceKnowledgePackModes.Normalize(pack.Mode) },
+            };
+
+            if (pack.Settings is not null)
+            {
+                var settings = CloneYamlNode(pack.Settings);
+                if (settings is not null)
+                {
+                    item.Add("settings", settings);
+                }
+            }
+
+            sequence.Add(item);
+        }
+
+        rootMapping.Children[new YamlScalarNode("knowledgePacks")] = sequence;
+    }
+
+    private static string SaveYaml(YamlMappingNode rootMapping)
+    {
+        var stream = new YamlStream(new YamlDocument(rootMapping));
+        using var writer = new StringWriter();
+        stream.Save(writer, assignAnchors: false);
+        return writer.ToString();
+    }
+
+    private static bool TryGetChild(YamlMappingNode mapping, string key, out YamlNode? value)
+    {
+        foreach (var child in mapping.Children)
+        {
+            if (child.Key is YamlScalarNode scalar && string.Equals(scalar.Value, key, StringComparison.Ordinal))
+            {
+                value = child.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static void RemoveChild(YamlMappingNode mapping, string key)
+    {
+        var match = mapping.Children.Keys
+            .OfType<YamlScalarNode>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Value, key, StringComparison.Ordinal));
+        if (match is not null)
+        {
+            mapping.Children.Remove(match);
+        }
+    }
+
+    private static string? ReadScalar(YamlMappingNode mapping, string key)
+        => TryGetChild(mapping, key, out var value) && value is YamlScalarNode scalar
+            ? scalar.Value
+            : null;
+
+    private static bool? ReadBool(YamlMappingNode mapping, string key)
+        => bool.TryParse(ReadScalar(mapping, key), out var value) ? value : null;
+
+    private static YamlNode? CloneYamlNode(YamlNode? node)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        var stream = new YamlStream(new YamlDocument(node));
+        using var writer = new StringWriter();
+        stream.Save(writer, assignAnchors: false);
+
+        var cloneStream = new YamlStream();
+        using var reader = new StringReader(writer.ToString());
+        cloneStream.Load(reader);
+        return cloneStream.Documents[0].RootNode;
+    }
+
+    private sealed class WriteableWorkspaceDefinition
+    {
+        [YamlMember(Alias = "workspace")]
+        public WorkspaceMetadata Workspace { get; init; } = new();
+
+        [YamlMember(Alias = "provider")]
+        public WorkspaceProviderDefinition Provider { get; init; } = new();
+
+        [YamlMember(Alias = "runtime")]
+        public WorkspaceRuntimeDefinition Runtime { get; init; } = new();
+
+        [YamlMember(Alias = "features")]
+        public List<string> Features { get; init; } = new();
+
+        [YamlMember(Alias = "skills")]
+        public List<string> Skills { get; init; } = new();
+
+        [YamlMember(Alias = "services")]
+        public List<string> Services { get; init; } = new();
+
+        [YamlMember(Alias = "mcp")]
+        public List<string> Mcp { get; init; } = new();
+
+        [YamlMember(Alias = "terminal")]
+        public TerminalPreferences Terminal { get; init; } = new();
+
+        [YamlMember(Alias = "agent")]
+        public AgentPreferences Agent { get; init; } = new();
+
+        [YamlMember(Alias = "oracle")]
+        public OracleWorkspacePreferences Oracle { get; init; } = new();
+
+        [YamlMember(Alias = "analytics")]
+        public AnalyticsWorkspacePreferences Analytics { get; init; } = new();
+
+        public static WriteableWorkspaceDefinition From(WorkspaceDefinition definition)
+        {
+            return new WriteableWorkspaceDefinition
+            {
+                Workspace = definition.Workspace,
+                Provider = definition.Provider,
+                Runtime = definition.Runtime,
+                Features = definition.Features.ToList(),
+                Skills = definition.Skills.ToList(),
+                Services = definition.Services.ToList(),
+                Mcp = definition.Mcp.ToList(),
+                Terminal = definition.Terminal,
+                Agent = definition.Agent,
+                Oracle = definition.Oracle,
+                Analytics = definition.Analytics,
+            };
+        }
     }
 }

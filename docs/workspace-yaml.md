@@ -78,6 +78,8 @@ services:
 
 mcp: []
 
+knowledgePacks: []
+
 agent:
   profile: opencode-default
 
@@ -163,6 +165,33 @@ Additional Compose services such as PostgreSQL or pgAdmin.
 ### `mcp`
 
 Optional integrations that remain manifest-driven for future expansion.
+
+### `knowledgePacks`
+
+Host-side provisioned knowledge packs import machine-readable metadata, normalize it, and generate local indexes, docs, and AI context files under `.opencode/knowledge/`.
+
+- they are optional by default
+- they do not affect whether the runtime/container works unless a pack is explicitly marked `mode: required`
+- provider settings are provider-owned and may contain nested custom values
+- generated outputs are cached locally and can be regenerated independently from runtime provisioning
+
+Example:
+
+```yaml
+knowledgePacks:
+  - provider: apexlang-atlas
+    enabled: true
+    mode: optional
+    settings:
+      buildId: "26.1.0+3102"
+      metadataUrl: "https://example.test/apexlang_meta_data.json"
+      builtinCatalogUrl: "https://example.test/builtin_catalog.json"
+```
+
+Important distinction:
+
+- catalog-selected documentation packs are the existing built-in `KnowledgePackManifest` entries referenced by features
+- `knowledgePacks:` in `workspace.yaml` configures the separate host-side provisioned metadata/index/context system
 
 ### `terminal`
 

@@ -1,0 +1,47 @@
+{
+  "buildID": "26.1.0+3102",
+  "propertyTypes": [
+    { "id": "text" },
+    { "id": "number" }
+  ],
+  "properties": [
+    {
+      "id": "TITLE",
+      "name": "title",
+      "displayName": "Title",
+      "type": "text",
+      "group": "general",
+      "validationRules": [
+        { "rule": "required" }
+      ]
+    },
+    {
+      "id": "SOURCE_TYPE",
+      "name": "sourceType",
+      "displayName": "Source Type",
+      "type": "text",
+      "group": "source",
+      "lovValues": ["sql", "rest"]
+    }
+  ],
+  "lovValues": [
+    { "value": "sql" },
+    { "value": "rest" }
+  ],
+  "validationRules": [
+    { "rule": "required" },
+    { "rule": "maxLength" }
+  ],
+  "groups": [
+    { "id": "general" },
+    { "id": "source" }
+  ],
+  "dependencyRules": [
+    {
+      "componentId": "classic-report",
+      "supportedUi": "desktop",
+      "propertyId": "SQL_QUERY",
+      "dependingOn": "SOURCE_TYPE"
+    }
+  ]
+}

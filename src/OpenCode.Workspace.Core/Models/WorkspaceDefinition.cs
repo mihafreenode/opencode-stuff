@@ -1,4 +1,5 @@
 using YamlDotNet.Serialization;
+using YamlDotNet.RepresentationModel;
 
 namespace OpenCode.Workspace.Core.Models;
 
@@ -41,6 +42,29 @@ public sealed class WorkspaceDefinition
 
     [YamlMember(Alias = "analytics")]
     public AnalyticsWorkspacePreferences Analytics { get; init; } = new();
+
+    [YamlIgnore]
+    public List<WorkspaceKnowledgePackDefinition> KnowledgePacks { get; init; } = new();
+}
+
+public sealed class WorkspaceKnowledgePackDefinition
+{
+    public string Provider { get; init; } = string.Empty;
+
+    public bool Enabled { get; init; } = true;
+
+    public string Mode { get; init; } = WorkspaceKnowledgePackModes.Optional;
+
+    public YamlNode? Settings { get; init; }
+}
+
+public static class WorkspaceKnowledgePackModes
+{
+    public const string Optional = "optional";
+    public const string Required = "required";
+
+    public static string Normalize(string? mode)
+        => string.Equals(mode, Required, StringComparison.OrdinalIgnoreCase) ? Required : Optional;
 }
 
 public sealed class WorkspaceMetadata

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0",
+  "componentsBySupportedUi": {
+    "desktop": [
+      {
+        "id": "classic-report",
+        "name": "Classic Report",
+        "displayName": "Classic Report",
+        "pluginType": "region",
+        "helpText": "Report region component",
+        "supportedFeatures": ["export", "pagination"],
+        "actionTemplates": ["open-dialog"],
+        "actionPositions": ["toolbar"],
+        "customAttributes": [
+          {
+            "propertyId": "TITLE",
+            "required": true,
+            "default": "Customers",
+            "helpText": "Report title"
+          },
+          {
+            "propertyId": "SQL_QUERY",
+            "required": true,
+            "dependingOn": "SOURCE_TYPE",
+            "helpText": "SQL source"
+          }
+        ]
+      }
+    ]
+  }
+}
