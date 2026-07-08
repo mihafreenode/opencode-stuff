@@ -21,6 +21,7 @@ public sealed class ProvisioningScriptGenerator
         var oracleWorkspaceKind = OracleWorkspaceFamily.Detect(workspace.Definition);
         var isOracleDemoWorkspace = oracleWorkspaceKind != OracleWorkspaceKind.None;
         var hasOracleApex = oracleWorkspaceKind is OracleWorkspaceKind.Apex or OracleWorkspaceKind.ApexLang;
+        var hasOracleApexLang = oracleWorkspaceKind == OracleWorkspaceKind.ApexLang;
         var aptPackages = workspace.AptPackages
             .Where(packageName => !isOracleDemoWorkspace || !string.Equals(packageName, "libaio1", StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -810,6 +811,14 @@ public sealed class ProvisioningScriptGenerator
                 builder.AppendLine("wait_for_ords_runtime");
                 builder.AppendLine("oracle_set_stage 'Workspace configuration'");
                 builder.AppendLine("configure_apex_cdn");
+                if (hasOracleApexLang)
+                {
+                    builder.AppendLine("oracle_set_stage 'Provision Hello APEXlang'");
+                    builder.AppendLine("if [ ! -x /workspace/scripts/apexlang-hello-world.sh ]; then");
+                    builder.AppendLine("  fail_stage \"APEXlang Hello World provisioning script is missing.\" \"Expected /workspace/scripts/apexlang-hello-world.sh to exist and be executable.\" \"Regenerate the managed workspace files and retry provisioning.\"");
+                    builder.AppendLine("fi");
+                    builder.AppendLine("/workspace/scripts/apexlang-hello-world.sh");
+                }
                 builder.AppendLine("oracle_set_stage 'Final verification'");
                 builder.AppendLine("complete_stage");
                 builder.AppendLine("echo \"[oracle-apex] Stage: Ready\"");

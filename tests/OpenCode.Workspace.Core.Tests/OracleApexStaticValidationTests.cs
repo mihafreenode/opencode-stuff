@@ -119,10 +119,19 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-apexlang-demo.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "apexlang-introduction.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "apexlang.md")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "apexlang-hello-world.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "apex", "application.apx")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-apex.sh")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "sqlcl.sh")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "apexlang-hello-world.sh")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "scripts", "apexlang-hello-world.ps1")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "open-sqlcl.ps1")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "generate-hello-apexlang.sql")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "validate-hello-apexlang.sql")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "import-hello-apexlang.sql")));
+        Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "export-hello-apexlang.sql")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "team-onboarding.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "troubleshooting", "workspace-sessions.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-lifecycle-workflows.md")));
@@ -135,9 +144,42 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "docs", "reference", "oracle-apex-api-packages.md")));
         Assert.True(File.Exists(Path.Combine(snapshot.Paths.RootPath, "skills", "oracle", "apexlang.md")));
 
-        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh"), "apex export", "ORACLE_DEMO_CONNECTION");
-        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh"), "sql -S", "ORACLE_DEMO_CONNECTION");
+        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "export-apex.sh"), "apex export", "scripts/sqlcl.sh");
+        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "import-apex.sh"), "apex import", "scripts/sqlcl.sh");
         AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "validate-apex.sh"), "Validated", null);
+        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "sqlcl.sh"), "/opt/sqlcl/sqlcl", "exec \"${sqlcl_bin}\"");
+        AssertScriptLooksValid(Path.Combine(snapshot.Paths.RootPath, "scripts", "apexlang-hello-world.sh"), "Hello APEXlang", "scripts/sqlcl.sh");
+
+        var helloWorldScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "scripts", "apexlang-hello-world.sh"));
+        Assert.Contains("title: Hello from APEXlang", helloWorldScript, StringComparison.Ordinal);
+        Assert.Contains("p_primary_schema => 'TESTSCHEMA'", helloWorldScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("SqlCli.class", helloWorldScript, StringComparison.Ordinal);
+
+        var generateSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "generate-hello-apexlang.sql"));
+        var importSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "import-hello-apexlang.sql"));
+        var exportSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "export-hello-apexlang.sql"));
+        Assert.Contains("apex generate -workspace TEST -schema TESTSCHEMA -id 101 -name \"Hello APEXlang\"", generateSql, StringComparison.Ordinal);
+        Assert.Contains("apex import -workspace TEST -schema TESTSCHEMA -id 101 -name \"Hello APEXlang\"", importSql, StringComparison.Ordinal);
+        Assert.Contains("apex export -applicationid 101 -split -exptype APEXLANG", exportSql, StringComparison.Ordinal);
+
+        var openSqlclScript = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "open-sqlcl.ps1"));
+        Assert.Contains("/workspace/scripts/sqlcl.sh", openSqlclScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("exec sql '", openSqlclScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OracleApexLangHelloWorldDocs_DoNotContainSecretsOrSessionIds()
+    {
+        var snapshot = CreateWorkspaceFromTemplate("oracle-apexlang-demo", "oracle-apexlang-hello-docs");
+        var docPath = Path.Combine(snapshot.Paths.RootPath, "docs", "oracle-tools", "apexlang-hello-world.md");
+        var doc = File.ReadAllText(docPath);
+
+        Assert.Contains("scripts/apexlang-hello-world.sh", doc, StringComparison.Ordinal);
+        Assert.Contains("scripts/sqlcl.sh -version", doc, StringComparison.Ordinal);
+        Assert.DoesNotContain("demo_password", doc, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("change-on-first-demo", doc, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SESSION=", doc, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("APEX_PUBLIC_USER", doc, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

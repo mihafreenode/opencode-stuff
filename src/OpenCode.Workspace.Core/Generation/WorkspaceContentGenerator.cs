@@ -3742,8 +3742,9 @@ $workspaceRoot = $PSScriptRoot
 $workspaceName = Split-Path -Leaf $workspaceRoot
 $containerName = ($workspaceName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') + '-workspace'
 $connectionTarget = '//oracle-demo:1521/FREEPDB1'
-$connectionString = "demo_user/demo_password@$connectionTarget"
+$connectionString = "testschema/demo_password@$connectionTarget"
 $shellInitPath = '/opt/opencode-workspace/config/opencode-shell-init.sh'
+$sqlclScriptPath = '/workspace/scripts/sqlcl.sh'
 
 Write-Host "SQLcl target: $connectionTarget"
 
@@ -3752,17 +3753,17 @@ if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "The Oracle demo workspace is not running. Start Oracle from the Oracle Demo Database panel first."
 }
 
-docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; command -v sql >/dev/null 2>&1"
+docker exec -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; test -x '$sqlclScriptPath'"
 if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "SQLcl is not ready yet. Start Oracle with internet access so provisioning can finish downloading SQLcl."
 }
 
-docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -v"
+docker exec -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; '$sqlclScriptPath' -version"
 if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "SQLcl version check failed inside the workspace container."
 }
 
-docker exec -it --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; exec sql '$connectionString'"
+docker exec -it -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; exec '$sqlclScriptPath' '$connectionString'"
 if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "SQLcl could not open the Oracle demo connection."
 }
@@ -3782,10 +3783,11 @@ $workspaceRoot = $PSScriptRoot
 $workspaceName = Split-Path -Leaf $workspaceRoot
 $containerName = ($workspaceName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') + '-workspace'
 $connectionTarget = '//oracle-demo:1521/FREEPDB1'
-$connectionString = "demo_user/demo_password@$connectionTarget"
+$connectionString = "testschema/demo_password@$connectionTarget"
 $sqlclScriptPath = '/workspace/tutorial/oracle/scripts/tutorial-query.sql'
 $sqlplusScriptPath = '/tmp/sqlplus-demo-check.sql'
 $shellInitPath = '/opt/opencode-workspace/config/opencode-shell-init.sh'
+$safeSqlclPath = '/workspace/scripts/sqlcl.sh'
 
 Write-Host "Oracle target: $connectionTarget"
 
@@ -3818,17 +3820,17 @@ SQL"
     exit 0
 }
 
-docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; command -v sql >/dev/null 2>&1"
+docker exec -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; test -x '$safeSqlclPath'"
 if ($LASTEXITCODE -ne 0) {
-    Pause-OnFailure "Neither SQL*Plus nor SQLcl is ready yet. Start Oracle with internet access so provisioning can finish."
+    Pause-OnFailure "Neither SQL*Plus nor the safe SQLcl launcher is ready yet. Start Oracle with internet access so provisioning can finish."
 }
 
-docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -v"
+docker exec -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; '$safeSqlclPath' -version"
 if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "SQLcl version check failed inside the workspace container."
 }
 
-docker exec --user opencode -w /workspace $containerName sh -lc ". $shellInitPath >/dev/null 2>&1; sql -S '$connectionString' @$sqlclScriptPath"
+docker exec -w /workspace $containerName bash -lc ". $shellInitPath >/dev/null 2>&1; '$safeSqlclPath' -S '$connectionString' @$sqlclScriptPath"
 if ($LASTEXITCODE -ne 0) {
     Pause-OnFailure "SQLcl failed while running the tutorial query script."
 }

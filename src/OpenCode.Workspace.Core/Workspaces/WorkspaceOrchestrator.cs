@@ -676,6 +676,7 @@ public sealed class WorkspaceOrchestrator
         WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
         WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, inspectHostAvailability: false);
         await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, explicitRegenerationRequested: true, cancellationToken: cancellationToken);
+        await RunApexlangHelloWorldRegenerationAsync(snapshot, cancellationToken);
     }
 
     public async Task RecoverAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -1456,6 +1457,33 @@ public sealed class WorkspaceOrchestrator
         if (result.HasRequiredFailures)
         {
             throw new InvalidOperationException($"Required host-side Knowledge Pack generation failed.{Environment.NewLine}{string.Join(Environment.NewLine, result.Errors)}");
+        }
+    }
+
+    private async Task RunApexlangHelloWorldRegenerationAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        if (OracleWorkspaceFamily.Detect(snapshot.Definition) != OracleWorkspaceKind.ApexLang
+            || snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            return;
+        }
+
+        var containerName = _containerRuntime.GetWorkspaceContainerName(snapshot.Definition);
+        var result = await _containerRuntime.RunSimpleDockerCommandAsync(
+        [
+            "exec",
+            "-w",
+            "/workspace",
+            containerName,
+            "bash",
+            "-lc",
+            "/workspace/scripts/apexlang-hello-world.sh",
+        ],
+        cancellationToken: cancellationToken);
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException($"APEXlang Hello World regeneration failed.{Environment.NewLine}{result.StandardError}{Environment.NewLine}{result.StandardOutput}".Trim());
         }
     }
 

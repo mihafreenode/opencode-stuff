@@ -61,6 +61,7 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("scripts", "health-check-ords.sh")] = withGeneratedScriptHeader(HealthCheckOrdsScript());
             files[Path.Combine("scripts", "health-check-apex.sh")] = withGeneratedScriptHeader(HealthCheckApexScript());
             files[Path.Combine("scripts", "health-check-sqlcl.sh")] = withGeneratedScriptHeader(HealthCheckSqlclScript());
+            files[Path.Combine("scripts", "sqlcl.sh")] = withGeneratedScriptHeader(SqlclWrapperScript());
             files[Path.Combine("scripts", "open-ords.ps1")] = OpenOrdsScript(ordsBaseUrl);
             files[Path.Combine("scripts", "open-apex.ps1")] = OpenApexScript(apexLoginUrl);
             files[Path.Combine("scripts", "open-sql-worksheet.ps1")] = OpenSqlWorksheetScript();
@@ -74,10 +75,15 @@ internal static class OracleWorkspaceGeneratedContent
         {
             files[Path.Combine("docs", "oracle-apexlang-demo.md")] = withGeneratedHeader(OracleApexLangDemoDoc());
             files[Path.Combine("docs", "apexlang-introduction.md")] = withGeneratedHeader(ApexLangIntroductionDoc());
+            files[Path.Combine("docs", "oracle-tools", "apexlang-hello-world.md")] = withGeneratedHeader(ApexLangHelloWorldDoc());
             files[Path.Combine("docs", "reference", "oracle-apexlang-navigation.md")] = withGeneratedHeader(OracleApexLangNavigationDoc());
             files[Path.Combine("skills", "oracle", "apexlang.md")] = OracleApexLangSkillDoc();
             files[Path.Combine("apex", "application.apx")] = ApexApplicationStub();
             files[Path.Combine("sql", "customers-reference.sql")] = withGeneratedSqlHeader(CustomersReferenceSql());
+            files[Path.Combine("sql", "hello-apexlang", "generate-hello-apexlang.sql")] = withGeneratedSqlHeader(GenerateHelloApexLangSql());
+            files[Path.Combine("sql", "hello-apexlang", "validate-hello-apexlang.sql")] = withGeneratedSqlHeader(ValidateHelloApexLangSql());
+            files[Path.Combine("sql", "hello-apexlang", "import-hello-apexlang.sql")] = withGeneratedSqlHeader(ImportHelloApexLangSql());
+            files[Path.Combine("sql", "hello-apexlang", "export-hello-apexlang.sql")] = withGeneratedSqlHeader(ExportHelloApexLangSql());
             files[Path.Combine("scripts", "export-apex.sh")] = withGeneratedScriptHeader(ExportApexScript());
             files[Path.Combine("scripts", "import-apex.sh")] = withGeneratedScriptHeader(ImportApexScript());
             files[Path.Combine("scripts", "validate-apex.sh")] = withGeneratedScriptHeader(ValidateApexScript());
@@ -86,6 +92,8 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("scripts", "export-datapump.sh")] = withGeneratedScriptHeader(ExportDataPumpScript());
             files[Path.Combine("scripts", "import-datapump.sh")] = withGeneratedScriptHeader(ImportDataPumpScript());
             files[Path.Combine("scripts", "export-apexlang.sh")] = withGeneratedScriptHeader(ExportApexLangScript());
+            files[Path.Combine("scripts", "apexlang-hello-world.sh")] = withGeneratedScriptHeader(ApexLangHelloWorldScript());
+            files[Path.Combine("scripts", "apexlang-hello-world.ps1")] = ApexLangHelloWorldPowerShellScript();
         }
 
         return files;
@@ -1247,20 +1255,25 @@ Deploy
 ### Included Structure
 
 - `apex/application.apx`
+- `exports/apexlang/hello-apexlang/`
 - `scripts/export-apex.sh`
 - `scripts/import-apex.sh`
 - `scripts/validate-apex.sh`
+- `scripts/apexlang-hello-world.sh`
+- `docs/oracle-tools/apexlang-hello-world.md`
 - `docs/apexlang-introduction.md`
 
 Use the generated scripts as the official-tooling starting point for repeatable export, review, validation, and import.
 
+This workspace also provisions a minimal `Hello APEXlang` application automatically and exports the resulting APEXlang package into `exports/apexlang/hello-apexlang/`.
+
 ## Try It Yourself
 
-1. Add a new field to the `Customer Orders Demo` application.
-2. Export the application with `scripts/export-apex.sh`.
-3. Validate the exported source with `scripts/validate-apex.sh`.
+1. Run `scripts/apexlang-hello-world.sh`.
+2. Review `exports/apexlang/hello-apexlang/`.
+3. Validate the exported package with `scripts/validate-apex.sh exports/apexlang/hello-apexlang/application.apx`.
 4. Review the exported changes in Git.
-5. Re-import the application definition with `scripts/import-apex.sh`.
+5. Re-import the application definition with `scripts/import-apex.sh exports/apexlang/hello-apexlang`.
 
 ## Related Topics
 
@@ -1723,14 +1736,14 @@ APEXlang is Oracle's Open Application Specification Language for Oracle APEX app
 ### How It Fits Into The Demo
 
 - Oracle APEXlang Demo -> advanced stage after PL/SQL and APEX basics
-- uses the same Customer Orders Demo application as the Builder-based APEX workflow
+- provisions and exports a minimal `Hello APEXlang` application automatically
 
 ### Example Commands
 
 ```bash
-scripts/export-apexlang.sh
-scripts/validate-apex.sh apex/application.apx
-scripts/import-apex.sh apex/application.apx
+scripts/apexlang-hello-world.sh
+scripts/validate-apex.sh exports/apexlang/hello-apexlang/application.apx
+scripts/import-apex.sh exports/apexlang/hello-apexlang
 ```
 
 ### Relationship To Other Tools
@@ -1746,11 +1759,111 @@ scripts/import-apex.sh apex/application.apx
 
 ### Onboarding Exercise
 
-1. add a field to the Customer Orders Demo
-2. export the application definition
+1. run `scripts/apexlang-hello-world.sh`
+2. open `exports/apexlang/hello-apexlang/pages/p00001-home.apx`
 3. validate the export
 4. review the diff in Git
 5. re-import the application definition locally
+""";
+
+    private static string ApexLangHelloWorldDoc() => """
+## APEXlang Hello World
+
+This workspace provisions a minimal APEXlang application automatically for the `oracle-apexlang-demo` template.
+
+Resulting package:
+
+- `exports/apexlang/hello-apexlang/`
+
+The workflow uses the safe SQLcl launcher only:
+
+- `/workspace/scripts/sqlcl.sh`
+- `scripts/sqlcl.sh`
+
+Do not call the broken SQLcl symlink path directly.
+
+### Verify SQLcl
+
+```bash
+scripts/sqlcl.sh -version
+```
+
+Expected output contains:
+
+```text
+SQLcl: Release 26.1.2.0 Production Build: 26.1.2.132.1334
+```
+
+### Verify APEX 26.1 Registry State
+
+Run from the Windows host:
+
+```powershell
+docker exec <workspace-container> bash -lc "sqlplus -S 'sys/${ORACLE_PASSWORD}@//oracle-demo:1521/FREEPDB1 as sysdba' <<'SQL'
+SET PAGESIZE 100
+SET LINESIZE 200
+COLUMN comp_id FORMAT A10
+COLUMN comp_name FORMAT A40
+COLUMN version FORMAT A20
+COLUMN status FORMAT A12
+SELECT comp_id, comp_name, version, status
+FROM dba_registry
+WHERE comp_id = 'APEX';
+EXIT
+SQL"
+```
+
+Expected output contains:
+
+```text
+APEX       Oracle APEX      26.1.0    VALID
+```
+
+### Provision Or Refresh Hello APEXlang
+
+Inside the workspace container:
+
+```bash
+scripts/apexlang-hello-world.sh
+```
+
+From Windows PowerShell:
+
+```powershell
+./scripts/apexlang-hello-world.ps1
+```
+
+Expected output contains:
+
+```text
+[oracle-apexlang] SQLcl verified.
+[oracle-apexlang] APEX registry verified: APEX|Oracle APEX|26.1.0|VALID
+[oracle-apexlang] Hello APEXlang package generated.
+[oracle-apexlang] Hello APEXlang package validated.
+[oracle-apexlang] Hello APEXlang application imported.
+[oracle-apexlang] Hello APEXlang package exported.
+```
+
+### Validate The Result
+
+```bash
+scripts/sqlcl.sh -S testschema/<testschema-password>@//oracle-demo:1521/FREEPDB1 @sql/hello-apexlang/validate-hello-apexlang.sql
+```
+
+Verify the exported page file:
+
+```text
+exports/apexlang/hello-apexlang/pages/p00001-home.apx
+```
+
+Expected region block:
+
+```text
+region app-name (
+    name: Home
+    title: Hello from APEXlang
+    type: staticContent
+```
 """;
 
     private static string SqlDeveloperToolDoc() => """
@@ -1938,9 +2051,10 @@ ORDER BY order_id;
     private static string HealthCheckDatabaseScript() => """
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 connection=${ORACLE_DEMO_CONNECTION:-demo_user/demo_password@//oracle-demo:1521/FREEPDB1}
+sqlcl_script="$workspace_root/scripts/sqlcl.sh"
 
-sql -S "$connection" @"$workspace_root/tutorial/oracle/scripts/health-check-database.sql"
-sql -S "$connection" @"$workspace_root/tutorial/oracle/scripts/health-check-pdb.sql"
+"$sqlcl_script" -S "$connection" @"$workspace_root/tutorial/oracle/scripts/health-check-database.sql"
+"$sqlcl_script" -S "$connection" @"$workspace_root/tutorial/oracle/scripts/health-check-pdb.sql"
 """;
 
     private static string HealthCheckOrdsScript() => """
@@ -1956,29 +2070,49 @@ printf 'APEX login reachable at %s\n' "$apex_url"
 """;
 
     private static string HealthCheckSqlclScript() => """
-command -v sql >/dev/null 2>&1
-sql -v
+workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+"$workspace_root/scripts/sqlcl.sh" -version
+""";
+
+    private static string SqlclWrapperScript() => """
+sqlcl_root=${SQLCL_ROOT:-/opt/sqlcl/sqlcl}
+sqlcl_bin="${sqlcl_root}/bin/sql"
+
+if [ ! -x "${sqlcl_bin}" ]; then
+  printf 'SQLcl launcher not found at %s\n' "${sqlcl_bin}" >&2
+  exit 1
+fi
+
+# SQLcl 26.1.x resolves its classpath correctly only when started from the
+# actual SQLcl home instead of the broken symlinked launcher path.
+cd "${sqlcl_root}"
+exec "${sqlcl_bin}" "$@"
 """;
 
     private static string ExportApexScript() => """
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-output_file=${1:-"$workspace_root/apex/application.apx"}
-connection=${ORACLE_DEMO_CONNECTION:-demo_user/demo_password@//oracle-demo:1521/FREEPDB1}
+output_path=${1:-"$workspace_root/exports/apexlang/hello-apexlang"}
+connection="testschema/${ORACLE_DEMO_PASSWORD:-demo_password}@//oracle-demo:1521/FREEPDB1"
+sqlcl_script="$workspace_root/scripts/sqlcl.sh"
 
-mkdir -p "$(dirname "$output_file")"
-sql -S "$connection" <<SQL
-apex export -applicationid 100 -split -expcomponents -dir $(dirname "$output_file")
+mkdir -p "$workspace_root/exports/apexlang"
+"$sqlcl_script" -S "$connection" <<SQL
+apex export -applicationid 101 -split -exptype APEXLANG -dir $(dirname "$output_path") -force
 exit
 SQL
 """;
 
     private static string ImportApexScript() => """
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-input_file=${1:-"$workspace_root/apex/application.apx"}
-connection=${ORACLE_DEMO_CONNECTION:-demo_user/demo_password@//oracle-demo:1521/FREEPDB1}
+input_path=${1:-"$workspace_root/exports/apexlang/hello-apexlang"}
+connection="testschema/${ORACLE_DEMO_PASSWORD:-demo_password}@//oracle-demo:1521/FREEPDB1"
+sqlcl_script="$workspace_root/scripts/sqlcl.sh"
 
-test -f "$input_file"
-sql -S "$connection" @"$input_file"
+test -d "$input_path" -o -f "$input_path"
+"$sqlcl_script" -S "$connection" <<SQL
+apex import -workspace TEST -schema TESTSCHEMA -id 101 -name "Hello APEXlang" -input "$input_path"
+exit
+SQL
 """;
 
     private static string ValidateApexScript() => """
@@ -2020,8 +2154,228 @@ printf 'Recommended starting point: impdp demo_user/demo_password@FREEPDB1 schem
 
     private static string ExportApexLangScript() => """
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-"$workspace_root/scripts/export-apex.sh" "$workspace_root/apex/application.apx"
-"$workspace_root/scripts/validate-apex.sh" "$workspace_root/apex/application.apx"
+"$workspace_root/scripts/apexlang-hello-world.sh"
+"$workspace_root/scripts/validate-apex.sh" "$workspace_root/exports/apexlang/hello-apexlang/application.apx"
+""";
+
+    private static string GenerateHelloApexLangSql() => """
+apex generate -workspace TEST -schema TESTSCHEMA -id 101 -name "Hello APEXlang" -alias HELLO-APEXLANG -dir /workspace/exports/apexlang -force
+exit
+""";
+
+    private static string ValidateHelloApexLangSql() => """
+apex validate -workspace TEST -input /workspace/exports/apexlang/hello-apexlang
+exit
+""";
+
+    private static string ImportHelloApexLangSql() => """
+apex import -workspace TEST -schema TESTSCHEMA -id 101 -name "Hello APEXlang" -input /workspace/exports/apexlang/hello-apexlang
+exit
+""";
+
+    private static string ExportHelloApexLangSql() => """
+apex export -applicationid 101 -split -exptype APEXLANG -dir /workspace/exports/apexlang -force
+exit
+""";
+
+    private static string ApexLangHelloWorldScript() => """
+set -euo pipefail
+
+workspace_root=/workspace
+sqlcl_script="$workspace_root/scripts/sqlcl.sh"
+generate_sql="$workspace_root/sql/hello-apexlang/generate-hello-apexlang.sql"
+validate_sql="$workspace_root/sql/hello-apexlang/validate-hello-apexlang.sql"
+import_sql="$workspace_root/sql/hello-apexlang/import-hello-apexlang.sql"
+export_sql="$workspace_root/sql/hello-apexlang/export-hello-apexlang.sql"
+export_root="$workspace_root/exports/apexlang/hello-apexlang"
+home_page_apx="$export_root/pages/p00001-home.apx"
+sys_password=${ORACLE_PASSWORD:-}
+testschema_password=${ORACLE_DEMO_PASSWORD:-demo_password}
+sys_connection="sys/${sys_password}@//oracle-demo:1521/FREEPDB1 as sysdba"
+testschema_connection="testschema/${testschema_password}@//oracle-demo:1521/FREEPDB1"
+enabled=${ORACLE_APEXLANG_HELLO_WORLD_ENABLED:-true}
+
+fail() {
+  printf '[oracle-apexlang] ERROR: %s\n' "$1" >&2
+  exit 1
+}
+
+if [ "${enabled}" != 'true' ]; then
+  printf '[oracle-apexlang] Hello APEXlang provisioning is disabled.\n'
+  exit 0
+fi
+
+for required in "$sqlcl_script" "$generate_sql" "$validate_sql" "$import_sql" "$export_sql"; do
+  [ -f "$required" ] || fail "Expected file is missing: $required"
+done
+
+[ -n "$sys_password" ] || fail 'ORACLE_PASSWORD is required for Hello APEXlang provisioning.'
+
+tmp_root=$(mktemp -d)
+trap 'rm -rf "$tmp_root"' EXIT
+
+apex_registry_sql="$tmp_root/apex-registry.sql"
+cat > "$apex_registry_sql" <<'SQL'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET TRIMSPOOL ON
+SELECT comp_id || '|' || comp_name || '|' || version || '|' || status
+FROM dba_registry
+WHERE comp_id = 'APEX';
+EXIT
+SQL
+
+testschema_sql="$tmp_root/testschema-ready.sql"
+cat > "$testschema_sql" <<SQL
+ALTER SESSION SET CONTAINER = FREEPDB1;
+DECLARE
+    l_exists NUMBER := 0;
+BEGIN
+    SELECT COUNT(*) INTO l_exists FROM dba_users WHERE username = 'TESTSCHEMA';
+    IF l_exists = 0 THEN
+        EXECUTE IMMEDIATE 'CREATE USER testschema IDENTIFIED BY "${testschema_password}" QUOTA UNLIMITED ON USERS';
+    ELSE
+        EXECUTE IMMEDIATE 'ALTER USER testschema IDENTIFIED BY "${testschema_password}" ACCOUNT UNLOCK';
+    END IF;
+END;
+/
+GRANT CREATE SESSION TO testschema;
+GRANT CREATE TABLE TO testschema;
+GRANT CREATE VIEW TO testschema;
+GRANT CREATE PROCEDURE TO testschema;
+GRANT CREATE TRIGGER TO testschema;
+GRANT CREATE SEQUENCE TO testschema;
+GRANT CREATE JOB TO testschema;
+GRANT UNLIMITED TABLESPACE TO testschema;
+EXIT
+SQL
+
+workspace_sql="$tmp_root/test-workspace.sql"
+cat > "$workspace_sql" <<'SQL'
+ALTER SESSION SET CONTAINER = FREEPDB1;
+DECLARE
+    l_exists NUMBER := 0;
+    l_has_schema NUMBER := 0;
+BEGIN
+    SELECT COUNT(*) INTO l_exists
+      FROM apex_workspace_schemas
+     WHERE workspace_name = 'TEST';
+
+    IF l_exists = 0 THEN
+        apex_instance_admin.add_workspace(
+            p_workspace      => 'TEST',
+            p_primary_schema => 'TESTSCHEMA');
+    END IF;
+
+    SELECT COUNT(*) INTO l_has_schema
+      FROM apex_workspace_schemas
+     WHERE workspace_name = 'TEST'
+       AND schema = 'TESTSCHEMA';
+
+    IF l_has_schema = 0 THEN
+        raise_application_error(-20001, 'Workspace TEST is not mapped to TESTSCHEMA.');
+    END IF;
+END;
+/
+EXIT
+SQL
+
+verify_workspace_sql="$tmp_root/verify-workspace.sql"
+cat > "$verify_workspace_sql" <<'SQL'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET TRIMSPOOL ON
+SELECT workspace_name || '|' || schema
+FROM apex_workspace_schemas
+WHERE workspace_name = 'TEST'
+  AND schema = 'TESTSCHEMA';
+EXIT
+SQL
+
+verify_app_sql="$tmp_root/verify-app.sql"
+cat > "$verify_app_sql" <<'SQL'
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET TRIMSPOOL ON
+SELECT application_name || '|' || page_name || '|' || region_name || '|' || title
+FROM apex_applications a
+JOIN apex_application_pages p
+  ON p.application_id = a.application_id
+ AND p.workspace = a.workspace
+JOIN apex_application_page_regions r
+  ON r.application_id = p.application_id
+ AND r.page_id = p.page_id
+ AND r.workspace = p.workspace
+WHERE a.workspace = 'TEST'
+  AND a.application_id = 101
+  AND p.page_id = 1;
+EXIT
+SQL
+
+"$sqlcl_script" -version >/dev/null 2>&1 || fail 'SQLcl missing or broken. Run scripts/sqlcl.sh -version for details.'
+printf '[oracle-apexlang] SQLcl verified.\n'
+
+apex_registry=$("$sqlcl_script" -S "$sys_connection" @"$apex_registry_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+[ -n "$apex_registry" ] || fail 'APEX not installed or dba_registry query returned no APEX row.'
+case "$apex_registry" in
+  APEX\|Oracle\ APEX\|26.1.*\|VALID) ;;
+  *) fail "APEX not installed or wrong version: $apex_registry" ;;
+esac
+printf '[oracle-apexlang] APEX registry verified: %s\n' "$apex_registry"
+
+"$sqlcl_script" -S "$sys_connection" @"$testschema_sql" >/dev/null || fail 'TESTSCHEMA missing and could not be created or unlocked.'
+
+"$sqlcl_script" -S "$sys_connection" @"$workspace_sql" >/dev/null || fail 'TEST workspace missing and could not be created or mapped to TESTSCHEMA.'
+workspace_mapping=$("$sqlcl_script" -S "$sys_connection" @"$verify_workspace_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+[ "$workspace_mapping" = 'TEST|TESTSCHEMA' ] || fail 'TEST workspace missing after setup verification.'
+
+mkdir -p "$workspace_root/exports/apexlang"
+"$sqlcl_script" -S /nolog @"$generate_sql" >/dev/null || fail 'Hello APEXlang package generation failed.'
+printf '[oracle-apexlang] Hello APEXlang package generated.\n'
+
+[ -f "$home_page_apx" ] || fail 'Generated Home page APEXlang file is missing.'
+python3 - <<'PY'
+from pathlib import Path
+path = Path('/workspace/exports/apexlang/hello-apexlang/pages/p00001-home.apx')
+text = path.read_text(encoding='utf-8')
+text = text.replace('title: &APP_TITLE.', 'title: Hello from APEXlang', 1)
+path.write_text(text, encoding='utf-8', newline='\n')
+PY
+
+"$sqlcl_script" -S "$testschema_connection" @"$validate_sql" >/dev/null || fail 'Hello APEXlang package validation failed.'
+printf '[oracle-apexlang] Hello APEXlang package validated.\n'
+
+"$sqlcl_script" -S "$testschema_connection" @"$import_sql" >/dev/null || fail 'Hello APEXlang import failed.'
+printf '[oracle-apexlang] Hello APEXlang application imported.\n'
+
+"$sqlcl_script" -S "$testschema_connection" @"$export_sql" >/dev/null || fail 'Hello APEXlang export failed.'
+printf '[oracle-apexlang] Hello APEXlang package exported.\n'
+
+final_app=$("$sqlcl_script" -S "$sys_connection" @"$verify_app_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+[ "$final_app" = 'Hello APEXlang|Home|Home|Hello from APEXlang' ] || fail 'Hello APEXlang verification query returned an unexpected result.'
+printf '[oracle-apexlang] Hello APEXlang application verified: %s\n' "$final_app"
+""";
+
+    private static string ApexLangHelloWorldPowerShellScript() => """
+$ErrorActionPreference = 'Stop'
+
+$workspaceRoot = Split-Path -Parent $PSScriptRoot
+$workspaceName = Split-Path -Leaf $workspaceRoot
+$containerName = ($workspaceName.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-') + '-workspace'
+
+docker ps --format '{{.Names}}' | Select-String -SimpleMatch $containerName | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "The workspace container '$containerName' is not running."
+}
+
+docker exec -w /workspace $containerName bash -lc "/workspace/scripts/apexlang-hello-world.sh"
+exit $LASTEXITCODE
 """;
 
     private static string OpenOrdsScript(string ordsBaseUrl) => $"""

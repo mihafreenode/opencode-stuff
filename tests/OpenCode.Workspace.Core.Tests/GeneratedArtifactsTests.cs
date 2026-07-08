@@ -595,6 +595,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("local setup_script=/tmp/oracle-demo-user-setup.sql", script);
         Assert.Contains("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' bash -lc \"$(declare -f ensure_demo_user_ready); ensure_demo_user_ready\"", script);
         Assert.DoesNotContain("run_with_timeout 120 'Oracle demo user setup' 'Rebuild Runtime if the Oracle data volume contains stale credentials.' ensure_demo_user_ready", script, StringComparison.Ordinal);
+        Assert.Contains("oracle_set_stage 'Provision Hello APEXlang'", script);
+        Assert.Contains("/workspace/scripts/apexlang-hello-world.sh", script);
+        Assert.True(script.IndexOf("oracle_set_stage 'Workspace configuration'", StringComparison.Ordinal) < script.IndexOf("oracle_set_stage 'Provision Hello APEXlang'", StringComparison.Ordinal));
+        Assert.True(script.IndexOf("oracle_set_stage 'Provision Hello APEXlang'", StringComparison.Ordinal) < script.IndexOf("oracle_set_stage 'Final verification'", StringComparison.Ordinal));
     }
 
     [Fact]

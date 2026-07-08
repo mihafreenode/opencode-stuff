@@ -1489,6 +1489,44 @@ public sealed class WorkspaceOrchestratorTests
     }
 
     [Fact]
+    public async Task RegenerateAsync_WhenOracleApexLangWorkspaceIsRunning_RerunsHelloWorldStep()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithRuntimeAbstractions(tempRoot, CreateResolver(), new FakeWorkspaceProvider(), runtime);
+            var baseSnapshot = orchestrator.CreateWorkspace(tempRoot, CreateApexLangDefinition());
+            var runningSnapshot = new WorkspaceSnapshot
+            {
+                Record = baseSnapshot.Record,
+                Definition = baseSnapshot.Definition,
+                Paths = baseSnapshot.Paths,
+                ConfigurationPath = baseSnapshot.ConfigurationPath,
+                RuntimeState = WorkspaceRuntimeState.Running,
+                Safety = baseSnapshot.Safety,
+                Session = baseSnapshot.Session,
+                AppliedState = baseSnapshot.AppliedState,
+                LocalRuntimeState = baseSnapshot.LocalRuntimeState,
+                ResolvedRuntimePlan = baseSnapshot.ResolvedRuntimePlan,
+                UpdateRequired = baseSnapshot.UpdateRequired,
+                Health = baseSnapshot.Health,
+                Readiness = baseSnapshot.Readiness,
+                AvailableServices = baseSnapshot.AvailableServices,
+            };
+
+            await orchestrator.RegenerateAsync(runningSnapshot);
+
+            Assert.Equal(1, runtime.HelloApexlangCallCount);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
     public async Task LaunchAttachForRunningWorkspaceAsync_WhenProvisioningSucceeds_WritesRuntimeState()
     {
         var tempRoot = CreateTempRoot();
@@ -1527,6 +1565,22 @@ public sealed class WorkspaceOrchestratorTests
             Services = new List<string> { "postgres", "pgadmin" },
             Skills = new List<string>(),
             Mcp = new List<string>(),
+        };
+    }
+
+    private static WorkspaceDefinition CreateApexLangDefinition()
+    {
+        return new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Provider = new WorkspaceProviderDefinition { Type = "git" },
+            Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+            Skills = [],
+            Mcp = ["oracle-sqlcl"],
+            Agent = new AgentPreferences { Profile = AgentProfileResolver.BuiltInDefault.ProfileId },
+            Terminal = new TerminalPreferences(),
         };
     }
 
@@ -1641,6 +1695,16 @@ public sealed class WorkspaceOrchestratorTests
                 },
                 new FeatureManifest
                 {
+                    Id = "oracle-apex-demo",
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
+                    Id = "oracle-apexlang-demo",
+                    Dependencies = new DependencySet(),
+                },
+                new FeatureManifest
+                {
                     Id = "analytics-reporting",
                     KnowledgePacks = new List<string> { "education-knowledge-pack" },
                     Dependencies = new DependencySet
@@ -1703,6 +1767,14 @@ public sealed class WorkspaceOrchestratorTests
                     Profiles = new List<string> { "oracle-demo" },
                     WorkspaceDependsOnCondition = "service_healthy",
                     Volumes = new List<string> { "oracle-demo-data:/opt/oracle/oradata", "${WORKSPACE_TUTORIAL_DOCKER_PATH}/oracle/init:/container-entrypoint-initdb.d" },
+                },
+                new ServiceManifest
+                {
+                    Id = "oracle-ords",
+                    Image = "container-registry.oracle.com/database/ords:latest",
+                    HostPorts = new List<string> { "8181:8080" },
+                    Profiles = new List<string> { "oracle-ords" },
+                    DependsOn = new List<string> { "oracle-demo" },
                 },
             },
             Array.Empty<CapabilityManifest>(),
@@ -2232,6 +2304,8 @@ public sealed class WorkspaceOrchestratorTests
 
         public int RestartServiceCallCount { get; private set; }
 
+        public int HelloApexlangCallCount { get; private set; }
+
         public List<string> ProbedUrls { get; } = new();
 
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
@@ -2349,6 +2423,12 @@ public sealed class WorkspaceOrchestratorTests
             if (argumentList.Count >= 5 && argumentList[0] == "exec" && argumentList[3] == "-lc")
             {
                 var shellCommand = argumentList[4];
+                if (shellCommand.Contains("/workspace/scripts/apexlang-hello-world.sh", StringComparison.Ordinal))
+                {
+                    HelloApexlangCallCount++;
+                    return Task.FromResult(Success("docker exec apexlang-hello-world"));
+                }
+
                 if (shellCommand.Contains("command -v screen", StringComparison.Ordinal)
                     || shellCommand.Contains("command -v node", StringComparison.Ordinal)
                     || shellCommand.Contains("command -v npm", StringComparison.Ordinal)
@@ -2362,6 +2442,16 @@ public sealed class WorkspaceOrchestratorTests
                 if (shellCommand.Contains("command -v starship", StringComparison.Ordinal))
                 {
                     return Task.FromResult(Success("docker exec starship", "starship 1.0.0"));
+                }
+            }
+
+            if (argumentList.Count >= 7 && argumentList[0] == "exec" && argumentList[1] == "-w" && argumentList[4] == "bash" && argumentList[5] == "-lc")
+            {
+                var shellCommand = argumentList[6];
+                if (shellCommand.Contains("/workspace/scripts/apexlang-hello-world.sh", StringComparison.Ordinal))
+                {
+                    HelloApexlangCallCount++;
+                    return Task.FromResult(Success("docker exec apexlang-hello-world"));
                 }
             }
 
