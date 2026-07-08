@@ -31,7 +31,7 @@
           </Grid>
         </Border>
 
-        <Grid Grid.Row="1" ColumnDefinitions="400,*" ColumnSpacing="18">
+        <Grid Grid.Row="1" ColumnDefinitions="360,*" ColumnSpacing="18">
           <Border Classes="panel">
             <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="12">
               <TextBlock Text="Local workspaces" Classes="section-title" />
@@ -156,8 +156,8 @@
 
                   <Border Classes="panel-subtle" IsVisible="{Binding ShowMainAvailableServicesSection}" VerticalAlignment="Top" Margin="0,4,0,0">
                     <StackPanel Spacing="12" VerticalAlignment="Top">
-                      <TextBlock Text="What You Can Use" Classes="section-title" />
-                      <ItemsControl ItemsSource="{Binding DetailAvailableServices}" VerticalAlignment="Top">
+                      <TextBlock Text="Start Working" Classes="section-title" />
+                      <ItemsControl ItemsSource="{Binding CapabilityGroups}" VerticalAlignment="Top">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate>
                             <StackPanel Spacing="14" />
@@ -165,69 +165,57 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
-                            <Border Classes="list-row service-tile" VerticalAlignment="Top">
-                              <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8" VerticalAlignment="Top">
-                                <Border Width="40" Height="40" Classes="panel-subtle" VerticalAlignment="Top">
-                                  <TextBlock Text="{Binding ServiceGlyph}"
-                                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                             Foreground="{DynamicResource AccentBrush}"
-                                             HorizontalAlignment="Center"
-                                             VerticalAlignment="Center"
-                                             FontSize="18" />
-                                </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding Service}" FontSize="17" FontWeight="Bold" />
-                                <Border Grid.Column="2"
-                                        Classes="status-chip"
-                                        Classes.ready-chip="{Binding IsReadyStatus}"
-                                        Classes.warning-chip="{Binding IsWarningStatus}"
-                                        Classes.unavailable-chip="{Binding IsUnavailableStatus}"
-                                        IsVisible="{Binding HasStatus}">
-                                  <TextBlock Text="{Binding Status}"
-                                             Classes="status-chip-text"
-                                             Classes.ready-chip="{Binding IsReadyStatus}"
-                                             Classes.warning-chip="{Binding IsWarningStatus}"
-                                             Classes.unavailable-chip="{Binding IsUnavailableStatus}"
-                                             FontWeight="SemiBold" />
-                                </Border>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
-                                <WrapPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal">
-                                  <Button Content="Open" Classes="accent" Command="{Binding OpenServiceCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenService}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                  <Button Content="Copy URL" Classes="quiet-action" Command="{Binding CopyUrlCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyUrl}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                  <Button Content="Copy Credentials" Classes="quiet-action" Command="{Binding CopyCredentialsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCredentials}" Margin="0,0,8,8" MinWidth="132" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                  <Button Content="Copy Command" Classes="quiet-action" Command="{Binding CopyCommandCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCommand}" Margin="0,0,8,8" MinWidth="124" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                  <Button Content="Documentation" Classes="quiet-action" Command="{Binding OpenDocsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenDocs}" Margin="0,0,8,8" MinWidth="120" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                </WrapPanel>
-                              </Grid>
-                            </Border>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </StackPanel>
-                  </Border>
-
-                  <Border Classes="panel-subtle" IsVisible="{Binding ShowMainRecoverySection}">
-                    <StackPanel Spacing="8">
-                      <TextBlock Text="Recovery Information" Classes="section-title" />
-                      <TextBlock Text="{Binding DetailSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </StackPanel>
-                  </Border>
-
-                  <Border Classes="panel-subtle" IsVisible="{Binding ShowMainTroubleshootingSection}">
-                    <StackPanel Spacing="10">
-                      <TextBlock Text="Troubleshooting" Classes="section-title" />
-                      <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate>
-                            <Border Classes="panel-subtle" Margin="0,0,0,8">
-                              <StackPanel Spacing="6">
-                                <Button Content="{Binding Label}"
-                                        Command="{Binding Command}"
-                                        IsEnabled="{Binding IsEnabled}"
-                                        HorizontalAlignment="Left"
-                                        automation:AutomationProperties.AutomationId="{Binding AutomationId}"
-                                        automation:AutomationProperties.Name="{Binding AutomationName}" />
-                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
-                                <TextBlock Text="{Binding DisabledReason}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding ShowDisabledReason}" />
+                            <Border Classes="panel-subtle" VerticalAlignment="Top">
+                              <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
+                                  <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" />
+                                  <TextBlock Text="{Binding Description}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding Services}">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                      <StackPanel Spacing="10" />
+                                    </ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                      <Border Classes="list-row service-tile" VerticalAlignment="Top">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8" VerticalAlignment="Top">
+                                          <Border Width="40" Height="40" Classes="panel-subtle" VerticalAlignment="Top">
+                                            <TextBlock Text="{Binding ServiceGlyph}"
+                                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="18" />
+                                          </Border>
+                                          <TextBlock Grid.Column="1" Text="{Binding Service}" FontSize="17" FontWeight="Bold" />
+                                          <Border Grid.Column="2"
+                                                  Classes="status-chip"
+                                                  Classes.ready-chip="{Binding IsReadyStatus}"
+                                                  Classes.warning-chip="{Binding IsWarningStatus}"
+                                                  Classes.unavailable-chip="{Binding IsUnavailableStatus}"
+                                                  IsVisible="{Binding HasStatus}">
+                                            <TextBlock Text="{Binding Status}"
+                                                       Classes="status-chip-text"
+                                                       Classes.ready-chip="{Binding IsReadyStatus}"
+                                                       Classes.warning-chip="{Binding IsWarningStatus}"
+                                                       Classes.unavailable-chip="{Binding IsUnavailableStatus}"
+                                                       FontWeight="SemiBold" />
+                                          </Border>
+                                          <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
+                                          <WrapPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal">
+                                            <Button Content="Open" Classes="accent" Command="{Binding OpenServiceCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenService}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
+                                            <Button Content="Copy URL" Classes="quiet-action" Command="{Binding CopyUrlCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyUrl}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
+                                            <Button Content="Copy Credentials" Classes="quiet-action" Command="{Binding CopyCredentialsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCredentials}" Margin="0,0,8,8" MinWidth="132" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
+                                            <Button Content="Copy Command" Classes="quiet-action" Command="{Binding CopyCommandCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCommand}" Margin="0,0,8,8" MinWidth="124" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
+                                            <Button Content="Documentation" Classes="quiet-action" Command="{Binding OpenDocsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenDocs}" Margin="0,0,8,8" MinWidth="120" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
+                                          </WrapPanel>
+                                        </Grid>
+                                      </Border>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                               </StackPanel>
                             </Border>
                           </DataTemplate>
@@ -281,68 +269,6 @@
                     </StackPanel>
                   </Border>
 
-                  <Expander Header="Advanced" IsExpanded="{Binding ShowAdvancedActions}">
-                    <StackPanel Spacing="14" Margin="0,12,0,0">
-                      <StackPanel Spacing="8" IsVisible="{Binding HasDetailServices}">
-                        <TextBlock Text="Diagnostics" Classes="section-title" />
-                        <ItemsControl ItemsSource="{Binding DetailServices}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                              <Border Classes="panel-subtle" Margin="0,0,0,8">
-                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
-                                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                  <Button Grid.Column="1" Content="{Binding ActionLabel}" Command="{Binding OpenCommand}" IsVisible="{Binding CanOpen}" />
-                                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                  <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-                                  <Expander Grid.Row="3" Grid.ColumnSpan="2" Header="Technical details" IsVisible="{Binding HasDetails}">
-                                    <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,0" />
-                                  </Expander>
-                                </Grid>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-
-                      <StackPanel Spacing="8" IsVisible="{Binding HasDetailItems}">
-                        <TextBlock Text="Technical Evidence" Classes="section-title" />
-                        <ItemsControl ItemsSource="{Binding DetailItems}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                              <Border Classes="panel-subtle" Margin="0,0,0,8">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
-                                  <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
-                                </StackPanel>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-
-                      <StackPanel Spacing="8" IsVisible="{Binding HasDetailAdvancedActions}">
-                        <TextBlock Text="Troubleshooting" Classes="section-title" />
-                        <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                              <Border Classes="panel-subtle" Margin="0,0,0,8">
-                                <StackPanel Spacing="6">
-                                  <Button Content="{Binding Label}"
-                                          Command="{Binding Command}"
-                                          IsEnabled="{Binding IsEnabled}"
-                                          HorizontalAlignment="Left"
-                                          automation:AutomationProperties.AutomationId="{Binding AutomationId}"
-                                          automation:AutomationProperties.Name="{Binding AutomationName}" />
-                                  <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
-                                  <TextBlock Text="{Binding DisabledReason}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding ShowDisabledReason}" />
-                                </StackPanel>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-                    </StackPanel>
-                  </Expander>
                 </StackPanel>
               </ScrollViewer>
             </TabItem>
@@ -402,6 +328,77 @@
                            TextChanged="WorkspaceOperationLogTextChanged" />
                 </Grid>
               </Border>
+            </TabItem>
+
+            <TabItem Header="Advanced">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="14" Margin="0,8,0,0">
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasDetailAdvancedActions}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Manual Recovery" Classes="section-title" />
+                      <ItemsControl ItemsSource="{Binding DetailAdvancedActions}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Border Classes="panel-subtle" Margin="0,0,0,8">
+                              <StackPanel Spacing="6">
+                                <Button Content="{Binding Label}"
+                                        Command="{Binding Command}"
+                                        IsEnabled="{Binding IsEnabled}"
+                                        HorizontalAlignment="Left"
+                                        automation:AutomationProperties.AutomationId="{Binding AutomationId}"
+                                        automation:AutomationProperties.Name="{Binding AutomationName}" />
+                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
+                                <TextBlock Text="{Binding DisabledReason}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding ShowDisabledReason}" />
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasDetailServices}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Diagnostics" Classes="section-title" />
+                      <ItemsControl ItemsSource="{Binding DetailServices}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Border Classes="panel-subtle" Margin="0,0,0,8">
+                              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                <Button Grid.Column="1" Content="{Binding ActionLabel}" Command="{Binding OpenCommand}" IsVisible="{Binding CanOpen}" />
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                                <Expander Grid.Row="3" Grid.ColumnSpan="2" Header="Technical details" IsVisible="{Binding HasDetails}">
+                                  <TextBlock Text="{Binding Details}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,0" />
+                                </Expander>
+                              </Grid>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasDetailItems}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Technical Evidence" Classes="section-title" />
+                      <ItemsControl ItemsSource="{Binding DetailItems}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Border Classes="panel-subtle" Margin="0,0,0,8">
+                              <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
             </TabItem>
           </TabControl>
         </Grid>

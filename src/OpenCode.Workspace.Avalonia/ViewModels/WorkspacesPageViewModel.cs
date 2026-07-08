@@ -88,6 +88,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     public ObservableCollection<WorkspaceSummaryViewModel> Workspaces { get; } = [];
     public ObservableCollection<WorkspaceRecentActivityItemViewModel> RecentActivity { get; } = [];
+    public ObservableCollection<WorkspaceCapabilityGroupViewModel> CapabilityGroups { get; } = [];
     public AsyncRelayCommand CreateWorkspaceCommand { get; }
     public AsyncRelayCommand OpenExistingRepositoryCommand { get; }
     public AsyncRelayCommand RefreshWorkspacesCommand { get; }
@@ -200,6 +201,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool ShowErrorState => HasLoadError && !HasWorkspaces;
     public bool ShowOperationLogPanel => HasOperationLog && IsOperationLogVisible;
     public bool HasRecentActivity => RecentActivity.Count > 0;
+    public bool HasCapabilityGroups => CapabilityGroups.Count > 0;
     public string SelectedWorkspaceTypeLabel => SelectedWorkspace?.WorkspaceTypeLabel ?? "Workspace";
     public string SelectedWorkspaceStateLabel => SelectedWorkspace?.RuntimeStatusLabel ?? "Unavailable";
     public bool IsSelectedWorkspacePreparing => HasSelectedWorkspace && (HasActiveWorkspaceOperation || SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Preparing);
@@ -209,7 +211,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         && !IsSelectedWorkspacePreparing
         && (SelectedWorkspace?.Readiness is null || SelectedWorkspace.Readiness.Status == WorkspaceReadinessStatus.Unavailable);
     public bool ShowHeroPrimaryAction => HasSelectedWorkspace && ShowDetailPrimaryAction;
-    public bool ShowMainAvailableServicesSection => HasDetailAvailableServices && !IsSelectedWorkspacePreparing;
+    public bool ShowMainAvailableServicesSection => HasCapabilityGroups && !IsSelectedWorkspacePreparing;
     public bool ShowMainRecentActivitySection => IsSelectedWorkspaceReady && HasRecentActivity;
     public bool ShowMainQuickActionsSection => IsSelectedWorkspaceReady && HasDetailVisibleActions;
     public bool ShowMainProgressSection => IsSelectedWorkspacePreparing;
@@ -1647,7 +1649,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         DetailItems.Clear();
         RecentActivity.Clear();
+        CapabilityGroups.Clear();
         RaisePropertyChanged(nameof(HasRecentActivity));
+        RaisePropertyChanged(nameof(HasCapabilityGroups));
 
         if (SelectedWorkspace is null)
         {
@@ -1708,6 +1712,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailAvailableServices.Add(BuildAvailableServiceRow(service, SelectedWorkspace));
         }
 
+        PopulateCapabilityGroups();
+
         PopulateRecentActivity(SelectedWorkspace, presentation);
         ApplyDetailPresentation(presentation);
         UpdateOperationLogAutoVisibility();
@@ -1731,6 +1737,80 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         RaisePropertyChanged(nameof(HasRecentActivity));
     }
+
+    private void PopulateCapabilityGroups()
+    {
+        CapabilityGroups.Clear();
+
+        foreach (var group in BuildCapabilityGroups(DetailAvailableServices))
+        {
+            CapabilityGroups.Add(group);
+        }
+
+        RaisePropertyChanged(nameof(HasCapabilityGroups));
+    }
+
+    private static IReadOnlyList<WorkspaceCapabilityGroupViewModel> BuildCapabilityGroups(IEnumerable<AvailableWorkspaceServiceRowViewModel> services)
+    {
+        var grouped = services
+            .GroupBy(ResolveCapabilityGroupKey)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+
+        var results = new List<WorkspaceCapabilityGroupViewModel>();
+        foreach (var key in new[] { "Development", "Oracle APEX", "Database", "APIs", "Documentation", "Services" })
+        {
+            if (!grouped.TryGetValue(key, out var items) || items.Count == 0)
+            {
+                continue;
+            }
+
+            results.Add(new WorkspaceCapabilityGroupViewModel(key, DescribeCapabilityGroup(key), items));
+        }
+
+        return results;
+    }
+
+    private static string ResolveCapabilityGroupKey(AvailableWorkspaceServiceRowViewModel service)
+    {
+        var value = string.Join(' ', new[] { service.Service, service.Category, service.Description }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        if (value.Contains("APEX", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Oracle APEX";
+        }
+
+        if (value.Contains("Shell", StringComparison.OrdinalIgnoreCase) || value.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || value.Contains("OpenCode", StringComparison.OrdinalIgnoreCase) || value.Contains("Repository", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Development";
+        }
+
+        if (value.Contains("Database", StringComparison.OrdinalIgnoreCase) || value.Contains("SQL", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Database";
+        }
+
+        if (value.Contains("REST", StringComparison.OrdinalIgnoreCase) || value.Contains("API", StringComparison.OrdinalIgnoreCase) || value.Contains("Swagger", StringComparison.OrdinalIgnoreCase) || value.Contains("ORDS", StringComparison.OrdinalIgnoreCase))
+        {
+            return "APIs";
+        }
+
+        if (value.Contains("Doc", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Documentation";
+        }
+
+        return "Services";
+    }
+
+    private static string DescribeCapabilityGroup(string key)
+        => key switch
+        {
+            "Development" => "Open the workspace, shell, repository, and developer tools.",
+            "Oracle APEX" => "Launch browser-based Oracle APEX tools and supporting entry points.",
+            "Database" => "Connect to database runtimes and command-line tooling.",
+            "APIs" => "Open and inspect REST endpoints and API surfaces.",
+            "Documentation" => "Jump to reference material and workspace guidance.",
+            _ => "Available workspace capabilities."
+        };
 
     private IReadOnlyList<WorkspaceRecentActivityItemViewModel> BuildRecentActivityItems(WorkspaceSummaryViewModel workspace, WorkspacePresentation presentation)
     {
