@@ -77,9 +77,7 @@ public static class WorkspaceReadinessEngine
 
         if (status == WorkspaceReadinessStatus.NeedsRebuild)
         {
-            return canOpenWorkspace
-                ? WorkspacePrimaryAction.OpenWorkspace
-                : WorkspacePrimaryAction.RebuildRuntime;
+            return WorkspacePrimaryAction.RebuildRuntime;
         }
 
         if (hostBlocked)
@@ -98,6 +96,11 @@ public static class WorkspaceReadinessEngine
         {
             BuildDevelopmentShellCapability(snapshot, operation, launchReadinessProblem),
         };
+
+        if (snapshot?.Synchronization.IsSupported == true)
+        {
+            capabilities.Add(BuildSynchronizationCapability(snapshot.Synchronization));
+        }
 
         foreach (var service in health?.Services.Where(item => string.Equals(item.Category, "Application", StringComparison.OrdinalIgnoreCase)) ?? [])
         {
@@ -142,6 +145,24 @@ public static class WorkspaceReadinessEngine
         };
     }
 
+    private static WorkspaceCapabilitySnapshot BuildSynchronizationCapability(WorkspaceSynchronizationSnapshot synchronization)
+    {
+        var state = synchronization.State == WorkspaceSynchronizationState.InSync
+            ? WorkspaceCapabilityState.Available
+            : synchronization.State == WorkspaceSynchronizationState.Unknown
+                ? WorkspaceCapabilityState.Preparing
+                : WorkspaceCapabilityState.Unavailable;
+
+        return new WorkspaceCapabilitySnapshot
+        {
+            Key = "oracle-apex-sync",
+            Label = "Oracle APEX Sync",
+            State = state,
+            Summary = synchronization.Summary,
+            IsPrimaryWorkSurface = false,
+        };
+    }
+
     private static IReadOnlyList<WorkspaceAttentionItem> BuildAttentionItems(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool hostBlocked, bool needsRebuild, bool launchReadinessProblem, bool isFreshWorkspace)
     {
         var items = new List<WorkspaceAttentionItem>();
@@ -156,6 +177,28 @@ public static class WorkspaceReadinessEngine
                 Summary = health.DevelopmentEnvironment.Summary,
                 RecommendedActionLabel = string.IsNullOrWhiteSpace(health.DevelopmentEnvironment.Recommendation) ? "Inspect Development Environment" : health.DevelopmentEnvironment.Recommendation.TrimEnd('.'),
                 Scope = WorkspaceAttentionScope.DevelopmentEnvironment,
+            });
+        }
+
+        if (snapshot?.Synchronization.IsSupported == true
+            && snapshot.Synchronization.State is WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.DeploymentAhead or WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.ValidationFailed)
+        {
+            items.Add(new WorkspaceAttentionItem
+            {
+                Key = "oracle-apex-sync",
+                Label = "Oracle APEX Sync",
+                Severity = snapshot.Synchronization.State is WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.ValidationFailed
+                    ? WorkspaceAttentionSeverity.Blocking
+                    : WorkspaceAttentionSeverity.Attention,
+                Summary = snapshot.Synchronization.Summary,
+                RecommendedActionLabel = snapshot.Synchronization.State switch
+                {
+                    WorkspaceSynchronizationState.GitAhead => "Push Changes",
+                    WorkspaceSynchronizationState.DeploymentAhead => "Pull Changes",
+                    WorkspaceSynchronizationState.ValidationFailed => "Validate",
+                    _ => "Show Diff",
+                },
+                Scope = WorkspaceAttentionScope.Capability,
             });
         }
 
@@ -246,6 +289,22 @@ public static class WorkspaceReadinessEngine
                     new WorkspaceEvidenceItem { Label = "Applied state", Value = snapshot.AppliedState is null ? "Missing" : "Present" },
                 ],
             });
+
+            if (snapshot.Synchronization.IsSupported)
+            {
+                sections.Add(new WorkspaceEvidenceSection
+                {
+                    Label = "Synchronization",
+                    Items =
+                    [
+                        new WorkspaceEvidenceItem { Label = "State", Value = snapshot.Synchronization.State.ToString() },
+                        new WorkspaceEvidenceItem { Label = "Environment", Value = snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? "default" },
+                        new WorkspaceEvidenceItem { Label = "Mode", Value = snapshot.Synchronization.DefaultEnvironment?.SyncMode ?? WorkspaceSynchronizationModes.Manual },
+                        new WorkspaceEvidenceItem { Label = "Source", Value = snapshot.Synchronization.DefaultEnvironment?.SourcePath ?? string.Empty },
+                        new WorkspaceEvidenceItem { Label = "Sync metadata", Value = snapshot.Paths.ApexMetadataPath },
+                    ],
+                });
+            }
         }
 
         if (health is not null)
@@ -302,7 +361,7 @@ public static class WorkspaceReadinessEngine
                 WorkspaceActivity.OpeningTerminal => "Opening terminal.",
                 _ => "Preparing workspace. This may take several minutes.",
             },
-            WorkspaceReadinessStatus.NeedsRebuild => "Open Workspace can safely rebuild the runtime automatically before opening this workspace.",
+            WorkspaceReadinessStatus.NeedsRebuild => "Rebuild Runtime will recreate managed containers and volumes while keeping your files.",
             _ => hostBlocked
                 ? "Host prerequisites are blocking this workspace. Run Diagnostics to continue."
                 : launchReadinessProblem

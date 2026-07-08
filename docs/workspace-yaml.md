@@ -202,6 +202,34 @@ Terminal preferences describe the recommended shell experience for the workspace
 - `installIfMissing`: whether recommended terminal tools should be installed automatically during provisioning
 - `utilities`: optional helpers such as `zoxide` and `fzf`
 
+### `oracle`
+
+Oracle runtime settings stay under `oracle`, while durable Oracle APEX synchronization identity lives under `oracle.apex`.
+
+- keep ports such as `hostPort` and `ordsPort` under `oracle`
+- keep APEX application identity under `oracle.apex`
+- do not store passwords, secrets, timestamps, hashes, or runtime drift state in `workspace.yaml`
+
+Example:
+
+```yaml
+oracle:
+  hostPort: 1521
+  ordsPort: 8181
+  apex:
+    defaultEnvironment: dev
+    environments:
+      dev:
+        workspace: TEST
+        parsingSchema: TESTSCHEMA
+        applicationId: 100
+        sqlclProfile: local-apex-dev
+        syncMode: manual
+        sourcePath: src/apex
+```
+
+Operational synchronization state is stored separately in repository-owned metadata under `.opencode/apex/sync.yaml`.
+
 ### `agent`
 
 Agent preferences keep new workspaces usable immediately.

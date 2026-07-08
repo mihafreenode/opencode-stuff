@@ -158,6 +158,7 @@ public sealed class WorkspaceYamlService
             {
                 HostPort = definition.Oracle.HostPort is > 0 ? definition.Oracle.HostPort.Value : null,
                 OrdsPort = definition.Oracle.OrdsPort is > 0 ? definition.Oracle.OrdsPort.Value : null,
+                Apex = NormalizeOracleApexPreferences(definition.Oracle.Apex),
             },
             Analytics = new AnalyticsWorkspacePreferences
             {
@@ -194,6 +195,49 @@ public sealed class WorkspaceYamlService
             KnowledgePacks = knowledgePacks,
         };
     }
+
+    private static OracleApexWorkspacePreferences NormalizeOracleApexPreferences(OracleApexWorkspacePreferences? apex)
+    {
+        apex ??= new OracleApexWorkspacePreferences();
+        var environments = new Dictionary<string, OracleApexEnvironmentPreferences>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in apex.Environments)
+        {
+            var key = pair.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                continue;
+            }
+
+            environments[key] = NormalizeOracleApexEnvironmentPreferences(pair.Value);
+        }
+
+        var defaultEnvironment = string.IsNullOrWhiteSpace(apex.DefaultEnvironment)
+            ? environments.Keys.FirstOrDefault()
+            : apex.DefaultEnvironment.Trim();
+
+        return new OracleApexWorkspacePreferences
+        {
+            DefaultEnvironment = string.IsNullOrWhiteSpace(defaultEnvironment) ? null : defaultEnvironment,
+            Environments = environments,
+        };
+    }
+
+    private static OracleApexEnvironmentPreferences NormalizeOracleApexEnvironmentPreferences(OracleApexEnvironmentPreferences? environment)
+    {
+        environment ??= new OracleApexEnvironmentPreferences();
+        return new OracleApexEnvironmentPreferences
+        {
+            Workspace = NormalizeOptionalValue(environment.Workspace),
+            ParsingSchema = NormalizeOptionalValue(environment.ParsingSchema),
+            ApplicationId = environment.ApplicationId is > 0 ? environment.ApplicationId.Value : null,
+            SqlclProfile = NormalizeOptionalValue(environment.SqlclProfile),
+            SyncMode = NormalizeOptionalValue(environment.SyncMode),
+            SourcePath = NormalizeOptionalValue(environment.SourcePath),
+        };
+    }
+
+    private static string? NormalizeOptionalValue(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static List<WorkspaceKnowledgePackDefinition> ReadKnowledgePacks(YamlMappingNode rootMapping)
     {
@@ -270,7 +314,18 @@ public sealed class WorkspaceYamlService
         var stream = new YamlStream(new YamlDocument(rootMapping));
         using var writer = new StringWriter();
         stream.Save(writer, assignAnchors: false);
-        return writer.ToString();
+        var yaml = writer.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (yaml.StartsWith("---\n", StringComparison.Ordinal))
+        {
+            yaml = yaml[4..];
+        }
+
+        if (yaml.EndsWith("...\n", StringComparison.Ordinal))
+        {
+            yaml = yaml[..^4];
+        }
+
+        return yaml;
     }
 
     private static bool TryGetChild(YamlMappingNode mapping, string key, out YamlNode? value)

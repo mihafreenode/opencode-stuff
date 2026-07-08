@@ -131,6 +131,7 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
             Health = snapshot.Health,
             Readiness = snapshot.Readiness,
             AvailableServices = snapshot.AvailableServices,
@@ -1135,6 +1136,90 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
+    public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+
+    public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Export", snapshot => _workspaceOrchestrator.ExportSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+
+    public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Import", snapshot => _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+
+    public Task<WorkspaceOperationResult> PullSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Pull Changes", snapshot => _workspaceOrchestrator.PullSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+
+    public Task<WorkspaceOperationResult> PushSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Push Changes", snapshot => _workspaceOrchestrator.PushSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+
+    public Task<WorkspaceOperationResult> DiffSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Show Diff", async snapshot =>
+        {
+            var result = await _workspaceOrchestrator.DiffSynchronizationAsync(snapshot, cancellationToken: cancellationToken);
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = result.Snapshot,
+                Message = string.IsNullOrWhiteSpace(result.DiffText)
+                    ? result.Summary
+                    : $"{result.Summary}{Environment.NewLine}{result.DiffText}",
+            };
+        });
+
+    public async Task<WorkspaceOperationResult> SynchronizeWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        return snapshot.Synchronization.State switch
+        {
+            WorkspaceSynchronizationState.DeploymentAhead => await PullSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
+            WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.InSync or WorkspaceSynchronizationState.Unknown => await PushSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
+            WorkspaceSynchronizationState.ValidationFailed => await ValidateSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
+            _ => await DiffSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
+        };
+    }
+
+    private async Task<WorkspaceOperationResult> RunSynchronizationOperationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot, IOperationLogSink? logSink, CancellationToken cancellationToken, string operationName, Func<WorkspaceSnapshot, Task<WorkspaceSynchronizationOperationResult>> operation)
+    {
+        var transcript = CreateTranscript(operationName, currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        WorkspaceSnapshot? snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, $"{operationName} in progress...");
+            var operationResult = await operation(snapshot);
+            if (!string.IsNullOrWhiteSpace(operationResult.Message))
+            {
+                foreach (var line in operationResult.Message.Split([Environment.NewLine], StringSplitOptions.None))
+                {
+                    append(OperationTranscriptLineKind.Result, line);
+                }
+            }
+
+            var refreshedSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(refreshedSnapshot, operationName, operationResult.Message, operationResult.ProcessResult?.IsSuccess != false, cancellationToken);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = operationResult.ProcessResult?.IsSuccess != false;
+            return new WorkspaceOperationResult
+            {
+                Snapshot = refreshedSnapshot,
+                Message = operationResult.Message,
+                Transcript = transcript,
+            };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, operationName);
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
     public async Task<WorkspaceOperationResult> ReleaseRuntimeResourcesAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var transcript = CreateTranscript("Release Resources", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
@@ -2029,6 +2114,7 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = source.LocalRuntimeState,
             ResolvedRuntimePlan = source.ResolvedRuntimePlan,
             UpdateRequired = source.UpdateRequired,
+            Synchronization = source.Synchronization,
             Health = new WorkspaceHealthSnapshot(),
             Readiness = source.Readiness,
             AvailableServices = source.AvailableServices,
@@ -2049,6 +2135,7 @@ public sealed class DesktopShellService : IDesktopShellService
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
             Health = health,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = health }),
             AvailableServices = WorkspaceServiceCatalog.Build(snapshot),

@@ -32,6 +32,12 @@ public static class WorkspaceHealthEngine
             providers.AddRange(BuildOracleProviders(snapshot, services, timestamp));
         }
 
+        var synchronizationProvider = BuildSynchronizationProvider(snapshot, timestamp);
+        if (synchronizationProvider is not null)
+        {
+            providers.Add(synchronizationProvider);
+        }
+
         var headlineProviders = providers.Where(item => !string.Equals(item.ProviderKey, "development-environment", StringComparison.OrdinalIgnoreCase)).ToList();
         var overallStatus = headlineProviders.Select(item => item.Status).DefaultIfEmpty(WorkspaceHealthStatus.Healthy).MaxBy(SeverityRank);
         var recommendation = headlineProviders
@@ -400,6 +406,56 @@ public static class WorkspaceHealthEngine
                 WorkspaceHealthStatus.Provisioning => "Workspace can still be opened, but APEX applications are not ready yet.",
                 _ => "Workspace can still be opened, but APEX applications are not usable yet.",
             },
+        };
+    }
+
+    private static WorkspaceProviderHealthSnapshot? BuildSynchronizationProvider(WorkspaceSnapshot snapshot, DateTimeOffset timestamp)
+    {
+        if (!snapshot.Synchronization.IsSupported)
+        {
+            return null;
+        }
+
+        var state = snapshot.Synchronization.State;
+        var environment = snapshot.Synchronization.DefaultEnvironment;
+        var status = state switch
+        {
+            WorkspaceSynchronizationState.InSync => WorkspaceHealthStatus.Healthy,
+            WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.DeploymentAhead => WorkspaceHealthStatus.Attention,
+            WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.ValidationFailed => WorkspaceHealthStatus.Degraded,
+            _ => WorkspaceHealthStatus.Attention,
+        };
+
+        return new WorkspaceProviderHealthSnapshot
+        {
+            ProviderKey = "synchronization",
+            DisplayName = "Synchronization",
+            Status = status,
+            Summary = snapshot.Synchronization.Summary,
+            Evidence =
+            [
+                new WorkspaceHealthFact { Label = "state", Value = state.ToString() },
+                new WorkspaceHealthFact { Label = "environment", Value = environment?.EnvironmentName ?? "default" },
+                new WorkspaceHealthFact { Label = "mode", Value = environment?.SyncMode ?? WorkspaceSynchronizationModes.Manual },
+                new WorkspaceHealthFact { Label = "source", Value = environment?.SourcePath ?? string.Empty },
+                new WorkspaceHealthFact { Label = "drift", Value = environment?.DriftSummary ?? string.Empty },
+            ],
+            Confidence = "MEDIUM",
+            Timestamp = timestamp,
+            RefreshInterval = TimeSpan.FromMinutes(2),
+            Repairability = WorkspaceRepairability.Unknown.ToString(),
+            RecommendedAction = state switch
+            {
+                WorkspaceSynchronizationState.GitAhead => "Push Changes.",
+                WorkspaceSynchronizationState.DeploymentAhead => "Pull Changes.",
+                WorkspaceSynchronizationState.Diverged => "Show Diff.",
+                WorkspaceSynchronizationState.ValidationFailed => "Validate.",
+                _ => "Synchronize.",
+            },
+            IsVolatile = false,
+            WorkspaceImpact = state == WorkspaceSynchronizationState.InSync
+                ? "Oracle APEX preview matches the tracked workspace source."
+                : "Oracle APEX and Git are no longer fully synchronized.",
         };
     }
 

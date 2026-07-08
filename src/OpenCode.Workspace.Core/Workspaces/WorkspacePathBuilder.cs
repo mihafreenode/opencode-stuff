@@ -34,6 +34,7 @@ public static class WorkspacePathBuilder
         workspaceRootPath = NormalizeHostPathForCurrentOs(workspaceRootPath);
         var opencodePath = Path.Combine(workspaceRootPath, ".opencode");
         var opencodeLocalPath = Path.Combine(opencodePath, "local");
+        var apexMetadataPath = Path.Combine(opencodePath, "apex");
         var mountsRoot = Path.Combine(workspaceRootPath, "mounts");
         var configPath = Path.Combine(mountsRoot, "config");
         var historyPath = Path.Combine(workspaceRootPath, "history");
@@ -48,6 +49,7 @@ public static class WorkspacePathBuilder
             GitIgnorePath = Path.Combine(workspaceRootPath, ".gitignore"),
             OpencodePath = opencodePath,
             OpencodeLocalPath = opencodeLocalPath,
+            ApexMetadataPath = Path.Combine(apexMetadataPath, "sync.yaml"),
             WorkspaceYamlRelativePath = normalizedConfigurationPath,
             WorkspaceYamlPath = Path.Combine(workspaceRootPath, normalizedConfigurationPath.Replace('/', Path.DirectorySeparatorChar)),
             ComposePath = Path.Combine(workspaceRootPath, "compose.yaml"),

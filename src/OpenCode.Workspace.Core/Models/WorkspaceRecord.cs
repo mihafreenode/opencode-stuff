@@ -111,6 +111,7 @@ public sealed class WorkspacePaths
     public required string GitIgnorePath { get; init; }
     public required string OpencodePath { get; init; }
     public required string OpencodeLocalPath { get; init; }
+    public string ApexMetadataPath { get; init; } = string.Empty;
     public required string WorkspaceYamlRelativePath { get; init; }
     public required string WorkspaceYamlPath { get; init; }
     public required string ComposePath { get; init; }
@@ -170,6 +171,7 @@ public sealed class WorkspaceSnapshot
     public WorkspaceRuntimeStateRecord? LocalRuntimeState { get; init; }
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool UpdateRequired { get; init; }
+    public WorkspaceSynchronizationSnapshot Synchronization { get; init; } = new();
     public WorkspaceHealthSnapshot Health { get; init; } = new();
     public WorkspaceReadinessSnapshot Readiness { get; init; } = new();
     public IReadOnlyList<WorkspaceServiceInfo> AvailableServices { get; init; } = Array.Empty<WorkspaceServiceInfo>();

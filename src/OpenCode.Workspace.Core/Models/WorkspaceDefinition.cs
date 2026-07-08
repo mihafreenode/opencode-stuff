@@ -173,6 +173,39 @@ public sealed class OracleWorkspacePreferences
 
     [YamlMember(Alias = "ordsPort")]
     public int? OrdsPort { get; init; }
+
+    [YamlMember(Alias = "apex")]
+    public OracleApexWorkspacePreferences Apex { get; init; } = new();
+}
+
+public sealed class OracleApexWorkspacePreferences
+{
+    [YamlMember(Alias = "defaultEnvironment")]
+    public string? DefaultEnvironment { get; init; }
+
+    [YamlMember(Alias = "environments")]
+    public Dictionary<string, OracleApexEnvironmentPreferences> Environments { get; init; } = new();
+}
+
+public sealed class OracleApexEnvironmentPreferences
+{
+    [YamlMember(Alias = "workspace")]
+    public string? Workspace { get; init; }
+
+    [YamlMember(Alias = "parsingSchema")]
+    public string? ParsingSchema { get; init; }
+
+    [YamlMember(Alias = "applicationId")]
+    public int? ApplicationId { get; init; }
+
+    [YamlMember(Alias = "sqlclProfile")]
+    public string? SqlclProfile { get; init; }
+
+    [YamlMember(Alias = "syncMode")]
+    public string? SyncMode { get; init; }
+
+    [YamlMember(Alias = "sourcePath")]
+    public string? SourcePath { get; init; }
 }
 
 public sealed class AnalyticsWorkspacePreferences

@@ -1309,6 +1309,47 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
+    private async Task ValidateSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Validate", "Validating Oracle APEX source...", (rootPath, snapshot, sink) => _desktopShellService.ValidateSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task ExportSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Export", "Exporting Oracle APEX changes...", (rootPath, snapshot, sink) => _desktopShellService.ExportSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task ImportSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Import", "Importing workspace source into Oracle APEX...", (rootPath, snapshot, sink) => _desktopShellService.ImportSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task SynchronizeWorkspaceAsync()
+        => await RunSimpleWorkspaceOperationAsync("Synchronize", "Synchronizing Oracle APEX workspace state...", (rootPath, snapshot, sink) => _desktopShellService.SynchronizeWorkspaceAsync(rootPath, snapshot, sink));
+
+    private async Task DiffSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Show Diff", "Comparing workspace source and Oracle APEX export...", (rootPath, snapshot, sink) => _desktopShellService.DiffSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task PullSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Pull Changes", "Pulling Oracle APEX changes into Git...", (rootPath, snapshot, sink) => _desktopShellService.PullSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task PushSynchronizationAsync()
+        => await RunSimpleWorkspaceOperationAsync("Push Changes", "Pushing Git changes into Oracle APEX...", (rootPath, snapshot, sink) => _desktopShellService.PushSynchronizationAsync(rootPath, snapshot, sink));
+
+    private async Task RunSimpleWorkspaceOperationAsync(string operationName, string initialStatusMessage, Func<string, OpenCode.Workspace.Core.Models.WorkspaceSnapshot?, IOperationLogSink, Task<WorkspaceOperationResult>> operation)
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript(operationName, SelectedWorkspace.Name);
+        AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = initialStatusMessage });
+        DetailSummary = initialStatusMessage;
+
+        try
+        {
+            await RunWorkspaceOperationAsync(operationName, initialStatusMessage, operation, preserveExistingTranscript: true);
+        }
+        catch
+        {
+        }
+    }
+
     private void UpdateWorkspaceTabsForOperationState()
     {
         var hasActiveOperation = HasActiveWorkspaceOperation;
@@ -2193,6 +2234,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
         var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
         var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
+        var supportsSynchronization = workspace.Snapshot?.Synchronization.IsSupported == true;
         var shouldShowRebuildRuntime = effectiveReadiness?.Status != WorkspaceReadinessStatus.Ready
             || workspace.Record.LastProvisioningHealth is not null
             || workspace.Record.LastOperationSucceeded == false;
@@ -2207,6 +2249,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             investigateProblemAction,
             CreatePresentationAction(workspace, "Start Only", BuildStartDescription(workspace), CanStartWorkspace(workspace), GetStartDisabledReason(workspace), StartSelectedWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Attach Only", BuildAttachDescription(workspace), CanAttachWorkspace(workspace), GetAttachDisabledReason(workspace), AttachSelectedWorkspaceAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Validate", BuildSynchronizationDescription(workspace, "validate"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ValidateSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Export", BuildSynchronizationDescription(workspace, "export"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ExportSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Import", BuildSynchronizationDescription(workspace, "import"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ImportSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Synchronize", BuildSynchronizationDescription(workspace, "synchronize"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Show Diff", BuildSynchronizationDescription(workspace, "diff"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), DiffSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Pull Changes", BuildSynchronizationDescription(workspace, "pull"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PullSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Push Changes", BuildSynchronizationDescription(workspace, "push"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PushSynchronizationAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Create Application", "Create a new Oracle APEX application for the configured environment. Durable metadata is ready, but this flow is not yet available from the desktop shell.", false, "Create Application is not wired into the desktop shell yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Connect Existing Application", "Bind this workspace to an existing Oracle APEX application using durable workspace metadata. Durable metadata is supported, but this flow is not yet available from the desktop shell.", false, "Connect Existing Application is not wired into the desktop shell yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Checkpoint", BuildCheckpointDescription(workspace), CanCreateCheckpointWorkspace(workspace), GetCheckpointDisabledReason(workspace), CreateCheckpointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
@@ -2459,6 +2510,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private bool CanCreateCheckpointSelectedWorkspace()
         => CanCreateCheckpointWorkspace(SelectedWorkspace);
 
+    private bool CanRunSynchronizationWorkspace(WorkspaceSummaryViewModel workspace)
+        => workspace.HasSnapshot && workspace.Snapshot?.Synchronization.IsSupported == true && !IsBusyForWorkspaceActions;
+
     private string GetTroubleshootDisabledReason(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
             ? "Workspace details are still loading. Troubleshooting will be available when background checks finish."
@@ -2519,6 +2573,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ? GetCurrentWorkspaceActionStatusMessage()
             : CanBackupWorkspace(workspace) ? string.Empty : _interactionService is null ? "Workspace interaction services are unavailable." : "Workspace root or configuration file is missing, so backup cannot run.";
 
+    private string GetSynchronizationDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : workspace.Snapshot?.Synchronization.IsSupported == true
+                ? string.Empty
+                : "Oracle APEX synchronization is not configured. Add oracle.apex environments to workspace.yaml first.";
+
     private static string BuildTroubleshootDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
             ? "Loading workspace details before troubleshooting becomes available."
@@ -2528,6 +2589,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         => workspace.IsLoading
             ? "Loading workspace details before host diagnostics becomes available."
             : "Check host prerequisites such as Docker, Docker Compose, Windows Terminal, and platform support.";
+
+    private static string BuildSynchronizationDescription(WorkspaceSummaryViewModel workspace, string operation)
+        => workspace.Snapshot?.Synchronization.DefaultEnvironment is { } environment
+            ? operation switch
+            {
+                "validate" => $"Validate the Oracle APEX source at '{environment.SourcePath}' for environment '{environment.EnvironmentName}'.",
+                "export" => $"Export Builder changes from Oracle APEX into '{environment.SourcePath}'.",
+                "import" => $"Import '{environment.SourcePath}' into Oracle APEX for immediate preview.",
+                "pull" => $"Pull Builder changes from Oracle APEX into Git-managed source for '{environment.EnvironmentName}'.",
+                "push" => $"Push Git-managed APEX source into Oracle APEX for '{environment.EnvironmentName}'.",
+                "diff" => $"Compare Git-managed APEX source with the current Oracle APEX export for '{environment.EnvironmentName}'.",
+                _ => workspace.Snapshot.Synchronization.Summary,
+            }
+            : "Oracle APEX synchronization is not configured yet.";
 
     private string BuildStartDescription(WorkspaceSummaryViewModel workspace)
         => IsBusyForWorkspaceActions

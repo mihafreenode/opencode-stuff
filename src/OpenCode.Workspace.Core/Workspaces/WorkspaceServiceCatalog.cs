@@ -234,6 +234,10 @@ public static class WorkspaceServiceCatalog
             if (OracleWorkspaceFamily.HasApex(definition))
             {
                 var ordsPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, context.RuntimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId);
+                var defaultEnvironmentName = string.IsNullOrWhiteSpace(definition.Oracle.Apex.DefaultEnvironment)
+                    ? definition.Oracle.Apex.Environments.Keys.FirstOrDefault()
+                    : definition.Oracle.Apex.DefaultEnvironment;
+                definition.Oracle.Apex.Environments.TryGetValue(defaultEnvironmentName ?? string.Empty, out var defaultEnvironment);
                 services.AddRange(
                 [
                     new WorkspaceServiceInfo
@@ -260,6 +264,43 @@ public static class WorkspaceServiceCatalog
                         Actions = ["open-service", "copy-url", "open-docs"],
                     },
                 ]);
+
+                if (defaultEnvironment?.ApplicationId is > 0)
+                {
+                    services.Add(new WorkspaceServiceInfo
+                    {
+                        ServiceId = "apex-application",
+                        Name = "Running Application",
+                        Category = "Application",
+                        Description = "Open the configured Oracle APEX preview application.",
+                        HostUrl = $"http://localhost:{ordsPort}/ords/f?p={defaultEnvironment.ApplicationId.Value}",
+                        InternalUrl = $"http://oracle-ords:8080/ords/f?p={defaultEnvironment.ApplicationId.Value}",
+                        DocsPath = ServicesGuideRelativePath,
+                        Actions = ["open-service", "copy-url", "open-docs"],
+                    });
+                }
+
+                if (definition.Oracle.Apex.Environments.Count > 0)
+                {
+                    services.Add(new WorkspaceServiceInfo
+                    {
+                        ServiceId = "apex-synchronization",
+                        Name = "APEX Synchronization",
+                        Category = "Application",
+                        Description = "Validate, import, export, pull, and push Oracle APEX workspace state.",
+                        DocsPath = ServicesGuideRelativePath,
+                        Commands =
+                        [
+                            new WorkspaceServiceCommandInfo
+                            {
+                                Label = "Source",
+                                Command = defaultEnvironment?.SourcePath ?? "src/apex",
+                                Description = "Repository path used for Oracle APEX source synchronization.",
+                            },
+                        ],
+                        Actions = ["copy-command", "open-docs"],
+                    });
+                }
             }
 
             return services;

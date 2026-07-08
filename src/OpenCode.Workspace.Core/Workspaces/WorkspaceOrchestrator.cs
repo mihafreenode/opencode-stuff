@@ -39,6 +39,7 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceSafetyService _workspaceSafetyService;
     private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
+    private readonly WorkspaceSynchronizationService _workspaceSynchronizationService;
     private readonly WorkspaceAiRuntimeContextService _workspaceAiRuntimeContextService;
     private readonly WorkspaceRuntimeResourceManager _workspaceRuntimeResourceManager;
     private readonly IOracleMediaLocator _oracleMediaLocator;
@@ -93,6 +94,9 @@ public sealed class WorkspaceOrchestrator
         _workspaceSafetyService = workspaceSafetyService;
         _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
+        _workspaceSynchronizationService = new WorkspaceSynchronizationService([
+            new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), containerRuntime, new ProcessRunner()),
+        ]);
         _workspaceAiRuntimeContextService = new WorkspaceAiRuntimeContextService();
         _workspaceRuntimeResourceManager = new WorkspaceRuntimeResourceManager(workspaceRepository, workspaceRuntimeStateService);
         _oracleMediaLocator = oracleMediaLocator ?? new OracleMediaLocator();
@@ -205,9 +209,30 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = localRuntimeState,
             ResolvedRuntimePlan = resolvedRuntimePlan,
             UpdateRequired = updateRequired,
+            Synchronization = new WorkspaceSynchronizationSnapshot(),
             Health = new WorkspaceHealthSnapshot(),
             Readiness = new WorkspaceReadinessSnapshot(),
             AvailableServices = Array.Empty<WorkspaceServiceInfo>(),
+        };
+
+        var synchronization = await MeasureStageAsync("synchronization-status", "Synchronization", "Loaded workspace synchronization status.", rootPath, workspaceName, () => _workspaceSynchronizationService.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot }, cancellationToken), loadObserver, stageProgress);
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = synchronization.Snapshot,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
         };
 
         if (!includeRuntimeInspection)
@@ -230,6 +255,7 @@ public sealed class WorkspaceOrchestrator
                 LocalRuntimeState = snapshot.LocalRuntimeState,
                 ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
                 UpdateRequired = snapshot.UpdateRequired,
+                Synchronization = snapshot.Synchronization,
                 Health = partialHealth,
                 Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = partialHealth }),
                 AvailableServices = WorkspaceServiceCatalog.Build(snapshot.Definition, snapshot.LocalRuntimeState, snapshot.Paths.RootPath),
@@ -261,6 +287,7 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
             Health = new WorkspaceHealthSnapshot(),
             Readiness = snapshot.Readiness,
         };
@@ -279,6 +306,7 @@ public sealed class WorkspaceOrchestrator
             LocalRuntimeState = finalSnapshot.LocalRuntimeState,
             ResolvedRuntimePlan = finalSnapshot.ResolvedRuntimePlan,
             UpdateRequired = finalSnapshot.UpdateRequired,
+            Synchronization = finalSnapshot.Synchronization,
             Health = completedHealth,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = finalSnapshot, Health = completedHealth }),
             AvailableServices = WorkspaceServiceCatalog.Build(finalSnapshot.Definition, finalSnapshot.LocalRuntimeState, finalSnapshot.Paths.RootPath),
@@ -934,6 +962,27 @@ public sealed class WorkspaceOrchestrator
         return await _workspaceProvider.ExportPatchAsync(snapshot.Paths, snapshot.Definition, outputPath, log, cancellationToken);
     }
 
+    public Task<WorkspaceSynchronizationStatusResult> GetSynchronizationStatusAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> ValidateSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> ExportSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.ExportAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> ImportSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.ImportAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> PullSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.PullAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> PushSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<WorkspaceSynchronizationDiffResult> DiffSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.DiffAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
     public async Task LaunchAttachForRunningWorkspaceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         LogAttach(log, snapshot, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
@@ -1201,6 +1250,7 @@ public sealed class WorkspaceOrchestrator
         Directory.CreateDirectory(paths.RootPath);
         Directory.CreateDirectory(paths.OpencodePath);
         Directory.CreateDirectory(paths.OpencodeLocalPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
         Directory.CreateDirectory(paths.MountsRootPath);
         Directory.CreateDirectory(paths.InboxPath);
         Directory.CreateDirectory(paths.WorkspacePath);

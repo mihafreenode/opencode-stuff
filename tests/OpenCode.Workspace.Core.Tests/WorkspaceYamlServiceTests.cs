@@ -39,7 +39,27 @@ public sealed class WorkspaceYamlServiceTests
                 Prompt = new TerminalPromptPreferences { Provider = "starship" },
                 Utilities = new TerminalUtilityPreferences { Zoxide = true, Fzf = false },
             },
-            Oracle = new OracleWorkspacePreferences { HostPort = 1522, OrdsPort = 8182 },
+            Oracle = new OracleWorkspacePreferences
+            {
+                HostPort = 1522,
+                OrdsPort = 8182,
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                        },
+                    },
+                },
+            },
             Analytics = new AnalyticsWorkspacePreferences { MarimoPort = 3818 },
         };
 
@@ -67,6 +87,10 @@ public sealed class WorkspaceYamlServiceTests
             Assert.True(roundTripped.Terminal.Utilities.Zoxide);
             Assert.Equal(1522, roundTripped.Oracle.HostPort);
             Assert.Equal(8182, roundTripped.Oracle.OrdsPort);
+            Assert.Equal("dev", roundTripped.Oracle.Apex.DefaultEnvironment);
+            Assert.True(roundTripped.Oracle.Apex.Environments.ContainsKey("dev"));
+            Assert.Equal(100, roundTripped.Oracle.Apex.Environments["dev"].ApplicationId);
+            Assert.Equal("local-apex-dev", roundTripped.Oracle.Apex.Environments["dev"].SqlclProfile);
             Assert.Equal(3818, roundTripped.Analytics.MarimoPort);
         }
         finally
@@ -352,6 +376,71 @@ nested:
         Assert.Contains("metadataUrl: \"https://example.test/meta.json\"", yaml);
         Assert.Contains("- first", yaml);
         Assert.Contains("- second", yaml);
+    }
+
+    [Fact]
+    public void WriteToFile_PreservesOracleApexNestedMetadata()
+    {
+        var service = new WorkspaceYamlService();
+        var filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(filePath, """
+workspace:
+  name: apex-sync
+provider:
+  type: git
+runtime:
+  default: default
+features:
+  - core
+services:
+  - oracle-demo
+  - oracle-ords
+skills: []
+mcp: []
+agent:
+  profile: opencode-default
+terminal:
+  font:
+    provider: nerd-fonts
+    family: JetBrainsMono Nerd Font
+  prompt:
+    provider: starship
+  installIfMissing: true
+  utilities:
+    zoxide: false
+    fzf: false
+oracle:
+  hostPort: 1522
+  ordsPort: 8182
+  apex:
+    defaultEnvironment: dev
+    environments:
+      dev:
+        workspace: TEST
+        parsingSchema: TESTSCHEMA
+        applicationId: 100
+        sqlclProfile: local-apex-dev
+        syncMode: manual
+        sourcePath: src/apex
+""");
+
+            var definition = service.Read(filePath);
+            service.WriteToFile(filePath, definition);
+            var updatedYaml = File.ReadAllText(filePath);
+
+            Assert.Contains("apex:", updatedYaml);
+            Assert.Contains("defaultEnvironment: dev", updatedYaml);
+            Assert.Contains("applicationId: 100", updatedYaml);
+            Assert.Contains("sqlclProfile: local-apex-dev", updatedYaml);
+            Assert.Contains("sourcePath: src/apex", updatedYaml);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     private static YamlNode ParseYamlNode(string yaml)
