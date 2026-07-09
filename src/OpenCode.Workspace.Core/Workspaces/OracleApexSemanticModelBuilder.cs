@@ -17,6 +17,7 @@ public sealed class OracleApexSemanticModelBuilder
         "rest data source",
         "rest module",
         "rest handler",
+        "deployment",
         "computation",
         "application",
         "region",
@@ -97,6 +98,58 @@ public sealed class OracleApexSemanticModelBuilder
         PopulateRelationships(nodes, diagnostics);
         Validate(nodes, diagnostics);
         return new OracleApexSemanticModel(application, nodes, diagnostics.OrderBy(item => item.SourceFile, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Line).ToList());
+    }
+
+    public IReadOnlyList<OracleApexSemanticDeploymentProfile> BuildDeploymentProfiles(string sourcePath)
+    {
+        if (!Directory.Exists(sourcePath))
+        {
+            return Array.Empty<OracleApexSemanticDeploymentProfile>();
+        }
+
+        var deploymentsRoot = Path.Combine(sourcePath, "deployments");
+        if (!Directory.Exists(deploymentsRoot))
+        {
+            return Array.Empty<OracleApexSemanticDeploymentProfile>();
+        }
+
+        var diagnostics = new List<OracleApexSemanticDiagnostic>();
+        var profiles = new List<OracleApexSemanticDeploymentProfile>();
+        foreach (var filePath in Directory.GetFiles(deploymentsRoot, "*.apx", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var parsed = ParseFile(sourcePath, filePath, diagnostics);
+            var root = parsed.Roots.FirstOrDefault();
+            if (root is null)
+            {
+                profiles.Add(new OracleApexSemanticDeploymentProfile
+                {
+                    Name = Path.GetFileNameWithoutExtension(filePath),
+                    SourceFile = parsed.RelativePath,
+                    AbsolutePath = filePath,
+                    IsValid = false,
+                    ValidationMessage = $"Deployment file '{parsed.RelativePath}' does not contain a deployment block.",
+                });
+                continue;
+            }
+
+            var isValid = string.Equals(root.SemanticType, "deployment-profile", StringComparison.OrdinalIgnoreCase);
+            profiles.Add(new OracleApexSemanticDeploymentProfile
+            {
+                Name = ResolveIdentifier(root),
+                SourceFile = parsed.RelativePath,
+                AbsolutePath = filePath,
+                Line = root.Line,
+                Column = root.Column,
+                Properties = new Dictionary<string, string>(root.Properties, StringComparer.OrdinalIgnoreCase),
+                ReferencedObjects = ExtractReferences(root),
+                IsValid = isValid,
+                ValidationMessage = isValid
+                    ? $"Deployment file '{parsed.RelativePath}' is valid."
+                    : $"Expected a deployment root block in '{parsed.RelativePath}'.",
+            });
+        }
+
+        return profiles;
     }
 
     private RawSemanticFile ParseFile(string sourceRoot, string filePath, ICollection<OracleApexSemanticDiagnostic> diagnostics)
@@ -518,6 +571,7 @@ public sealed class OracleApexSemanticModelBuilder
             "rest-data-source" => "rest-data-source",
             "rest-module" => "rest-module",
             "rest-handler" => "rest-handler",
+            "deployment" => "deployment-profile",
             _ => NormalizeToken(blockType),
         };
 
@@ -648,6 +702,19 @@ public sealed class OracleApexSemanticDiagnostic
     public int Column { get; init; }
     public string NodeId { get; init; } = string.Empty;
     public string SemanticType { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexSemanticDeploymentProfile
+{
+    public string Name { get; init; } = string.Empty;
+    public string SourceFile { get; init; } = string.Empty;
+    public string AbsolutePath { get; init; } = string.Empty;
+    public int Line { get; init; }
+    public int Column { get; init; }
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyList<string> ReferencedObjects { get; init; } = Array.Empty<string>();
+    public bool IsValid { get; init; }
+    public string ValidationMessage { get; init; } = string.Empty;
 }
 
 public enum OracleApexSemanticDiagnosticSeverity

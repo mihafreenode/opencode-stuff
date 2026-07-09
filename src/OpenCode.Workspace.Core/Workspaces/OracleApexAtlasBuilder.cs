@@ -9,6 +9,7 @@ public sealed class OracleApexAtlasBuilder
     private const string AtlasDirectoryName = "apexlang-atlas";
     private const string DocumentationRelativePath = "docs/oracle-apex-atlas.md";
     private const string ComponentCatalogDocumentationRelativePath = "docs/oracle-apex-component-catalog.md";
+    private const string WorkspaceIndexFileName = "workspace-index.json";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly string[] KnownBlockTypes =
     [
@@ -49,11 +50,11 @@ public sealed class OracleApexAtlasBuilder
         "shared-components.json",
         "dependencies.json",
         "search-index.json",
+        WorkspaceIndexFileName,
         "state.json",
     ];
     private readonly OracleApexComponentCatalog _componentCatalog = OracleApexComponentCatalog.Default;
-    private readonly OracleApexDeploymentProfileCatalog _deploymentProfileCatalog = new();
-    private readonly OracleApexSemanticModelBuilder _semanticModelBuilder = new(OracleApexComponentCatalog.Default);
+    private readonly OracleApexWorkspaceIndexBuilder _workspaceIndexBuilder = new(new OracleApexSemanticModelBuilder(OracleApexComponentCatalog.Default));
 
     public OracleApexAtlasBuildResult Rebuild(WorkspaceDefinition definition, WorkspacePaths paths, string? environmentName = null, bool force = false)
     {
@@ -104,7 +105,8 @@ public sealed class OracleApexAtlasBuilder
                 return WriteFailureState(atlasRootPath, sourcePath, environmentName, sourceHash, $"Oracle APEX Atlas source path '{environment.SourcePath}' does not contain application.apx.", docsPath);
             }
 
-            var semanticModel = _semanticModelBuilder.Build(sourcePath);
+            var workspaceIndex = _workspaceIndexBuilder.Build(paths.RootPath, environment, environmentName);
+            var semanticModel = workspaceIndex.SemanticModel;
             if (semanticModel.Application is null)
             {
                 return WriteFailureState(atlasRootPath, sourcePath, environmentName, sourceHash, semanticModel.Diagnostics.FirstOrDefault(item => item.Severity == OracleApexSemanticDiagnosticSeverity.Error)?.Message ?? "Oracle APEX semantic model could not identify an application node.", docsPath);
@@ -144,6 +146,7 @@ public sealed class OracleApexAtlasBuilder
             WriteJson(Path.Combine(atlasRootPath, "shared-components.json"), sharedComponents);
             WriteJson(Path.Combine(atlasRootPath, "dependencies.json"), dependencies);
             WriteJson(Path.Combine(atlasRootPath, "search-index.json"), searchIndex);
+            WriteJson(Path.Combine(atlasRootPath, WorkspaceIndexFileName), workspaceIndex);
 
             var state = new AtlasState
             {
@@ -154,7 +157,7 @@ public sealed class OracleApexAtlasBuilder
                 BuiltUtc = DateTimeOffset.UtcNow,
                 ApplicationId = application.Id,
                 ApplicationName = application.Name,
-                DeploymentProfiles = _deploymentProfileCatalog.Discover(paths.RootPath, environment, environmentName).Profiles.Select(profile => profile.Name).ToList(),
+                DeploymentProfiles = workspaceIndex.DeploymentProfiles.Select(profile => profile.Name).ToList(),
                 GeneratedFiles = RequiredAtlasFiles.ToList(),
                 DocumentationPath = DocumentationRelativePath,
             };

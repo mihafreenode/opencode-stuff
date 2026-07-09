@@ -1,38 +1,43 @@
-using System.Text.RegularExpressions;
 using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Workspaces;
 
 internal sealed class OracleApexDeploymentProfileCatalog
 {
-    private static readonly Regex PropertyPattern = new(@"^(?<key>[A-Za-z][A-Za-z0-9_\-]*)\s*:\s*(?<value>.*)$", RegexOptions.Compiled);
+    private readonly OracleApexWorkspaceIndexBuilder _workspaceIndexBuilder;
+
+    public OracleApexDeploymentProfileCatalog(OracleApexWorkspaceIndexBuilder? workspaceIndexBuilder = null)
+        => _workspaceIndexBuilder = workspaceIndexBuilder ?? new OracleApexWorkspaceIndexBuilder();
 
     public OracleApexDeploymentProfileDiscovery Discover(string rootPath, OracleApexEnvironmentPreferences environment, string environmentName, string? overrideProfileName = null)
     {
         var sourcePath = Path.Combine(rootPath, (environment.SourcePath ?? "src/apex").Replace('/', Path.DirectorySeparatorChar));
         var deploymentsRoot = Path.Combine(sourcePath, "deployments");
-        var profiles = new List<OracleApexDeploymentProfile>();
+        var index = _workspaceIndexBuilder.Build(rootPath, environment, environmentName);
+        var profiles = index.DeploymentProfiles.Select(profile => new OracleApexDeploymentProfile
+        {
+            Name = profile.Name,
+            RelativePath = profile.SourceFile,
+            AbsolutePath = profile.AbsolutePath,
+            Properties = profile.Properties,
+            IsValid = profile.IsValid,
+            ValidationMessage = profile.ValidationMessage,
+        }).ToList();
         var errors = new List<string>();
         var warnings = new List<string>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (Directory.Exists(deploymentsRoot))
+        foreach (var profile in profiles)
         {
-            foreach (var filePath in Directory.GetFiles(deploymentsRoot, "*.apx", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            if (!names.Add(profile.Name))
             {
-                var profile = ParseProfile(rootPath, sourcePath, filePath);
-                if (!names.Add(profile.Name))
-                {
-                    errors.Add($"Duplicate Oracle APEX deployment profile '{profile.Name}' was discovered under '{Path.GetRelativePath(rootPath, deploymentsRoot).Replace('\\', '/')}'.");
-                    continue;
-                }
+                errors.Add($"Duplicate Oracle APEX deployment profile '{profile.Name}' was discovered under '{Path.GetRelativePath(rootPath, deploymentsRoot).Replace('\\', '/')}'.");
+                continue;
+            }
 
-                if (!profile.IsValid)
-                {
-                    errors.Add($"Deployment profile '{profile.Name}' is invalid. {profile.ValidationMessage}");
-                }
-
-                profiles.Add(profile);
+            if (!profile.IsValid)
+            {
+                errors.Add($"Deployment profile '{profile.Name}' is invalid. {profile.ValidationMessage}");
             }
         }
 
@@ -100,53 +105,6 @@ internal sealed class OracleApexDeploymentProfileCatalog
             ValidationMessage = validation,
             Errors = errors,
             Warnings = warnings,
-        };
-    }
-
-    private static OracleApexDeploymentProfile ParseProfile(string rootPath, string sourcePath, string filePath)
-    {
-        var fileName = Path.GetFileNameWithoutExtension(filePath).Trim();
-        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string firstMeaningfulLine = string.Empty;
-
-        foreach (var rawLine in File.ReadAllLines(filePath))
-        {
-            var line = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(firstMeaningfulLine))
-            {
-                firstMeaningfulLine = line;
-            }
-
-            var propertyMatch = PropertyPattern.Match(line);
-            if (propertyMatch.Success)
-            {
-                properties[propertyMatch.Groups["key"].Value.Trim()] = propertyMatch.Groups["value"].Value.Trim().Trim('"', '\'');
-            }
-        }
-
-        var relativePath = Path.GetRelativePath(sourcePath, filePath).Replace('\\', '/');
-        var validRoot = firstMeaningfulLine.EndsWith("(", StringComparison.Ordinal)
-            && firstMeaningfulLine.Contains("deployment", StringComparison.OrdinalIgnoreCase);
-        var parsedName = validRoot
-            ? firstMeaningfulLine[0..^1].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Skip(1).FirstOrDefault()
-            : null;
-        var name = string.IsNullOrWhiteSpace(parsedName) ? fileName : parsedName.Trim();
-
-        return new OracleApexDeploymentProfile
-        {
-            Name = name,
-            RelativePath = relativePath,
-            AbsolutePath = filePath,
-            Properties = properties,
-            IsValid = validRoot,
-            ValidationMessage = validRoot
-                ? $"Deployment file '{relativePath}' is valid."
-                : $"Expected a deployment root block in '{Path.GetRelativePath(rootPath, filePath).Replace('\\', '/')}'.",
         };
     }
 

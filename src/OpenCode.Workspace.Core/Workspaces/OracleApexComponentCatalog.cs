@@ -163,6 +163,7 @@ public sealed class OracleApexComponentCatalog
         Add(components, "rest-data-source", "REST Data Source", ["application"], [], [Property("name", "string", required: true), Property("url", "string")]);
         Add(components, "rest-module", "REST Module", ["application"], ["rest-handler"], [Property("name", "string", required: true), Property("base-path", "string")]);
         Add(components, "rest-handler", "REST Handler", ["application", "rest-module"], [], [Property("name", "string", required: true), Property("method", "enum", enumValues: ["GET", "POST", "PUT", "PATCH", "DELETE"]), Property("source", "sql/plsql")]);
+        Add(components, "deployment-profile", "Deployment Profile", [], [], [Property("name", "string", required: true), Property("workspace", "string"), Property("parsing-schema", "string"), Property("application-id", "integer")]);
 
         return new OracleApexComponentCatalog(components);
     }
