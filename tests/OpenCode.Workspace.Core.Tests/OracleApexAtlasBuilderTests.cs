@@ -128,10 +128,12 @@ public sealed class OracleApexAtlasBuilderTests
             builder.Rebuild(CreateDefinition(), paths, "dev", force: true);
 
             var documentation = File.ReadAllText(Path.Combine(root, "docs", "oracle-apex-atlas.md"));
+            var componentCatalogDocumentation = File.ReadAllText(Path.Combine(root, "docs", "oracle-apex-component-catalog.md"));
             Assert.Contains("# Oracle APEX Atlas", documentation, StringComparison.Ordinal);
             Assert.Contains("## Application Summary", documentation, StringComparison.Ordinal);
             Assert.Contains("## Page Inventory", documentation, StringComparison.Ordinal);
             Assert.Contains("Customer Orders Demo", documentation, StringComparison.Ordinal);
+            Assert.Contains("# Oracle APEX Component Catalog", componentCatalogDocumentation, StringComparison.Ordinal);
         }
         finally
         {

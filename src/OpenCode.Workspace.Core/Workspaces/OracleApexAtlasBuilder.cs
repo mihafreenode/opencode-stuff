@@ -8,6 +8,7 @@ public sealed class OracleApexAtlasBuilder
 {
     private const string AtlasDirectoryName = "apexlang-atlas";
     private const string DocumentationRelativePath = "docs/oracle-apex-atlas.md";
+    private const string ComponentCatalogDocumentationRelativePath = "docs/oracle-apex-component-catalog.md";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly string[] KnownBlockTypes =
     [
@@ -50,7 +51,9 @@ public sealed class OracleApexAtlasBuilder
         "search-index.json",
         "state.json",
     ];
+    private readonly OracleApexComponentCatalog _componentCatalog = OracleApexComponentCatalog.Default;
     private readonly OracleApexDeploymentProfileCatalog _deploymentProfileCatalog = new();
+    private readonly OracleApexSemanticModelBuilder _semanticModelBuilder = new(OracleApexComponentCatalog.Default);
 
     public OracleApexAtlasBuildResult Rebuild(WorkspaceDefinition definition, WorkspacePaths paths, string? environmentName = null, bool force = false)
     {
@@ -72,6 +75,7 @@ public sealed class OracleApexAtlasBuilder
     {
         var atlasRootPath = Path.Combine(paths.OpencodePath, "knowledge", AtlasDirectoryName);
         var docsPath = Path.Combine(paths.RootPath, DocumentationRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var componentCatalogDocsPath = Path.Combine(paths.RootPath, ComponentCatalogDocumentationRelativePath.Replace('/', Path.DirectorySeparatorChar));
         var sourcePath = Path.Combine(paths.RootPath, environment.SourcePath ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(environment.SourcePath))
@@ -100,19 +104,19 @@ public sealed class OracleApexAtlasBuilder
                 return WriteFailureState(atlasRootPath, sourcePath, environmentName, sourceHash, $"Oracle APEX Atlas source path '{environment.SourcePath}' does not contain application.apx.", docsPath);
             }
 
-            var applicationNode = ParseFirstRootNode(applicationFile, "application");
-            var application = BuildApplication(applicationNode, environment, environmentName);
+            var semanticModel = _semanticModelBuilder.Build(sourcePath);
+            if (semanticModel.Application is null)
+            {
+                return WriteFailureState(atlasRootPath, sourcePath, environmentName, sourceHash, semanticModel.Diagnostics.FirstOrDefault(item => item.Severity == OracleApexSemanticDiagnosticSeverity.Error)?.Message ?? "Oracle APEX semantic model could not identify an application node.", docsPath);
+            }
 
-            var pageFiles = Directory.Exists(Path.Combine(sourcePath, "pages"))
-                ? Directory.GetFiles(Path.Combine(sourcePath, "pages"), "*.apx", SearchOption.TopDirectoryOnly).OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList()
-                : new List<string>();
-            var pages = pageFiles.Select(path => BuildPage(path, sourcePath)).OrderBy(page => page.PageId).ThenBy(page => page.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            var application = BuildApplicationFromSemanticModel(semanticModel.Application, environment, environmentName);
+            var pages = BuildPagesFromSemanticModel(semanticModel, sourcePath);
             var regions = pages.SelectMany(page => page.Regions).OrderBy(region => region.PageId).ThenBy(region => region.Title, StringComparer.OrdinalIgnoreCase).ToList();
-
-            var sharedComponents = BuildSharedComponents(sourcePath);
-            var navigation = BuildNavigation(pages, sharedComponents);
-            var dependencies = BuildDependencies(application, pages, sharedComponents);
-            var searchIndex = BuildSearchIndex(pages, regions, sharedComponents, dependencies);
+            var sharedComponents = BuildSharedComponentsFromSemanticModel(semanticModel);
+            var navigation = BuildNavigationFromSemanticModel(semanticModel, pages, sharedComponents);
+            var dependencies = BuildDependenciesFromSemanticModel(application, semanticModel, pages, sharedComponents);
+            var searchIndex = BuildSearchIndexFromSemanticModel(semanticModel, pages, regions, sharedComponents, dependencies);
 
             var atlas = new AtlasDocument
             {
@@ -163,6 +167,8 @@ public sealed class OracleApexAtlasBuilder
             }
 
             File.WriteAllText(docsPath, BuildDocumentation(atlas).Replace("\r\n", "\n", StringComparison.Ordinal));
+            Directory.CreateDirectory(Path.GetDirectoryName(componentCatalogDocsPath)!);
+            File.WriteAllText(componentCatalogDocsPath, _componentCatalog.BuildDocumentation().Replace("\r\n", "\n", StringComparison.Ordinal));
             return OracleApexAtlasBuildResult.Success(atlasRootPath, docsPath, sourceHash);
         }
         catch (Exception exception)
@@ -238,6 +244,195 @@ public sealed class OracleApexAtlasBuilder
 
         return node;
     }
+
+    private static ApplicationAtlasEntry BuildApplicationFromSemanticModel(OracleApexSemanticNode applicationNode, OracleApexEnvironmentPreferences environment, string environmentName)
+    {
+        return new ApplicationAtlasEntry
+        {
+            Id = ReadInt(applicationNode.GetProperty("id")) ?? environment.ApplicationId ?? 0,
+            Name = applicationNode.GetProperty("name") ?? applicationNode.Identifier,
+            Alias = applicationNode.GetProperty("alias") ?? string.Empty,
+            Version = applicationNode.GetProperty("version") ?? string.Empty,
+            Workspace = applicationNode.GetProperty("workspace") ?? environment.Workspace ?? string.Empty,
+            ParsingSchema = applicationNode.GetProperty("parsing-schema") ?? environment.ParsingSchema ?? string.Empty,
+            EnvironmentName = environmentName,
+        };
+    }
+
+    private static List<PageAtlasEntry> BuildPagesFromSemanticModel(OracleApexSemanticModel semanticModel, string sourcePath)
+        => semanticModel.GetNodes("page")
+            .Select(page => new PageAtlasEntry
+            {
+                PageId = ReadInt(page.GetProperty("id")) ?? 0,
+                Name = page.GetProperty("name") ?? page.Identifier,
+                Alias = page.GetProperty("alias") ?? string.Empty,
+                Mode = page.GetProperty("mode") ?? string.Empty,
+                Authentication = page.GetProperty("authentication") ?? string.Empty,
+                SourceFile = page.SourceFile,
+                Regions = page.Children.Where(child => child.SemanticType == "region").Select(region => new RegionAtlasEntry
+                {
+                    PageId = ReadInt(page.GetProperty("id")) ?? 0,
+                    PageName = page.GetProperty("name") ?? page.Identifier,
+                    Name = region.GetProperty("name") ?? region.Identifier,
+                    Title = region.GetProperty("title") ?? region.Identifier,
+                    RegionType = region.GetProperty("type") ?? string.Empty,
+                    SourceType = region.GetProperty("source-type") ?? string.Empty,
+                    ReferencedTablesOrViews = region.ReferencedObjects.Where(IsDatabaseObject).ToList(),
+                    ReferencedRestSources = region.ReferencedObjects.Where(IsRestReference).ToList(),
+                }).ToList(),
+                Items = page.Children.Where(child => child.SemanticType == "item").Select(BuildPageComponentFromSemanticNode).ToList(),
+                Buttons = page.Children.Where(child => child.SemanticType == "button").Select(BuildPageComponentFromSemanticNode).ToList(),
+                DynamicActions = page.Children.Where(child => child.SemanticType == "dynamic-action").Select(BuildPageComponentFromSemanticNode).ToList(),
+                Processes = page.Children.Where(child => child.SemanticType == "process").Select(BuildPageComponentFromSemanticNode).ToList(),
+                Branches = page.Children.Where(child => child.SemanticType == "branch").Select(branch => new BranchAtlasEntry
+                {
+                    Name = branch.GetProperty("name") ?? branch.Identifier,
+                    TargetPageId = ReadInt(branch.GetProperty("target-page")),
+                }).ToList(),
+                Breadcrumb = page.GetProperty("breadcrumb") ?? string.Empty,
+                ParentPageId = ReadInt(page.GetProperty("parent-page")),
+            })
+            .OrderBy(page => page.PageId)
+            .ThenBy(page => page.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static SharedComponentsAtlas BuildSharedComponentsFromSemanticModel(OracleApexSemanticModel semanticModel)
+    {
+        var components = semanticModel.Nodes
+            .Where(node => node.SemanticType is "lov" or "list" or "navigation-menu" or "authorization-scheme" or "authentication-scheme" or "build-option" or "static-file" or "plugin")
+            .Select(node => new SharedComponentAtlasEntry
+            {
+                Category = node.SemanticType switch
+                {
+                    "lov" => "lovs",
+                    "list" => "lists",
+                    "navigation-menu" => "navigation-menus",
+                    "authorization-scheme" => "authorization-schemes",
+                    "authentication-scheme" => "authentication-schemes",
+                    "build-option" => "build-options",
+                    "static-file" => "static-files",
+                    "plugin" => "plugins",
+                    _ => node.SemanticType,
+                },
+                Name = node.GetProperty("name") ?? node.Identifier,
+                Type = node.SemanticType,
+                SourceFile = node.SourceFile,
+                PageTargets = node.Children.Where(child => ReadInt(child.GetProperty("target-page")) is not null).Select(child => ReadInt(child.GetProperty("target-page"))!.Value).Distinct().ToList(),
+                ChildEntries = node.Children.Select(child => new SharedComponentChildEntry
+                {
+                    Name = child.GetProperty("label") ?? child.GetProperty("name") ?? child.Identifier,
+                    TargetPageId = ReadInt(child.GetProperty("target-page")),
+                    ParentEntry = child.GetProperty("parent-entry") ?? string.Empty,
+                }).ToList(),
+            })
+            .ToList();
+
+        return new SharedComponentsAtlas
+        {
+            Lovs = components.Where(component => component.Category == "lovs").ToList(),
+            Lists = components.Where(component => component.Category == "lists").ToList(),
+            NavigationMenus = components.Where(component => component.Category == "navigation-menus").ToList(),
+            AuthorizationSchemes = components.Where(component => component.Category == "authorization-schemes").ToList(),
+            AuthenticationSchemes = components.Where(component => component.Category == "authentication-schemes").ToList(),
+            BuildOptions = components.Where(component => component.Category == "build-options").ToList(),
+            StaticFiles = components.Where(component => component.Category == "static-files").ToList(),
+            Plugins = components.Where(component => component.Category == "plugins").ToList(),
+        };
+    }
+
+    private static NavigationAtlas BuildNavigationFromSemanticModel(OracleApexSemanticModel semanticModel, IReadOnlyList<PageAtlasEntry> pages, SharedComponentsAtlas sharedComponents)
+        => new()
+        {
+            Menus = sharedComponents.NavigationMenus.Select(menu => new NavigationMenuAtlasEntry
+            {
+                Name = menu.Name,
+                SourceFile = menu.SourceFile,
+                Entries = menu.ChildEntries,
+            }).ToList(),
+            Breadcrumbs = pages.Where(page => !string.IsNullOrWhiteSpace(page.Breadcrumb)).Select(page => new BreadcrumbAtlasEntry
+            {
+                PageId = page.PageId,
+                PageName = page.Name,
+                Breadcrumb = page.Breadcrumb,
+            }).ToList(),
+            PageHierarchy = pages.Select(page => new PageHierarchyAtlasEntry
+            {
+                PageId = page.PageId,
+                PageName = page.Name,
+                ParentPageId = page.ParentPageId,
+            }).ToList(),
+        };
+
+    private static DependencyGraphAtlas BuildDependenciesFromSemanticModel(ApplicationAtlasEntry application, OracleApexSemanticModel semanticModel, IReadOnlyList<PageAtlasEntry> pages, SharedComponentsAtlas sharedComponents)
+    {
+        var nodes = new Dictionary<string, DependencyNodeAtlasEntry>(StringComparer.OrdinalIgnoreCase);
+        var edges = new List<DependencyEdgeAtlasEntry>();
+        var applicationNodeId = $"application:{application.Id}";
+        AddNode(nodes, new DependencyNodeAtlasEntry { Id = applicationNodeId, Type = "application", Name = application.Name });
+
+        foreach (var semanticNode in semanticModel.Nodes.Where(node => node.SemanticType != "application"))
+        {
+            var dependencyNodeId = $"semantic:{semanticNode.SemanticType}:{semanticNode.NodeId}";
+            AddNode(nodes, new DependencyNodeAtlasEntry { Id = dependencyNodeId, Type = semanticNode.SemanticType, Name = semanticNode.Identifier, ParentId = semanticNode.Parent is null ? applicationNodeId : $"semantic:{semanticNode.Parent.SemanticType}:{semanticNode.Parent.NodeId}" });
+            edges.Add(new DependencyEdgeAtlasEntry { From = semanticNode.Parent is null ? applicationNodeId : $"semantic:{semanticNode.Parent.SemanticType}:{semanticNode.Parent.NodeId}", To = dependencyNodeId, Relationship = "contains" });
+
+            foreach (var reference in semanticNode.ReferencedObjects)
+            {
+                var referenceType = IsDatabaseObject(reference)
+                    ? ClassifyDatabaseObject(reference)
+                    : IsRestReference(reference)
+                        ? "rest-endpoint"
+                        : "plsql-identifier";
+                var referenceNodeId = $"{referenceType}:{reference}";
+                AddNode(nodes, new DependencyNodeAtlasEntry { Id = referenceNodeId, Type = referenceType, Name = reference });
+                edges.Add(new DependencyEdgeAtlasEntry { From = dependencyNodeId, To = referenceNodeId, Relationship = "references" });
+            }
+        }
+
+        return new DependencyGraphAtlas
+        {
+            Nodes = nodes.Values.OrderBy(node => node.Type, StringComparer.OrdinalIgnoreCase).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            Edges = edges.GroupBy(edge => $"{edge.From}|{edge.To}|{edge.Relationship}", StringComparer.OrdinalIgnoreCase).Select(group => group.First()).OrderBy(edge => edge.From, StringComparer.OrdinalIgnoreCase).ThenBy(edge => edge.To, StringComparer.OrdinalIgnoreCase).ToList(),
+        };
+    }
+
+    private static SearchIndexAtlas BuildSearchIndexFromSemanticModel(OracleApexSemanticModel semanticModel, IReadOnlyList<PageAtlasEntry> pages, IReadOnlyList<RegionAtlasEntry> regions, SharedComponentsAtlas sharedComponents, DependencyGraphAtlas dependencies)
+    {
+        var entries = new List<SearchIndexEntryAtlas>();
+        entries.AddRange(semanticModel.Nodes.Select(node => new SearchIndexEntryAtlas
+        {
+            Type = node.SemanticType,
+            Name = node.GetProperty("name") ?? node.GetProperty("title") ?? node.Identifier,
+            Location = node.SourceFile,
+            Keywords = node.ReferencedObjects.Concat(node.Properties.Select(pair => $"{pair.Key}:{pair.Value}")).ToList(),
+        }));
+
+        return new SearchIndexAtlas
+        {
+            Entries = entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+                .GroupBy(entry => $"{entry.Type}|{entry.Name}|{entry.Location}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(entry => entry.Type, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+        };
+    }
+
+    private static PageComponentAtlasEntry BuildPageComponentFromSemanticNode(OracleApexSemanticNode node)
+        => new()
+        {
+            Name = node.GetProperty("name") ?? node.Identifier,
+            Type = node.GetProperty("type") ?? node.SemanticType,
+        };
+
+    private static int? ReadInt(string? value)
+        => int.TryParse(value, out var parsed) ? parsed : null;
+
+    private static bool IsDatabaseObject(string value)
+        => !string.IsNullOrWhiteSpace(value) && !IsRestReference(value) && value.Any(char.IsUpper) && value.Contains('.', StringComparison.Ordinal) || value.EndsWith("_V", StringComparison.OrdinalIgnoreCase) || value.All(character => char.IsLetterOrDigit(character) || character is '_' or '.' or '$' or '#');
+
+    private static bool IsRestReference(string value)
+        => value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || value.StartsWith("/ords/", StringComparison.OrdinalIgnoreCase);
 
     private static ApplicationAtlasEntry BuildApplication(ParsedNode applicationNode, OracleApexEnvironmentPreferences environment, string environmentName)
     {
