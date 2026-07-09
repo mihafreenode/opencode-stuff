@@ -1770,6 +1770,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailItems.Add(new DetailItemViewModel("What You Can Use", BuildWhatYouCanUseSection(readiness, presentation)));
         DetailItems.Add(new DetailItemViewModel("Needs Attention", BuildNeedsAttentionSection(readiness, DetailRecommendation)));
         DetailItems.Add(new DetailItemViewModel("Development Environment", BuildDevelopmentEnvironmentSection(readiness, presentation)));
+        if (SelectedWorkspace.Snapshot?.Synchronization.DefaultEnvironment is { } synchronizationEnvironment)
+        {
+            DetailItems.Add(new DetailItemViewModel("Oracle APEX Sync", BuildOracleApexSyncSection(SelectedWorkspace.Snapshot.Synchronization, synchronizationEnvironment)));
+        }
         DetailItems.Add(new DetailItemViewModel("Technical Evidence", BuildTechnicalEvidenceSection(SelectedWorkspace, readiness, presentation, failureGuidance, provisioningHealth)));
 
         if (SelectedWorkspace.Health is not null)
@@ -2075,6 +2079,51 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ? "Ready."
             : presentation.DevelopmentEnvironmentSummary;
     }
+
+    private static string BuildOracleApexSyncSection(WorkspaceSynchronizationSnapshot synchronization, WorkspaceSynchronizationEnvironmentSnapshot environment)
+        => JoinSectionLines(
+            $"Environment: {environment.EnvironmentName}",
+            $"APEX Workspace: {environment.WorkspaceName}",
+            $"Parsing Schema: {environment.ParsingSchema}",
+            BuildSynchronizationApplicationLine(environment),
+            $"Source Path: {environment.SourcePath}",
+            $"Sync State: {FormatSynchronizationStateLabel(synchronization.State)}",
+            $"Last Validate: {FormatSynchronizationTimestamp(environment.LastValidationUtc)}",
+            $"Last Export: {FormatSynchronizationTimestamp(environment.LastExportUtc)}",
+            $"Last Pull: {FormatSynchronizationTimestamp(environment.LastPullUtc)}",
+            $"Recommended Action: {GetSynchronizationRecommendedActionText(synchronization.State)}");
+
+    private static string BuildSynchronizationApplicationLine(WorkspaceSynchronizationEnvironmentSnapshot environment)
+        => environment.ApplicationId is null
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(environment.ApplicationName)
+                ? $"Application: {environment.ApplicationId.Value}"
+                : $"Application: {environment.ApplicationId.Value} ({environment.ApplicationName})";
+
+    private static string FormatSynchronizationStateLabel(WorkspaceSynchronizationState state)
+        => state switch
+        {
+            WorkspaceSynchronizationState.InSync => "In Sync",
+            WorkspaceSynchronizationState.GitAhead => "Git Ahead",
+            WorkspaceSynchronizationState.DeploymentAhead => "APEX Ahead",
+            WorkspaceSynchronizationState.Diverged => "Diverged",
+            WorkspaceSynchronizationState.ValidationFailed => "Validation Failed",
+            _ => "Unknown",
+        };
+
+    private static string GetSynchronizationRecommendedActionText(WorkspaceSynchronizationState state)
+        => state switch
+        {
+            WorkspaceSynchronizationState.InSync => "No action needed",
+            WorkspaceSynchronizationState.GitAhead => "Push Changes",
+            WorkspaceSynchronizationState.DeploymentAhead => "Pull Changes",
+            WorkspaceSynchronizationState.Diverged => "Show Diff, then choose Pull or Push",
+            WorkspaceSynchronizationState.ValidationFailed => "Open transcript",
+            _ => "Validate",
+        };
+
+    private static string FormatSynchronizationTimestamp(DateTimeOffset? timestamp)
+        => timestamp?.ToLocalTime().ToString("u") ?? "Never";
 
     private string BuildTechnicalEvidenceSection(
         WorkspaceSummaryViewModel workspace,

@@ -2631,6 +2631,50 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ConnectedWorkspace_ShowsOracleApexSyncCard()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead)]));
+
+        await page.LoadAsync();
+
+        var syncCard = page.DetailItems.SingleOrDefault(item => item.Label == "Oracle APEX Sync");
+        Assert.NotNull(syncCard);
+        Assert.Contains("Environment: dev", syncCard!.Value, StringComparison.Ordinal);
+        Assert.Contains("APEX Workspace: TEST", syncCard.Value, StringComparison.Ordinal);
+        Assert.Contains("Parsing Schema: TESTSCHEMA", syncCard.Value, StringComparison.Ordinal);
+        Assert.Contains("Application: 100 (Customer Orders Demo)", syncCard.Value, StringComparison.Ordinal);
+        Assert.Contains("Source Path: src/apex", syncCard.Value, StringComparison.Ordinal);
+        Assert.Contains("Sync State: APEX Ahead", syncCard.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnconnectedWorkspace_HidesOracleApexSyncCard()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+
+        await page.LoadAsync();
+
+        Assert.DoesNotContain(page.DetailItems, item => item.Label == "Oracle APEX Sync");
+    }
+
+    [Theory]
+    [InlineData(WorkspaceSynchronizationState.InSync, "No action needed")]
+    [InlineData(WorkspaceSynchronizationState.GitAhead, "Push Changes")]
+    [InlineData(WorkspaceSynchronizationState.DeploymentAhead, "Pull Changes")]
+    [InlineData(WorkspaceSynchronizationState.Diverged, "Show Diff, then choose Pull or Push")]
+    [InlineData(WorkspaceSynchronizationState.ValidationFailed, "Open transcript")]
+    [InlineData(WorkspaceSynchronizationState.Unknown, "Validate")]
+    public async Task OracleApexSyncCard_MapsStateToRecommendedAction(WorkspaceSynchronizationState state, string expectedAction)
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateConnectedOracleApexSnapshot(state)]));
+
+        await page.LoadAsync();
+
+        var syncCard = page.DetailItems.Single(item => item.Label == "Oracle APEX Sync");
+        Assert.Contains($"Recommended Action: {expectedAction}", syncCard.Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ReadinessPresentation_UsesSharedLabel_ForPartiallyReadyWorkspace()
     {
         var snapshot = WithReadiness(
@@ -4625,6 +4669,91 @@ public sealed class ShellViewModelTests
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = snapshot.Health }),
             AvailableServices = snapshot.AvailableServices,
         };
+
+    private static WorkspaceSnapshot CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState state)
+    {
+        var baseSnapshot = CreateSnapshot("oracle-apexlang-demo");
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                        },
+                    },
+                },
+            },
+        };
+
+        return WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = baseSnapshot.Record,
+            Definition = definition,
+            Paths = baseSnapshot.Paths,
+            ConfigurationPath = baseSnapshot.ConfigurationPath,
+            RuntimeState = baseSnapshot.RuntimeState,
+            Safety = baseSnapshot.Safety,
+            Session = baseSnapshot.Session,
+            AppliedState = baseSnapshot.AppliedState,
+            LocalRuntimeState = baseSnapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = baseSnapshot.ResolvedRuntimePlan,
+            UpdateRequired = baseSnapshot.UpdateRequired,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                IsSupported = true,
+                State = state,
+                Summary = "Oracle APEX synchronization state is available.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    WorkspaceName = "TEST",
+                    ParsingSchema = "TESTSCHEMA",
+                    ApplicationId = 100,
+                    ApplicationName = "Customer Orders Demo",
+                    SyncMode = WorkspaceSynchronizationModes.Manual,
+                    SourcePath = "src/apex",
+                    State = state,
+                    LastValidationUtc = new DateTimeOffset(2026, 7, 9, 10, 0, 0, TimeSpan.Zero),
+                    LastExportUtc = new DateTimeOffset(2026, 7, 9, 10, 15, 0, TimeSpan.Zero),
+                    LastPullUtc = new DateTimeOffset(2026, 7, 9, 10, 30, 0, TimeSpan.Zero),
+                },
+                Environments =
+                [
+                    new WorkspaceSynchronizationEnvironmentSnapshot
+                    {
+                        EnvironmentName = "dev",
+                        WorkspaceName = "TEST",
+                        ParsingSchema = "TESTSCHEMA",
+                        ApplicationId = 100,
+                        ApplicationName = "Customer Orders Demo",
+                        SyncMode = WorkspaceSynchronizationModes.Manual,
+                        SourcePath = "src/apex",
+                        State = state,
+                        LastValidationUtc = new DateTimeOffset(2026, 7, 9, 10, 0, 0, TimeSpan.Zero),
+                        LastExportUtc = new DateTimeOffset(2026, 7, 9, 10, 15, 0, TimeSpan.Zero),
+                        LastPullUtc = new DateTimeOffset(2026, 7, 9, 10, 30, 0, TimeSpan.Zero),
+                    },
+                ],
+            },
+            Health = baseSnapshot.Health,
+            Readiness = baseSnapshot.Readiness,
+            AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
+        });
+    }
 
     private sealed class FakeDesktopShellService : IDesktopShellService
     {

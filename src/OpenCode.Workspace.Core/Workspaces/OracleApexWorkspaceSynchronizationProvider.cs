@@ -110,9 +110,16 @@ EXIT
             LastValidation = null,
             LastImport = null,
             LastExport = null,
+            LastPull = null,
+            LastPush = null,
             ImportedRevision = string.Empty,
             ExportedRevision = string.Empty,
             LastSynchronizedGitRevision = string.Empty,
+            ApplicationName = application.ApplicationName,
+            LastPushResult = string.Empty,
+            LastImportedRevision = string.Empty,
+            LastExportedRevision = string.Empty,
+            OperationHistory = [],
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, state);
 
@@ -217,16 +224,20 @@ EXIT
         var result = await ExportEnvironmentAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
         var newState = ReadState(request.Snapshot.Paths);
         var sourceRevision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha;
+        var exportedRevision = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : string.Empty;
         newState = UpdateEnvironmentState(newState, environment.EnvironmentName, current => current with
         {
             LastExport = CreateOperationState(result, request.Snapshot),
             ExportedRevision = sourceRevision,
-            LastPull = CreateOperationState(result, request.Snapshot),
             SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.InSync.ToString() : current.SynchronizationState,
             DriftSummary = result.IsSuccess ? "Oracle APEX export refreshed the workspace source tree." : current.DriftSummary,
-            SynchronizedSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.SynchronizedSourceSignature,
-            WorkspaceSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.WorkspaceSourceSignature,
-            RemoteSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.RemoteSourceSignature,
+            LastExportedRevision = result.IsSuccess ? exportedRevision : current.LastExportedRevision,
+            SynchronizedSourceSignature = result.IsSuccess ? exportedRevision : current.SynchronizedSourceSignature,
+            WorkspaceSourceSignature = result.IsSuccess ? exportedRevision : current.WorkspaceSourceSignature,
+            RemoteSourceSignature = result.IsSuccess ? exportedRevision : current.RemoteSourceSignature,
+            OperationHistory = result.IsSuccess
+                ? AppendHistory(current.OperationHistory, "Export", "Succeeded", WorkspaceSynchronizationState.InSync, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, exportedRevision, "Exported Oracle APEX changes into workspace source.")
+                : current.OperationHistory,
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, newState);
 
@@ -244,6 +255,7 @@ EXIT
         var result = await ImportEnvironmentAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
         var newState = ReadState(request.Snapshot.Paths);
         var sourceRevision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha;
+        var importedRevision = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : string.Empty;
         newState = UpdateEnvironmentState(newState, environment.EnvironmentName, current => current with
         {
             LastImport = CreateOperationState(result, request.Snapshot),
@@ -251,9 +263,10 @@ EXIT
             LastSynchronizedGitRevision = result.IsSuccess ? sourceRevision : current.LastSynchronizedGitRevision,
             SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.InSync.ToString() : current.SynchronizationState,
             DriftSummary = result.IsSuccess ? string.Empty : current.DriftSummary,
-            SynchronizedSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.SynchronizedSourceSignature,
-            WorkspaceSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.WorkspaceSourceSignature,
-            RemoteSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.RemoteSourceSignature,
+            LastImportedRevision = result.IsSuccess ? importedRevision : current.LastImportedRevision,
+            SynchronizedSourceSignature = result.IsSuccess ? importedRevision : current.SynchronizedSourceSignature,
+            WorkspaceSourceSignature = result.IsSuccess ? importedRevision : current.WorkspaceSourceSignature,
+            RemoteSourceSignature = result.IsSuccess ? importedRevision : current.RemoteSourceSignature,
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, newState);
 
@@ -293,9 +306,27 @@ EXIT
     public async Task<WorkspaceSynchronizationOperationResult> PullAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var result = await ExportAsync(request, cancellationToken).ConfigureAwait(false);
+        var environmentName = string.IsNullOrWhiteSpace(request.EnvironmentName) ? ResolveEnvironment(request.Snapshot.Definition, null).EnvironmentName : request.EnvironmentName!;
+        var contentRevision = result.Snapshot.DefaultEnvironment?.WorkspaceSourceSignature ?? string.Empty;
+        var document = ReadState(request.Snapshot.Paths);
+        document = UpdateEnvironmentState(document, environmentName, current => current with
+        {
+            LastPull = new WorkspaceSynchronizationOperationState
+            {
+                Status = result.ProcessResult?.IsSuccess == false ? "Failed" : "Succeeded",
+                Revision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha,
+                TimestampUtc = DateTimeOffset.UtcNow,
+                Summary = SanitizeSummary(result.Message),
+            },
+            OperationHistory = result.ProcessResult?.IsSuccess == false
+                ? current.OperationHistory
+                : AppendHistory(current.OperationHistory, "Pull", "Succeeded", result.Snapshot.State, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, contentRevision, result.Message),
+        });
+        _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, document);
+        var finalSnapshot = BuildSnapshot(request.Snapshot, document);
         return new WorkspaceSynchronizationOperationResult
         {
-            Snapshot = result.Snapshot,
+            Snapshot = finalSnapshot,
             Message = request.EnvironmentName is { Length: > 0 }
                 ? $"Pulled Oracle APEX changes into workspace source for environment '{request.EnvironmentName}'."
                 : "Pulled Oracle APEX changes into workspace source.",
@@ -305,13 +336,71 @@ EXIT
 
     public async Task<WorkspaceSynchronizationOperationResult> PushAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
+        var environmentName = string.IsNullOrWhiteSpace(request.EnvironmentName) ? ResolveEnvironment(request.Snapshot.Definition, null).EnvironmentName : request.EnvironmentName!;
+        var startingState = ReadState(request.Snapshot.Paths).Environments.TryGetValue(environmentName, out var existingState)
+            ? ParseState(existingState.SynchronizationState)
+            : WorkspaceSynchronizationState.Unknown;
+
         var validation = await ValidateAsync(request, cancellationToken).ConfigureAwait(false);
-        if (validation.ProcessResult?.IsSuccess == false)
+        var validatedState = validation.Snapshot.DefaultEnvironment?.State ?? validation.Snapshot.State;
+        if (validation.ProcessResult?.IsSuccess == false || validatedState == WorkspaceSynchronizationState.ValidationFailed)
         {
-            return validation;
+            var failedState = RecordPushAttempt(request.Snapshot.Paths, environmentName, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, validatedState, false, validation.Message, validation.Snapshot.DefaultEnvironment?.WorkspaceSourceSignature ?? string.Empty);
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = BuildSnapshot(request.Snapshot, failedState),
+                Message = string.Join(Environment.NewLine,
+                [
+                    "Validation started",
+                    validation.Message,
+                    "Push aborted",
+                    "Synchronization metadata updated",
+                    $"Final sync state: {validatedState}",
+                ]),
+                ProcessResult = validation.ProcessResult,
+            };
         }
 
-        return await ImportAsync(request, cancellationToken).ConfigureAwait(false);
+        if (validatedState == WorkspaceSynchronizationState.DeploymentAhead || validatedState == WorkspaceSynchronizationState.Unknown)
+        {
+            var blockedState = ForceValidationFailedState(request.Snapshot.Paths, environmentName, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, validatedState == WorkspaceSynchronizationState.DeploymentAhead
+                ? "Oracle APEX contains newer Builder changes. Pull Changes before pushing Git-managed source."
+                : "Synchronization state is unknown. Validate and review drift before pushing Git-managed source.");
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = BuildSnapshot(request.Snapshot, blockedState),
+                Message = string.Join(Environment.NewLine,
+                [
+                    "Validation started",
+                    "Validation succeeded",
+                    validatedState == WorkspaceSynchronizationState.DeploymentAhead
+                        ? "Push aborted because Oracle APEX is ahead. Pull Changes first."
+                        : "Push aborted because synchronization state is unknown.",
+                    "Synchronization metadata updated",
+                    "Final sync state: ValidationFailed",
+                ]),
+                ProcessResult = validation.ProcessResult,
+            };
+        }
+
+        var importResult = await ImportAsync(request, cancellationToken).ConfigureAwait(false);
+        var importedSignature = importResult.Snapshot.DefaultEnvironment?.WorkspaceSourceSignature ?? string.Empty;
+        var finalStateDocument = RecordPushAttempt(request.Snapshot.Paths, environmentName, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, importResult.Snapshot.State, importResult.ProcessResult?.IsSuccess != false, importResult.Message, importedSignature);
+        var finalSnapshot = BuildSnapshot(request.Snapshot, finalStateDocument);
+        return new WorkspaceSynchronizationOperationResult
+        {
+            Snapshot = finalSnapshot,
+            Message = string.Join(Environment.NewLine,
+            [
+                "Validation started",
+                "Validation succeeded",
+                $"Importing application into Oracle APEX for environment '{environmentName}'",
+                importResult.ProcessResult?.IsSuccess == true ? "Import completed" : "Import failed",
+                "Synchronization metadata updated",
+                $"Final sync state: {finalSnapshot.State}",
+            ]),
+            ProcessResult = importResult.ProcessResult,
+        };
     }
 
     private WorkspaceSynchronizationStateDocument ReadState(WorkspacePaths paths)
@@ -366,7 +455,7 @@ exit
         }
 
         var sql = $"""
-apex import -workspace {environment.Workspace} -schema {environment.ParsingSchema} -id {environment.ApplicationId} -name "{EscapeSqlIdentifier(environment.ApplicationName)}" -input /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, sourcePath)}
+apex import -workspace {environment.Workspace} -schema {environment.ParsingSchema} -id {environment.ApplicationId} -input /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, sourcePath)}
 exit
 """;
         return await RunSqlclAsync(snapshot, environment, sql, cancellationToken).ConfigureAwait(false);
@@ -503,6 +592,7 @@ EXIT
             WorkspaceName = environment.Workspace ?? string.Empty,
             ParsingSchema = environment.ParsingSchema ?? string.Empty,
             ApplicationId = environment.ApplicationId,
+            ApplicationName = state.ApplicationName,
             SqlclProfile = environment.SqlclProfile ?? string.Empty,
             SyncMode = WorkspaceSynchronizationModes.Normalize(environment.SyncMode),
             SourcePath = environment.SourcePath ?? "src/apex",
@@ -513,9 +603,13 @@ EXIT
             LastImportUtc = state.LastImport?.TimestampUtc,
             LastExportUtc = state.LastExport?.TimestampUtc,
             LastPullUtc = state.LastPull?.TimestampUtc,
+            LastPushUtc = state.LastPush?.TimestampUtc,
             LastSynchronizedGitRevision = state.LastSynchronizedGitRevision,
             ImportedRevision = state.ImportedRevision,
             ExportedRevision = state.ExportedRevision,
+            LastImportedRevision = state.LastImportedRevision,
+            LastExportedRevision = state.LastExportedRevision,
+            LastPushResult = state.LastPushResult,
             SynchronizedSourceSignature = state.SynchronizedSourceSignature,
             WorkspaceSourceSignature = state.WorkspaceSourceSignature,
             RemoteSourceSignature = state.RemoteSourceSignature,
@@ -586,6 +680,68 @@ EXIT
                 ? result.StandardOutputLines.LastOrDefault(line => !string.IsNullOrWhiteSpace(line)) ?? "Operation completed."
                 : result.StandardErrorLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line)) ?? "Operation failed.",
         };
+
+    private WorkspaceSynchronizationStateDocument RecordPushAttempt(WorkspacePaths paths, string environmentName, string gitRevision, WorkspaceSynchronizationState finalState, bool succeeded, string summary, string contentRevision)
+    {
+        var document = ReadState(paths);
+        document = UpdateEnvironmentState(document, environmentName, current => current with
+        {
+            LastPush = new WorkspaceSynchronizationOperationState
+            {
+                Status = succeeded ? "Succeeded" : "Failed",
+                Revision = gitRevision,
+                TimestampUtc = DateTimeOffset.UtcNow,
+                Summary = SanitizeSummary(summary),
+            },
+            LastPushResult = succeeded ? "Succeeded" : "Failed",
+            SynchronizationState = finalState.ToString(),
+            OperationHistory = AppendHistory(current.OperationHistory, "Push", succeeded ? "Succeeded" : "Failed", finalState, gitRevision, contentRevision, summary),
+        });
+        _stateService.Write(paths.ApexMetadataPath, document);
+        return document;
+    }
+
+    private WorkspaceSynchronizationStateDocument ForceValidationFailedState(WorkspacePaths paths, string environmentName, string gitRevision, string summary)
+    {
+        var document = ReadState(paths);
+        document = UpdateEnvironmentState(document, environmentName, current => current with
+        {
+            SynchronizationState = WorkspaceSynchronizationState.ValidationFailed.ToString(),
+            DriftSummary = SanitizeSummary(summary),
+            LastPush = new WorkspaceSynchronizationOperationState
+            {
+                Status = "Failed",
+                Revision = gitRevision,
+                TimestampUtc = DateTimeOffset.UtcNow,
+                Summary = SanitizeSummary(summary),
+            },
+            LastPushResult = "Failed",
+            OperationHistory = AppendHistory(current.OperationHistory, "Push", "Failed", WorkspaceSynchronizationState.ValidationFailed, gitRevision, current.WorkspaceSourceSignature, summary),
+        });
+        _stateService.Write(paths.ApexMetadataPath, document);
+        return document;
+    }
+
+    private static List<WorkspaceSynchronizationHistoryEntry> AppendHistory(IReadOnlyList<WorkspaceSynchronizationHistoryEntry> existingHistory, string operation, string result, WorkspaceSynchronizationState state, string revision, string contentRevision, string summary)
+    {
+        var items = (existingHistory ?? Array.Empty<WorkspaceSynchronizationHistoryEntry>()).ToList();
+        items.Insert(0, new WorkspaceSynchronizationHistoryEntry
+        {
+            Operation = operation,
+            Result = result,
+            State = state.ToString(),
+            Revision = revision,
+            ContentRevision = contentRevision,
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Summary = SanitizeSummary(summary),
+        });
+        return items.Take(10).ToList();
+    }
+
+    private static string SanitizeSummary(string summary)
+        => string.IsNullOrWhiteSpace(summary)
+            ? string.Empty
+            : summary.Replace("${ORACLE_DEMO_PASSWORD:-demo_password}", "[redacted]", StringComparison.Ordinal).Trim();
 
     private static string BuildWorkspaceScriptCommand(string scriptPath, string sourcePath)
         => $"{scriptPath} '{sourcePath.Replace("'", "'\\''", StringComparison.Ordinal)}'";
@@ -944,12 +1100,18 @@ EXIT
         WorkspaceSynchronizationOperationState? LastImport,
         WorkspaceSynchronizationOperationState? LastExport,
         WorkspaceSynchronizationOperationState? LastPull,
+        WorkspaceSynchronizationOperationState? LastPush,
         string ImportedRevision,
         string ExportedRevision,
         string LastSynchronizedGitRevision,
+        string ApplicationName,
+        string LastPushResult,
+        string LastImportedRevision,
+        string LastExportedRevision,
         string SynchronizedSourceSignature,
         string WorkspaceSourceSignature,
-        string RemoteSourceSignature)
+        string RemoteSourceSignature,
+        List<WorkspaceSynchronizationHistoryEntry> OperationHistory)
     {
         public WorkspaceSynchronizationEnvironmentStateRecord(WorkspaceSynchronizationEnvironmentState state)
             : this(
@@ -959,12 +1121,18 @@ EXIT
                 state.LastImport,
                 state.LastExport,
                 state.LastPull,
+                state.LastPush,
                 state.ImportedRevision,
                 state.ExportedRevision,
                 state.LastSynchronizedGitRevision,
+                state.ApplicationName,
+                state.LastPushResult,
+                state.LastImportedRevision,
+                state.LastExportedRevision,
                 state.SynchronizedSourceSignature,
                 state.WorkspaceSourceSignature,
-                state.RemoteSourceSignature)
+                state.RemoteSourceSignature,
+                state.OperationHistory.ToList())
         {
         }
 
@@ -977,12 +1145,18 @@ EXIT
                 LastImport = LastImport,
                 LastExport = LastExport,
                 LastPull = LastPull,
+                LastPush = LastPush,
                 ImportedRevision = ImportedRevision,
                 ExportedRevision = ExportedRevision,
                 LastSynchronizedGitRevision = LastSynchronizedGitRevision,
+                ApplicationName = ApplicationName,
+                LastPushResult = LastPushResult,
+                LastImportedRevision = LastImportedRevision,
+                LastExportedRevision = LastExportedRevision,
                 SynchronizedSourceSignature = SynchronizedSourceSignature,
                 WorkspaceSourceSignature = WorkspaceSourceSignature,
                 RemoteSourceSignature = RemoteSourceSignature,
+                OperationHistory = OperationHistory.ToList(),
             };
     }
 }

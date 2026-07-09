@@ -54,6 +54,7 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public string WorkspaceName { get; init; } = string.Empty;
     public string ParsingSchema { get; init; } = string.Empty;
     public int? ApplicationId { get; init; }
+    public string ApplicationName { get; init; } = string.Empty;
     public string SqlclProfile { get; init; } = string.Empty;
     public string SyncMode { get; init; } = WorkspaceSynchronizationModes.Manual;
     public string SourcePath { get; init; } = string.Empty;
@@ -64,9 +65,13 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public DateTimeOffset? LastImportUtc { get; init; }
     public DateTimeOffset? LastExportUtc { get; init; }
     public DateTimeOffset? LastPullUtc { get; init; }
+    public DateTimeOffset? LastPushUtc { get; init; }
     public string LastSynchronizedGitRevision { get; init; } = string.Empty;
     public string ImportedRevision { get; init; } = string.Empty;
     public string ExportedRevision { get; init; } = string.Empty;
+    public string LastImportedRevision { get; init; } = string.Empty;
+    public string LastExportedRevision { get; init; } = string.Empty;
+    public string LastPushResult { get; init; } = string.Empty;
     public string SynchronizedSourceSignature { get; init; } = string.Empty;
     public string WorkspaceSourceSignature { get; init; } = string.Empty;
     public string RemoteSourceSignature { get; init; } = string.Empty;
@@ -168,6 +173,9 @@ public sealed class WorkspaceSynchronizationEnvironmentState
     [YamlMember(Alias = "lastPull")]
     public WorkspaceSynchronizationOperationState? LastPull { get; init; }
 
+    [YamlMember(Alias = "lastPush")]
+    public WorkspaceSynchronizationOperationState? LastPush { get; init; }
+
     [YamlMember(Alias = "importedRevision")]
     public string ImportedRevision { get; init; } = string.Empty;
 
@@ -177,6 +185,18 @@ public sealed class WorkspaceSynchronizationEnvironmentState
     [YamlMember(Alias = "lastSynchronizedGitRevision")]
     public string LastSynchronizedGitRevision { get; init; } = string.Empty;
 
+    [YamlMember(Alias = "applicationName")]
+    public string ApplicationName { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "lastPushResult")]
+    public string LastPushResult { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "lastImportedRevision")]
+    public string LastImportedRevision { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "lastExportedRevision")]
+    public string LastExportedRevision { get; init; } = string.Empty;
+
     [YamlMember(Alias = "synchronizedSourceSignature")]
     public string SynchronizedSourceSignature { get; init; } = string.Empty;
 
@@ -185,6 +205,33 @@ public sealed class WorkspaceSynchronizationEnvironmentState
 
     [YamlMember(Alias = "remoteSourceSignature")]
     public string RemoteSourceSignature { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "operationHistory")]
+    public List<WorkspaceSynchronizationHistoryEntry> OperationHistory { get; init; } = [];
+}
+
+public sealed class WorkspaceSynchronizationHistoryEntry
+{
+    [YamlMember(Alias = "operation")]
+    public string Operation { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "result")]
+    public string Result { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "state")]
+    public string State { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "revision")]
+    public string Revision { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "contentRevision")]
+    public string ContentRevision { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "timestampUtc")]
+    public DateTimeOffset? TimestampUtc { get; init; }
+
+    [YamlMember(Alias = "summary")]
+    public string Summary { get; init; } = string.Empty;
 }
 
 public sealed class WorkspaceSynchronizationOperationState

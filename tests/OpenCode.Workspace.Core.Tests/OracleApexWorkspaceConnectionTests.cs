@@ -51,7 +51,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.NotNull(syncState.Environments["dev"].LastExport);
             Assert.NotNull(syncState.Environments["dev"].LastValidation);
             Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
-            Assert.NotNull(syncState.Environments["dev"].LastPull);
+            Assert.Empty(syncState.Environments["dev"].OperationHistory.Where(item => item.Operation == "Pull"));
             Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].SynchronizedSourceSignature));
 
             Assert.True(File.Exists(Path.Combine(root, "src", "apex", "application.apx")));
@@ -147,6 +147,159 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.NotNull(syncState!.Environments["dev"].LastPull);
             Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
             Assert.Equal("new-remote-source", File.ReadAllText(Path.Combine(sourcePath, "application.apx")));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Push_SuccessfullyUpdatesSyncMetadataAndSnapshot()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "git-ahead-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+
+            var baselineRoot = Path.Combine(root, ".baseline");
+            Directory.CreateDirectory(baselineRoot);
+            File.WriteAllText(Path.Combine(baselineRoot, "application.apx"), "same-source");
+            File.WriteAllText(Path.Combine(baselineRoot, "readme.txt"), "exported");
+            var baselineSignature = ComputeDirectorySignature(baselineRoot);
+
+            new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
+            {
+                DefaultEnvironment = "dev",
+                Environments = new Dictionary<string, WorkspaceSynchronizationEnvironmentState>
+                {
+                    ["dev"] = new()
+                    {
+                        SynchronizationState = nameof(WorkspaceSynchronizationState.GitAhead),
+                        ApplicationName = "Customer Orders Demo",
+                        SynchronizedSourceSignature = baselineSignature,
+                        WorkspaceSourceSignature = baselineSignature,
+                        RemoteSourceSignature = baselineSignature,
+                    },
+                },
+            });
+
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true)
+            {
+                RemoteApplicationContent = "same-source",
+            };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+            var syncState = new WorkspaceSynchronizationStateService().Read(paths.ApexMetadataPath);
+            var syncYaml = File.ReadAllText(paths.ApexMetadataPath);
+
+            Assert.Equal(WorkspaceSynchronizationState.InSync, result.Snapshot.State);
+            Assert.NotNull(syncState);
+            Assert.NotNull(syncState!.Environments["dev"].LastPush);
+            Assert.Equal("Succeeded", syncState.Environments["dev"].LastPushResult);
+            Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].LastImportedRevision));
+            Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
+            Assert.Equal(1, runtime.ImportCallCount);
+            Assert.Contains("Validation started", result.Message, StringComparison.Ordinal);
+            Assert.Contains("Validation succeeded", result.Message, StringComparison.Ordinal);
+            Assert.Contains("Importing application into Oracle APEX", result.Message, StringComparison.Ordinal);
+            Assert.Contains("Import completed", result.Message, StringComparison.Ordinal);
+            Assert.Contains("Synchronization metadata updated", result.Message, StringComparison.Ordinal);
+            Assert.Contains("Final sync state: InSync", result.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("ORACLE_DEMO_PASSWORD", syncYaml, StringComparison.Ordinal);
+            Assert.DoesNotContain("demo_password", syncYaml, StringComparison.Ordinal);
+            Assert.DoesNotContain("session", syncYaml, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Push_ValidationFailure_PreventsImport()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "invalid-source");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new FailingValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal(0, runtime.ImportCallCount);
+            Assert.Equal(WorkspaceSynchronizationState.ValidationFailed, result.Snapshot.State);
+            Assert.Contains("Push aborted", result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Push_DeploymentAhead_TransitionsToValidationFailed()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            var baselineSignature = ComputeDirectorySignature(sourcePath);
+
+            new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
+            {
+                DefaultEnvironment = "dev",
+                Environments = new Dictionary<string, WorkspaceSynchronizationEnvironmentState>
+                {
+                    ["dev"] = new()
+                    {
+                        SynchronizationState = nameof(WorkspaceSynchronizationState.InSync),
+                        SynchronizedSourceSignature = baselineSignature,
+                        WorkspaceSourceSignature = baselineSignature,
+                        RemoteSourceSignature = baselineSignature,
+                    },
+                },
+            });
+
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true)
+            {
+                RemoteApplicationContent = "remote-change",
+            };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal(WorkspaceSynchronizationState.ValidationFailed, result.Snapshot.State);
+            Assert.Equal(0, runtime.ImportCallCount);
+            Assert.Contains("Pull Changes first", result.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -321,12 +474,28 @@ public sealed class OracleApexWorkspaceConnectionTests
         }
     }
 
+    private sealed class FailingValidationProcessRunner : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+            => Task.FromResult(new ProcessResult
+            {
+                Command = $"{fileName} {string.Join(' ', arguments)}",
+                ExitCode = 1,
+                StandardOutput = string.Empty,
+                StandardError = "Validation failed",
+                StandardOutputLines = Array.Empty<string>(),
+                StandardErrorLines = ["Validation failed"],
+                Duration = TimeSpan.FromMilliseconds(10),
+            });
+    }
+
     private sealed class ScriptedOracleApexContainerRuntime : IContainerRuntime
     {
         private readonly string _root;
         private readonly bool _workspaceMappingExists;
 
         public string RemoteApplicationContent { get; init; } = "APEX application";
+        public int ImportCallCount { get; private set; }
 
         public ScriptedOracleApexContainerRuntime(string root, bool workspaceMappingExists)
         {
@@ -402,6 +571,12 @@ public sealed class OracleApexWorkspaceConnectionTests
                 File.WriteAllText(Path.Combine(exportDir, "application.apx"), RemoteApplicationContent);
                 File.WriteAllText(Path.Combine(exportDir, "readme.txt"), "exported");
                 return Task.FromResult(Success("Exported"));
+            }
+
+            if (sql.Contains("apex import -workspace TEST -schema TESTSCHEMA -id 100", StringComparison.OrdinalIgnoreCase))
+            {
+                ImportCallCount++;
+                return Task.FromResult(Success("Imported"));
             }
 
             return Task.FromResult(Success("OK"));

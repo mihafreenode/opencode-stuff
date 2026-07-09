@@ -91,12 +91,18 @@ public sealed class WorkspaceSynchronizationStateService
             LastImport = NormalizeOperationState(state.LastImport),
             LastExport = NormalizeOperationState(state.LastExport),
             LastPull = NormalizeOperationState(state.LastPull),
+            LastPush = NormalizeOperationState(state.LastPush),
             ImportedRevision = state.ImportedRevision?.Trim() ?? string.Empty,
             ExportedRevision = state.ExportedRevision?.Trim() ?? string.Empty,
             LastSynchronizedGitRevision = state.LastSynchronizedGitRevision?.Trim() ?? string.Empty,
+            ApplicationName = state.ApplicationName?.Trim() ?? string.Empty,
+            LastPushResult = state.LastPushResult?.Trim() ?? string.Empty,
+            LastImportedRevision = state.LastImportedRevision?.Trim() ?? string.Empty,
+            LastExportedRevision = state.LastExportedRevision?.Trim() ?? string.Empty,
             SynchronizedSourceSignature = state.SynchronizedSourceSignature?.Trim() ?? string.Empty,
             WorkspaceSourceSignature = state.WorkspaceSourceSignature?.Trim() ?? string.Empty,
             RemoteSourceSignature = state.RemoteSourceSignature?.Trim() ?? string.Empty,
+            OperationHistory = NormalizeHistory(state.OperationHistory),
         };
     }
 
@@ -114,6 +120,29 @@ public sealed class WorkspaceSynchronizationStateService
             TimestampUtc = state.TimestampUtc,
             Summary = state.Summary?.Trim() ?? string.Empty,
         };
+    }
+
+    private static List<WorkspaceSynchronizationHistoryEntry> NormalizeHistory(IReadOnlyList<WorkspaceSynchronizationHistoryEntry>? history)
+    {
+        if (history is null || history.Count == 0)
+        {
+            return [];
+        }
+
+        return history
+            .Where(entry => entry is not null)
+            .Take(10)
+            .Select(entry => new WorkspaceSynchronizationHistoryEntry
+            {
+                Operation = entry.Operation?.Trim() ?? string.Empty,
+                Result = entry.Result?.Trim() ?? string.Empty,
+                State = NormalizeStateName(entry.State),
+                Revision = entry.Revision?.Trim() ?? string.Empty,
+                ContentRevision = entry.ContentRevision?.Trim() ?? string.Empty,
+                TimestampUtc = entry.TimestampUtc,
+                Summary = entry.Summary?.Trim() ?? string.Empty,
+            })
+            .ToList();
     }
 
     private static string NormalizeStateName(string? state)
