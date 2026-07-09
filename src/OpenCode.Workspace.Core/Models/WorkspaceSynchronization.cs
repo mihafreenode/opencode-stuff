@@ -61,6 +61,18 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public WorkspaceSynchronizationState State { get; init; } = WorkspaceSynchronizationState.Unknown;
     public string Summary { get; init; } = string.Empty;
     public string DriftSummary { get; init; } = string.Empty;
+    public string OracleVersion { get; init; } = string.Empty;
+    public string ApexVersion { get; init; } = string.Empty;
+    public string SqlclVersion { get; init; } = string.Empty;
+    public string OrdsVersion { get; init; } = string.Empty;
+    public string OrdsStatus { get; init; } = string.Empty;
+    public bool WorkspaceExists { get; init; }
+    public bool ParsingSchemaExists { get; init; }
+    public bool ApplicationExists { get; init; }
+    public bool SourcePathExists { get; init; }
+    public bool SynchronizationMetadataValid { get; init; }
+    public string ValidationResult { get; init; } = string.Empty;
+    public DateTimeOffset? LastSuccessfulSynchronizationUtc { get; init; }
     public DateTimeOffset? LastValidationUtc { get; init; }
     public DateTimeOffset? LastImportUtc { get; init; }
     public DateTimeOffset? LastExportUtc { get; init; }

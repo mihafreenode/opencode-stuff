@@ -91,6 +91,10 @@ public sealed class WorkspaceContentGenerator
         files[Path.Combine("docs", "team-onboarding.md")] = WithGeneratedHeader(BuildTeamOnboardingDoc(workspace));
         files[Path.Combine("docs", "troubleshooting", "workspace-sessions.md")] = WithGeneratedHeader(BuildWorkspaceSessionsTroubleshootingDoc(workspace));
         files[Path.Combine("docs", "workspace-services.md")] = WithGeneratedHeader(WorkspaceServiceCatalog.BuildMarkdown(workspace.Definition, runtimeState));
+        if (OracleWorkspaceFamily.HasApex(definition))
+        {
+            files[Path.Combine("docs", "oracle-apex-workflow.md")] = WithGeneratedHeader(BuildOracleApexWorkflowDoc(workspace.Definition, runtimeState));
+        }
 
         if (HasKnowledgePack(workspace, "oracle-documentation-pack") || IsOracleDemoWorkspace(definition))
         {
@@ -3288,6 +3292,54 @@ scripts/verify-oracle-demo.sh
 Do not inspect `.env` for normal demo verification.
 `.env` contains local runtime settings and generated secrets.
 """;
+
+    private static string BuildOracleApexWorkflowDoc(WorkspaceDefinition definition, WorkspaceRuntimeStateRecord? runtimeState)
+    {
+        var services = WorkspaceServiceCatalog.Build(definition, runtimeState);
+        var serviceNames = services
+            .Where(service => service.Name is "APEX Builder" or "App Home" or "SQL Workshop" or "REST Workshop" or "ORDS Landing" or "SQLcl Terminal" or "Oracle Diagnostics")
+            .Select(service => $"- {service.Name}: {service.Description}")
+            .ToList();
+
+        return string.Join("\n", new[]
+        {
+            "# Oracle APEX Workflow",
+            string.Empty,
+            "This generated guide summarizes the canonical Oracle APEX workspace flow with Git as the source of truth and Oracle APEX as the preview and deployment target.",
+            string.Empty,
+            "## Connect Existing Application",
+            string.Empty,
+            "Use `Connect Existing Application` from the workspace detail pane to discover an Oracle APEX application, bind it into `workspace.yaml`, initialize synchronization metadata, export the source, and validate the exported package.",
+            string.Empty,
+            "## Validate",
+            string.Empty,
+            "Run `Validate` after editing APEXlang source in Git. Validation checks the local source and compares it with a fresh Oracle APEX export so drift is visible before deployment.",
+            string.Empty,
+            "## Export",
+            string.Empty,
+            "Run `Export` when you want the current Oracle APEX application exported into the configured source path. Export is also used by `Pull Changes`.",
+            string.Empty,
+            "## Show Diff",
+            string.Empty,
+            "Run `Show Diff` to compare the tracked `sourcePath` with a fresh APEX export. The current implementation is textual and includes Git status plus file-level export differences.",
+            string.Empty,
+            "## Pull",
+            string.Empty,
+            "Run `Pull Changes` when Oracle APEX Builder is ahead of Git. Pull exports the current Oracle APEX application into the repo and refreshes synchronization metadata.",
+            string.Empty,
+            "## Push",
+            string.Empty,
+            "Run `Push Changes` after editing APEXlang in Git. Push validates the source first and only imports into Oracle APEX when the source is valid and the workspace is in a safe synchronization state.",
+            string.Empty,
+            "## Troubleshooting",
+            string.Empty,
+            "If synchronization stops working, open `docs/diagnostics/oracle-apex.md`, review the Oracle APEX overview and sync cards, then use `Validate`, `Show Diff`, or `Pull Changes` before retrying `Push Changes`.",
+            string.Empty,
+            "## Related Services",
+            string.Empty,
+            serviceNames.Count == 0 ? "- No Oracle APEX services are currently declared." : string.Join("\n", serviceNames),
+        });
+    }
 
     private static string OracleTutorialReadme() => """
 ## Oracle Tutorial Files

@@ -367,17 +367,60 @@ public static class WorkspaceReadinessEngine
                 WorkspaceActivity.OpeningTerminal => "Opening terminal.",
                 _ => "Preparing workspace. This may take several minutes.",
             },
-            WorkspaceReadinessStatus.NeedsRebuild => "Rebuild Runtime will recreate managed containers and volumes while keeping your files.",
+            WorkspaceReadinessStatus.NeedsRebuild => TryBuildOracleApexReadinessSummary(snapshot, health)
+                ?? "Rebuild Runtime will recreate managed containers and volumes while keeping your files.",
             _ => hostBlocked
                 ? "Host prerequisites are blocking this workspace. Run Diagnostics to continue."
-                : launchReadinessProblem
-                    ? BuildLaunchReadinessSummary(health)
-                : isFreshWorkspace
-                    ? "Open Workspace will prepare the runtime and open the terminal."
-                    : snapshot?.LocalRuntimeState is null
-                        ? "Open Workspace can safely regenerate runtime state."
-                        : "Open Workspace can prepare and open this workspace.",
+                : TryBuildOracleApexReadinessSummary(snapshot, health)
+                    ?? (launchReadinessProblem
+                        ? BuildLaunchReadinessSummary(health)
+                    : isFreshWorkspace
+                        ? "Open Workspace will prepare the runtime and open the terminal."
+                        : snapshot?.LocalRuntimeState is null
+                            ? "Open Workspace can safely regenerate runtime state."
+                            : "Open Workspace can prepare and open this workspace."),
         };
+
+    private static string? TryBuildOracleApexReadinessSummary(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health)
+    {
+        if (snapshot?.Synchronization.DefaultEnvironment is not { } environment)
+        {
+            return null;
+        }
+
+        if (!environment.SynchronizationMetadataValid)
+        {
+            return "Synchronization metadata is missing.";
+        }
+
+        if (string.IsNullOrWhiteSpace(environment.SqlclVersion))
+        {
+            return "SQLcl not installed.";
+        }
+
+        if (!environment.WorkspaceExists)
+        {
+            return $"Oracle APEX workspace {environment.WorkspaceName} not found.";
+        }
+
+        if (!environment.ParsingSchemaExists)
+        {
+            return $"Parsing schema {environment.ParsingSchema} missing.";
+        }
+
+        if (!environment.ApplicationExists && environment.ApplicationId is not null)
+        {
+            return $"Application {environment.ApplicationId.Value} no longer exists.";
+        }
+
+        var oracleApexProvider = health?.Providers.FirstOrDefault(provider => string.Equals(provider.ProviderKey, "oracle-apex-workspace", StringComparison.Ordinal));
+        if (!string.IsNullOrWhiteSpace(oracleApexProvider?.Summary) && oracleApexProvider.Status is WorkspaceHealthStatus.Degraded or WorkspaceHealthStatus.Unavailable)
+        {
+            return oracleApexProvider.Summary;
+        }
+
+        return null;
+    }
 
     private static string BuildReadySummary(WorkspaceHealthSnapshot? health, IReadOnlyList<WorkspaceCapabilitySnapshot> capabilities)
     {

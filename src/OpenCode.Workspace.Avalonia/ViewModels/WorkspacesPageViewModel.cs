@@ -1770,6 +1770,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailItems.Add(new DetailItemViewModel("What You Can Use", BuildWhatYouCanUseSection(readiness, presentation)));
         DetailItems.Add(new DetailItemViewModel("Needs Attention", BuildNeedsAttentionSection(readiness, DetailRecommendation)));
         DetailItems.Add(new DetailItemViewModel("Development Environment", BuildDevelopmentEnvironmentSection(readiness, presentation)));
+        if (SelectedWorkspace.Snapshot?.Synchronization.DefaultEnvironment is { } oracleApexEnvironment)
+        {
+            DetailItems.Add(new DetailItemViewModel("Oracle APEX", BuildOracleApexOverviewSection(SelectedWorkspace.Snapshot.Synchronization, oracleApexEnvironment)));
+        }
         if (SelectedWorkspace.Snapshot?.Synchronization.DefaultEnvironment is { } synchronizationEnvironment)
         {
             DetailItems.Add(new DetailItemViewModel("Oracle APEX Sync", BuildOracleApexSyncSection(SelectedWorkspace.Snapshot.Synchronization, synchronizationEnvironment)));
@@ -2124,6 +2128,22 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static string FormatSynchronizationTimestamp(DateTimeOffset? timestamp)
         => timestamp?.ToLocalTime().ToString("u") ?? "Never";
+
+    private static string BuildOracleApexOverviewSection(WorkspaceSynchronizationSnapshot synchronization, WorkspaceSynchronizationEnvironmentSnapshot environment)
+        => JoinSectionLines(
+            $"Workspace: {environment.WorkspaceName}",
+            $"Parsing Schema: {environment.ParsingSchema}",
+            BuildSynchronizationApplicationLine(environment),
+            $"Environment: {environment.EnvironmentName}",
+            $"Source Path: {environment.SourcePath}",
+            $"Current Sync State: {FormatSynchronizationStateLabel(synchronization.State)}",
+            $"Last Successful Sync: {FormatSynchronizationTimestamp(environment.LastSuccessfulSynchronizationUtc)}",
+            $"APEX Version: {ValueOrUnknown(environment.ApexVersion)}",
+            $"SQLcl Version: {ValueOrUnknown(environment.SqlclVersion)}",
+            $"ORDS Status: {ValueOrUnknown(environment.OrdsStatus)}");
+
+    private static string ValueOrUnknown(string value)
+        => string.IsNullOrWhiteSpace(value) ? "Unknown" : value;
 
     private string BuildTechnicalEvidenceSection(
         WorkspaceSummaryViewModel workspace,

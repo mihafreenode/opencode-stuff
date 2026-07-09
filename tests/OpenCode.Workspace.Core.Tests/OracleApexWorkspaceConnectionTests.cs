@@ -51,7 +51,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.NotNull(syncState.Environments["dev"].LastExport);
             Assert.NotNull(syncState.Environments["dev"].LastValidation);
             Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
-            Assert.Empty(syncState.Environments["dev"].OperationHistory.Where(item => item.Operation == "Pull"));
+            Assert.DoesNotContain(syncState.Environments["dev"].OperationHistory, item => item.Operation == "Pull");
             Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].SynchronizedSourceSignature));
 
             Assert.True(File.Exists(Path.Combine(root, "src", "apex", "application.apx")));
@@ -340,6 +340,51 @@ public sealed class OracleApexWorkspaceConnectionTests
         }
     }
 
+    [Fact]
+    public async Task GetStatus_GeneratesOracleDiagnosticsReport()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
+            {
+                DefaultEnvironment = "dev",
+                Environments = new Dictionary<string, WorkspaceSynchronizationEnvironmentState>
+                {
+                    ["dev"] = new()
+                    {
+                        SynchronizationState = nameof(WorkspaceSynchronizationState.InSync),
+                        ApplicationName = "Customer Orders Demo",
+                    },
+                },
+            });
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            await provider.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            var diagnosticsPath = Path.Combine(root, "docs", "diagnostics", "oracle-apex.md");
+            var diagnostics = File.ReadAllText(diagnosticsPath);
+
+            Assert.Contains("# Oracle APEX Diagnostics", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Oracle version:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("APEX version:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("SQLcl version:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Current sync state:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Recent History", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
     private static WorkspaceDefinition CreateDefinition(string name)
         => new()
         {
@@ -518,7 +563,8 @@ public sealed class OracleApexWorkspaceConnectionTests
         public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(Success("status=200\nlocation=\nbody=ORDS 24.2 landing"));
         public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> InspectImageRepoTagsAsync(string imageId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> GetNodeToolDiagnosticsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();

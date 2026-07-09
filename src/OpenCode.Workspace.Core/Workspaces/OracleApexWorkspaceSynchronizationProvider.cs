@@ -7,6 +7,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynchronizationProvider
     , IOracleApexWorkspaceConnectionProvider
 {
+    private const string OracleApexDiagnosticsRelativePath = "docs/diagnostics/oracle-apex.md";
     private readonly WorkspaceSynchronizationStateService _stateService;
     private readonly IContainerRuntime _containerRuntime;
     private readonly IProcessRunner _processRunner;
@@ -29,10 +30,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     public bool CanHandle(WorkspaceDefinition definition)
         => OracleWorkspaceFamily.HasApex(definition) && definition.Oracle.Apex.Environments.Count > 0;
 
-    public Task<WorkspaceSynchronizationStatusResult> GetStatusAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceSynchronizationStatusResult> GetStatusAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
-        var snapshot = BuildSnapshot(request.Snapshot, ReadState(request.Snapshot.Paths));
-        return Task.FromResult(new WorkspaceSynchronizationStatusResult { Snapshot = snapshot });
+        var state = ReadState(request.Snapshot.Paths);
+        var insights = await CollectRuntimeInsightsAsync(request.Snapshot, state, cancellationToken).ConfigureAwait(false);
+        var snapshot = BuildSnapshot(request.Snapshot, state, insights);
+        WriteOracleDiagnostics(request.Snapshot, snapshot, insights);
+        return new WorkspaceSynchronizationStatusResult { Snapshot = snapshot };
     }
 
     public async Task<OracleApexApplicationDiscoveryResult> DiscoverApplicationsAsync(OracleApexApplicationDiscoveryRequest request, CancellationToken cancellationToken = default)
@@ -534,11 +538,11 @@ EXIT
         }
     }
 
-    private WorkspaceSynchronizationSnapshot BuildSnapshot(WorkspaceSnapshot workspaceSnapshot, WorkspaceSynchronizationStateDocument state)
+    private WorkspaceSynchronizationSnapshot BuildSnapshot(WorkspaceSnapshot workspaceSnapshot, WorkspaceSynchronizationStateDocument state, IReadOnlyDictionary<string, OracleApexRuntimeInsight>? insights = null)
     {
         var environments = workspaceSnapshot.Definition.Oracle.Apex.Environments
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(pair => BuildEnvironmentSnapshot(workspaceSnapshot, pair.Key, pair.Value, state.Environments.TryGetValue(pair.Key, out var environmentState) ? environmentState : null))
+            .Select(pair => BuildEnvironmentSnapshot(workspaceSnapshot, pair.Key, pair.Value, state.Environments.TryGetValue(pair.Key, out var environmentState) ? environmentState : null, insights is not null && insights.TryGetValue(pair.Key, out var insight) ? insight : null))
             .ToList();
         var defaultEnvironmentName = string.IsNullOrWhiteSpace(workspaceSnapshot.Definition.Oracle.Apex.DefaultEnvironment)
             ? state.DefaultEnvironment
@@ -559,7 +563,7 @@ EXIT
         };
     }
 
-    private WorkspaceSynchronizationEnvironmentSnapshot BuildEnvironmentSnapshot(WorkspaceSnapshot workspaceSnapshot, string environmentName, OracleApexEnvironmentPreferences environment, WorkspaceSynchronizationEnvironmentState? state)
+    private WorkspaceSynchronizationEnvironmentSnapshot BuildEnvironmentSnapshot(WorkspaceSnapshot workspaceSnapshot, string environmentName, OracleApexEnvironmentPreferences environment, WorkspaceSynchronizationEnvironmentState? state, OracleApexRuntimeInsight? insight)
     {
         state ??= new WorkspaceSynchronizationEnvironmentState();
         var currentGitRevision = workspaceSnapshot.Safety.AdvancedGit.LatestCommitSha;
@@ -599,6 +603,18 @@ EXIT
             State = effectiveState,
             Summary = BuildEnvironmentSummary(effectiveState, environmentName),
             DriftSummary = state.DriftSummary,
+            OracleVersion = insight?.OracleVersion ?? string.Empty,
+            ApexVersion = insight?.ApexVersion ?? string.Empty,
+            SqlclVersion = insight?.SqlclVersion ?? string.Empty,
+            OrdsVersion = insight?.OrdsVersion ?? string.Empty,
+            OrdsStatus = insight?.OrdsStatus ?? string.Empty,
+            WorkspaceExists = insight?.WorkspaceExists ?? false,
+            ParsingSchemaExists = insight?.ParsingSchemaExists ?? false,
+            ApplicationExists = insight?.ApplicationExists ?? false,
+            SourcePathExists = Directory.Exists(ResolveSourcePath(workspaceSnapshot.Paths.RootPath, environment.SourcePath ?? "src/apex")),
+            SynchronizationMetadataValid = insight?.SynchronizationMetadataValid ?? File.Exists(workspaceSnapshot.Paths.ApexMetadataPath),
+            ValidationResult = state.LastValidation?.Status ?? string.Empty,
+            LastSuccessfulSynchronizationUtc = GetLastSuccessfulSynchronizationUtc(state),
             LastValidationUtc = state.LastValidation?.TimestampUtc,
             LastImportUtc = state.LastImport?.TimestampUtc,
             LastExportUtc = state.LastExport?.TimestampUtc,
@@ -615,6 +631,160 @@ EXIT
             RemoteSourceSignature = state.RemoteSourceSignature,
         };
     }
+
+    private async Task<IReadOnlyDictionary<string, OracleApexRuntimeInsight>> CollectRuntimeInsightsAsync(WorkspaceSnapshot snapshot, WorkspaceSynchronizationStateDocument state, CancellationToken cancellationToken)
+    {
+        var results = new Dictionary<string, OracleApexRuntimeInsight>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in snapshot.Definition.Oracle.Apex.Environments)
+        {
+            var environment = ResolveEnvironment(snapshot.Definition, pair.Key);
+            results[pair.Key] = await CollectRuntimeInsightAsync(snapshot, environment, state.Environments.TryGetValue(pair.Key, out var environmentState) ? environmentState : null, cancellationToken).ConfigureAwait(false);
+        }
+
+        return results;
+    }
+
+    private async Task<OracleApexRuntimeInsight> CollectRuntimeInsightAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, WorkspaceSynchronizationEnvironmentState? state, CancellationToken cancellationToken)
+    {
+        var sqlclResult = await RunInWorkspaceAsync(snapshot, "scripts/sqlcl.sh -version", cancellationToken).ConfigureAwait(false);
+        var sqlclVersion = sqlclResult.IsSuccess ? FirstProcessOutputLine(sqlclResult) : string.Empty;
+        if (!sqlclResult.IsSuccess)
+        {
+            return new OracleApexRuntimeInsight
+            {
+                SqlclVersion = string.Empty,
+                OrdsStatus = "Unavailable",
+                SynchronizationMetadataValid = File.Exists(snapshot.Paths.ApexMetadataPath),
+            };
+        }
+
+        var oracleVersion = await QuerySingleValueAsync(snapshot, environment, "SELECT banner FROM v$version WHERE banner LIKE 'Oracle Database%' AND ROWNUM = 1;", cancellationToken).ConfigureAwait(false);
+        var apexVersion = await QuerySingleValueAsync(snapshot, environment, "SELECT version_no FROM apex_release;", cancellationToken).ConfigureAwait(false);
+        var workspaceMapping = await QuerySingleValueAsync(snapshot, environment, $"SELECT workspace_name || '|' || schema FROM apex_workspace_schemas WHERE workspace_name = '{EscapeSqlLiteral(environment.Workspace)}' AND schema = '{EscapeSqlLiteral(environment.ParsingSchema)}';", cancellationToken).ConfigureAwait(false);
+        var application = environment.ApplicationId is > 0
+            ? await QuerySingleValueAsync(snapshot, environment, $"SELECT application_name FROM apex_applications WHERE workspace = '{EscapeSqlLiteral(environment.Workspace)}' AND application_id = {environment.ApplicationId.Value};", cancellationToken).ConfigureAwait(false)
+            : string.Empty;
+        var ordsProbe = await _containerRuntime.ProbeHttpGetFromWorkspaceAsync(snapshot.Definition, "http://oracle-ords:8080/ords/_/landing", cancellationToken: cancellationToken).ConfigureAwait(false);
+        var ordsStatus = ordsProbe.IsSuccess && ordsProbe.StandardOutput.Contains("status=200", StringComparison.OrdinalIgnoreCase) ? "Reachable" : "Unavailable";
+        return new OracleApexRuntimeInsight
+        {
+            OracleVersion = oracleVersion,
+            ApexVersion = apexVersion,
+            SqlclVersion = sqlclVersion,
+            OrdsVersion = ExtractOrdsVersion(ordsProbe),
+            OrdsStatus = ordsStatus,
+            WorkspaceExists = string.Equals(workspaceMapping, $"{environment.Workspace}|{environment.ParsingSchema}", StringComparison.OrdinalIgnoreCase),
+            ParsingSchemaExists = !string.IsNullOrWhiteSpace(await QuerySingleValueAsync(snapshot, environment, $"SELECT username FROM all_users WHERE username = UPPER('{EscapeSqlLiteral(environment.ParsingSchema)}');", cancellationToken).ConfigureAwait(false)),
+            ApplicationExists = !string.IsNullOrWhiteSpace(application),
+            SynchronizationMetadataValid = File.Exists(snapshot.Paths.ApexMetadataPath),
+        };
+    }
+
+    private async Task<string> QuerySingleValueAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, string sql, CancellationToken cancellationToken)
+    {
+        var query = $"SET HEADING OFF\nSET FEEDBACK OFF\nSET PAGESIZE 0\nSET VERIFY OFF\nSET TRIMSPOOL ON\n{sql}\nEXIT\n";
+        var result = await RunSqlclAsync(snapshot, environment, query, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return string.Empty;
+        }
+
+        return FirstProcessOutputLine(result);
+    }
+
+    private void WriteOracleDiagnostics(WorkspaceSnapshot snapshot, WorkspaceSynchronizationSnapshot synchronization, IReadOnlyDictionary<string, OracleApexRuntimeInsight> insights)
+    {
+        if (synchronization.DefaultEnvironment is null)
+        {
+            return;
+        }
+
+        var diagnosticsPath = Path.Combine(snapshot.Paths.RootPath, OracleApexDiagnosticsRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(diagnosticsPath)!);
+        var content = BuildOracleDiagnosticsMarkdown(snapshot, synchronization.DefaultEnvironment, insights.TryGetValue(synchronization.DefaultEnvironment.EnvironmentName, out var insight) ? insight : null, ReadState(snapshot.Paths).Environments.TryGetValue(synchronization.DefaultEnvironment.EnvironmentName, out var state) ? state : null);
+        File.WriteAllText(diagnosticsPath, content.Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    private static string BuildOracleDiagnosticsMarkdown(WorkspaceSnapshot snapshot, WorkspaceSynchronizationEnvironmentSnapshot environment, OracleApexRuntimeInsight? insight, WorkspaceSynchronizationEnvironmentState? state)
+    {
+        var history = state?.OperationHistory ?? [];
+        var lines = new List<string>
+        {
+            "# Oracle APEX Diagnostics",
+            string.Empty,
+            $"Workspace: {snapshot.Definition.Workspace.Name}",
+            $"Environment: {environment.EnvironmentName}",
+            string.Empty,
+            "## Runtime",
+            $"- Oracle version: {ValueOrUnknown(environment.OracleVersion)}",
+            $"- APEX version: {ValueOrUnknown(environment.ApexVersion)}",
+            $"- SQLcl version: {ValueOrUnknown(environment.SqlclVersion)}",
+            $"- ORDS version: {ValueOrUnknown(environment.OrdsVersion)}",
+            $"- ORDS status: {ValueOrUnknown(environment.OrdsStatus)}",
+            string.Empty,
+            "## Mapping",
+            $"- Workspace mapping: {(environment.WorkspaceExists ? "Present" : "Missing")}",
+            $"- Parsing schema: {environment.ParsingSchema}",
+            $"- Connected application: {BuildApplicationDisplay(environment)}",
+            $"- Application exists: {(environment.ApplicationExists ? "Yes" : "No")}",
+            $"- Source path: {environment.SourcePath}",
+            $"- Source path exists: {(environment.SourcePathExists ? "Yes" : "No")}",
+            $"- Synchronization metadata valid: {(environment.SynchronizationMetadataValid ? "Yes" : "No")}",
+            string.Empty,
+            "## Synchronization",
+            $"- Current sync state: {environment.State}",
+            $"- Validation result: {ValueOrUnknown(environment.ValidationResult)}",
+            $"- Last successful synchronization: {FormatDiagnosticsTimestamp(environment.LastSuccessfulSynchronizationUtc)}",
+            string.Empty,
+            "## Recent History",
+        };
+
+        if (history.Count == 0)
+        {
+            lines.Add("- No synchronization history recorded yet.");
+        }
+        else
+        {
+            foreach (var entry in history.Take(5))
+            {
+                lines.Add($"- {entry.TimestampUtc?.ToString("u") ?? "Unknown"}: {entry.Operation} -> {entry.Result} ({entry.State}) [{entry.ContentRevision}] {entry.Summary}".Trim());
+            }
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static string FirstProcessOutputLine(ProcessResult result)
+        => result.StandardOutputLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim() ?? string.Empty;
+
+    private static string ExtractOrdsVersion(ProcessResult result)
+    {
+        var bodyLine = result.StandardOutputLines.FirstOrDefault(line => line.StartsWith("body=", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+        var match = System.Text.RegularExpressions.Regex.Match(bodyLine, @"([0-9]+\.[0-9]+(\.[0-9]+)?)");
+        return match.Success ? match.Value : string.Empty;
+    }
+
+    private static DateTimeOffset? GetLastSuccessfulSynchronizationUtc(WorkspaceSynchronizationEnvironmentState state)
+        => new[] { state.LastPush, state.LastPull, state.LastImport, state.LastExport }
+            .Where(item => string.Equals(item?.Status, "Succeeded", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item?.TimestampUtc)
+            .Where(item => item is not null)
+            .Cast<DateTimeOffset>()
+            .DefaultIfEmpty()
+            .Max();
+
+    private static string BuildApplicationDisplay(WorkspaceSynchronizationEnvironmentSnapshot environment)
+        => environment.ApplicationId is null
+            ? "Not configured"
+            : string.IsNullOrWhiteSpace(environment.ApplicationName)
+                ? environment.ApplicationId.Value.ToString()
+                : $"{environment.ApplicationId.Value} ({environment.ApplicationName})";
+
+    private static string FormatDiagnosticsTimestamp(DateTimeOffset? timestamp)
+        => timestamp?.ToString("u") ?? "Never";
+
+    private static string ValueOrUnknown(string value)
+        => string.IsNullOrWhiteSpace(value) ? "Unknown" : value;
 
     private OracleApexEnvironmentContext ResolveEnvironment(WorkspaceDefinition definition, string? requestedEnvironmentName)
     {
@@ -1091,6 +1261,19 @@ EXIT
         public string SqlclProfile { get; init; } = string.Empty;
         public string SyncMode { get; init; } = WorkspaceSynchronizationModes.Manual;
         public string SourcePath { get; init; } = "src/apex";
+    }
+
+    private sealed class OracleApexRuntimeInsight
+    {
+        public string OracleVersion { get; init; } = string.Empty;
+        public string ApexVersion { get; init; } = string.Empty;
+        public string SqlclVersion { get; init; } = string.Empty;
+        public string OrdsVersion { get; init; } = string.Empty;
+        public string OrdsStatus { get; init; } = string.Empty;
+        public bool WorkspaceExists { get; init; }
+        public bool ParsingSchemaExists { get; init; }
+        public bool ApplicationExists { get; init; }
+        public bool SynchronizationMetadataValid { get; init; }
     }
 
     private readonly record struct WorkspaceSynchronizationEnvironmentStateRecord(

@@ -251,6 +251,59 @@ public sealed class GeneratedArtifactsTests
     }
 
     [Fact]
+    public void WorkspaceContentGenerator_GeneratesOracleApexWorkflowGuide()
+    {
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+        var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+        var resolved = resolver.Resolve(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+        });
+
+        var files = new WorkspaceContentGenerator().Generate(resolved);
+
+        Assert.True(files.TryGetValue(Path.Combine("docs", "oracle-apex-workflow.md"), out var guide));
+        Assert.Contains("Connect Existing Application", guide, StringComparison.Ordinal);
+        Assert.Contains("Validate", guide, StringComparison.Ordinal);
+        Assert.Contains("Show Diff", guide, StringComparison.Ordinal);
+        Assert.Contains("Pull", guide, StringComparison.Ordinal);
+        Assert.Contains("Push", guide, StringComparison.Ordinal);
+        Assert.Contains("Oracle Diagnostics", guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspaceServiceCatalog_OracleApexWorkspace_ExposesPolishedOracleServices()
+    {
+        var services = WorkspaceServiceCatalog.Build(new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = new List<string> { "core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo" },
+            Services = new List<string> { "oracle-demo", "oracle-ords" },
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new() { Workspace = "TEST", ParsingSchema = "TESTSCHEMA", ApplicationId = 100, SourcePath = "src/apex" },
+                    },
+                },
+            },
+        });
+
+        Assert.Contains(services, item => item.Name == "APEX Builder");
+        Assert.Contains(services, item => item.Name == "App Home");
+        Assert.Contains(services, item => item.Name == "SQL Workshop");
+        Assert.Contains(services, item => item.Name == "REST Workshop");
+        Assert.Contains(services, item => item.Name == "ORDS Landing");
+        Assert.Contains(services, item => item.Name == "SQLcl Terminal");
+        Assert.Contains(services, item => item.Name == "Oracle Diagnostics");
+    }
+
+    [Fact]
     public void WorkspaceServiceCatalog_GenericWorkspace_ExposesTerminalFolderAndCli()
     {
         var services = WorkspaceServiceCatalog.Build(new WorkspaceDefinition

@@ -105,6 +105,103 @@ environments:
         Assert.Contains(readiness.Evidence, section => section.Label == "Synchronization");
     }
 
+    [Fact]
+    public void Health_OracleApexWorkspaceProvider_ReturnsActionableFailures()
+    {
+        var source = CreateSnapshot(WorkspaceSynchronizationState.Unknown);
+        var snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = source.Record.Name,
+                RootPath = source.Record.RootPath,
+                RepositoryPath = source.Record.RepositoryPath,
+                ConfigurationPath = source.Record.ConfigurationPath,
+                CreatedUtc = source.Record.CreatedUtc,
+                LastOpenedUtc = source.Record.LastOpenedUtc,
+                LastOperationSucceeded = true,
+            },
+            Definition = source.Definition,
+            Paths = source.Paths,
+            ConfigurationPath = source.ConfigurationPath,
+            RuntimeState = WorkspaceRuntimeState.Running,
+            Safety = source.Safety,
+            Session = source.Session,
+            AppliedState = source.AppliedState,
+            LocalRuntimeState = source.LocalRuntimeState,
+            ResolvedRuntimePlan = source.ResolvedRuntimePlan,
+            UpdateRequired = source.UpdateRequired,
+            Health = source.Health,
+            Readiness = source.Readiness,
+            AvailableServices = source.AvailableServices,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                IsSupported = true,
+                State = WorkspaceSynchronizationState.Unknown,
+                Summary = "Synchronization state is unknown.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    WorkspaceName = "TEST",
+                    ParsingSchema = "TESTSCHEMA",
+                    ApplicationId = 100,
+                    SourcePath = "src/apex",
+                    OrdsStatus = "Unavailable",
+                },
+                Environments = [],
+            },
+        };
+
+        var health = WorkspaceHealthEngine.Build(snapshot);
+
+        Assert.Contains(health.Providers, provider => provider.ProviderKey == "oracle-apex-workspace" && provider.Summary.Contains("SQLcl not installed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Readiness_UsesSpecificOracleApexFailureMessages()
+    {
+        var source = CreateSnapshot(WorkspaceSynchronizationState.Unknown);
+        var snapshot = new WorkspaceSnapshot
+        {
+            Record = source.Record,
+            Definition = source.Definition,
+            Paths = source.Paths,
+            ConfigurationPath = source.ConfigurationPath,
+            RuntimeState = source.RuntimeState,
+            Safety = source.Safety,
+            Session = source.Session,
+            AppliedState = source.AppliedState,
+            LocalRuntimeState = source.LocalRuntimeState,
+            ResolvedRuntimePlan = source.ResolvedRuntimePlan,
+            UpdateRequired = source.UpdateRequired,
+            Health = source.Health,
+            Readiness = source.Readiness,
+            AvailableServices = source.AvailableServices,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                IsSupported = true,
+                State = WorkspaceSynchronizationState.Unknown,
+                Summary = "Synchronization state is unknown.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    WorkspaceName = "TEST",
+                    ParsingSchema = "TESTSCHEMA",
+                    ApplicationId = 100,
+                    SourcePath = "src/apex",
+                    SqlclVersion = string.Empty,
+                    SynchronizationMetadataValid = false,
+                },
+                Environments = [],
+            },
+        };
+
+        var health = WorkspaceHealthEngine.Build(snapshot);
+        var readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = health });
+
+        Assert.Equal("Synchronization metadata is missing.", readiness.Summary);
+    }
+
     private static WorkspaceSnapshot CreateSnapshot(WorkspaceSynchronizationState state)
     {
         var rootPath = Path.Combine(Path.GetTempPath(), $"apex-sync-{Guid.NewGuid():N}");

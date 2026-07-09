@@ -18,6 +18,8 @@ public interface IWorkspaceServiceInfoProvider
 public static class WorkspaceServiceCatalog
 {
     public const string ServicesGuideRelativePath = "docs/workspace-services.md";
+    public const string OracleApexWorkflowGuideRelativePath = "docs/oracle-apex-workflow.md";
+    public const string OracleApexDiagnosticsRelativePath = "docs/diagnostics/oracle-apex.md";
 
     private static readonly IWorkspaceServiceInfoProvider[] Providers =
     [
@@ -269,16 +271,69 @@ public static class WorkspaceServiceCatalog
                 {
                     services.Add(new WorkspaceServiceInfo
                     {
-                        ServiceId = "apex-application",
-                        Name = "Running Application",
+                        ServiceId = "apex-app-home",
+                        Name = "App Home",
                         Category = "Application",
                         Description = "Open the configured Oracle APEX preview application.",
                         HostUrl = $"http://localhost:{ordsPort}/ords/f?p={defaultEnvironment.ApplicationId.Value}",
                         InternalUrl = $"http://oracle-ords:8080/ords/f?p={defaultEnvironment.ApplicationId.Value}",
-                        DocsPath = ServicesGuideRelativePath,
+                        DocsPath = OracleApexWorkflowGuideRelativePath,
                         Actions = ["open-service", "copy-url", "open-docs"],
                     });
                 }
+
+                services.AddRange(
+                [
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "apex-sql-workshop",
+                        Name = "SQL Workshop",
+                        Category = "Admin UI",
+                        Description = "Open Oracle APEX SQL Workshop.",
+                        HostUrl = $"http://localhost:{ordsPort}/ords/apex/sql-workshop",
+                        InternalUrl = "http://oracle-ords:8080/ords/apex/sql-workshop",
+                        DocsPath = OracleApexWorkflowGuideRelativePath,
+                        Actions = ["open-service", "copy-url", "open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "apex-rest-workshop",
+                        Name = "REST Workshop",
+                        Category = "Admin UI",
+                        Description = "Open Oracle APEX REST Workshop when ORDS workspace services are available.",
+                        HostUrl = $"http://localhost:{ordsPort}/ords/apex/workspace-developer/restful-services",
+                        InternalUrl = "http://oracle-ords:8080/ords/apex/workspace-developer/restful-services",
+                        DocsPath = OracleApexWorkflowGuideRelativePath,
+                        Actions = ["open-service", "copy-url", "open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "sqlcl-terminal",
+                        Name = "SQLcl Terminal",
+                        Category = "Terminal",
+                        Description = "Open SQLcl from the host using the workspace helper.",
+                        DocsPath = OracleApexWorkflowGuideRelativePath,
+                        Commands =
+                        [
+                            new WorkspaceServiceCommandInfo
+                            {
+                                Label = "Host helper",
+                                Command = "./open-sqlcl.ps1",
+                                Description = "Open SQLcl from the host for this workspace.",
+                            },
+                        ],
+                        Actions = ["copy-command", "open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-diagnostics",
+                        Name = "Oracle Diagnostics",
+                        Category = "Documentation",
+                        Description = "Open the generated Oracle APEX diagnostics report for this workspace.",
+                        DocsPath = OracleApexDiagnosticsRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                ]);
 
                 if (definition.Oracle.Apex.Environments.Count > 0)
                 {
@@ -288,7 +343,7 @@ public static class WorkspaceServiceCatalog
                         Name = "APEX Synchronization",
                         Category = "Application",
                         Description = "Validate, import, export, pull, and push Oracle APEX workspace state.",
-                        DocsPath = ServicesGuideRelativePath,
+                        DocsPath = OracleApexWorkflowGuideRelativePath,
                         Commands =
                         [
                             new WorkspaceServiceCommandInfo

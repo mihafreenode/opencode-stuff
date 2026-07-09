@@ -38,6 +38,12 @@ public static class WorkspaceHealthEngine
             providers.Add(synchronizationProvider);
         }
 
+        var oracleApexProvider = BuildOracleApexWorkspaceProvider(snapshot, timestamp);
+        if (oracleApexProvider is not null)
+        {
+            providers.Add(oracleApexProvider);
+        }
+
         var headlineProviders = providers.Where(item => !string.Equals(item.ProviderKey, "development-environment", StringComparison.OrdinalIgnoreCase)).ToList();
         var overallStatus = headlineProviders.Select(item => item.Status).DefaultIfEmpty(WorkspaceHealthStatus.Healthy).MaxBy(SeverityRank);
         var recommendation = headlineProviders
@@ -464,6 +470,56 @@ public static class WorkspaceHealthEngine
                 : "Oracle APEX and Git are no longer fully synchronized.",
         };
     }
+
+    private static WorkspaceProviderHealthSnapshot? BuildOracleApexWorkspaceProvider(WorkspaceSnapshot snapshot, DateTimeOffset timestamp)
+    {
+        var environment = snapshot.Synchronization.DefaultEnvironment;
+        if (environment is null)
+        {
+            return null;
+        }
+
+        var checks = new[]
+        {
+            ("SQLcl", !string.IsNullOrWhiteSpace(environment.SqlclVersion), string.IsNullOrWhiteSpace(environment.SqlclVersion) ? "SQLcl not installed." : environment.SqlclVersion, "Install SQLcl or reprovision the workspace."),
+            ("ORDS", string.Equals(environment.OrdsStatus, "Reachable", StringComparison.OrdinalIgnoreCase), string.IsNullOrWhiteSpace(environment.OrdsStatus) ? "ORDS not checked." : environment.OrdsStatus, "Start ORDS and verify the landing page."),
+            ("APEX", !string.IsNullOrWhiteSpace(environment.ApexVersion), string.IsNullOrWhiteSpace(environment.ApexVersion) ? "Oracle APEX not reachable." : environment.ApexVersion, "Verify Oracle APEX provisioning and connectivity."),
+            ("Workspace mapping", environment.WorkspaceExists, environment.WorkspaceExists ? "Mapped" : $"Oracle APEX workspace {environment.WorkspaceName} not found.", "Reconnect the workspace mapping or choose a valid workspace."),
+            ("Parsing schema", environment.ParsingSchemaExists, environment.ParsingSchemaExists ? environment.ParsingSchema : $"Parsing schema {environment.ParsingSchema} missing.", "Create or remap the parsing schema."),
+            ("Application", environment.ApplicationExists, environment.ApplicationExists ? BuildApplicationDisplay(environment) : $"Application {environment.ApplicationId?.ToString() ?? "?"} no longer exists.", "Reconnect an existing application or repair the application id."),
+            ("Source path", environment.SourcePathExists, environment.SourcePathExists ? environment.SourcePath : $"Source path {environment.SourcePath} missing.", "Create the source path or export the application again."),
+            ("Sync metadata", environment.SynchronizationMetadataValid, environment.SynchronizationMetadataValid ? snapshot.Paths.ApexMetadataPath : "Synchronization metadata is missing.", "Reconnect the application or regenerate synchronization metadata."),
+        };
+
+        var failingCheck = checks.FirstOrDefault(check => !check.Item2);
+        var status = failingCheck == default ? WorkspaceHealthStatus.Healthy : WorkspaceHealthStatus.Degraded;
+        var summary = failingCheck == default
+            ? "Oracle APEX workspace integration looks healthy."
+            : failingCheck.Item3;
+        var recommendation = failingCheck == default ? "Open Workspace." : failingCheck.Item4;
+        return new WorkspaceProviderHealthSnapshot
+        {
+            ProviderKey = "oracle-apex-workspace",
+            DisplayName = "Oracle APEX Workspace",
+            Status = status,
+            Summary = summary,
+            Evidence = checks.Select(check => new WorkspaceHealthFact { Label = check.Item1, Value = check.Item3 }).ToList(),
+            Confidence = failingCheck == default ? "HIGH" : "MEDIUM",
+            Timestamp = timestamp,
+            RefreshInterval = TimeSpan.FromMinutes(2),
+            Repairability = WorkspaceRepairability.Unknown.ToString(),
+            RecommendedAction = recommendation,
+            IsVolatile = false,
+            WorkspaceImpact = failingCheck == default ? "Oracle APEX workspace lifecycle features should be available." : summary,
+        };
+    }
+
+    private static string BuildApplicationDisplay(WorkspaceSynchronizationEnvironmentSnapshot environment)
+        => environment.ApplicationId is null
+            ? "Not configured"
+            : string.IsNullOrWhiteSpace(environment.ApplicationName)
+                ? environment.ApplicationId.Value.ToString()
+                : $"{environment.ApplicationId.Value} ({environment.ApplicationName})";
 
     private static bool IsOracleWorkspace(WorkspaceSnapshot snapshot)
         => snapshot.Definition.Services.Any(service => service.Contains("oracle", StringComparison.OrdinalIgnoreCase) || service.Contains("ords", StringComparison.OrdinalIgnoreCase))
