@@ -301,6 +301,11 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains(services, item => item.Name == "ORDS Landing");
         Assert.Contains(services, item => item.Name == "SQLcl Terminal");
         Assert.Contains(services, item => item.Name == "Oracle Diagnostics");
+        Assert.Contains(services, item => item.Name == "Open Atlas");
+        Assert.Contains(services, item => item.Name == "Browse Pages");
+        Assert.Contains(services, item => item.Name == "Browse Shared Components");
+        Assert.Contains(services, item => item.Name == "Search Application");
+        Assert.Contains(services, item => item.Name == "Dependency Graph");
     }
 
     [Fact]

@@ -12,17 +12,20 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     private readonly IContainerRuntime _containerRuntime;
     private readonly IProcessRunner _processRunner;
     private readonly WorkspaceYamlService _workspaceYamlService;
+    private readonly OracleApexAtlasBuilder _atlasBuilder;
 
     public OracleApexWorkspaceSynchronizationProvider(
         WorkspaceSynchronizationStateService stateService,
         IContainerRuntime containerRuntime,
         IProcessRunner processRunner,
-        WorkspaceYamlService workspaceYamlService)
+        WorkspaceYamlService workspaceYamlService,
+        OracleApexAtlasBuilder? atlasBuilder = null)
     {
         _stateService = stateService;
         _containerRuntime = containerRuntime;
         _processRunner = processRunner;
         _workspaceYamlService = workspaceYamlService;
+        _atlasBuilder = atlasBuilder ?? new OracleApexAtlasBuilder();
     }
 
     public string ProviderId => "oracle-apex";
@@ -244,11 +247,14 @@ EXIT
                 : current.OperationHistory,
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, newState);
+        var atlasResult = result.IsSuccess
+            ? RebuildAtlas(request.Snapshot.Definition, request.Snapshot.Paths, environment.EnvironmentName)
+            : OracleApexAtlasBuildResult.Skipped(string.Empty);
 
         return new WorkspaceSynchronizationOperationResult
         {
             Snapshot = BuildSnapshot(request.Snapshot, newState),
-            Message = result.IsSuccess ? $"Exported Oracle APEX application for environment '{environment.EnvironmentName}'." : $"Oracle APEX export failed for environment '{environment.EnvironmentName}'.",
+            Message = AppendAtlasMessage(result.IsSuccess ? $"Exported Oracle APEX application for environment '{environment.EnvironmentName}'." : $"Oracle APEX export failed for environment '{environment.EnvironmentName}'.", atlasResult),
             ProcessResult = result,
         };
     }
@@ -391,10 +397,13 @@ EXIT
         var importedSignature = importResult.Snapshot.DefaultEnvironment?.WorkspaceSourceSignature ?? string.Empty;
         var finalStateDocument = RecordPushAttempt(request.Snapshot.Paths, environmentName, request.Snapshot.Safety.AdvancedGit.LatestCommitSha, importResult.Snapshot.State, importResult.ProcessResult?.IsSuccess != false, importResult.Message, importedSignature);
         var finalSnapshot = BuildSnapshot(request.Snapshot, finalStateDocument);
+        var atlasResult = importResult.ProcessResult?.IsSuccess == false
+            ? OracleApexAtlasBuildResult.Skipped(string.Empty)
+            : RebuildAtlas(request.Snapshot.Definition, request.Snapshot.Paths, environmentName);
         return new WorkspaceSynchronizationOperationResult
         {
             Snapshot = finalSnapshot,
-            Message = string.Join(Environment.NewLine,
+            Message = AppendAtlasMessage(string.Join(Environment.NewLine,
             [
                 "Validation started",
                 "Validation succeeded",
@@ -402,10 +411,18 @@ EXIT
                 importResult.ProcessResult?.IsSuccess == true ? "Import completed" : "Import failed",
                 "Synchronization metadata updated",
                 $"Final sync state: {finalSnapshot.State}",
-            ]),
+            ]), atlasResult),
             ProcessResult = importResult.ProcessResult,
         };
     }
+
+    private OracleApexAtlasBuildResult RebuildAtlas(WorkspaceDefinition definition, WorkspacePaths paths, string environmentName)
+        => _atlasBuilder.Rebuild(definition, paths, environmentName);
+
+    private static string AppendAtlasMessage(string message, OracleApexAtlasBuildResult atlasResult)
+        => string.IsNullOrWhiteSpace(atlasResult.Message)
+            ? message
+            : $"{message}{Environment.NewLine}{atlasResult.Message}";
 
     private WorkspaceSynchronizationStateDocument ReadState(WorkspacePaths paths)
         => _stateService.Read(paths.ApexMetadataPath) ?? new WorkspaceSynchronizationStateDocument();

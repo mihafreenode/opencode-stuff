@@ -55,6 +55,8 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].SynchronizedSourceSignature));
 
             Assert.True(File.Exists(Path.Combine(root, "src", "apex", "application.apx")));
+            Assert.True(File.Exists(Path.Combine(root, ".opencode", "knowledge", "apexlang-atlas", "atlas.json")));
+            Assert.True(File.Exists(Path.Combine(root, "docs", "oracle-apex-atlas.md")));
             Assert.Contains("Connected Oracle APEX application 'Customer Orders Demo'", result.Message, StringComparison.Ordinal);
         }
         finally
@@ -539,7 +541,16 @@ public sealed class OracleApexWorkspaceConnectionTests
         private readonly string _root;
         private readonly bool _workspaceMappingExists;
 
-        public string RemoteApplicationContent { get; init; } = "APEX application";
+        public string RemoteApplicationContent { get; init; } = """
+application customer-orders-demo (
+    id: 100
+    name: Customer Orders Demo
+    alias: CUSTOMER-ORDERS-DEMO
+    version: 1.2
+    workspace: TEST
+    parsing-schema: TESTSCHEMA
+)
+""";
         public int ImportCallCount { get; private set; }
 
         public ScriptedOracleApexContainerRuntime(string root, bool workspaceMappingExists)

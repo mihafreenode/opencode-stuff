@@ -50,6 +50,7 @@ public sealed class WorkspaceOrchestrator
     private readonly IRuntimeResolver _runtimeResolver;
     private readonly ITerminalLauncher _terminalLauncher;
     private readonly KnowledgePackProvisioner _knowledgePackProvisioner;
+    private readonly OracleApexAtlasBuilder _oracleApexAtlasBuilder;
     private readonly OpenCodeSessionService _openCodeSessionService = new();
     private readonly object _hostPlatformLock = new();
     private Task<HostPlatformInfo>? _cachedHostPlatformDetectionTask;
@@ -108,6 +109,7 @@ public sealed class WorkspaceOrchestrator
         _runtimeResolver = runtimeResolver;
         _terminalLauncher = terminalLauncher;
         _knowledgePackProvisioner = knowledgePackProvisioner ?? new KnowledgePackProvisioner([new ApexlangAtlasKnowledgePackProvider()]);
+        _oracleApexAtlasBuilder = new OracleApexAtlasBuilder();
     }
 
     public WorkspaceOrchestrator(
@@ -707,6 +709,7 @@ public sealed class WorkspaceOrchestrator
         WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, inspectHostAvailability: false);
         await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, explicitRegenerationRequested: true, cancellationToken: cancellationToken);
         await RunApexlangHelloWorldRegenerationAsync(snapshot, cancellationToken);
+        _oracleApexAtlasBuilder.Rebuild(snapshot.Definition, snapshot.Paths, force: true);
     }
 
     public async Task RecoverAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)

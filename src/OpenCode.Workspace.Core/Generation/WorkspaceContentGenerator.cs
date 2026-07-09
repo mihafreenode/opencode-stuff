@@ -3297,7 +3297,7 @@ Do not inspect `.env` for normal demo verification.
     {
         var services = WorkspaceServiceCatalog.Build(definition, runtimeState);
         var serviceNames = services
-            .Where(service => service.Name is "APEX Builder" or "App Home" or "SQL Workshop" or "REST Workshop" or "ORDS Landing" or "SQLcl Terminal" or "Oracle Diagnostics")
+            .Where(service => service.Name is "APEX Builder" or "App Home" or "SQL Workshop" or "REST Workshop" or "ORDS Landing" or "SQLcl Terminal" or "Oracle Diagnostics" or "Open Atlas" or "Browse Pages" or "Browse Shared Components" or "Search Application" or "Dependency Graph")
             .Select(service => $"- {service.Name}: {service.Description}")
             .ToList();
 

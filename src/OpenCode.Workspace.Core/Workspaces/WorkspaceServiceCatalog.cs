@@ -20,6 +20,11 @@ public static class WorkspaceServiceCatalog
     public const string ServicesGuideRelativePath = "docs/workspace-services.md";
     public const string OracleApexWorkflowGuideRelativePath = "docs/oracle-apex-workflow.md";
     public const string OracleApexDiagnosticsRelativePath = "docs/diagnostics/oracle-apex.md";
+    public const string OracleApexAtlasDocRelativePath = "docs/oracle-apex-atlas.md";
+    public const string OracleApexAtlasPagesRelativePath = ".opencode/knowledge/apexlang-atlas/pages.json";
+    public const string OracleApexAtlasSharedComponentsRelativePath = ".opencode/knowledge/apexlang-atlas/shared-components.json";
+    public const string OracleApexAtlasSearchIndexRelativePath = ".opencode/knowledge/apexlang-atlas/search-index.json";
+    public const string OracleApexAtlasDependenciesRelativePath = ".opencode/knowledge/apexlang-atlas/dependencies.json";
 
     private static readonly IWorkspaceServiceInfoProvider[] Providers =
     [
@@ -331,6 +336,51 @@ public static class WorkspaceServiceCatalog
                         Category = "Documentation",
                         Description = "Open the generated Oracle APEX diagnostics report for this workspace.",
                         DocsPath = OracleApexDiagnosticsRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-atlas",
+                        Name = "Open Atlas",
+                        Category = "Documentation",
+                        Description = "Open the generated Oracle APEX Atlas summary for this workspace.",
+                        DocsPath = OracleApexAtlasDocRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-atlas-pages",
+                        Name = "Browse Pages",
+                        Category = "Documentation",
+                        Description = "Open the generated page inventory for the Oracle APEX Atlas.",
+                        DocsPath = OracleApexAtlasPagesRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-atlas-shared-components",
+                        Name = "Browse Shared Components",
+                        Category = "Documentation",
+                        Description = "Open the generated shared component inventory for the Oracle APEX Atlas.",
+                        DocsPath = OracleApexAtlasSharedComponentsRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-atlas-search",
+                        Name = "Search Application",
+                        Category = "Documentation",
+                        Description = "Open the generated lightweight Oracle APEX Atlas search index.",
+                        DocsPath = OracleApexAtlasSearchIndexRelativePath,
+                        Actions = ["open-docs"],
+                    },
+                    new WorkspaceServiceInfo
+                    {
+                        ServiceId = "oracle-apex-atlas-dependencies",
+                        Name = "Dependency Graph",
+                        Category = "Documentation",
+                        Description = "Open the generated Oracle APEX Atlas dependency graph.",
+                        DocsPath = OracleApexAtlasDependenciesRelativePath,
                         Actions = ["open-docs"],
                     },
                 ]);
