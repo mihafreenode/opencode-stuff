@@ -299,8 +299,14 @@ public static class WorkspaceReadinessEngine
                     [
                         new WorkspaceEvidenceItem { Label = "State", Value = snapshot.Synchronization.State.ToString() },
                         new WorkspaceEvidenceItem { Label = "Environment", Value = snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? "default" },
+                        new WorkspaceEvidenceItem { Label = "Workspace", Value = snapshot.Synchronization.DefaultEnvironment?.WorkspaceName ?? string.Empty },
+                        new WorkspaceEvidenceItem { Label = "Schema", Value = snapshot.Synchronization.DefaultEnvironment?.ParsingSchema ?? string.Empty },
+                        new WorkspaceEvidenceItem { Label = "Application", Value = snapshot.Synchronization.DefaultEnvironment?.ApplicationId?.ToString() ?? string.Empty },
                         new WorkspaceEvidenceItem { Label = "Mode", Value = snapshot.Synchronization.DefaultEnvironment?.SyncMode ?? WorkspaceSynchronizationModes.Manual },
                         new WorkspaceEvidenceItem { Label = "Source", Value = snapshot.Synchronization.DefaultEnvironment?.SourcePath ?? string.Empty },
+                        new WorkspaceEvidenceItem { Label = "Last validation", Value = snapshot.Synchronization.DefaultEnvironment?.LastValidationUtc?.ToLocalTime().ToString("u") ?? "Never" },
+                        new WorkspaceEvidenceItem { Label = "Last export", Value = snapshot.Synchronization.DefaultEnvironment?.LastExportUtc?.ToLocalTime().ToString("u") ?? "Never" },
+                        new WorkspaceEvidenceItem { Label = "Last pull", Value = snapshot.Synchronization.DefaultEnvironment?.LastPullUtc?.ToLocalTime().ToString("u") ?? "Never" },
                         new WorkspaceEvidenceItem { Label = "Sync metadata", Value = snapshot.Paths.ApexMetadataPath },
                     ],
                 });

@@ -63,9 +63,13 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public DateTimeOffset? LastValidationUtc { get; init; }
     public DateTimeOffset? LastImportUtc { get; init; }
     public DateTimeOffset? LastExportUtc { get; init; }
+    public DateTimeOffset? LastPullUtc { get; init; }
     public string LastSynchronizedGitRevision { get; init; } = string.Empty;
     public string ImportedRevision { get; init; } = string.Empty;
     public string ExportedRevision { get; init; } = string.Empty;
+    public string SynchronizedSourceSignature { get; init; } = string.Empty;
+    public string WorkspaceSourceSignature { get; init; } = string.Empty;
+    public string RemoteSourceSignature { get; init; } = string.Empty;
 }
 
 public sealed class WorkspaceSynchronizationStatusResult
@@ -85,6 +89,54 @@ public sealed class WorkspaceSynchronizationDiffResult
     public required WorkspaceSynchronizationSnapshot Snapshot { get; init; }
     public string Summary { get; init; } = string.Empty;
     public string DiffText { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexApplicationInfo
+{
+    public int ApplicationId { get; init; }
+    public string ApplicationName { get; init; } = string.Empty;
+    public string Alias { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexApplicationDiscoveryRequest
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public string EnvironmentName { get; init; } = "dev";
+    public string WorkspaceName { get; init; } = "TEST";
+    public string ParsingSchema { get; init; } = "TESTSCHEMA";
+    public string SqlclProfile { get; init; } = "local-apex-dev";
+    public string SourcePath { get; init; } = "src/apex";
+}
+
+public sealed class OracleApexApplicationDiscoveryResult
+{
+    public string EnvironmentName { get; init; } = "dev";
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string ParsingSchema { get; init; } = string.Empty;
+    public string SqlclProfile { get; init; } = string.Empty;
+    public string SourcePath { get; init; } = "src/apex";
+    public IReadOnlyList<OracleApexApplicationInfo> Applications { get; init; } = Array.Empty<OracleApexApplicationInfo>();
+    public string Summary { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexConnectExistingApplicationRequest
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public string EnvironmentName { get; init; } = "dev";
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string ParsingSchema { get; init; } = string.Empty;
+    public int ApplicationId { get; init; }
+    public string ApplicationName { get; init; } = string.Empty;
+    public string Alias { get; init; } = string.Empty;
+    public string SqlclProfile { get; init; } = string.Empty;
+    public string SourcePath { get; init; } = "src/apex";
+}
+
+public sealed class OracleApexConnectExistingApplicationResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public IReadOnlyList<ProcessResult> ProcessResults { get; init; } = Array.Empty<ProcessResult>();
 }
 
 public sealed class WorkspaceSynchronizationStateDocument
@@ -113,6 +165,9 @@ public sealed class WorkspaceSynchronizationEnvironmentState
     [YamlMember(Alias = "lastExport")]
     public WorkspaceSynchronizationOperationState? LastExport { get; init; }
 
+    [YamlMember(Alias = "lastPull")]
+    public WorkspaceSynchronizationOperationState? LastPull { get; init; }
+
     [YamlMember(Alias = "importedRevision")]
     public string ImportedRevision { get; init; } = string.Empty;
 
@@ -121,6 +176,15 @@ public sealed class WorkspaceSynchronizationEnvironmentState
 
     [YamlMember(Alias = "lastSynchronizedGitRevision")]
     public string LastSynchronizedGitRevision { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "synchronizedSourceSignature")]
+    public string SynchronizedSourceSignature { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "workspaceSourceSignature")]
+    public string WorkspaceSourceSignature { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "remoteSourceSignature")]
+    public string RemoteSourceSignature { get; init; } = string.Empty;
 }
 
 public sealed class WorkspaceSynchronizationOperationState
@@ -163,4 +227,13 @@ public interface IWorkspaceSynchronizationProvider
     Task<WorkspaceSynchronizationOperationResult> PullAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default);
 
     Task<WorkspaceSynchronizationOperationResult> PushAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default);
+}
+
+public interface IOracleApexWorkspaceConnectionProvider
+{
+    bool CanHandle(WorkspaceDefinition definition);
+
+    Task<OracleApexApplicationDiscoveryResult> DiscoverApplicationsAsync(OracleApexApplicationDiscoveryRequest request, CancellationToken cancellationToken = default);
+
+    Task<OracleApexConnectExistingApplicationResult> ConnectExistingApplicationAsync(OracleApexConnectExistingApplicationRequest request, CancellationToken cancellationToken = default);
 }

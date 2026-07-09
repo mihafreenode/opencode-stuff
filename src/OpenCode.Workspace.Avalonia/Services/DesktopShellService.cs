@@ -1136,6 +1136,53 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
+    public async Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        return await _workspaceOrchestrator.DiscoverOracleApexApplicationsAsync(snapshot, environmentName, workspaceName, parsingSchema, sqlclProfile, sourcePath, cancellationToken);
+    }
+
+    public async Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Connect Existing Application", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        WorkspaceSnapshot? snapshot = currentSnapshot;
+        try
+        {
+            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
+            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            append(OperationTranscriptLineKind.Comment, $"Connecting Oracle APEX application '{draft.ApplicationName}' ({draft.ApplicationId}) for workspace '{snapshot.Definition.Workspace.Name}'.");
+            append(OperationTranscriptLineKind.Status, "Binding application metadata, exporting source, and validating the result...");
+            var result = await _workspaceOrchestrator.ConnectExistingOracleApexApplicationAsync(snapshot, draft.EnvironmentName, draft.WorkspaceName, draft.ParsingSchema, draft.ApplicationId, draft.ApplicationName, draft.Alias, draft.SqlclProfile, draft.SourcePath, cancellationToken);
+            foreach (var line in result.Message.Split([Environment.NewLine], StringSplitOptions.None))
+            {
+                append(OperationTranscriptLineKind.Result, line);
+            }
+
+            var refreshedSnapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+            await PersistWorkspaceRecordAsync(refreshedSnapshot, "Connect Existing Application", result.Message, true, cancellationToken);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = true;
+            return new WorkspaceOperationResult
+            {
+                Snapshot = refreshedSnapshot,
+                Message = result.Message,
+                Transcript = transcript,
+            };
+        }
+        catch (Exception exception)
+        {
+            if (snapshot is not null)
+            {
+                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Connect Existing Application");
+            }
+
+            AppendFailureTranscript(exception, append);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            throw;
+        }
+    }
+
     public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
 

@@ -90,9 +90,13 @@ public sealed class WorkspaceSynchronizationStateService
             LastValidation = NormalizeOperationState(state.LastValidation),
             LastImport = NormalizeOperationState(state.LastImport),
             LastExport = NormalizeOperationState(state.LastExport),
+            LastPull = NormalizeOperationState(state.LastPull),
             ImportedRevision = state.ImportedRevision?.Trim() ?? string.Empty,
             ExportedRevision = state.ExportedRevision?.Trim() ?? string.Empty,
             LastSynchronizedGitRevision = state.LastSynchronizedGitRevision?.Trim() ?? string.Empty,
+            SynchronizedSourceSignature = state.SynchronizedSourceSignature?.Trim() ?? string.Empty,
+            WorkspaceSourceSignature = state.WorkspaceSourceSignature?.Trim() ?? string.Empty,
+            RemoteSourceSignature = state.RemoteSourceSignature?.Trim() ?? string.Empty,
         };
     }
 

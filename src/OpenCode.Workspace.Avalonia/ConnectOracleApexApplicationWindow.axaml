@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpenCode.Workspace.Avalonia.ConnectOracleApexApplicationWindow"
+        Width="760"
+        Height="640"
+        MinWidth="700"
+        MinHeight="560"
+        Title="Connect Existing Oracle APEX Application"
+        WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+    <StackPanel Spacing="8">
+      <TextBlock Text="Connect Existing Application" FontSize="22" FontWeight="SemiBold" />
+      <TextBlock Text="Load applications from the current Oracle APEX workspace, choose one, and bind it into this workspace." TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" Margin="0,16,0,16" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+          <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+            <TextBlock Text="Environment" />
+            <TextBox x:Name="EnvironmentNameTextBox" Watermark="dev" />
+          </StackPanel>
+          <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+            <TextBlock Text="SQLcl Profile" />
+            <TextBox x:Name="SqlclProfileTextBox" Watermark="local-apex-dev" />
+          </StackPanel>
+          <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+            <TextBlock Text="APEX Workspace" />
+            <TextBox x:Name="WorkspaceNameTextBox" Watermark="TEST" />
+          </StackPanel>
+          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+            <TextBlock Text="Parsing Schema" />
+            <TextBox x:Name="ParsingSchemaTextBox" Watermark="TESTSCHEMA" />
+          </StackPanel>
+          <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+            <TextBlock Text="Source Path" />
+            <TextBox x:Name="SourcePathTextBox" Watermark="src/apex" />
+          </StackPanel>
+        </Grid>
+
+        <StackPanel Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button x:Name="LoadApplicationsButton" Content="Load Applications" Click="LoadApplicationsClicked" />
+            <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" Text="Load applications to continue." />
+          </StackPanel>
+          <TextBlock x:Name="ValidationMessageTextBlock" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="Available Applications" FontWeight="SemiBold" />
+          <ListBox x:Name="ApplicationsListBox" MinHeight="260" SelectionChanged="ApplicationsSelectionChanged">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Spacing="2" Margin="0,6">
+                  <TextBlock Text="{Binding DisplayText}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding DetailText}" Opacity="0.75" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+      <Button Content="Cancel" Click="CancelClicked" />
+      <Button x:Name="ConnectButton" Content="Connect" Click="ConnectClicked" />
+    </StackPanel>
+  </Grid>
+</Window>

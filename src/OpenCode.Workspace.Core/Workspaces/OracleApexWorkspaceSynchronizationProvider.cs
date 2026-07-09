@@ -5,19 +5,23 @@ using OpenCode.Workspace.Core.Runtime;
 namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynchronizationProvider
+    , IOracleApexWorkspaceConnectionProvider
 {
     private readonly WorkspaceSynchronizationStateService _stateService;
     private readonly IContainerRuntime _containerRuntime;
     private readonly IProcessRunner _processRunner;
+    private readonly WorkspaceYamlService _workspaceYamlService;
 
     public OracleApexWorkspaceSynchronizationProvider(
         WorkspaceSynchronizationStateService stateService,
         IContainerRuntime containerRuntime,
-        IProcessRunner processRunner)
+        IProcessRunner processRunner,
+        WorkspaceYamlService workspaceYamlService)
     {
         _stateService = stateService;
         _containerRuntime = containerRuntime;
         _processRunner = processRunner;
+        _workspaceYamlService = workspaceYamlService;
     }
 
     public string ProviderId => "oracle-apex";
@@ -29,6 +33,102 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     {
         var snapshot = BuildSnapshot(request.Snapshot, ReadState(request.Snapshot.Paths));
         return Task.FromResult(new WorkspaceSynchronizationStatusResult { Snapshot = snapshot });
+    }
+
+    public async Task<OracleApexApplicationDiscoveryResult> DiscoverApplicationsAsync(OracleApexApplicationDiscoveryRequest request, CancellationToken cancellationToken = default)
+    {
+        var environment = NormalizeEnvironment(request.EnvironmentName, request.WorkspaceName, request.ParsingSchema, request.SqlclProfile, request.SourcePath);
+        await EnsureSqlclAvailableAsync(request.Snapshot, cancellationToken).ConfigureAwait(false);
+        await EnsureApexAvailableAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureSchemaExistsAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureWorkspaceMappingExistsAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
+
+        var query = $"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SET VERIFY OFF
+SET TRIMSPOOL ON
+SELECT application_id || '|' || application_name || '|' || NVL(alias, '')
+FROM apex_applications
+WHERE workspace = '{EscapeSqlLiteral(environment.Workspace)}'
+ORDER BY application_id;
+EXIT
+""";
+
+        var result = await RunSqlclAsync(request.Snapshot, environment, query, cancellationToken).ConfigureAwait(false);
+        EnsureSqlSuccess(result, $"Listing Oracle APEX applications failed for workspace '{environment.Workspace}'.");
+
+        var applications = result.StandardOutputLines
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line) && line.Contains('|', StringComparison.Ordinal))
+            .Select(ParseApplicationInfo)
+            .Where(item => item is not null)
+            .Cast<OracleApexApplicationInfo>()
+            .ToList();
+
+        return new OracleApexApplicationDiscoveryResult
+        {
+            EnvironmentName = environment.EnvironmentName,
+            WorkspaceName = environment.Workspace,
+            ParsingSchema = environment.ParsingSchema,
+            SqlclProfile = environment.SqlclProfile,
+            SourcePath = environment.SourcePath,
+            Applications = applications,
+            Summary = applications.Count == 0
+                ? $"No Oracle APEX applications were found in workspace '{environment.Workspace}'."
+                : $"Found {applications.Count} Oracle APEX application(s) in workspace '{environment.Workspace}'.",
+        };
+    }
+
+    public async Task<OracleApexConnectExistingApplicationResult> ConnectExistingApplicationAsync(OracleApexConnectExistingApplicationRequest request, CancellationToken cancellationToken = default)
+    {
+        var discovery = await DiscoverApplicationsAsync(new OracleApexApplicationDiscoveryRequest
+        {
+            Snapshot = request.Snapshot,
+            EnvironmentName = request.EnvironmentName,
+            WorkspaceName = request.WorkspaceName,
+            ParsingSchema = request.ParsingSchema,
+            SqlclProfile = request.SqlclProfile,
+            SourcePath = request.SourcePath,
+        }, cancellationToken).ConfigureAwait(false);
+
+        var application = discovery.Applications.FirstOrDefault(item => item.ApplicationId == request.ApplicationId);
+        if (application is null)
+        {
+            throw new InvalidOperationException($"Oracle APEX application '{request.ApplicationId}' was not found in workspace '{discovery.WorkspaceName}'.");
+        }
+
+        var updatedDefinition = BuildConnectedDefinition(request.Snapshot.Definition, discovery, application);
+        _workspaceYamlService.WriteToFile(request.Snapshot.Paths.WorkspaceYamlPath, updatedDefinition);
+        Directory.CreateDirectory(ResolveSourcePath(request.Snapshot.Paths.RootPath, discovery.SourcePath));
+
+        var state = UpdateEnvironmentState(new WorkspaceSynchronizationStateDocument(), discovery.EnvironmentName, current => current with
+        {
+            SynchronizationState = WorkspaceSynchronizationState.Unknown.ToString(),
+            DriftSummary = string.Empty,
+            LastValidation = null,
+            LastImport = null,
+            LastExport = null,
+            ImportedRevision = string.Empty,
+            ExportedRevision = string.Empty,
+            LastSynchronizedGitRevision = string.Empty,
+        });
+        _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, state);
+
+        var connectedSnapshot = WithDefinition(request.Snapshot, updatedDefinition, BuildSnapshot(WithDefinition(request.Snapshot, updatedDefinition, new WorkspaceSynchronizationSnapshot()), state));
+        var exportResult = await ExportAsync(new WorkspaceSynchronizationRequest { Snapshot = connectedSnapshot, EnvironmentName = discovery.EnvironmentName }, cancellationToken).ConfigureAwait(false);
+        EnsureOperationSuccess(exportResult, $"Export failed after connecting Oracle APEX application '{application.ApplicationName}'.");
+
+        var validateResult = await ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = WithDefinition(connectedSnapshot, updatedDefinition, exportResult.Snapshot), EnvironmentName = discovery.EnvironmentName }, cancellationToken).ConfigureAwait(false);
+        EnsureOperationSuccess(validateResult, $"Validation failed after connecting Oracle APEX application '{application.ApplicationName}'.");
+
+        return new OracleApexConnectExistingApplicationResult
+        {
+            Snapshot = WithDefinition(request.Snapshot, updatedDefinition, validateResult.Snapshot),
+            Message = $"Connected Oracle APEX application '{application.ApplicationName}' ({application.ApplicationId}) for environment '{discovery.EnvironmentName}', exported it to '{discovery.SourcePath}', and validated the exported source.",
+            ProcessResults = [exportResult.ProcessResult!, validateResult.ProcessResult!],
+        };
     }
 
     public async Task<WorkspaceSynchronizationOperationResult> ValidateAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
@@ -43,17 +143,70 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var state = ReadState(request.Snapshot.Paths);
-        state = UpdateEnvironmentState(state, environment.EnvironmentName, current => current with
+        if (!result.IsSuccess)
+        {
+            state = UpdateEnvironmentState(state, environment.EnvironmentName, current => current with
+            {
+                LastValidation = CreateOperationState(result, request.Snapshot),
+                SynchronizationState = WorkspaceSynchronizationState.ValidationFailed.ToString(),
+            });
+            _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, state);
+
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = BuildSnapshot(request.Snapshot, state),
+                Message = $"APEX validation failed for environment '{environment.EnvironmentName}'.",
+                ProcessResult = result,
+            };
+        }
+
+        var validationExportRoot = Path.Combine(request.Snapshot.Paths.OpencodePath, "apex", "validate", environment.EnvironmentName);
+        var remoteResult = await ExportEnvironmentAsync(request.Snapshot, environment, cancellationToken, validationExportRoot).ConfigureAwait(false);
+        var updatedState = state;
+        if (!remoteResult.IsSuccess)
+        {
+            updatedState = UpdateEnvironmentState(updatedState, environment.EnvironmentName, current => current with
+            {
+                LastValidation = CreateOperationState(remoteResult, request.Snapshot),
+                SynchronizationState = WorkspaceSynchronizationState.Unknown.ToString(),
+            });
+            _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, updatedState);
+
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = BuildSnapshot(request.Snapshot, updatedState),
+                Message = $"Oracle APEX validation could not determine deployment state for environment '{environment.EnvironmentName}'.",
+                ProcessResult = remoteResult,
+            };
+        }
+
+        var remotePath = NormalizeExportRoot(validationExportRoot);
+        var sourceSignature = Directory.Exists(sourcePath) ? ComputeDirectorySignature(sourcePath) : string.Empty;
+        var remoteSignature = Directory.Exists(remotePath) ? ComputeDirectorySignature(remotePath) : string.Empty;
+        var baselineState = state.Environments.TryGetValue(environment.EnvironmentName, out var storedState) ? storedState : new WorkspaceSynchronizationEnvironmentState();
+        var syncState = DetermineSyncState(sourceSignature, remoteSignature, baselineState);
+        var driftSummary = BuildDriftSummary(syncState, environment.EnvironmentName);
+        updatedState = UpdateEnvironmentState(updatedState, environment.EnvironmentName, current => current with
         {
             LastValidation = CreateOperationState(result, request.Snapshot),
-            SynchronizationState = result.IsSuccess ? current.SynchronizationState : WorkspaceSynchronizationState.ValidationFailed.ToString(),
+            SynchronizationState = syncState.ToString(),
+            DriftSummary = driftSummary,
+            WorkspaceSourceSignature = sourceSignature,
+            RemoteSourceSignature = remoteSignature,
         });
-        _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, state);
+        if (syncState == WorkspaceSynchronizationState.InSync)
+        {
+            updatedState = UpdateEnvironmentState(updatedState, environment.EnvironmentName, current => current with
+            {
+                SynchronizedSourceSignature = sourceSignature,
+            });
+        }
+        _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, updatedState);
 
         return new WorkspaceSynchronizationOperationResult
         {
-            Snapshot = BuildSnapshot(request.Snapshot, state),
-            Message = result.IsSuccess ? $"Validated APEX source for environment '{environment.EnvironmentName}'." : $"APEX validation failed for environment '{environment.EnvironmentName}'.",
+            Snapshot = BuildSnapshot(request.Snapshot, updatedState),
+            Message = $"Validated APEX source for environment '{environment.EnvironmentName}'. Current state: {syncState}.",
             ProcessResult = result,
         };
     }
@@ -61,16 +214,19 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     public async Task<WorkspaceSynchronizationOperationResult> ExportAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var environment = ResolveEnvironment(request.Snapshot.Definition, request.EnvironmentName);
-        var command = BuildWorkspaceScriptCommand("scripts/export-apex.sh", environment.SourcePath);
-        var result = await RunInWorkspaceAsync(request.Snapshot, command, cancellationToken).ConfigureAwait(false);
+        var result = await ExportEnvironmentAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
         var newState = ReadState(request.Snapshot.Paths);
         var sourceRevision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha;
         newState = UpdateEnvironmentState(newState, environment.EnvironmentName, current => current with
         {
             LastExport = CreateOperationState(result, request.Snapshot),
             ExportedRevision = sourceRevision,
-            SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.DeploymentAhead.ToString() : current.SynchronizationState,
-            DriftSummary = result.IsSuccess ? "Builder changes were exported into the workspace source tree." : current.DriftSummary,
+            LastPull = CreateOperationState(result, request.Snapshot),
+            SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.InSync.ToString() : current.SynchronizationState,
+            DriftSummary = result.IsSuccess ? "Oracle APEX export refreshed the workspace source tree." : current.DriftSummary,
+            SynchronizedSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.SynchronizedSourceSignature,
+            WorkspaceSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.WorkspaceSourceSignature,
+            RemoteSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.RemoteSourceSignature,
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, newState);
 
@@ -85,8 +241,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     public async Task<WorkspaceSynchronizationOperationResult> ImportAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var environment = ResolveEnvironment(request.Snapshot.Definition, request.EnvironmentName);
-        var command = BuildWorkspaceScriptCommand("scripts/import-apex.sh", environment.SourcePath);
-        var result = await RunInWorkspaceAsync(request.Snapshot, command, cancellationToken).ConfigureAwait(false);
+        var result = await ImportEnvironmentAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
         var newState = ReadState(request.Snapshot.Paths);
         var sourceRevision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha;
         newState = UpdateEnvironmentState(newState, environment.EnvironmentName, current => current with
@@ -96,6 +251,9 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             LastSynchronizedGitRevision = result.IsSuccess ? sourceRevision : current.LastSynchronizedGitRevision,
             SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.InSync.ToString() : current.SynchronizationState,
             DriftSummary = result.IsSuccess ? string.Empty : current.DriftSummary,
+            SynchronizedSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.SynchronizedSourceSignature,
+            WorkspaceSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.WorkspaceSourceSignature,
+            RemoteSourceSignature = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : current.RemoteSourceSignature,
         });
         _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, newState);
 
@@ -117,11 +275,11 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         }
 
         Directory.CreateDirectory(diffRoot);
-        var command = BuildWorkspaceScriptCommand("scripts/export-apex.sh", GetWorkspaceRelativePath(request.Snapshot.Paths.RootPath, diffRoot));
-        var exportResult = await RunInWorkspaceAsync(request.Snapshot, command, cancellationToken).ConfigureAwait(false);
+        var exportResult = await ExportEnvironmentAsync(request.Snapshot, environment, cancellationToken, diffRoot).ConfigureAwait(false);
         var sourcePath = ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath);
+        var remoteSource = NormalizeExportRoot(diffRoot);
         var diffText = exportResult.IsSuccess
-            ? BuildDirectoryDiff(sourcePath, diffRoot)
+            ? await BuildDetailedDiff(request.Snapshot, environment, sourcePath, remoteSource).ConfigureAwait(false)
             : string.Join(Environment.NewLine, exportResult.StandardErrorLines.Concat(exportResult.StandardOutputLines));
         var status = BuildSnapshot(request.Snapshot, ReadState(request.Snapshot.Paths));
         return new WorkspaceSynchronizationDiffResult
@@ -132,8 +290,18 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         };
     }
 
-    public Task<WorkspaceSynchronizationOperationResult> PullAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
-        => ExportAsync(request, cancellationToken);
+    public async Task<WorkspaceSynchronizationOperationResult> PullAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = await ExportAsync(request, cancellationToken).ConfigureAwait(false);
+        return new WorkspaceSynchronizationOperationResult
+        {
+            Snapshot = result.Snapshot,
+            Message = request.EnvironmentName is { Length: > 0 }
+                ? $"Pulled Oracle APEX changes into workspace source for environment '{request.EnvironmentName}'."
+                : "Pulled Oracle APEX changes into workspace source.",
+            ProcessResult = result.ProcessResult,
+        };
+    }
 
     public async Task<WorkspaceSynchronizationOperationResult> PushAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
@@ -148,6 +316,134 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
 
     private WorkspaceSynchronizationStateDocument ReadState(WorkspacePaths paths)
         => _stateService.Read(paths.ApexMetadataPath) ?? new WorkspaceSynchronizationStateDocument();
+
+    private async Task<ProcessResult> ExportEnvironmentAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken, string? targetPathOverride = null)
+    {
+        await EnsureSqlclAvailableAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        await EnsureApexAvailableAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureSchemaExistsAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureWorkspaceMappingExistsAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+
+        var exportRoot = targetPathOverride ?? ResolveSourcePath(snapshot.Paths.RootPath, environment.SourcePath);
+        var tempExportParent = targetPathOverride ?? Path.Combine(snapshot.Paths.OpencodePath, "apex", "export", environment.EnvironmentName);
+        ResetDirectory(tempExportParent);
+
+        var sql = $"""
+apex export -applicationid {environment.ApplicationId} -split -exptype APEXLANG -dir /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, tempExportParent)} -force
+exit
+""";
+        var result = await RunSqlclAsync(snapshot, environment, sql, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return result;
+        }
+
+        var normalizedExportRoot = NormalizeExportRoot(tempExportParent);
+        if (!Directory.Exists(normalizedExportRoot) || !File.Exists(Path.Combine(normalizedExportRoot, "application.apx")))
+        {
+            throw new InvalidOperationException($"Oracle APEX export completed but no valid APEXlang package was produced for application '{environment.ApplicationId}'.");
+        }
+
+        if (targetPathOverride is null)
+        {
+            ReplaceDirectoryContents(normalizedExportRoot, exportRoot);
+        }
+
+        return result;
+    }
+
+    private async Task<ProcessResult> ImportEnvironmentAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken)
+    {
+        await EnsureSqlclAvailableAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        await EnsureApexAvailableAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureSchemaExistsAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+        await EnsureWorkspaceMappingExistsAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
+
+        var sourcePath = ResolveSourcePath(snapshot.Paths.RootPath, environment.SourcePath);
+        if (!File.Exists(Path.Combine(sourcePath, "application.apx")))
+        {
+            throw new InvalidOperationException($"Oracle APEX source path '{environment.SourcePath}' does not contain application.apx. Export or create source before importing.");
+        }
+
+        var sql = $"""
+apex import -workspace {environment.Workspace} -schema {environment.ParsingSchema} -id {environment.ApplicationId} -name "{EscapeSqlIdentifier(environment.ApplicationName)}" -input /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, sourcePath)}
+exit
+""";
+        return await RunSqlclAsync(snapshot, environment, sql, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task EnsureSqlclAvailableAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        var result = await RunInWorkspaceAsync(snapshot, "scripts/sqlcl.sh -version", cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException("SQLcl is unavailable in this workspace. Run scripts/sqlcl.sh -version for diagnostics.");
+        }
+    }
+
+    private async Task EnsureApexAvailableAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken)
+    {
+        var result = await RunSqlclAsync(snapshot, environment, "select version_no from apex_release;\nexit", cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess || result.StandardOutputLines.All(line => string.IsNullOrWhiteSpace(line) || !char.IsDigit(line.Trim().FirstOrDefault())))
+        {
+            throw new InvalidOperationException("Oracle APEX is unavailable in this workspace. Verify ORDS/APEX provisioning before connecting an application.");
+        }
+    }
+
+    private async Task EnsureSchemaExistsAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken)
+    {
+        var query = $"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT username FROM all_users WHERE username = UPPER('{EscapeSqlLiteral(environment.ParsingSchema)}');
+EXIT
+""";
+        var result = await RunSqlclAsync(snapshot, environment, query, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess || result.StandardOutputLines.All(line => !string.Equals(line.Trim(), environment.ParsingSchema, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException($"Parsing schema '{environment.ParsingSchema}' was not found in Oracle.");
+        }
+    }
+
+    private async Task EnsureWorkspaceMappingExistsAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken)
+    {
+        var query = $"""
+SET HEADING OFF
+SET FEEDBACK OFF
+SET PAGESIZE 0
+SELECT workspace_name || '|' || schema
+FROM apex_workspace_schemas
+WHERE workspace_name = '{EscapeSqlLiteral(environment.Workspace)}'
+  AND schema = '{EscapeSqlLiteral(environment.ParsingSchema)}';
+EXIT
+""";
+        var result = await RunSqlclAsync(snapshot, environment, query, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess || result.StandardOutputLines.All(line => !string.Equals(line.Trim(), $"{environment.Workspace}|{environment.ParsingSchema}", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException($"Oracle APEX workspace '{environment.Workspace}' is missing or is not mapped to parsing schema '{environment.ParsingSchema}'.");
+        }
+    }
+
+    private async Task<ProcessResult> RunSqlclAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, string sql, CancellationToken cancellationToken)
+    {
+        var queriesPath = Path.Combine(snapshot.Paths.OpencodePath, "apex", "queries");
+        Directory.CreateDirectory(queriesPath);
+        var fileName = $"{environment.EnvironmentName}-{Guid.NewGuid():N}.sql";
+        var hostSqlPath = Path.Combine(queriesPath, fileName);
+        var workspaceSqlPath = $"/workspace/.opencode/apex/queries/{fileName}";
+        File.WriteAllText(hostSqlPath, sql.Replace("\r\n", "\n", StringComparison.Ordinal));
+
+        try
+        {
+            var command = $"connection=\"{BuildConnectionString(environment)}\"; scripts/sqlcl.sh -S \"$connection\" @\"{workspaceSqlPath}\"";
+            return await RunInWorkspaceAsync(snapshot, command, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(hostSqlPath);
+        }
+    }
 
     private WorkspaceSynchronizationSnapshot BuildSnapshot(WorkspaceSnapshot workspaceSnapshot, WorkspaceSynchronizationStateDocument state)
     {
@@ -216,9 +512,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             LastValidationUtc = state.LastValidation?.TimestampUtc,
             LastImportUtc = state.LastImport?.TimestampUtc,
             LastExportUtc = state.LastExport?.TimestampUtc,
+            LastPullUtc = state.LastPull?.TimestampUtc,
             LastSynchronizedGitRevision = state.LastSynchronizedGitRevision,
             ImportedRevision = state.ImportedRevision,
             ExportedRevision = state.ExportedRevision,
+            SynchronizedSourceSignature = state.SynchronizedSourceSignature,
+            WorkspaceSourceSignature = state.WorkspaceSourceSignature,
+            RemoteSourceSignature = state.RemoteSourceSignature,
         };
     }
 
@@ -244,6 +544,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             Workspace = environment.Workspace ?? string.Empty,
             ParsingSchema = environment.ParsingSchema ?? string.Empty,
             ApplicationId = environment.ApplicationId,
+            ApplicationName = string.Empty,
             SqlclProfile = environment.SqlclProfile ?? string.Empty,
             SyncMode = WorkspaceSynchronizationModes.Normalize(environment.SyncMode),
             SourcePath = string.IsNullOrWhiteSpace(environment.SourcePath) ? "src/apex" : environment.SourcePath!,
@@ -298,6 +599,171 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     private static WorkspaceSynchronizationState ParseState(string? value)
         => Enum.TryParse<WorkspaceSynchronizationState>(value, ignoreCase: true, out var state) ? state : WorkspaceSynchronizationState.Unknown;
 
+    private static OracleApexEnvironmentContext NormalizeEnvironment(string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath)
+        => new()
+        {
+            EnvironmentName = string.IsNullOrWhiteSpace(environmentName) ? "dev" : environmentName.Trim(),
+            Workspace = string.IsNullOrWhiteSpace(workspaceName) ? "TEST" : workspaceName.Trim().ToUpperInvariant(),
+            ParsingSchema = string.IsNullOrWhiteSpace(parsingSchema) ? "TESTSCHEMA" : parsingSchema.Trim().ToUpperInvariant(),
+            ApplicationName = string.Empty,
+            SqlclProfile = string.IsNullOrWhiteSpace(sqlclProfile) ? "local-apex-dev" : sqlclProfile.Trim(),
+            SyncMode = WorkspaceSynchronizationModes.Manual,
+            SourcePath = string.IsNullOrWhiteSpace(sourcePath) ? "src/apex" : sourcePath.Trim().Replace('\\', '/'),
+        };
+
+    private static WorkspaceDefinition BuildConnectedDefinition(WorkspaceDefinition definition, OracleApexApplicationDiscoveryResult discovery, OracleApexApplicationInfo application)
+    {
+        var environments = new Dictionary<string, OracleApexEnvironmentPreferences>(definition.Oracle.Apex.Environments, StringComparer.OrdinalIgnoreCase)
+        {
+            [discovery.EnvironmentName] = new OracleApexEnvironmentPreferences
+            {
+                Workspace = discovery.WorkspaceName,
+                ParsingSchema = discovery.ParsingSchema,
+                ApplicationId = application.ApplicationId,
+                SqlclProfile = discovery.SqlclProfile,
+                SyncMode = WorkspaceSynchronizationModes.Manual,
+                SourcePath = discovery.SourcePath,
+            },
+        };
+
+        return new WorkspaceDefinition
+        {
+            Workspace = definition.Workspace,
+            Provider = definition.Provider,
+            Runtime = definition.Runtime,
+            Features = definition.Features.ToList(),
+            Skills = definition.Skills.ToList(),
+            Services = definition.Services.ToList(),
+            Mcp = definition.Mcp.ToList(),
+            Terminal = definition.Terminal,
+            Agent = definition.Agent,
+            Oracle = new OracleWorkspacePreferences
+            {
+                HostPort = definition.Oracle.HostPort,
+                OrdsPort = definition.Oracle.OrdsPort,
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = discovery.EnvironmentName,
+                    Environments = environments,
+                },
+            },
+            Analytics = definition.Analytics,
+            KnowledgePacks = definition.KnowledgePacks.ToList(),
+        };
+    }
+
+    private static WorkspaceSnapshot WithDefinition(WorkspaceSnapshot snapshot, WorkspaceDefinition definition, WorkspaceSynchronizationSnapshot synchronization)
+        => new()
+        {
+            Record = snapshot.Record,
+            Definition = definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = synchronization,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
+        };
+
+    private static void EnsureSqlSuccess(ProcessResult result, string message)
+    {
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException($"{message} {FirstProcessFailureLine(result)}".Trim());
+        }
+    }
+
+    private static void EnsureOperationSuccess(WorkspaceSynchronizationOperationResult result, string message)
+    {
+        if (result.ProcessResult?.IsSuccess == false)
+        {
+            throw new InvalidOperationException($"{message} {FirstProcessFailureLine(result.ProcessResult)}".Trim());
+        }
+    }
+
+    private static OracleApexApplicationInfo? ParseApplicationInfo(string line)
+    {
+        var parts = line.Split('|');
+        if (parts.Length < 2 || !int.TryParse(parts[0].Trim(), out var applicationId))
+        {
+            return null;
+        }
+
+        return new OracleApexApplicationInfo
+        {
+            ApplicationId = applicationId,
+            ApplicationName = parts[1].Trim(),
+            Alias = parts.Length > 2 ? parts[2].Trim() : string.Empty,
+        };
+    }
+
+    private static string EscapeSqlLiteral(string value)
+        => value.Replace("'", "''", StringComparison.Ordinal);
+
+    private static string EscapeSqlIdentifier(string value)
+        => value.Replace("\"", "\"\"", StringComparison.Ordinal);
+
+    private static string BuildConnectionString(OracleApexEnvironmentContext environment)
+        => $"{environment.ParsingSchema.ToLowerInvariant()}/${{ORACLE_DEMO_PASSWORD:-demo_password}}@//oracle-demo:1521/FREEPDB1";
+
+    private static string NormalizeExportRoot(string exportParent)
+    {
+        if (File.Exists(Path.Combine(exportParent, "application.apx")))
+        {
+            return exportParent;
+        }
+
+        var childDirectories = Directory.Exists(exportParent)
+            ? Directory.GetDirectories(exportParent)
+            : Array.Empty<string>();
+        var directoryWithApplication = childDirectories.FirstOrDefault(path => File.Exists(Path.Combine(path, "application.apx")));
+        return directoryWithApplication ?? exportParent;
+    }
+
+    private static void ResetDirectory(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+
+        Directory.CreateDirectory(path);
+    }
+
+    private static void ReplaceDirectoryContents(string sourcePath, string destinationPath)
+    {
+        if (Directory.Exists(destinationPath))
+        {
+            Directory.Delete(destinationPath, recursive: true);
+        }
+
+        Directory.CreateDirectory(destinationPath);
+        foreach (var directory in Directory.GetDirectories(sourcePath, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(Path.Combine(destinationPath, Path.GetRelativePath(sourcePath, directory)));
+        }
+
+        foreach (var file in Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourcePath, file);
+            var destinationFile = Path.Combine(destinationPath, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+            File.Copy(file, destinationFile, overwrite: true);
+        }
+    }
+
+    private static string FirstProcessFailureLine(ProcessResult result)
+        => result.StandardErrorLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?? result.StandardOutputLines.FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?? "Operation failed.";
+
     private static int GetStateRank(WorkspaceSynchronizationState state)
         => state switch
         {
@@ -320,6 +786,54 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             _ => "Oracle APEX synchronization has not been established yet.",
         };
 
+    private static WorkspaceSynchronizationState DetermineSyncState(string sourceSignature, string remoteSignature, WorkspaceSynchronizationEnvironmentState state)
+    {
+        if (string.IsNullOrWhiteSpace(sourceSignature) || string.IsNullOrWhiteSpace(remoteSignature))
+        {
+            return WorkspaceSynchronizationState.Unknown;
+        }
+
+        if (string.Equals(sourceSignature, remoteSignature, StringComparison.Ordinal))
+        {
+            return WorkspaceSynchronizationState.InSync;
+        }
+
+        if (string.IsNullOrWhiteSpace(state.SynchronizedSourceSignature))
+        {
+            return WorkspaceSynchronizationState.Unknown;
+        }
+
+        var sourceChanged = !string.Equals(sourceSignature, state.SynchronizedSourceSignature, StringComparison.Ordinal);
+        var remoteChanged = !string.Equals(remoteSignature, state.SynchronizedSourceSignature, StringComparison.Ordinal);
+        if (sourceChanged && remoteChanged)
+        {
+            return WorkspaceSynchronizationState.Diverged;
+        }
+
+        if (sourceChanged)
+        {
+            return WorkspaceSynchronizationState.GitAhead;
+        }
+
+        if (remoteChanged)
+        {
+            return WorkspaceSynchronizationState.DeploymentAhead;
+        }
+
+        return WorkspaceSynchronizationState.Unknown;
+    }
+
+    private static string BuildDriftSummary(WorkspaceSynchronizationState state, string environmentName)
+        => state switch
+        {
+            WorkspaceSynchronizationState.InSync => $"Environment '{environmentName}' matches the latest Oracle APEX export.",
+            WorkspaceSynchronizationState.GitAhead => $"Workspace source changed since the last synchronized Oracle APEX export for '{environmentName}'.",
+            WorkspaceSynchronizationState.DeploymentAhead => $"Oracle APEX contains Builder changes that are not in workspace source for '{environmentName}'.",
+            WorkspaceSynchronizationState.Diverged => $"Workspace source and Oracle APEX both changed since the last synchronized baseline for '{environmentName}'.",
+            WorkspaceSynchronizationState.ValidationFailed => $"Validation failed for '{environmentName}'.",
+            _ => $"Synchronization baseline for '{environmentName}' is not known yet.",
+        };
+
     private static string BuildEnvironmentSummary(WorkspaceSynchronizationState state, string environmentName)
         => state switch
         {
@@ -330,6 +844,49 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
             WorkspaceSynchronizationState.ValidationFailed => $"Environment '{environmentName}' failed validation.",
             _ => $"Environment '{environmentName}' synchronization is not known yet.",
         };
+
+    private async Task<string> BuildDetailedDiff(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, string sourcePath, string remotePath)
+    {
+        var gitStatus = await _processRunner.RunAsync(
+            "git",
+            ["status", "--short", "--", environment.SourcePath],
+            snapshot.Paths.RootPath).ConfigureAwait(false);
+        var statusLines = gitStatus.IsSuccess
+            ? gitStatus.StandardOutputLines.Where(line => !string.IsNullOrWhiteSpace(line)).ToList()
+            : new List<string> { "git status unavailable for source path." };
+        var fileDiff = BuildDirectoryDiff(sourcePath, remotePath);
+        return string.Join(Environment.NewLine,
+        [
+            $"Synchronization state: {DetermineSyncState(ComputeDirectorySignature(sourcePath), ComputeDirectorySignature(remotePath), ReadState(snapshot.Paths).Environments.TryGetValue(environment.EnvironmentName, out var state) ? state : new WorkspaceSynchronizationEnvironmentState())}",
+            $"Source path: {environment.SourcePath}",
+            "Git status:",
+            statusLines.Count == 0 ? "(clean)" : string.Join(Environment.NewLine, statusLines),
+            string.Empty,
+            "APEX export differences:",
+            string.IsNullOrWhiteSpace(fileDiff) ? "No file-level differences detected." : fileDiff,
+        ]);
+    }
+
+    private static string ComputeDirectorySignature(string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            return string.Empty;
+        }
+
+        using var sha = SHA256.Create();
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var relativePath = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+            var pathBytes = System.Text.Encoding.UTF8.GetBytes(relativePath + "\n");
+            sha.TransformBlock(pathBytes, 0, pathBytes.Length, null, 0);
+            var contentBytes = File.ReadAllBytes(file);
+            sha.TransformBlock(contentBytes, 0, contentBytes.Length, null, 0);
+        }
+
+        sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return Convert.ToHexString(sha.Hash!);
+    }
 
     private static string BuildDirectoryDiff(string sourcePath, string exportedPath)
     {
@@ -374,6 +931,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         public string Workspace { get; init; } = string.Empty;
         public string ParsingSchema { get; init; } = string.Empty;
         public int? ApplicationId { get; init; }
+        public string ApplicationName { get; init; } = string.Empty;
         public string SqlclProfile { get; init; } = string.Empty;
         public string SyncMode { get; init; } = WorkspaceSynchronizationModes.Manual;
         public string SourcePath { get; init; } = "src/apex";
@@ -385,9 +943,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         WorkspaceSynchronizationOperationState? LastValidation,
         WorkspaceSynchronizationOperationState? LastImport,
         WorkspaceSynchronizationOperationState? LastExport,
+        WorkspaceSynchronizationOperationState? LastPull,
         string ImportedRevision,
         string ExportedRevision,
-        string LastSynchronizedGitRevision)
+        string LastSynchronizedGitRevision,
+        string SynchronizedSourceSignature,
+        string WorkspaceSourceSignature,
+        string RemoteSourceSignature)
     {
         public WorkspaceSynchronizationEnvironmentStateRecord(WorkspaceSynchronizationEnvironmentState state)
             : this(
@@ -396,9 +958,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
                 state.LastValidation,
                 state.LastImport,
                 state.LastExport,
+                state.LastPull,
                 state.ImportedRevision,
                 state.ExportedRevision,
-                state.LastSynchronizedGitRevision)
+                state.LastSynchronizedGitRevision,
+                state.SynchronizedSourceSignature,
+                state.WorkspaceSourceSignature,
+                state.RemoteSourceSignature)
         {
         }
 
@@ -410,9 +976,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
                 LastValidation = LastValidation,
                 LastImport = LastImport,
                 LastExport = LastExport,
+                LastPull = LastPull,
                 ImportedRevision = ImportedRevision,
                 ExportedRevision = ExportedRevision,
                 LastSynchronizedGitRevision = LastSynchronizedGitRevision,
+                SynchronizedSourceSignature = SynchronizedSourceSignature,
+                WorkspaceSourceSignature = WorkspaceSourceSignature,
+                RemoteSourceSignature = RemoteSourceSignature,
             };
     }
 }

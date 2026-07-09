@@ -101,6 +101,15 @@ public sealed class AvaloniaWorkspaceInteractionService : IWorkspaceInteractionS
         return window.Result;
     }
 
+    public async Task<ConnectOracleApexApplicationDraft?> ShowConnectOracleApexApplicationDialogAsync(Func<ConnectOracleApexApplicationDraft, CancellationToken, Task<OracleApexApplicationDiscoveryResult>> discoverApplicationsAsync, ConnectOracleApexApplicationDraft initialDraft, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var window = new ConnectOracleApexApplicationWindow(discoverApplicationsAsync, initialDraft);
+        AppWindowIcons.Apply(window, _owner);
+        await window.ShowDialog(_owner);
+        return window.Result;
+    }
+
     public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

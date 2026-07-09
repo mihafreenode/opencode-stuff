@@ -14,6 +14,7 @@ public interface IWorkspaceInteractionService
     Task<WorkspaceRemovalDecision?> ConfirmRemoveWorkspaceAsync(WorkspaceRemovalPrompt prompt, CancellationToken cancellationToken = default);
     Task<bool> ConfirmPublishAsync(WorkspacePublishAssessment assessment, CancellationToken cancellationToken = default);
     Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default);
+    Task<ConnectOracleApexApplicationDraft?> ShowConnectOracleApexApplicationDialogAsync(Func<ConnectOracleApexApplicationDraft, CancellationToken, Task<OracleApexApplicationDiscoveryResult>> discoverApplicationsAsync, ConnectOracleApexApplicationDraft initialDraft, CancellationToken cancellationToken = default);
     Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default);
     Task<bool> ConfirmResetRuntimeAsync(WorkspaceRuntimeResetPrompt prompt, CancellationToken cancellationToken = default);
     Task ShowWorkspaceDiagnosticsAsync(WorkspaceDiagnosticsSession session, CancellationToken cancellationToken = default);

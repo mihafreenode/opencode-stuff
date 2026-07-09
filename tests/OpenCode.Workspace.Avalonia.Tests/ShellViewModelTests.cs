@@ -2498,6 +2498,139 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OracleApexWorkspace_EnablesConnectExistingApplicationAction()
+    {
+        var baseSnapshot = CreateSnapshot("oracle-apexlang-demo");
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+        };
+        var snapshot = WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = baseSnapshot.Record,
+            Definition = definition,
+            Paths = baseSnapshot.Paths,
+            ConfigurationPath = baseSnapshot.ConfigurationPath,
+            RuntimeState = baseSnapshot.RuntimeState,
+            Safety = baseSnapshot.Safety,
+            Session = baseSnapshot.Session,
+            AppliedState = baseSnapshot.AppliedState,
+            LocalRuntimeState = baseSnapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = baseSnapshot.ResolvedRuntimePlan,
+            UpdateRequired = baseSnapshot.UpdateRequired,
+            Health = baseSnapshot.Health,
+            Readiness = baseSnapshot.Readiness,
+            AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
+        });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.True(page.DetailAdvancedActions.Single(item => item.Label == "Connect Existing Application").IsEnabled);
+        Assert.False(page.DetailAdvancedActions.Single(item => item.Label == "Create Application").IsEnabled);
+    }
+
+    [Fact]
+    public async Task NonOracleWorkspace_DisablesConnectExistingApplicationAction()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        var connect = page.DetailAdvancedActions.Single(item => item.Label == "Connect Existing Application");
+        Assert.False(connect.IsEnabled);
+        Assert.Contains("only available for Oracle APEX workspaces", connect.DisabledReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConnectedOracleApexWorkspace_EnablesDiffAndPullActions()
+    {
+        var baseSnapshot = CreateSnapshot("oracle-apexlang-demo");
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                        },
+                    },
+                },
+            },
+        };
+        var snapshot = WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = baseSnapshot.Record,
+            Definition = definition,
+            Paths = baseSnapshot.Paths,
+            ConfigurationPath = baseSnapshot.ConfigurationPath,
+            RuntimeState = baseSnapshot.RuntimeState,
+            Safety = baseSnapshot.Safety,
+            Session = baseSnapshot.Session,
+            AppliedState = baseSnapshot.AppliedState,
+            LocalRuntimeState = baseSnapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = baseSnapshot.ResolvedRuntimePlan,
+            UpdateRequired = baseSnapshot.UpdateRequired,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                IsSupported = true,
+                State = WorkspaceSynchronizationState.DeploymentAhead,
+                Summary = "Oracle APEX contains newer Builder changes.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    WorkspaceName = "TEST",
+                    ParsingSchema = "TESTSCHEMA",
+                    ApplicationId = 100,
+                    SyncMode = WorkspaceSynchronizationModes.Manual,
+                    SourcePath = "src/apex",
+                    State = WorkspaceSynchronizationState.DeploymentAhead,
+                },
+                Environments =
+                [
+                    new WorkspaceSynchronizationEnvironmentSnapshot
+                    {
+                        EnvironmentName = "dev",
+                        WorkspaceName = "TEST",
+                        ParsingSchema = "TESTSCHEMA",
+                        ApplicationId = 100,
+                        SyncMode = WorkspaceSynchronizationModes.Manual,
+                        SourcePath = "src/apex",
+                        State = WorkspaceSynchronizationState.DeploymentAhead,
+                    },
+                ],
+            },
+            Health = baseSnapshot.Health,
+            Readiness = baseSnapshot.Readiness,
+            AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
+        });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.True(page.DetailAdvancedActions.Single(item => item.Label == "Show Diff").IsEnabled);
+        Assert.True(page.DetailAdvancedActions.Single(item => item.Label == "Pull Changes").IsEnabled);
+    }
+
+    [Fact]
     public async Task ReadinessPresentation_UsesSharedLabel_ForPartiallyReadyWorkspace()
     {
         var snapshot = WithReadiness(
@@ -4487,6 +4620,7 @@ public sealed class ShellViewModelTests
             LocalRuntimeState = snapshot.LocalRuntimeState,
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
             Health = snapshot.Health,
             Readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = snapshot.Health }),
             AvailableServices = snapshot.AvailableServices,
@@ -4512,6 +4646,8 @@ public sealed class ShellViewModelTests
         public Func<string, IOperationLogSink?, CancellationToken, Task<WorkspacePublishResult>>? PublishResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceBackupResult>>? BackupResultFactoryAsync { get; set; }
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
+        public Func<string, string, string, string, string, WorkspaceSnapshot?, CancellationToken, Task<OracleApexApplicationDiscoveryResult>>? OracleApexDiscoveryResultFactoryAsync { get; set; }
+        public Func<string, ConnectOracleApexApplicationDraft, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? ConnectOracleApexApplicationResultFactoryAsync { get; set; }
         public Func<string, WorkspaceSnapshot?, CancellationToken, Task<WorkspaceSnapshot>>? AcknowledgeOracleNoticeAsyncFactory { get; set; }
         public WorkspacePublishAssessment PublishAssessment { get; set; } = new()
         {
@@ -4567,8 +4703,10 @@ public sealed class ShellViewModelTests
         public int PrepareCallCount { get; private set; }
         public int ReprovisionCallCount { get; private set; }
         public int AcknowledgeOracleNoticeCallCount { get; private set; }
+        public int ConnectOracleApexApplicationCallCount { get; private set; }
         public ExistingGitCheckoutImportRequest? LastImportRequest { get; private set; }
         public string? LastSavePointMessage { get; private set; }
+        public ConnectOracleApexApplicationDraft? LastConnectOracleApexApplicationDraft { get; private set; }
         public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> OpenedPaths { get; } = [];
 
@@ -4979,6 +5117,27 @@ public sealed class ShellViewModelTests
             return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("savepoint"), Message = "Save Point created.", Transcript = new OperationTranscript() });
         }
 
+        public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
+            => OracleApexDiscoveryResultFactoryAsync?.Invoke(environmentName, workspaceName, parsingSchema, sqlclProfile, sourcePath, currentSnapshot, cancellationToken)
+                ?? Task.FromResult(new OracleApexApplicationDiscoveryResult
+                {
+                    EnvironmentName = environmentName,
+                    WorkspaceName = workspaceName,
+                    ParsingSchema = parsingSchema,
+                    SqlclProfile = sqlclProfile,
+                    SourcePath = sourcePath,
+                    Applications = [new OracleApexApplicationInfo { ApplicationId = 100, ApplicationName = "Sample App", Alias = "sample-app" }],
+                    Summary = "Found 1 Oracle APEX application.",
+                });
+
+        public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+        {
+            ConnectOracleApexApplicationCallCount++;
+            LastConnectOracleApexApplicationDraft = draft;
+            return ConnectOracleApexApplicationResultFactoryAsync?.Invoke(rootPath, draft, currentSnapshot, logSink, cancellationToken)
+                ?? Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("oracle-connect"), Message = "Connected.", Transcript = new OperationTranscript() });
+        }
+
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Validated.", Transcript = new OperationTranscript() });
 
@@ -5193,6 +5352,8 @@ public sealed class ShellViewModelTests
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -5227,6 +5388,7 @@ public sealed class ShellViewModelTests
         public Exception? RemoveDialogException { get; init; }
         public bool PublishConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
+        public ConnectOracleApexApplicationDraft? ConnectOracleApexApplicationDraft { get; init; }
         public bool ResetRuntimeConfirmed { get; init; } = true;
         public WorkspaceRuntimeResetPrompt? LastResetRuntimePrompt { get; private set; }
         public WorkspaceDiagnosticsSession? LastWorkspaceDiagnosticsSession { get; private set; }
@@ -5264,6 +5426,9 @@ public sealed class ShellViewModelTests
 
         public Task<SavePointDraft?> ShowSavePointDialogAsync(string initialMessage, CancellationToken cancellationToken = default)
             => Task.FromResult(SavePointDraft);
+
+        public Task<ConnectOracleApexApplicationDraft?> ShowConnectOracleApexApplicationDialogAsync(Func<ConnectOracleApexApplicationDraft, CancellationToken, Task<OracleApexApplicationDiscoveryResult>> discoverApplicationsAsync, ConnectOracleApexApplicationDraft initialDraft, CancellationToken cancellationToken = default)
+            => Task.FromResult(ConnectOracleApexApplicationDraft);
 
         public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
             => Task.FromResult(true);
@@ -5311,6 +5476,8 @@ public sealed class ShellViewModelTests
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceBackupResult> BackupWorkspaceAsync(string rootPath, string archivePath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

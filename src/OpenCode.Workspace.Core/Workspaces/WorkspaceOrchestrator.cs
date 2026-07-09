@@ -40,6 +40,7 @@ public sealed class WorkspaceOrchestrator
     private readonly WorkspaceIgnorePolicyService _workspaceIgnorePolicyService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
     private readonly WorkspaceSynchronizationService _workspaceSynchronizationService;
+    private readonly OracleApexWorkspaceConnectionService _oracleApexWorkspaceConnectionService;
     private readonly WorkspaceAiRuntimeContextService _workspaceAiRuntimeContextService;
     private readonly WorkspaceRuntimeResourceManager _workspaceRuntimeResourceManager;
     private readonly IOracleMediaLocator _oracleMediaLocator;
@@ -94,9 +95,10 @@ public sealed class WorkspaceOrchestrator
         _workspaceSafetyService = workspaceSafetyService;
         _workspaceIgnorePolicyService = workspaceIgnorePolicyService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
-        _workspaceSynchronizationService = new WorkspaceSynchronizationService([
-            new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), containerRuntime, new ProcessRunner()),
-        ]);
+        var synchronizationStateService = new WorkspaceSynchronizationStateService();
+        var oracleApexSynchronizationProvider = new OracleApexWorkspaceSynchronizationProvider(synchronizationStateService, containerRuntime, new ProcessRunner(), workspaceYamlService);
+        _workspaceSynchronizationService = new WorkspaceSynchronizationService([oracleApexSynchronizationProvider]);
+        _oracleApexWorkspaceConnectionService = new OracleApexWorkspaceConnectionService([oracleApexSynchronizationProvider]);
         _workspaceAiRuntimeContextService = new WorkspaceAiRuntimeContextService();
         _workspaceRuntimeResourceManager = new WorkspaceRuntimeResourceManager(workspaceRepository, workspaceRuntimeStateService);
         _oracleMediaLocator = oracleMediaLocator ?? new OracleMediaLocator();
@@ -982,6 +984,31 @@ public sealed class WorkspaceOrchestrator
 
     public Task<WorkspaceSynchronizationDiffResult> DiffSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         => _workspaceSynchronizationService.DiffAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+
+    public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(WorkspaceSnapshot snapshot, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default)
+        => _oracleApexWorkspaceConnectionService.DiscoverApplicationsAsync(new OracleApexApplicationDiscoveryRequest
+        {
+            Snapshot = snapshot,
+            EnvironmentName = environmentName,
+            WorkspaceName = workspaceName,
+            ParsingSchema = parsingSchema,
+            SqlclProfile = sqlclProfile,
+            SourcePath = sourcePath,
+        }, cancellationToken);
+
+    public Task<OracleApexConnectExistingApplicationResult> ConnectExistingOracleApexApplicationAsync(WorkspaceSnapshot snapshot, string environmentName, string workspaceName, string parsingSchema, int applicationId, string applicationName, string alias, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default)
+        => _oracleApexWorkspaceConnectionService.ConnectExistingApplicationAsync(new OracleApexConnectExistingApplicationRequest
+        {
+            Snapshot = snapshot,
+            EnvironmentName = environmentName,
+            WorkspaceName = workspaceName,
+            ParsingSchema = parsingSchema,
+            ApplicationId = applicationId,
+            ApplicationName = applicationName,
+            Alias = alias,
+            SqlclProfile = sqlclProfile,
+            SourcePath = sourcePath,
+        }, cancellationToken);
 
     public async Task LaunchAttachForRunningWorkspaceAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {

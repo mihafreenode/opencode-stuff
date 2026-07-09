@@ -1,0 +1,422 @@
+using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Core.Workspaces;
+
+namespace OpenCode.Workspace.Core.Tests;
+
+public sealed class OracleApexWorkspaceConnectionTests
+{
+    [Fact]
+    public async Task ConnectExistingApplication_PersistsWorkspaceConfig_InitializesSyncState_AndExportsSource()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateDefinition("oracle-apexlang-demo")));
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.ConnectExistingApplicationAsync(new OracleApexConnectExistingApplicationRequest
+            {
+                Snapshot = snapshot,
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                ApplicationId = 100,
+                ApplicationName = "Customer Orders Demo",
+                Alias = "customer-orders-demo",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+            });
+
+            var updatedDefinition = new WorkspaceYamlService().Read(paths.WorkspaceYamlPath);
+            var syncState = new WorkspaceSynchronizationStateService().Read(paths.ApexMetadataPath);
+
+            Assert.Equal("dev", updatedDefinition.Oracle.Apex.DefaultEnvironment);
+            Assert.True(updatedDefinition.Oracle.Apex.Environments.ContainsKey("dev"));
+            Assert.Equal(100, updatedDefinition.Oracle.Apex.Environments["dev"].ApplicationId);
+            Assert.Equal("TEST", updatedDefinition.Oracle.Apex.Environments["dev"].Workspace);
+            Assert.Equal("TESTSCHEMA", updatedDefinition.Oracle.Apex.Environments["dev"].ParsingSchema);
+            Assert.Equal("local-apex-dev", updatedDefinition.Oracle.Apex.Environments["dev"].SqlclProfile);
+            Assert.Equal("src/apex", updatedDefinition.Oracle.Apex.Environments["dev"].SourcePath);
+
+            Assert.NotNull(syncState);
+            Assert.Equal("dev", syncState!.DefaultEnvironment);
+            Assert.True(syncState.Environments.ContainsKey("dev"));
+            Assert.NotNull(syncState.Environments["dev"].LastExport);
+            Assert.NotNull(syncState.Environments["dev"].LastValidation);
+            Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
+            Assert.NotNull(syncState.Environments["dev"].LastPull);
+            Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].SynchronizedSourceSignature));
+
+            Assert.True(File.Exists(Path.Combine(root, "src", "apex", "application.apx")));
+            Assert.Contains("Connected Oracle APEX application 'Customer Orders Demo'", result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Theory]
+    [InlineData("same-source", "same-source", WorkspaceSynchronizationState.InSync)]
+    [InlineData("local-change", "same-source", WorkspaceSynchronizationState.GitAhead)]
+    [InlineData("same-source", "remote-change", WorkspaceSynchronizationState.DeploymentAhead)]
+    [InlineData("local-change", "remote-change", WorkspaceSynchronizationState.Diverged)]
+    public async Task Validate_ComputesExpectedDriftState(string sourceContent, string remoteContent, WorkspaceSynchronizationState expectedState)
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            var baselineSignature = ComputeDirectorySignature(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), sourceContent);
+
+            new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
+            {
+                DefaultEnvironment = "dev",
+                Environments = new Dictionary<string, WorkspaceSynchronizationEnvironmentState>
+                {
+                    ["dev"] = new()
+                    {
+                        SynchronizationState = nameof(WorkspaceSynchronizationState.InSync),
+                        SynchronizedSourceSignature = baselineSignature,
+                        WorkspaceSourceSignature = baselineSignature,
+                        RemoteSourceSignature = baselineSignature,
+                    },
+                },
+            });
+
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true)
+            {
+                RemoteApplicationContent = remoteContent,
+            };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal(expectedState, result.Snapshot.State);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Pull_UpdatesSyncStateAndPullTimestamp()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "old-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true)
+            {
+                RemoteApplicationContent = "new-remote-source",
+            };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.PullAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+            var syncState = new WorkspaceSynchronizationStateService().Read(paths.ApexMetadataPath);
+
+            Assert.Equal(WorkspaceSynchronizationState.InSync, result.Snapshot.State);
+            Assert.NotNull(syncState);
+            Assert.NotNull(syncState!.Environments["dev"].LastPull);
+            Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
+            Assert.Equal("new-remote-source", File.ReadAllText(Path.Combine(sourcePath, "application.apx")));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task DiscoverApplications_WhenWorkspaceMappingMissing_ThrowsClearError()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateDefinition("oracle-apexlang-demo")));
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: false);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateDefinition("oracle-apexlang-demo"));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.DiscoverApplicationsAsync(new OracleApexApplicationDiscoveryRequest
+            {
+                Snapshot = snapshot,
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+            }));
+
+            Assert.Contains("workspace 'TEST' is missing or is not mapped", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    private static WorkspaceDefinition CreateDefinition(string name)
+        => new()
+        {
+            Workspace = new WorkspaceMetadata { Name = name, Image = "ubuntu:24.04" },
+            Provider = new WorkspaceProviderDefinition { Type = "git" },
+            Runtime = new WorkspaceRuntimeDefinition { Default = "default", Node = 22 },
+            Features = ["core", "oracle-demo", "oracle-apex-demo", "oracle-apexlang-demo"],
+            Services = ["oracle-demo", "oracle-ords"],
+            Skills = [],
+            Mcp = [],
+        };
+
+    private static WorkspaceDefinition CreateConnectedDefinition(string name)
+    {
+        var definition = CreateDefinition(name);
+        return new WorkspaceDefinition
+        {
+            Workspace = definition.Workspace,
+            Provider = definition.Provider,
+            Runtime = definition.Runtime,
+            Features = definition.Features.ToList(),
+            Services = definition.Services.ToList(),
+            Skills = definition.Skills.ToList(),
+            Mcp = definition.Mcp.ToList(),
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    private static WorkspaceSnapshot CreateSnapshot(string root, WorkspacePaths paths, WorkspaceDefinition definition)
+        => new()
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = definition.Workspace.Name,
+                RootPath = root,
+                RepositoryPath = root,
+                ConfigurationPath = "workspace.yaml",
+                CreatedUtc = DateTimeOffset.UtcNow,
+                LastOpenedUtc = DateTimeOffset.UtcNow,
+            },
+            Definition = definition,
+            Paths = paths,
+            ConfigurationPath = "workspace.yaml",
+            RuntimeState = WorkspaceRuntimeState.Running,
+            Safety = new WorkspaceSafetySnapshot
+            {
+                OverallStatus = WorkspaceSafetyLevel.Protected,
+                Headline = "Protected",
+                Message = "Protected.",
+                LocalRecovery = new WorkspaceLocalRecoverySnapshot(),
+                Backup = new WorkspaceBackupSnapshot(),
+                IgnorePolicy = new WorkspaceIgnorePolicyReview(),
+                AdvancedGit = new WorkspaceAdvancedGitSnapshot { LatestCommitSha = "head123" },
+            },
+            Session = new WorkspaceSessionSnapshot { SessionName = definition.Workspace.Name, State = WorkspaceSessionState.Resumable },
+            AppliedState = new WorkspaceAppliedState { DesiredStateHash = "desired", WorkspaceDefinitionHash = "definition", AppliedUtc = DateTimeOffset.UtcNow, AppVersion = "test" },
+            LocalRuntimeState = new WorkspaceRuntimeStateRecord { ResolvedEngine = "docker", ResolvedPlatform = "linux/amd64", CompatibilityMode = "native" },
+            ResolvedRuntimePlan = new ResolvedRuntimePlan { Runtime = "docker", TargetPlatform = "linux/amd64", IsAvailable = true, HostPlatform = new HostPlatformInfo() },
+            UpdateRequired = false,
+            Synchronization = new WorkspaceSynchronizationSnapshot(),
+            Health = new WorkspaceHealthSnapshot(),
+            Readiness = new WorkspaceReadinessSnapshot(),
+            AvailableServices = Array.Empty<WorkspaceServiceInfo>(),
+        };
+
+    private static string CreateTempRoot()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"oracle-apex-connect-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private static void DeleteTempRoot(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private static string ComputeDirectorySignature(string root)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var relativePath = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+            var pathBytes = System.Text.Encoding.UTF8.GetBytes(relativePath + "\n");
+            sha.TransformBlock(pathBytes, 0, pathBytes.Length, null, 0);
+            var contentBytes = File.ReadAllBytes(file);
+            sha.TransformBlock(contentBytes, 0, contentBytes.Length, null, 0);
+        }
+
+        sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return Convert.ToHexString(sha.Hash!);
+    }
+
+    private sealed class SuccessfulValidationProcessRunner : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            var applicationPath = arguments.Last().ToString();
+            Assert.NotNull(applicationPath);
+            Assert.True(File.Exists(applicationPath!));
+            return Task.FromResult(new ProcessResult
+            {
+                Command = $"{fileName} {string.Join(' ', arguments)}",
+                ExitCode = 0,
+                StandardOutput = "Validated",
+                StandardError = string.Empty,
+                StandardOutputLines = ["Validated"],
+                StandardErrorLines = Array.Empty<string>(),
+                Duration = TimeSpan.FromMilliseconds(10),
+            });
+        }
+    }
+
+    private sealed class ScriptedOracleApexContainerRuntime : IContainerRuntime
+    {
+        private readonly string _root;
+        private readonly bool _workspaceMappingExists;
+
+        public string RemoteApplicationContent { get; init; } = "APEX application";
+
+        public ScriptedOracleApexContainerRuntime(string root, bool workspaceMappingExists)
+        {
+            _root = root;
+            _workspaceMappingExists = workspaceMappingExists;
+        }
+
+        public string RuntimeId => "docker";
+        public string GetWorkspaceContainerName(WorkspaceDefinition definition) => "workspace";
+        public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => [];
+        public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
+        public Task<ProcessResult> ValidateAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
+        public Task<ProcessResult> StopAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RemoveAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
+        public Task<ProcessResult> ResetAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
+        public Task<ProcessResult?> ValidateVolatileEnvironmentAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetPsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetComposePsAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetServiceLogsAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RestartServiceAsync(WorkspacePaths paths, WorkspaceDefinition definition, string serviceName, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RunProvisionScriptAsync(WorkspaceDefinition definition, WorkspacePaths paths, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RepairOracleOrdsGatewayAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> ProbeHttpGetFromWorkspaceAsync(WorkspaceDefinition definition, string url, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> InspectContainerImageAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> InspectImageRepoTagsAsync(string imageId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetNodeToolDiagnosticsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetNodeAptPolicyAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> GetOsReleaseAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> CheckOpencodeUserAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> EnsureOpencodeUserDirectoriesAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> NormalizeWorkspaceFilePermissionsAsync(string workspaceRootPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
+        public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var command = string.Join(" ", arguments);
+            if (command.Contains("scripts/sqlcl.sh -version", StringComparison.Ordinal))
+            {
+                return Task.FromResult(Success("SQLcl 26.1"));
+            }
+
+            var sqlFile = Directory.GetFiles(Path.Combine(_root, ".opencode", "apex", "queries"), "*.sql").Single();
+            var sql = File.ReadAllText(sqlFile);
+            if (sql.Contains("from apex_release", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(Success("26.1.0"));
+            }
+
+            if (sql.Contains("FROM all_users", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(Success("TESTSCHEMA"));
+            }
+
+            if (sql.Contains("FROM apex_workspace_schemas", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(Success(_workspaceMappingExists ? "TEST|TESTSCHEMA" : string.Empty));
+            }
+
+            if (sql.Contains("FROM apex_applications", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(Success("100|Customer Orders Demo|customer-orders-demo"));
+            }
+
+            if (sql.Contains("apex export -applicationid 100", StringComparison.OrdinalIgnoreCase))
+            {
+                var marker = "-dir /workspace/";
+                var start = sql.IndexOf(marker, StringComparison.Ordinal);
+                var end = sql.IndexOf(" -force", start, StringComparison.Ordinal);
+                var relativePath = sql[(start + marker.Length)..end].Trim();
+                var exportDir = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar), "customer-orders-demo");
+                Directory.CreateDirectory(exportDir);
+                File.WriteAllText(Path.Combine(exportDir, "application.apx"), RemoteApplicationContent);
+                File.WriteAllText(Path.Combine(exportDir, "readme.txt"), "exported");
+                return Task.FromResult(Success("Exported"));
+            }
+
+            return Task.FromResult(Success("OK"));
+        }
+
+        private static ProcessResult Success(string output)
+            => new()
+            {
+                Command = "docker exec",
+                ExitCode = 0,
+                StandardOutput = output,
+                StandardError = string.Empty,
+                StandardOutputLines = string.IsNullOrWhiteSpace(output) ? Array.Empty<string>() : [output],
+                StandardErrorLines = Array.Empty<string>(),
+                Duration = TimeSpan.FromMilliseconds(10),
+            };
+    }
+}

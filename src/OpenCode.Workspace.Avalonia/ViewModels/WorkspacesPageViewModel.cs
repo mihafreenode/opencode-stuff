@@ -1330,6 +1330,38 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private async Task PushSynchronizationAsync()
         => await RunSimpleWorkspaceOperationAsync("Push Changes", "Pushing Git changes into Oracle APEX...", (rootPath, snapshot, sink) => _desktopShellService.PushSynchronizationAsync(rootPath, snapshot, sink));
 
+    private async Task ConnectExistingOracleApexApplicationAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is not { } snapshot || _interactionService is null)
+        {
+            return;
+        }
+
+        var defaultEnvironment = snapshot.Definition.Oracle.Apex.DefaultEnvironment;
+        var environment = !string.IsNullOrWhiteSpace(defaultEnvironment) && snapshot.Definition.Oracle.Apex.Environments.TryGetValue(defaultEnvironment, out var configuredEnvironment)
+            ? configuredEnvironment
+            : null;
+
+        var initialDraft = new ConnectOracleApexApplicationDraft
+        {
+            EnvironmentName = string.IsNullOrWhiteSpace(defaultEnvironment) ? "dev" : defaultEnvironment!,
+            WorkspaceName = environment?.Workspace ?? "TEST",
+            ParsingSchema = environment?.ParsingSchema ?? "TESTSCHEMA",
+            SqlclProfile = environment?.SqlclProfile ?? "local-apex-dev",
+            SourcePath = environment?.SourcePath ?? "src/apex",
+        };
+
+        var draft = await _interactionService.ShowConnectOracleApexApplicationDialogAsync(
+            (dialogDraft, cancellationToken) => _desktopShellService.DiscoverOracleApexApplicationsAsync(snapshot.Paths.RootPath, dialogDraft.EnvironmentName, dialogDraft.WorkspaceName, dialogDraft.ParsingSchema, dialogDraft.SqlclProfile, dialogDraft.SourcePath, snapshot, cancellationToken),
+            initialDraft);
+        if (draft is null)
+        {
+            return;
+        }
+
+        await RunSimpleWorkspaceOperationAsync("Connect Existing Application", "Connecting Oracle APEX application and exporting source...", (rootPath, currentSnapshot, sink) => _desktopShellService.ConnectExistingOracleApexApplicationAsync(rootPath, draft, currentSnapshot, sink));
+    }
+
     private async Task RunSimpleWorkspaceOperationAsync(string operationName, string initialStatusMessage, Func<string, OpenCode.Workspace.Core.Models.WorkspaceSnapshot?, IOperationLogSink, Task<WorkspaceOperationResult>> operation)
     {
         if (SelectedWorkspace is null)
@@ -2256,8 +2288,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             CreatePresentationAction(workspace, "Show Diff", BuildSynchronizationDescription(workspace, "diff"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), DiffSynchronizationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Pull Changes", BuildSynchronizationDescription(workspace, "pull"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PullSynchronizationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Push Changes", BuildSynchronizationDescription(workspace, "push"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PushSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Create Application", "Create a new Oracle APEX application for the configured environment. Durable metadata is ready, but this flow is not yet available from the desktop shell.", false, "Create Application is not wired into the desktop shell yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Connect Existing Application", "Bind this workspace to an existing Oracle APEX application using durable workspace metadata. Durable metadata is supported, but this flow is not yet available from the desktop shell.", false, "Connect Existing Application is not wired into the desktop shell yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Create Application", "Create a new Oracle APEX application for the configured environment. This flow is still intentionally disabled while connect-first synchronization stabilizes.", false, "Create Application is not available yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
+            CreatePresentationAction(workspace, "Connect Existing Application", "Discover an existing Oracle APEX application, bind it into workspace metadata, export it to source control, and validate the exported source.", CanConnectExistingOracleApexApplicationWorkspace(workspace), GetConnectExistingOracleApexApplicationDisabledReason(workspace), ConnectExistingOracleApexApplicationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Checkpoint", BuildCheckpointDescription(workspace), CanCreateCheckpointWorkspace(workspace), GetCheckpointDisabledReason(workspace), CreateCheckpointAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
@@ -2513,6 +2545,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private bool CanRunSynchronizationWorkspace(WorkspaceSummaryViewModel workspace)
         => workspace.HasSnapshot && workspace.Snapshot?.Synchronization.IsSupported == true && !IsBusyForWorkspaceActions;
 
+    private bool CanConnectExistingOracleApexApplicationWorkspace(WorkspaceSummaryViewModel workspace)
+        => workspace.HasSnapshot && workspace.Snapshot is not null && OracleWorkspaceFamily.HasApex(workspace.Snapshot.Definition) && !IsBusyForWorkspaceActions;
+
     private string GetTroubleshootDisabledReason(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading
             ? "Workspace details are still loading. Troubleshooting will be available when background checks finish."
@@ -2579,6 +2614,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             : workspace.Snapshot?.Synchronization.IsSupported == true
                 ? string.Empty
                 : "Oracle APEX synchronization is not configured. Add oracle.apex environments to workspace.yaml first.";
+
+    private string GetConnectExistingOracleApexApplicationDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : workspace.Snapshot is not null && OracleWorkspaceFamily.HasApex(workspace.Snapshot.Definition)
+                ? string.Empty
+                : "Connect Existing Application is only available for Oracle APEX workspaces.";
 
     private static string BuildTroubleshootDescription(WorkspaceSummaryViewModel workspace)
         => workspace.IsLoading

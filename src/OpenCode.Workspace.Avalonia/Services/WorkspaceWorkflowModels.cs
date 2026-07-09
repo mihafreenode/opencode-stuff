@@ -133,6 +133,18 @@ public sealed class SavePointDraft
     public required string Message { get; init; }
 }
 
+public sealed class ConnectOracleApexApplicationDraft
+{
+    public string EnvironmentName { get; init; } = "dev";
+    public string WorkspaceName { get; init; } = "TEST";
+    public string ParsingSchema { get; init; } = "TESTSCHEMA";
+    public string SqlclProfile { get; init; } = "local-apex-dev";
+    public string SourcePath { get; init; } = "src/apex";
+    public int ApplicationId { get; init; }
+    public string ApplicationName { get; init; } = string.Empty;
+    public string Alias { get; init; } = string.Empty;
+}
+
 public sealed class WorkspaceTroubleshootingRequest
 {
     public required string RootPath { get; init; }
