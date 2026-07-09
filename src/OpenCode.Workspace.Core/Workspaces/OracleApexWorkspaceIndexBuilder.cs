@@ -45,6 +45,8 @@ public sealed class OracleApexWorkspaceIndexBuilder
             SourceFile = entry.SourceFile,
             Line = entry.Line,
             Column = entry.Column,
+            EndLine = entry.EndLine,
+            EndColumn = entry.EndColumn,
         }).Concat(deploymentProfiles.Select(profile => new OracleApexWorkspaceIndexLocation
         {
             NodeId = $"deployment:{profile.SourceFile}:{profile.Name}",
@@ -53,6 +55,8 @@ public sealed class OracleApexWorkspaceIndexBuilder
             SourceFile = profile.SourceFile,
             Line = profile.Line,
             Column = profile.Column,
+            EndLine = profile.Line,
+            EndColumn = profile.Column,
         })).OrderBy(item => item.SourceFile, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Line).ToList();
 
         var diagnostics = semanticModel.Diagnostics.Select(item => new OracleApexWorkspaceIndexDiagnostic
@@ -130,6 +134,8 @@ public sealed class OracleApexWorkspaceIndexBuilder
             SourceFile = node.SourceFile,
             Line = node.Line,
             Column = node.Column,
+            EndLine = node.EndLine,
+            EndColumn = node.EndColumn,
             ParentNodeId = node.Parent?.NodeId ?? string.Empty,
             ChildNodeIds = node.Children.Select(child => child.NodeId).ToList(),
             Properties = node.Properties,
@@ -164,6 +170,8 @@ public sealed class OracleApexWorkspaceIndexEntry
     public string SourceFile { get; init; } = string.Empty;
     public int Line { get; init; }
     public int Column { get; init; }
+    public int EndLine { get; init; }
+    public int EndColumn { get; init; }
     public string ParentNodeId { get; init; } = string.Empty;
     public IReadOnlyList<string> ChildNodeIds { get; init; } = Array.Empty<string>();
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -214,6 +222,8 @@ public sealed class OracleApexWorkspaceIndexLocation
     public string SourceFile { get; init; } = string.Empty;
     public int Line { get; init; }
     public int Column { get; init; }
+    public int EndLine { get; init; }
+    public int EndColumn { get; init; }
 }
 
 public sealed class OracleApexWorkspaceIndexSearchEntry

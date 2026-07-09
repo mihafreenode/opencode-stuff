@@ -175,7 +175,9 @@ public sealed class OracleApexSemanticModelBuilder
                     continue;
                 }
 
-                stack.Pop();
+                var closed = stack.Pop();
+                closed.EndLine = index + 1;
+                closed.EndColumn = Column(rawLine, trimmed);
                 continue;
             }
 
@@ -277,7 +279,7 @@ public sealed class OracleApexSemanticModelBuilder
     {
         var identifier = ResolveIdentifier(raw);
         var nodeId = $"{raw.SourceFile}:{raw.Line}:{raw.SemanticType}:{identifier}";
-        var node = new OracleApexSemanticNode(nodeId, raw.SemanticType, identifier, raw.SourceFile, raw.Line, raw.Column, parent);
+        var node = new OracleApexSemanticNode(nodeId, raw.SemanticType, identifier, raw.SourceFile, raw.Line, raw.Column, raw.EndLine, raw.EndColumn, parent);
         node.SetProperties(raw.Properties);
         node.SetReferencedObjects(ExtractReferences(raw));
 
@@ -311,7 +313,8 @@ public sealed class OracleApexSemanticModelBuilder
     {
         var pagesById = nodes.Where(node => node.SemanticType == "page")
             .Where(node => int.TryParse(node.GetProperty("id"), out _))
-            .ToDictionary(node => int.Parse(node.GetProperty("id")!));
+            .GroupBy(node => int.Parse(node.GetProperty("id")!))
+            .ToDictionary(group => group.Key, group => group.First());
         var sharedComponentsByName = nodes
             .Where(node => node.SemanticType is "authorization-scheme" or "authentication-scheme" or "navigation-menu" or "list" or "lov" or "build-option" or "plugin")
             .GroupBy(node => node.Identifier, StringComparer.OrdinalIgnoreCase)
@@ -373,7 +376,7 @@ public sealed class OracleApexSemanticModelBuilder
         foreach (var page in nodes.Where(node => node.SemanticType == "page"))
         {
             foreach (var duplicateRegion in page.Children.Where(child => child.SemanticType == "region")
-                         .GroupBy(child => child.Identifier, StringComparer.OrdinalIgnoreCase)
+                         .GroupBy(child => child.GetProperty("name") ?? child.Identifier, StringComparer.OrdinalIgnoreCase)
                          .Where(group => !string.IsNullOrWhiteSpace(group.Key) && group.Count() > 1))
             {
                 foreach (var region in duplicateRegion)
@@ -401,7 +404,8 @@ public sealed class OracleApexSemanticModelBuilder
     {
         var pagesById = nodes.Where(node => node.SemanticType == "page")
             .Where(node => int.TryParse(node.GetProperty("id"), out _))
-            .ToDictionary(node => int.Parse(node.GetProperty("id")!));
+            .GroupBy(node => int.Parse(node.GetProperty("id")!))
+            .ToDictionary(group => group.Key, group => group.First());
 
         foreach (var page in pagesById.Values)
         {
@@ -549,13 +553,15 @@ public sealed class OracleApexSemanticModelBuilder
     }
 
     private static string ResolveIdentifier(RawNode raw)
-        => raw.Properties.TryGetValue("name", out var name) && !string.IsNullOrWhiteSpace(name)
-            ? name
-            : raw.Properties.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title)
-                ? title
-                : string.IsNullOrWhiteSpace(raw.Identifier)
-                    ? raw.SemanticType
-                    : raw.Identifier;
+        => raw.SemanticType switch
+        {
+            "region" when raw.Properties.TryGetValue("title", out var regionTitle) && !string.IsNullOrWhiteSpace(regionTitle) => regionTitle,
+            "navigation-entry" when raw.Properties.TryGetValue("label", out var label) && !string.IsNullOrWhiteSpace(label) => label,
+            _ when raw.Properties.TryGetValue("name", out var name) && !string.IsNullOrWhiteSpace(name) => name,
+            _ when raw.Properties.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title) => title,
+            _ when raw.Properties.TryGetValue("label", out var fallbackLabel) && !string.IsNullOrWhiteSpace(fallbackLabel) => fallbackLabel,
+            _ => string.IsNullOrWhiteSpace(raw.Identifier) ? raw.SemanticType : raw.Identifier,
+        };
 
     private static string ToSemanticType(string blockType)
         => NormalizeToken(blockType) switch
@@ -610,6 +616,8 @@ public sealed class OracleApexSemanticModelBuilder
         public string SourceFile { get; init; } = string.Empty;
         public int Line { get; init; }
         public int Column { get; init; }
+        public int EndLine { get; set; }
+        public int EndColumn { get; set; }
         public Dictionary<string, string> Properties { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> TextLines { get; } = [];
         public List<RawNode> Children { get; } = [];
@@ -639,7 +647,7 @@ public sealed class OracleApexSemanticNode
     private IReadOnlyDictionary<string, string> _properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<string> _referencedObjects = Array.Empty<string>();
 
-    public OracleApexSemanticNode(string nodeId, string semanticType, string identifier, string sourceFile, int line, int column, OracleApexSemanticNode? parent)
+    public OracleApexSemanticNode(string nodeId, string semanticType, string identifier, string sourceFile, int line, int column, int endLine, int endColumn, OracleApexSemanticNode? parent)
     {
         NodeId = nodeId;
         SemanticType = semanticType;
@@ -647,6 +655,8 @@ public sealed class OracleApexSemanticNode
         SourceFile = sourceFile;
         Line = line;
         Column = column;
+        EndLine = endLine;
+        EndColumn = endColumn;
         Parent = parent;
     }
 
@@ -656,6 +666,8 @@ public sealed class OracleApexSemanticNode
     public string SourceFile { get; }
     public int Line { get; }
     public int Column { get; }
+    public int EndLine { get; }
+    public int EndColumn { get; }
     public OracleApexSemanticNode? Parent { get; }
     public IReadOnlyList<OracleApexSemanticNode> Children => _children;
     public IReadOnlyDictionary<string, string> Properties => _properties;
