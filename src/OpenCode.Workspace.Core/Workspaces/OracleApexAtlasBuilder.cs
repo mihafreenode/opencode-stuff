@@ -50,6 +50,7 @@ public sealed class OracleApexAtlasBuilder
         "search-index.json",
         "state.json",
     ];
+    private readonly OracleApexDeploymentProfileCatalog _deploymentProfileCatalog = new();
 
     public OracleApexAtlasBuildResult Rebuild(WorkspaceDefinition definition, WorkspacePaths paths, string? environmentName = null, bool force = false)
     {
@@ -149,6 +150,7 @@ public sealed class OracleApexAtlasBuilder
                 BuiltUtc = DateTimeOffset.UtcNow,
                 ApplicationId = application.Id,
                 ApplicationName = application.Name,
+                DeploymentProfiles = _deploymentProfileCatalog.Discover(paths.RootPath, environment, environmentName).Profiles.Select(profile => profile.Name).ToList(),
                 GeneratedFiles = RequiredAtlasFiles.ToList(),
                 DocumentationPath = DocumentationRelativePath,
             };
@@ -848,6 +850,7 @@ public sealed class OracleApexAtlasBuilder
         public int ApplicationId { get; init; }
         public string ApplicationName { get; init; } = string.Empty;
         public IReadOnlyList<string> GeneratedFiles { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> DeploymentProfiles { get; init; } = Array.Empty<string>();
         public string DocumentationPath { get; init; } = string.Empty;
         public string Error { get; init; } = string.Empty;
     }

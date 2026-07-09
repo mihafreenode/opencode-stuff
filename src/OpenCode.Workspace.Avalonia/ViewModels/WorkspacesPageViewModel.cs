@@ -2087,10 +2087,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private static string BuildOracleApexSyncSection(WorkspaceSynchronizationSnapshot synchronization, WorkspaceSynchronizationEnvironmentSnapshot environment)
         => JoinSectionLines(
             $"Environment: {environment.EnvironmentName}",
+            $"Deployment Profile: {ValueOrUnknown(environment.ActiveDeploymentProfile)}",
+            $"Available Deployments: {(environment.AvailableDeploymentProfiles.Count == 0 ? "None" : string.Join(", ", environment.AvailableDeploymentProfiles))}",
             $"APEX Workspace: {environment.WorkspaceName}",
             $"Parsing Schema: {environment.ParsingSchema}",
             BuildSynchronizationApplicationLine(environment),
             $"Source Path: {environment.SourcePath}",
+            $"Deployment Validation: {ValueOrUnknown(environment.DeploymentValidation)}",
             $"Sync State: {FormatSynchronizationStateLabel(synchronization.State)}",
             $"Last Validate: {FormatSynchronizationTimestamp(environment.LastValidationUtc)}",
             $"Last Export: {FormatSynchronizationTimestamp(environment.LastExportUtc)}",
@@ -2135,6 +2138,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             $"Parsing Schema: {environment.ParsingSchema}",
             BuildSynchronizationApplicationLine(environment),
             $"Environment: {environment.EnvironmentName}",
+            $"Deployment Profile: {ValueOrUnknown(environment.ActiveDeploymentProfile)}",
             $"Source Path: {environment.SourcePath}",
             $"Current Sync State: {FormatSynchronizationStateLabel(synchronization.State)}",
             $"Last Successful Sync: {FormatSynchronizationTimestamp(environment.LastSuccessfulSynchronizationUtc)}",

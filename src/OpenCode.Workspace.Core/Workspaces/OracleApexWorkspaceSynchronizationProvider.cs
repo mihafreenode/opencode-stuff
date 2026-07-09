@@ -8,11 +8,13 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     , IOracleApexWorkspaceConnectionProvider
 {
     private const string OracleApexDiagnosticsRelativePath = "docs/diagnostics/oracle-apex.md";
+    private const string OracleApexDeploymentsRelativePath = "docs/oracle-apex-deployments.md";
     private readonly WorkspaceSynchronizationStateService _stateService;
     private readonly IContainerRuntime _containerRuntime;
     private readonly IProcessRunner _processRunner;
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly OracleApexAtlasBuilder _atlasBuilder;
+    private readonly OracleApexDeploymentProfileCatalog _deploymentProfileCatalog;
 
     public OracleApexWorkspaceSynchronizationProvider(
         WorkspaceSynchronizationStateService stateService,
@@ -26,6 +28,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         _processRunner = processRunner;
         _workspaceYamlService = workspaceYamlService;
         _atlasBuilder = atlasBuilder ?? new OracleApexAtlasBuilder();
+        _deploymentProfileCatalog = new OracleApexDeploymentProfileCatalog();
     }
 
     public string ProviderId => "oracle-apex";
@@ -39,6 +42,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         var insights = await CollectRuntimeInsightsAsync(request.Snapshot, state, cancellationToken).ConfigureAwait(false);
         var snapshot = BuildSnapshot(request.Snapshot, state, insights);
         WriteOracleDiagnostics(request.Snapshot, snapshot, insights);
+        WriteOracleDeploymentDocumentation(request.Snapshot, snapshot);
         return new WorkspaceSynchronizationStatusResult { Snapshot = snapshot };
     }
 
@@ -148,11 +152,23 @@ EXIT
     public async Task<WorkspaceSynchronizationOperationResult> ValidateAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var environment = ResolveEnvironment(request.Snapshot.Definition, request.EnvironmentName);
+        var deployment = ResolveDeployment(request.Snapshot.Paths.RootPath, request.EnvironmentName ?? environment.EnvironmentName, request.Snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], request.DeploymentProfileOverride);
+        if (deployment.Errors.Count > 0)
+        {
+            var failure = CreateDeploymentFailureResult(request.Snapshot, environment.EnvironmentName, deployment);
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = failure.Snapshot,
+                Message = failure.Message,
+                ProcessResult = failure.ProcessResult,
+            };
+        }
+
         var sourcePath = ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath);
         var applicationFile = Path.Combine(sourcePath, "application.apx");
         var result = await _processRunner.RunAsync(
             "bash",
-            [Path.Combine(request.Snapshot.Paths.RootPath, "scripts", "validate-apex.sh"), applicationFile],
+            [Path.Combine(request.Snapshot.Paths.RootPath, "scripts", "validate-apex.sh"), applicationFile, deployment.ActiveProfilePath],
             request.Snapshot.Paths.RootPath,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -169,14 +185,33 @@ EXIT
             return new WorkspaceSynchronizationOperationResult
             {
                 Snapshot = BuildSnapshot(request.Snapshot, state),
-                Message = $"APEX validation failed for environment '{environment.EnvironmentName}'.",
+                Message = BuildDeploymentAwareMessage($"APEX validation failed for environment '{environment.EnvironmentName}'.", deployment),
                 ProcessResult = result,
+            };
+        }
+
+        var updatedState = state;
+        var validateSql = BuildValidateSql(request.Snapshot, environment, deployment);
+        var validateResult = await RunSqlclAsync(request.Snapshot, environment, validateSql, cancellationToken).ConfigureAwait(false);
+        if (!validateResult.IsSuccess)
+        {
+            updatedState = UpdateEnvironmentState(state, environment.EnvironmentName, current => current with
+            {
+                LastValidation = CreateOperationState(validateResult, request.Snapshot),
+                SynchronizationState = WorkspaceSynchronizationState.ValidationFailed.ToString(),
+            });
+            _stateService.Write(request.Snapshot.Paths.ApexMetadataPath, updatedState);
+
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = BuildSnapshot(request.Snapshot, updatedState),
+                Message = BuildDeploymentAwareMessage($"Oracle APEX validation failed for environment '{environment.EnvironmentName}'.", deployment),
+                ProcessResult = validateResult,
             };
         }
 
         var validationExportRoot = Path.Combine(request.Snapshot.Paths.OpencodePath, "apex", "validate", environment.EnvironmentName);
         var remoteResult = await ExportEnvironmentAsync(request.Snapshot, environment, cancellationToken, validationExportRoot).ConfigureAwait(false);
-        var updatedState = state;
         if (!remoteResult.IsSuccess)
         {
             updatedState = UpdateEnvironmentState(updatedState, environment.EnvironmentName, current => current with
@@ -189,7 +224,7 @@ EXIT
             return new WorkspaceSynchronizationOperationResult
             {
                 Snapshot = BuildSnapshot(request.Snapshot, updatedState),
-                Message = $"Oracle APEX validation could not determine deployment state for environment '{environment.EnvironmentName}'.",
+                Message = BuildDeploymentAwareMessage($"Oracle APEX validation could not determine deployment state for environment '{environment.EnvironmentName}'.", deployment),
                 ProcessResult = remoteResult,
             };
         }
@@ -202,7 +237,7 @@ EXIT
         var driftSummary = BuildDriftSummary(syncState, environment.EnvironmentName);
         updatedState = UpdateEnvironmentState(updatedState, environment.EnvironmentName, current => current with
         {
-            LastValidation = CreateOperationState(result, request.Snapshot),
+            LastValidation = CreateOperationState(validateResult, request.Snapshot),
             SynchronizationState = syncState.ToString(),
             DriftSummary = driftSummary,
             WorkspaceSourceSignature = sourceSignature,
@@ -220,8 +255,8 @@ EXIT
         return new WorkspaceSynchronizationOperationResult
         {
             Snapshot = BuildSnapshot(request.Snapshot, updatedState),
-            Message = $"Validated APEX source for environment '{environment.EnvironmentName}'. Current state: {syncState}.",
-            ProcessResult = result,
+            Message = BuildDeploymentAwareMessage($"Validated APEX source for environment '{environment.EnvironmentName}'. Current state: {syncState}.", deployment),
+            ProcessResult = validateResult,
         };
     }
 
@@ -262,17 +297,32 @@ EXIT
     public async Task<WorkspaceSynchronizationOperationResult> ImportAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var environment = ResolveEnvironment(request.Snapshot.Definition, request.EnvironmentName);
-        var result = await ImportEnvironmentAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
+        var deployment = ResolveDeployment(request.Snapshot.Paths.RootPath, request.EnvironmentName ?? environment.EnvironmentName, request.Snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], request.DeploymentProfileOverride);
+        if (deployment.Errors.Count > 0)
+        {
+            var failure = CreateDeploymentFailureResult(request.Snapshot, environment.EnvironmentName, deployment);
+            return new WorkspaceSynchronizationOperationResult
+            {
+                Snapshot = failure.Snapshot,
+                Message = failure.Message,
+                ProcessResult = failure.ProcessResult,
+            };
+        }
+
+        var result = await ImportEnvironmentAsync(request.Snapshot, environment, deployment, cancellationToken).ConfigureAwait(false);
         var newState = ReadState(request.Snapshot.Paths);
         var sourceRevision = request.Snapshot.Safety.AdvancedGit.LatestCommitSha;
         var importedRevision = result.IsSuccess ? ComputeDirectorySignature(ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath)) : string.Empty;
         newState = UpdateEnvironmentState(newState, environment.EnvironmentName, current => current with
         {
             LastImport = CreateOperationState(result, request.Snapshot),
+            LastDeployment = CreateOperationState(result, request.Snapshot),
             ImportedRevision = sourceRevision,
             LastSynchronizedGitRevision = result.IsSuccess ? sourceRevision : current.LastSynchronizedGitRevision,
             SynchronizationState = result.IsSuccess ? WorkspaceSynchronizationState.InSync.ToString() : current.SynchronizationState,
             DriftSummary = result.IsSuccess ? string.Empty : current.DriftSummary,
+            LastDeploymentProfile = result.IsSuccess ? deployment.ActiveProfileName : current.LastDeploymentProfile,
+            LastDeploymentResult = result.IsSuccess ? "Succeeded" : "Failed",
             LastImportedRevision = result.IsSuccess ? importedRevision : current.LastImportedRevision,
             SynchronizedSourceSignature = result.IsSuccess ? importedRevision : current.SynchronizedSourceSignature,
             WorkspaceSourceSignature = result.IsSuccess ? importedRevision : current.WorkspaceSourceSignature,
@@ -283,7 +333,7 @@ EXIT
         return new WorkspaceSynchronizationOperationResult
         {
             Snapshot = BuildSnapshot(request.Snapshot, newState),
-            Message = result.IsSuccess ? $"Imported workspace source into Oracle APEX for environment '{environment.EnvironmentName}'." : $"Oracle APEX import failed for environment '{environment.EnvironmentName}'.",
+            Message = BuildDeploymentAwareMessage(result.IsSuccess ? $"Imported workspace source into Oracle APEX for environment '{environment.EnvironmentName}'." : $"Oracle APEX import failed for environment '{environment.EnvironmentName}'.", deployment),
             ProcessResult = result,
         };
     }
@@ -463,6 +513,9 @@ exit
     }
 
     private async Task<ProcessResult> ImportEnvironmentAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, CancellationToken cancellationToken)
+        => await ImportEnvironmentAsync(snapshot, environment, ResolveDeployment(snapshot.Paths.RootPath, environment.EnvironmentName, snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], null), cancellationToken).ConfigureAwait(false);
+
+    private async Task<ProcessResult> ImportEnvironmentAsync(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, OracleApexDeploymentProfileDiscovery deployment, CancellationToken cancellationToken)
     {
         await EnsureSqlclAvailableAsync(snapshot, cancellationToken).ConfigureAwait(false);
         await EnsureApexAvailableAsync(snapshot, environment, cancellationToken).ConfigureAwait(false);
@@ -475,10 +528,7 @@ exit
             throw new InvalidOperationException($"Oracle APEX source path '{environment.SourcePath}' does not contain application.apx. Export or create source before importing.");
         }
 
-        var sql = $"""
-apex import -workspace {environment.Workspace} -schema {environment.ParsingSchema} -id {environment.ApplicationId} -input /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, sourcePath)}
-exit
-""";
+        var sql = BuildImportSql(snapshot, environment, sourcePath, deployment);
         return await RunSqlclAsync(snapshot, environment, sql, cancellationToken).ConfigureAwait(false);
     }
 
@@ -557,9 +607,13 @@ EXIT
 
     private WorkspaceSynchronizationSnapshot BuildSnapshot(WorkspaceSnapshot workspaceSnapshot, WorkspaceSynchronizationStateDocument state, IReadOnlyDictionary<string, OracleApexRuntimeInsight>? insights = null)
     {
+        var deployments = workspaceSnapshot.Definition.Oracle.Apex.Environments.ToDictionary(
+            pair => pair.Key,
+            pair => ResolveDeployment(workspaceSnapshot.Paths.RootPath, pair.Key, pair.Value, null),
+            StringComparer.OrdinalIgnoreCase);
         var environments = workspaceSnapshot.Definition.Oracle.Apex.Environments
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(pair => BuildEnvironmentSnapshot(workspaceSnapshot, pair.Key, pair.Value, state.Environments.TryGetValue(pair.Key, out var environmentState) ? environmentState : null, insights is not null && insights.TryGetValue(pair.Key, out var insight) ? insight : null))
+            .Select(pair => BuildEnvironmentSnapshot(workspaceSnapshot, pair.Key, pair.Value, state.Environments.TryGetValue(pair.Key, out var environmentState) ? environmentState : null, insights is not null && insights.TryGetValue(pair.Key, out var insight) ? insight : null, deployments[pair.Key]))
             .ToList();
         var defaultEnvironmentName = string.IsNullOrWhiteSpace(workspaceSnapshot.Definition.Oracle.Apex.DefaultEnvironment)
             ? state.DefaultEnvironment
@@ -580,7 +634,7 @@ EXIT
         };
     }
 
-    private WorkspaceSynchronizationEnvironmentSnapshot BuildEnvironmentSnapshot(WorkspaceSnapshot workspaceSnapshot, string environmentName, OracleApexEnvironmentPreferences environment, WorkspaceSynchronizationEnvironmentState? state, OracleApexRuntimeInsight? insight)
+    private WorkspaceSynchronizationEnvironmentSnapshot BuildEnvironmentSnapshot(WorkspaceSnapshot workspaceSnapshot, string environmentName, OracleApexEnvironmentPreferences environment, WorkspaceSynchronizationEnvironmentState? state, OracleApexRuntimeInsight? insight, OracleApexDeploymentProfileDiscovery deployment)
     {
         state ??= new WorkspaceSynchronizationEnvironmentState();
         var currentGitRevision = workspaceSnapshot.Safety.AdvancedGit.LatestCommitSha;
@@ -617,6 +671,12 @@ EXIT
             SqlclProfile = environment.SqlclProfile ?? string.Empty,
             SyncMode = WorkspaceSynchronizationModes.Normalize(environment.SyncMode),
             SourcePath = environment.SourcePath ?? "src/apex",
+            ConfiguredDeploymentProfile = environment.DeploymentProfile ?? string.Empty,
+            ActiveDeploymentProfile = deployment.ActiveProfileName,
+            DeploymentFilePath = deployment.ActiveProfilePath,
+            DeploymentValidation = deployment.ValidationMessage,
+            AvailableDeploymentProfiles = deployment.Profiles.Select(profile => profile.Name).ToList(),
+            DeploymentCompatibilityWarnings = deployment.Warnings.ToList(),
             State = effectiveState,
             Summary = BuildEnvironmentSummary(effectiveState, environmentName),
             DriftSummary = state.DriftSummary,
@@ -643,6 +703,9 @@ EXIT
             LastImportedRevision = state.LastImportedRevision,
             LastExportedRevision = state.LastExportedRevision,
             LastPushResult = state.LastPushResult,
+            LastDeploymentUtc = state.LastDeployment?.TimestampUtc,
+            LastDeploymentProfile = state.LastDeploymentProfile,
+            LastDeploymentResult = state.LastDeploymentResult,
             SynchronizedSourceSignature = state.SynchronizedSourceSignature,
             WorkspaceSourceSignature = state.WorkspaceSourceSignature,
             RemoteSourceSignature = state.RemoteSourceSignature,
@@ -722,6 +785,13 @@ EXIT
         File.WriteAllText(diagnosticsPath, content.Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
+    private void WriteOracleDeploymentDocumentation(WorkspaceSnapshot snapshot, WorkspaceSynchronizationSnapshot synchronization)
+    {
+        var documentationPath = Path.Combine(snapshot.Paths.RootPath, OracleApexDeploymentsRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(documentationPath)!);
+        File.WriteAllText(documentationPath, BuildOracleDeploymentDocumentation(snapshot, synchronization).Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
     private static string BuildOracleDiagnosticsMarkdown(WorkspaceSnapshot snapshot, WorkspaceSynchronizationEnvironmentSnapshot environment, OracleApexRuntimeInsight? insight, WorkspaceSynchronizationEnvironmentState? state)
     {
         var history = state?.OperationHistory ?? [];
@@ -745,6 +815,10 @@ EXIT
             $"- Connected application: {BuildApplicationDisplay(environment)}",
             $"- Application exists: {(environment.ApplicationExists ? "Yes" : "No")}",
             $"- Source path: {environment.SourcePath}",
+            $"- Active deployment profile: {ValueOrUnknown(environment.ActiveDeploymentProfile)}",
+            $"- Deployment file path: {ValueOrUnknown(environment.DeploymentFilePath)}",
+            $"- Discovered deployment profiles: {(environment.AvailableDeploymentProfiles.Count == 0 ? "None" : string.Join(", ", environment.AvailableDeploymentProfiles))}",
+            $"- Deployment validation: {ValueOrUnknown(environment.DeploymentValidation)}",
             $"- Source path exists: {(environment.SourcePathExists ? "Yes" : "No")}",
             $"- Synchronization metadata valid: {(environment.SynchronizationMetadataValid ? "Yes" : "No")}",
             string.Empty,
@@ -768,7 +842,74 @@ EXIT
             }
         }
 
+        if (environment.DeploymentCompatibilityWarnings.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Deployment Warnings");
+            foreach (var warning in environment.DeploymentCompatibilityWarnings)
+            {
+                lines.Add($"- {warning}");
+            }
+        }
+
         return string.Join("\n", lines);
+    }
+
+    private static string BuildOracleDeploymentDocumentation(WorkspaceSnapshot snapshot, WorkspaceSynchronizationSnapshot synchronization)
+    {
+        var lines = new List<string>
+        {
+            "# Oracle APEX Deployments",
+            string.Empty,
+            "## Discovered Deployment Profiles",
+            string.Empty,
+        };
+
+        foreach (var environment in synchronization.Environments)
+        {
+            lines.Add($"- {environment.EnvironmentName}: {(environment.AvailableDeploymentProfiles.Count == 0 ? "none" : string.Join(", ", environment.AvailableDeploymentProfiles))}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Environment Mapping");
+        lines.Add(string.Empty);
+        foreach (var environment in synchronization.Environments)
+        {
+            lines.Add($"- {environment.EnvironmentName}: profile={ValueOrUnknown(environment.ActiveDeploymentProfile)}, workspace={environment.WorkspaceName}, schema={environment.ParsingSchema}, source={environment.SourcePath}");
+        }
+
+        lines.AddRange(
+        [
+            string.Empty,
+            "## Deployment Workflow",
+            string.Empty,
+            "- Validate checks the selected deployment profile before running Oracle APEX validation.",
+            "- Import applies the selected deployment profile when pushing APEXlang source into Oracle APEX.",
+            "- Push Changes validates first, then imports using the active deployment profile.",
+            string.Empty,
+            "## Validation Rules",
+            string.Empty,
+            "- referenced deployment profiles must exist under `deployments/`",
+            "- deployment profile names must be unique",
+            "- deployment files must parse as deployment APEXlang blocks",
+            "- compatibility mismatches between deployment and environment are warnings, not silent failures",
+            string.Empty,
+            "## Troubleshooting",
+            string.Empty,
+            "- verify `workspace.yaml` points to a valid `deploymentProfile`",
+            "- verify the deployment file exists under the source path `deployments/` folder",
+            "- review `docs/diagnostics/oracle-apex.md` for active profile and compatibility warnings",
+            string.Empty,
+            "## Recommended Promotion Flow",
+            string.Empty,
+            "Development",
+            "    ↓",
+            "   Test",
+            "    ↓",
+            "Production",
+        ]);
+
+        return string.Join("\n", lines) + "\n";
     }
 
     private static string FirstProcessOutputLine(ProcessResult result)
@@ -930,6 +1071,68 @@ EXIT
             ? string.Empty
             : summary.Replace("${ORACLE_DEMO_PASSWORD:-demo_password}", "[redacted]", StringComparison.Ordinal).Trim();
 
+    private OracleApexDeploymentProfileDiscovery ResolveDeployment(string rootPath, string environmentName, OracleApexEnvironmentPreferences environment, string? overrideProfileName)
+        => _deploymentProfileCatalog.Discover(rootPath, environment, environmentName, overrideProfileName);
+
+    private static string BuildDeploymentAwareMessage(string message, OracleApexDeploymentProfileDiscovery deployment)
+        => string.IsNullOrWhiteSpace(deployment.ActiveProfileName)
+            ? message
+            : $"{message}{Environment.NewLine}Deployment profile: {deployment.ActiveProfileName}";
+
+    private static string BuildValidateSql(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, OracleApexDeploymentProfileDiscovery deployment)
+    {
+        var inputPath = $"/workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, ResolveSourcePath(snapshot.Paths.RootPath, environment.SourcePath))}";
+        var deploymentArgument = BuildDeploymentProfileArgument(snapshot.Paths.RootPath, deployment);
+        return $"""
+apex validate -workspace {environment.Workspace} -input {inputPath}{deploymentArgument}
+exit
+""";
+    }
+
+    private static string BuildImportSql(WorkspaceSnapshot snapshot, OracleApexEnvironmentContext environment, string sourcePath, OracleApexDeploymentProfileDiscovery deployment)
+    {
+        var deploymentArgument = BuildDeploymentProfileArgument(snapshot.Paths.RootPath, deployment);
+        return $"""
+apex import -workspace {environment.Workspace} -schema {environment.ParsingSchema} -id {environment.ApplicationId} -input /workspace/{GetWorkspaceRelativePath(snapshot.Paths.RootPath, sourcePath)}{deploymentArgument}
+exit
+""";
+    }
+
+    private static string BuildDeploymentProfileArgument(string rootPath, OracleApexDeploymentProfileDiscovery deployment)
+        => string.IsNullOrWhiteSpace(deployment.ActiveProfilePath)
+            ? string.Empty
+            : $" -deployment /workspace/{GetWorkspaceRelativePath(rootPath, Path.Combine(rootPath, deployment.SourcePath.Replace('/', Path.DirectorySeparatorChar), deployment.ActiveProfilePath.Replace('/', Path.DirectorySeparatorChar)))}";
+
+    private WorkspaceSynchronizationOperationResult CreateDeploymentFailureResult(WorkspaceSnapshot snapshot, string environmentName, OracleApexDeploymentProfileDiscovery deployment)
+    {
+        var processResult = new ProcessResult
+        {
+            Command = "deployment-profile-validation",
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = string.Join(Environment.NewLine, deployment.Errors),
+            StandardOutputLines = Array.Empty<string>(),
+            StandardErrorLines = deployment.Errors.ToArray(),
+            Duration = TimeSpan.Zero,
+        };
+
+        var state = ReadState(snapshot.Paths);
+        state = UpdateEnvironmentState(state, environmentName, current => current with
+        {
+            LastValidation = CreateOperationState(processResult, snapshot),
+            SynchronizationState = WorkspaceSynchronizationState.ValidationFailed.ToString(),
+            DriftSummary = string.Join(" ", deployment.Errors),
+        });
+        _stateService.Write(snapshot.Paths.ApexMetadataPath, state);
+
+        return new WorkspaceSynchronizationOperationResult
+        {
+            Snapshot = BuildSnapshot(snapshot, state),
+            Message = string.Join(Environment.NewLine, deployment.Errors),
+            ProcessResult = processResult,
+        };
+    }
+
     private static string BuildWorkspaceScriptCommand(string scriptPath, string sourcePath)
         => $"{scriptPath} '{sourcePath.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 
@@ -966,6 +1169,9 @@ EXIT
                 SqlclProfile = discovery.SqlclProfile,
                 SyncMode = WorkspaceSynchronizationModes.Manual,
                 SourcePath = discovery.SourcePath,
+                DeploymentProfile = definition.Oracle.Apex.Environments.TryGetValue(discovery.EnvironmentName, out var existingEnvironment)
+                    ? existingEnvironment.DeploymentProfile
+                    : null,
             },
         };
 
@@ -1218,7 +1424,9 @@ EXIT
         }
 
         using var sha = SHA256.Create();
-        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+            .Where(path => !IsDeploymentProfileFile(root, path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
             var pathBytes = System.Text.Encoding.UTF8.GetBytes(relativePath + "\n");
@@ -1234,10 +1442,14 @@ EXIT
     private static string BuildDirectoryDiff(string sourcePath, string exportedPath)
     {
         var sourceFiles = Directory.Exists(sourcePath)
-            ? Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories).ToDictionary(path => Path.GetRelativePath(sourcePath, path).Replace(Path.DirectorySeparatorChar, '/'), ComputeHash, StringComparer.OrdinalIgnoreCase)
+            ? Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories)
+                .Where(path => !IsDeploymentProfileFile(sourcePath, path))
+                .ToDictionary(path => Path.GetRelativePath(sourcePath, path).Replace(Path.DirectorySeparatorChar, '/'), ComputeHash, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var exportedFiles = Directory.Exists(exportedPath)
-            ? Directory.GetFiles(exportedPath, "*", SearchOption.AllDirectories).ToDictionary(path => Path.GetRelativePath(exportedPath, path).Replace(Path.DirectorySeparatorChar, '/'), ComputeHash, StringComparer.OrdinalIgnoreCase)
+            ? Directory.GetFiles(exportedPath, "*", SearchOption.AllDirectories)
+                .Where(path => !IsDeploymentProfileFile(exportedPath, path))
+                .ToDictionary(path => Path.GetRelativePath(exportedPath, path).Replace(Path.DirectorySeparatorChar, '/'), ComputeHash, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var allPaths = sourceFiles.Keys.Concat(exportedFiles.Keys).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
@@ -1267,6 +1479,11 @@ EXIT
         using var sha = SHA256.Create();
         return Convert.ToHexString(sha.ComputeHash(stream));
     }
+
+    private static bool IsDeploymentProfileFile(string root, string path)
+        => Path.GetRelativePath(root, path)
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .StartsWith("deployments/", StringComparison.OrdinalIgnoreCase);
 
     private sealed class OracleApexEnvironmentContext
     {
@@ -1301,11 +1518,14 @@ EXIT
         WorkspaceSynchronizationOperationState? LastExport,
         WorkspaceSynchronizationOperationState? LastPull,
         WorkspaceSynchronizationOperationState? LastPush,
+        WorkspaceSynchronizationOperationState? LastDeployment,
         string ImportedRevision,
         string ExportedRevision,
         string LastSynchronizedGitRevision,
         string ApplicationName,
         string LastPushResult,
+        string LastDeploymentProfile,
+        string LastDeploymentResult,
         string LastImportedRevision,
         string LastExportedRevision,
         string SynchronizedSourceSignature,
@@ -1322,11 +1542,14 @@ EXIT
                 state.LastExport,
                 state.LastPull,
                 state.LastPush,
+                state.LastDeployment,
                 state.ImportedRevision,
                 state.ExportedRevision,
                 state.LastSynchronizedGitRevision,
                 state.ApplicationName,
                 state.LastPushResult,
+                state.LastDeploymentProfile,
+                state.LastDeploymentResult,
                 state.LastImportedRevision,
                 state.LastExportedRevision,
                 state.SynchronizedSourceSignature,
@@ -1346,11 +1569,14 @@ EXIT
                 LastExport = LastExport,
                 LastPull = LastPull,
                 LastPush = LastPush,
+                LastDeployment = LastDeployment,
                 ImportedRevision = ImportedRevision,
                 ExportedRevision = ExportedRevision,
                 LastSynchronizedGitRevision = LastSynchronizedGitRevision,
                 ApplicationName = ApplicationName,
                 LastPushResult = LastPushResult,
+                LastDeploymentProfile = LastDeploymentProfile,
+                LastDeploymentResult = LastDeploymentResult,
                 LastImportedRevision = LastImportedRevision,
                 LastExportedRevision = LastExportedRevision,
                 SynchronizedSourceSignature = SynchronizedSourceSignature,

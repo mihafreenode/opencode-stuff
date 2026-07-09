@@ -1183,20 +1183,20 @@ public sealed class DesktopShellService : IDesktopShellService
         }
     }
 
-    public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+    public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, deploymentProfileOverride: deploymentProfileOverride, cancellationToken: cancellationToken));
 
     public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Export", snapshot => _workspaceOrchestrator.ExportSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
 
-    public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Import", snapshot => _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+    public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Import", snapshot => _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, deploymentProfileOverride: deploymentProfileOverride, cancellationToken: cancellationToken));
 
     public Task<WorkspaceOperationResult> PullSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Pull Changes", snapshot => _workspaceOrchestrator.PullSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
 
-    public Task<WorkspaceOperationResult> PushSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Push Changes", snapshot => _workspaceOrchestrator.PushSynchronizationAsync(snapshot, cancellationToken: cancellationToken));
+    public Task<WorkspaceOperationResult> PushSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Push Changes", snapshot => _workspaceOrchestrator.PushSynchronizationAsync(snapshot, deploymentProfileOverride: deploymentProfileOverride, cancellationToken: cancellationToken));
 
     public Task<WorkspaceOperationResult> DiffSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Show Diff", async snapshot =>
@@ -1216,9 +1216,9 @@ public sealed class DesktopShellService : IDesktopShellService
         var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
         return snapshot.Synchronization.State switch
         {
-            WorkspaceSynchronizationState.DeploymentAhead => await PullSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
-            WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.InSync or WorkspaceSynchronizationState.Unknown => await PushSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
-            WorkspaceSynchronizationState.ValidationFailed => await ValidateSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
+            WorkspaceSynchronizationState.DeploymentAhead => await PullSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken: cancellationToken),
+            WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.InSync or WorkspaceSynchronizationState.Unknown => await PushSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken: cancellationToken),
+            WorkspaceSynchronizationState.ValidationFailed => await ValidateSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken: cancellationToken),
             _ => await DiffSynchronizationAsync(rootPath, snapshot, logSink, cancellationToken),
         };
     }

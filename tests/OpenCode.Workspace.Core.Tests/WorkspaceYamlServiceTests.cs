@@ -425,6 +425,7 @@ oracle:
         sqlclProfile: local-apex-dev
         syncMode: manual
         sourcePath: src/apex
+        deploymentProfile: development
 """);
 
             var definition = service.Read(filePath);
@@ -436,6 +437,7 @@ oracle:
             Assert.Contains("applicationId: 100", updatedYaml);
             Assert.Contains("sqlclProfile: local-apex-dev", updatedYaml);
             Assert.Contains("sourcePath: src/apex", updatedYaml);
+            Assert.Contains("deploymentProfile: development", updatedYaml);
         }
         finally
         {

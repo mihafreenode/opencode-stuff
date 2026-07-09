@@ -58,6 +58,12 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public string SqlclProfile { get; init; } = string.Empty;
     public string SyncMode { get; init; } = WorkspaceSynchronizationModes.Manual;
     public string SourcePath { get; init; } = string.Empty;
+    public string ConfiguredDeploymentProfile { get; init; } = string.Empty;
+    public string ActiveDeploymentProfile { get; init; } = string.Empty;
+    public string DeploymentFilePath { get; init; } = string.Empty;
+    public string DeploymentValidation { get; init; } = string.Empty;
+    public IReadOnlyList<string> AvailableDeploymentProfiles { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> DeploymentCompatibilityWarnings { get; init; } = Array.Empty<string>();
     public WorkspaceSynchronizationState State { get; init; } = WorkspaceSynchronizationState.Unknown;
     public string Summary { get; init; } = string.Empty;
     public string DriftSummary { get; init; } = string.Empty;
@@ -84,6 +90,9 @@ public sealed class WorkspaceSynchronizationEnvironmentSnapshot
     public string LastImportedRevision { get; init; } = string.Empty;
     public string LastExportedRevision { get; init; } = string.Empty;
     public string LastPushResult { get; init; } = string.Empty;
+    public DateTimeOffset? LastDeploymentUtc { get; init; }
+    public string LastDeploymentProfile { get; init; } = string.Empty;
+    public string LastDeploymentResult { get; init; } = string.Empty;
     public string SynchronizedSourceSignature { get; init; } = string.Empty;
     public string WorkspaceSourceSignature { get; init; } = string.Empty;
     public string RemoteSourceSignature { get; init; } = string.Empty;
@@ -188,6 +197,9 @@ public sealed class WorkspaceSynchronizationEnvironmentState
     [YamlMember(Alias = "lastPush")]
     public WorkspaceSynchronizationOperationState? LastPush { get; init; }
 
+    [YamlMember(Alias = "lastDeployment")]
+    public WorkspaceSynchronizationOperationState? LastDeployment { get; init; }
+
     [YamlMember(Alias = "importedRevision")]
     public string ImportedRevision { get; init; } = string.Empty;
 
@@ -202,6 +214,12 @@ public sealed class WorkspaceSynchronizationEnvironmentState
 
     [YamlMember(Alias = "lastPushResult")]
     public string LastPushResult { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "lastDeploymentProfile")]
+    public string LastDeploymentProfile { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "lastDeploymentResult")]
+    public string LastDeploymentResult { get; init; } = string.Empty;
 
     [YamlMember(Alias = "lastImportedRevision")]
     public string LastImportedRevision { get; init; } = string.Empty;
@@ -265,6 +283,7 @@ public sealed class WorkspaceSynchronizationRequest
 {
     public required WorkspaceSnapshot Snapshot { get; init; }
     public string? EnvironmentName { get; init; }
+    public string? DeploymentProfileOverride { get; init; }
 }
 
 public interface IWorkspaceSynchronizationProvider

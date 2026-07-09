@@ -206,6 +206,9 @@ public sealed class OracleApexEnvironmentPreferences
 
     [YamlMember(Alias = "sourcePath")]
     public string? SourcePath { get; init; }
+
+    [YamlMember(Alias = "deploymentProfile")]
+    public string? DeploymentProfile { get; init; }
 }
 
 public sealed class AnalyticsWorkspacePreferences

@@ -84,6 +84,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Directory.CreateDirectory(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
             File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
             var baselineSignature = ComputeDirectorySignature(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), sourceContent);
 
@@ -134,6 +135,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Directory.CreateDirectory(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "old-source");
             File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
             var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true)
             {
                 RemoteApplicationContent = "new-remote-source",
@@ -171,6 +173,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Directory.CreateDirectory(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "git-ahead-source");
             File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
 
             var baselineRoot = Path.Combine(root, ".baseline");
             Directory.CreateDirectory(baselineRoot);
@@ -209,9 +212,12 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.NotNull(syncState);
             Assert.NotNull(syncState!.Environments["dev"].LastPush);
             Assert.Equal("Succeeded", syncState.Environments["dev"].LastPushResult);
+            Assert.Equal("development", syncState.Environments["dev"].LastDeploymentProfile);
+            Assert.Equal("Succeeded", syncState.Environments["dev"].LastDeploymentResult);
             Assert.False(string.IsNullOrWhiteSpace(syncState.Environments["dev"].LastImportedRevision));
             Assert.Equal(nameof(WorkspaceSynchronizationState.InSync), syncState.Environments["dev"].SynchronizationState);
             Assert.Equal(1, runtime.ImportCallCount);
+            Assert.Contains("-deployment /workspace/src/apex/deployments/development.apx", runtime.LastImportSql, StringComparison.Ordinal);
             Assert.Contains("Validation started", result.Message, StringComparison.Ordinal);
             Assert.Contains("Validation succeeded", result.Message, StringComparison.Ordinal);
             Assert.Contains("Importing application into Oracle APEX", result.Message, StringComparison.Ordinal);
@@ -242,6 +248,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             var sourcePath = Path.Combine(root, "src", "apex");
             Directory.CreateDirectory(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "invalid-source");
+            CreateDeploymentProfile(sourcePath, "development");
             var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
             var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new FailingValidationProcessRunner(), new WorkspaceYamlService());
             var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
@@ -273,6 +280,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Directory.CreateDirectory(sourcePath);
             File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
             File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
             var baselineSignature = ComputeDirectorySignature(sourcePath);
 
             new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
@@ -353,6 +361,10 @@ public sealed class OracleApexWorkspaceConnectionTests
             Directory.CreateDirectory(root);
             Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
             File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            CreateDeploymentProfile(sourcePath, "development");
             new WorkspaceSynchronizationStateService().Write(paths.ApexMetadataPath, new WorkspaceSynchronizationStateDocument
             {
                 DefaultEnvironment = "dev",
@@ -378,8 +390,166 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.Contains("Oracle version:", diagnostics, StringComparison.Ordinal);
             Assert.Contains("APEX version:", diagnostics, StringComparison.Ordinal);
             Assert.Contains("SQLcl version:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Active deployment profile:", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Discovered deployment profiles:", diagnostics, StringComparison.Ordinal);
             Assert.Contains("Current sync state:", diagnostics, StringComparison.Ordinal);
             Assert.Contains("Recent History", diagnostics, StringComparison.Ordinal);
+            var deploymentsDoc = File.ReadAllText(Path.Combine(root, "docs", "oracle-apex-deployments.md"));
+            Assert.Contains("# Oracle APEX Deployments", deploymentsDoc, StringComparison.Ordinal);
+            Assert.Contains("Recommended Promotion Flow", deploymentsDoc, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Validate_UsesDeploymentProfile()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true) { RemoteApplicationContent = "same-source" };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal(WorkspaceSynchronizationState.InSync, result.Snapshot.State);
+            Assert.Contains("-deployment /workspace/src/apex/deployments/development.apx", runtime.LastValidationSql, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Validate_WhenDeploymentProfileIsMissing_ReturnsActionableFailure()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateConnectedDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateConnectedDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal(WorkspaceSynchronizationState.ValidationFailed, result.Snapshot.State);
+            Assert.Contains("Configured deployment profile 'development' was not found", result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task Validate_UsesEnvironmentOverrideForDeploymentProfile()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(CreateMultiEnvironmentDefinition("oracle-apexlang-demo")));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            File.WriteAllText(Path.Combine(sourcePath, "readme.txt"), "exported");
+            CreateDeploymentProfile(sourcePath, "development");
+            CreateDeploymentProfile(sourcePath, "production");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true) { RemoteApplicationContent = "same-source" };
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, CreateMultiEnvironmentDefinition("oracle-apexlang-demo"));
+
+            var result = await provider.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "production" });
+
+            Assert.Equal(WorkspaceSynchronizationState.InSync, result.Snapshot.State);
+            Assert.Contains("-deployment /workspace/src/apex/deployments/production.apx", runtime.LastValidationSql, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task GetStatus_DefaultDeploymentSelection_UsesSingleDiscoveredProfile()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            var definition = CreateDefinitionWithoutConfiguredDeployment("oracle-apexlang-demo");
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(definition));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            CreateDeploymentProfile(sourcePath, "development");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, definition);
+
+            var result = await provider.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Equal("development", result.Snapshot.DefaultEnvironment!.ActiveDeploymentProfile);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task GetStatus_WhenDeploymentProfileIsDuplicated_ReportsValidationIssue()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            var definition = CreateConnectedDefinition("oracle-apexlang-demo");
+            File.WriteAllText(paths.WorkspaceYamlPath, new WorkspaceYamlService().Write(definition));
+            var sourcePath = Path.Combine(root, "src", "apex");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(Path.Combine(sourcePath, "application.apx"), "same-source");
+            CreateDeploymentProfile(sourcePath, "first-profile", declaredProfileName: "development");
+            CreateDeploymentProfile(sourcePath, "second-profile", declaredProfileName: "development");
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var snapshot = CreateSnapshot(root, paths, definition);
+
+            var result = await provider.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = "dev" });
+
+            Assert.Contains("Duplicate Oracle APEX deployment profile", result.Snapshot.DefaultEnvironment!.DeploymentValidation, StringComparison.Ordinal);
         }
         finally
         {
@@ -426,6 +596,86 @@ public sealed class OracleApexWorkspaceConnectionTests
                             SqlclProfile = "local-apex-dev",
                             SyncMode = WorkspaceSynchronizationModes.Manual,
                             SourcePath = "src/apex",
+                            DeploymentProfile = "development",
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    private static WorkspaceDefinition CreateMultiEnvironmentDefinition(string name)
+    {
+        var definition = CreateConnectedDefinition(name);
+        return new WorkspaceDefinition
+        {
+            Workspace = definition.Workspace,
+            Provider = definition.Provider,
+            Runtime = definition.Runtime,
+            Features = definition.Features.ToList(),
+            Services = definition.Services.ToList(),
+            Skills = definition.Skills.ToList(),
+            Mcp = definition.Mcp.ToList(),
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                            DeploymentProfile = "development",
+                        },
+                        ["production"] = new()
+                        {
+                            Workspace = "PROD",
+                            ParsingSchema = "PRODSCHEMA",
+                            ApplicationId = 42,
+                            SqlclProfile = "prod-apex",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
+                            DeploymentProfile = "production",
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    private static WorkspaceDefinition CreateDefinitionWithoutConfiguredDeployment(string name)
+    {
+        var definition = CreateConnectedDefinition(name);
+        return new WorkspaceDefinition
+        {
+            Workspace = definition.Workspace,
+            Provider = definition.Provider,
+            Runtime = definition.Runtime,
+            Features = definition.Features.ToList(),
+            Services = definition.Services.ToList(),
+            Skills = definition.Skills.ToList(),
+            Mcp = definition.Mcp.ToList(),
+            Oracle = new OracleWorkspacePreferences
+            {
+                Apex = new OracleApexWorkspacePreferences
+                {
+                    DefaultEnvironment = "dev",
+                    Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
+                    {
+                        ["dev"] = new()
+                        {
+                            Workspace = "TEST",
+                            ParsingSchema = "TESTSCHEMA",
+                            ApplicationId = 100,
+                            SqlclProfile = "local-apex-dev",
+                            SyncMode = WorkspaceSynchronizationModes.Manual,
+                            SourcePath = "src/apex",
                         },
                     },
                 },
@@ -434,7 +684,8 @@ public sealed class OracleApexWorkspaceConnectionTests
     }
 
     private static WorkspaceSnapshot CreateSnapshot(string root, WorkspacePaths paths, WorkspaceDefinition definition)
-        => new()
+    {
+        return new()
         {
             Record = new WorkspaceRecord
             {
@@ -469,6 +720,7 @@ public sealed class OracleApexWorkspaceConnectionTests
             Readiness = new WorkspaceReadinessSnapshot(),
             AvailableServices = Array.Empty<WorkspaceServiceInfo>(),
         };
+    }
 
     private static string CreateTempRoot()
     {
@@ -488,7 +740,9 @@ public sealed class OracleApexWorkspaceConnectionTests
     private static string ComputeDirectorySignature(string root)
     {
         using var sha = System.Security.Cryptography.SHA256.Create();
-        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+            .Where(path => !Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/').StartsWith("deployments/", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
             var pathBytes = System.Text.Encoding.UTF8.GetBytes(relativePath + "\n");
@@ -501,11 +755,24 @@ public sealed class OracleApexWorkspaceConnectionTests
         return Convert.ToHexString(sha.Hash!);
     }
 
+    private static void CreateDeploymentProfile(string sourcePath, string profileName, string? declaredProfileName = null)
+    {
+        var deploymentsPath = Path.Combine(sourcePath, "deployments");
+        Directory.CreateDirectory(deploymentsPath);
+        File.WriteAllText(Path.Combine(deploymentsPath, profileName + ".apx"), $"""
+deployment {declaredProfileName ?? profileName} (
+    workspace: TEST
+    parsing-schema: TESTSCHEMA
+    application-id: 100
+)
+""");
+    }
+
     private sealed class SuccessfulValidationProcessRunner : IProcessRunner
     {
         public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
         {
-            var applicationPath = arguments.Last().ToString();
+            var applicationPath = arguments.Skip(1).FirstOrDefault()?.ToString();
             Assert.NotNull(applicationPath);
             Assert.True(File.Exists(applicationPath!));
             return Task.FromResult(new ProcessResult
@@ -552,6 +819,8 @@ application customer-orders-demo (
 )
 """;
         public int ImportCallCount { get; private set; }
+        public string LastImportSql { get; private set; } = string.Empty;
+        public string LastValidationSql { get; private set; } = string.Empty;
 
         public ScriptedOracleApexContainerRuntime(string root, bool workspaceMappingExists)
         {
@@ -604,12 +873,17 @@ application customer-orders-demo (
 
             if (sql.Contains("FROM all_users", StringComparison.OrdinalIgnoreCase))
             {
-                return Task.FromResult(Success("TESTSCHEMA"));
+                return Task.FromResult(Success(sql.Contains("PRODSCHEMA", StringComparison.OrdinalIgnoreCase) ? "PRODSCHEMA" : "TESTSCHEMA"));
             }
 
             if (sql.Contains("FROM apex_workspace_schemas", StringComparison.OrdinalIgnoreCase))
             {
-                return Task.FromResult(Success(_workspaceMappingExists ? "TEST|TESTSCHEMA" : string.Empty));
+                if (!_workspaceMappingExists)
+                {
+                    return Task.FromResult(Success(string.Empty));
+                }
+
+                return Task.FromResult(Success(sql.Contains("PROD", StringComparison.OrdinalIgnoreCase) ? "PROD|PRODSCHEMA" : "TEST|TESTSCHEMA"));
             }
 
             if (sql.Contains("FROM apex_applications", StringComparison.OrdinalIgnoreCase))
@@ -617,7 +891,8 @@ application customer-orders-demo (
                 return Task.FromResult(Success("100|Customer Orders Demo|customer-orders-demo"));
             }
 
-            if (sql.Contains("apex export -applicationid 100", StringComparison.OrdinalIgnoreCase))
+            if (sql.Contains("apex export -applicationid 100", StringComparison.OrdinalIgnoreCase)
+                || sql.Contains("apex export -applicationid 42", StringComparison.OrdinalIgnoreCase))
             {
                 var marker = "-dir /workspace/";
                 var start = sql.IndexOf(marker, StringComparison.Ordinal);
@@ -633,7 +908,21 @@ application customer-orders-demo (
             if (sql.Contains("apex import -workspace TEST -schema TESTSCHEMA -id 100", StringComparison.OrdinalIgnoreCase))
             {
                 ImportCallCount++;
+                LastImportSql = sql;
                 return Task.FromResult(Success("Imported"));
+            }
+
+            if (sql.Contains("apex import -workspace PROD -schema PRODSCHEMA -id 42", StringComparison.OrdinalIgnoreCase))
+            {
+                ImportCallCount++;
+                LastImportSql = sql;
+                return Task.FromResult(Success("Imported"));
+            }
+
+            if (sql.Contains("apex validate -workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                LastValidationSql = sql;
+                return Task.FromResult(Success("Validated"));
             }
 
             return Task.FromResult(Success("OK"));

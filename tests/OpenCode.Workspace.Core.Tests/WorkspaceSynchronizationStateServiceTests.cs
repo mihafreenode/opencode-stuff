@@ -39,6 +39,8 @@ public sealed class WorkspaceSynchronizationStateServiceTests
                         ImportedRevision = "abc122",
                         ExportedRevision = "abc121",
                         LastSynchronizedGitRevision = "abc122",
+                        LastDeploymentProfile = "development",
+                        LastDeploymentResult = "Succeeded",
                     },
                 },
             });
@@ -51,6 +53,7 @@ public sealed class WorkspaceSynchronizationStateServiceTests
             Assert.Equal(nameof(WorkspaceSynchronizationState.GitAhead), roundTripped.Environments["dev"].SynchronizationState);
             Assert.Equal("abc122", roundTripped.Environments["dev"].ImportedRevision);
             Assert.Equal("Validated application.apx", roundTripped.Environments["dev"].LastValidation!.Summary);
+            Assert.Equal("development", roundTripped.Environments["dev"].LastDeploymentProfile);
         }
         finally
         {

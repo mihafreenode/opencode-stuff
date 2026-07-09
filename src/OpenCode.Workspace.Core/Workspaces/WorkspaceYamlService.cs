@@ -233,6 +233,7 @@ public sealed class WorkspaceYamlService
             SqlclProfile = NormalizeOptionalValue(environment.SqlclProfile),
             SyncMode = NormalizeOptionalValue(environment.SyncMode),
             SourcePath = NormalizeOptionalValue(environment.SourcePath),
+            DeploymentProfile = NormalizeOptionalValue(environment.DeploymentProfile),
         };
     }
 

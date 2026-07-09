@@ -970,20 +970,20 @@ public sealed class WorkspaceOrchestrator
     public Task<WorkspaceSynchronizationStatusResult> GetSynchronizationStatusAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         => _workspaceSynchronizationService.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
 
-    public Task<WorkspaceSynchronizationOperationResult> ValidateSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
-        => _workspaceSynchronizationService.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+    public Task<WorkspaceSynchronizationOperationResult> ValidateSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.ValidateAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName, DeploymentProfileOverride = deploymentProfileOverride }, cancellationToken);
 
     public Task<WorkspaceSynchronizationOperationResult> ExportSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         => _workspaceSynchronizationService.ExportAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
 
-    public Task<WorkspaceSynchronizationOperationResult> ImportSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
-        => _workspaceSynchronizationService.ImportAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+    public Task<WorkspaceSynchronizationOperationResult> ImportSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.ImportAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName, DeploymentProfileOverride = deploymentProfileOverride }, cancellationToken);
 
     public Task<WorkspaceSynchronizationOperationResult> PullSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         => _workspaceSynchronizationService.PullAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
 
-    public Task<WorkspaceSynchronizationOperationResult> PushSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
-        => _workspaceSynchronizationService.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
+    public Task<WorkspaceSynchronizationOperationResult> PushSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+        => _workspaceSynchronizationService.PushAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName, DeploymentProfileOverride = deploymentProfileOverride }, cancellationToken);
 
     public Task<WorkspaceSynchronizationDiffResult> DiffSynchronizationAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         => _workspaceSynchronizationService.DiffAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot, EnvironmentName = environmentName }, cancellationToken);
