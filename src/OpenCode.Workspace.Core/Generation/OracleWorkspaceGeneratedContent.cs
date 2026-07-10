@@ -886,9 +886,11 @@ Recommended documentation indexes:
 
 Common workflows:
 
-- identify the affected APEXlang section first
-- confirm the official section name and structure in Oracle docs
-- compare the requested change with existing exported application patterns
+- inspect the workspace index before planning a change
+- build a semantic plan and review assumptions, warnings, unresolved questions, affected symbols, and expected files
+- require explicit approval for destructive or potentially conflicting plans
+- execute APEXlang changes only through the semantic planner, code action service, or semantic editor workflow
+- do not edit raw `.apx` text directly when the semantic workflow supports the requested change
 
 Documentation discovery workflow:
 
