@@ -42,6 +42,7 @@ public sealed class WorkspaceDoctorResult
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool CanRun { get; init; }
     public required string Recommendation { get; init; }
+    public OracleApexDoctorResult? OracleApex { get; init; }
 }
 
 public sealed class PlatformValidationRequest
@@ -70,4 +71,50 @@ public sealed class PlatformValidationReport
     public bool IsSuccess { get; init; }
     public bool HasWarnings { get; init; }
     public required string Summary { get; init; }
+}
+
+public sealed class OracleApexDevelopmentEnvironmentConfiguration
+{
+    public string WorkspaceRoot { get; init; } = string.Empty;
+    public string EnvironmentName { get; init; } = "dev";
+    public string SqlclProfile { get; init; } = string.Empty;
+    public int ApplicationId { get; init; }
+    public string SourcePath { get; init; } = "src/apex";
+    public string DeploymentProfile { get; init; } = string.Empty;
+    public string BuilderUrl { get; init; } = string.Empty;
+    public string ApplicationUrl { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexDoctorCheckResult
+{
+    public required string Name { get; init; }
+    public required DiagnosticSeverity Severity { get; init; }
+    public required string Message { get; init; }
+    public string Remediation { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexDoctorResult
+{
+    public required string WorkspaceRootPath { get; init; }
+    public required string EnvironmentName { get; init; }
+    public IReadOnlyList<OracleApexDoctorCheckResult> Checks { get; init; } = Array.Empty<OracleApexDoctorCheckResult>();
+    public bool IsSuccess { get; init; }
+    public bool HasWarnings { get; init; }
+    public required string Summary { get; init; }
+}
+
+public sealed class OracleApexSmokeStepResult
+{
+    public required string Step { get; init; }
+    public bool IsSuccess { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string Summary { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexSmokeWorkflowReport
+{
+    public required string Scenario { get; init; }
+    public IReadOnlyList<OracleApexSmokeStepResult> Steps { get; init; } = Array.Empty<OracleApexSmokeStepResult>();
+    public bool IsSuccess { get; init; }
+    public string Summary { get; init; } = string.Empty;
 }
