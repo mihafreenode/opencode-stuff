@@ -172,9 +172,34 @@ public sealed class WorkspaceSnapshot
     public ResolvedRuntimePlan? ResolvedRuntimePlan { get; init; }
     public bool UpdateRequired { get; init; }
     public WorkspaceSynchronizationSnapshot Synchronization { get; init; } = new();
+    public WorkspaceApexAssistantSnapshot Assistant { get; init; } = new();
     public WorkspaceHealthSnapshot Health { get; init; } = new();
     public WorkspaceReadinessSnapshot Readiness { get; init; } = new();
     public IReadOnlyList<WorkspaceServiceInfo> AvailableServices { get; init; } = Array.Empty<WorkspaceServiceInfo>();
+}
+
+public sealed class WorkspaceApexAssistantSnapshot
+{
+    public WorkspaceApexAssistantState State { get; init; } = WorkspaceApexAssistantState.NoPendingPlan;
+    public string Summary { get; init; } = string.Empty;
+    public bool WasRolledBack { get; init; }
+    public bool CanOpenApplication { get; init; }
+    public bool CanOpenBuilder { get; init; }
+    public IReadOnlyList<string> ChangedFiles { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Diagnostics { get; init; } = Array.Empty<string>();
+}
+
+public enum WorkspaceApexAssistantState
+{
+    NoPendingPlan,
+    PlanReadyForReview,
+    AwaitingConfirmation,
+    Applying,
+    Validating,
+    Importing,
+    Completed,
+    Failed,
+    RolledBack,
 }
 
 public sealed class WorkspaceSessionSnapshot

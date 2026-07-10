@@ -19,6 +19,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private const int OverviewTabIndex = 0;
     private const int ProgressTabIndex = 1;
     private const int OperationLogTabIndex = 2;
+    private const int AssistantTabIndex = 3;
+    private const int AdvancedTabIndex = 4;
     private const int NormalOperationLogFlushBatchSize = 600;
     private static readonly TimeSpan NormalOperationLogFlushInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MediumOperationLogFlushInterval = TimeSpan.FromSeconds(2);
@@ -54,6 +56,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private IWorkspaceInteractionService? _interactionService;
     private bool _isWorkspaceActionRunning;
     private string _workspaceActionStatusMessage = string.Empty;
+    private string _apexAssistantPrompt = string.Empty;
+    private string _apexAssistantReviewText = string.Empty;
+    private string _apexAssistantChangedFilesText = string.Empty;
+    private string _apexAssistantDiagnosticsText = string.Empty;
+    private string _apexAssistantExecutionSummary = string.Empty;
+    private string _apexAssistantClassificationLabel = string.Empty;
+    private bool _apexAssistantApprovalConfirmed;
+    private OracleApexAssistantPlanResponse? _apexAssistantPlanResponse;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService, IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest>? templates = null)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -77,6 +87,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         AttachWorkspaceCommand = new AsyncRelayCommand(AttachSelectedWorkspaceAsync, CanAttachSelectedWorkspace);
         ReprovisionWorkspaceCommand = new AsyncRelayCommand(ReprovisionSelectedWorkspaceAsync, CanReprovisionSelectedWorkspace);
         RetryWorkspaceCommand = new AsyncRelayCommand(RetrySelectedWorkspaceAsync, CanRetrySelectedWorkspace);
+        OpenApexAssistantCommand = new RelayCommand(OpenApexAssistant, CanOpenApexAssistant);
+        PlanApexlangChangeCommand = new AsyncRelayCommand(PlanApexlangChangeAsync, CanPlanApexlangChange);
+        ReviewApexlangPlanCommand = new RelayCommand(ReviewApexlangPlan, CanReviewApexlangPlan);
+        ApplyApexlangSourceOnlyCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.SourceOnly), CanExecuteApexlangPlan);
+        ApplyApexlangValidateOnlyCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.ValidateOnly), CanExecuteApexlangPlan);
+        ApplyApexlangValidateAndImportCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.ValidateAndImport), CanExecuteApexlangPlan);
+        CancelApexlangPlanCommand = new RelayCommand(CancelApexlangPlan, CanCancelApexlangPlan);
+        ShowApexlangChangedFilesCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantChangedFiles);
+        ShowApexlangDiagnosticsCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantDiagnostics);
+        OpenApexApplicationCommand = new AsyncRelayCommand(() => OpenSelectedOracleServiceAsync("App Home"), CanOpenApexApplication);
+        OpenApexBuilderCommand = new AsyncRelayCommand(() => OpenSelectedOracleServiceAsync("APEX Builder"), CanOpenApexBuilder);
         CopyOperationLogCommand = new AsyncRelayCommand(CopyOperationLogAsync, () => HasOperationLog && _clipboardService is not null);
         ClearOperationLogCommand = new RelayCommand(ClearOperationLog, () => HasOperationLog);
         ToggleOperationLogVisibilityCommand = new RelayCommand(ToggleOperationLogVisibility);
@@ -106,6 +127,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand AttachWorkspaceCommand { get; }
     public AsyncRelayCommand ReprovisionWorkspaceCommand { get; }
     public AsyncRelayCommand RetryWorkspaceCommand { get; }
+    public RelayCommand OpenApexAssistantCommand { get; }
+    public AsyncRelayCommand PlanApexlangChangeCommand { get; }
+    public RelayCommand ReviewApexlangPlanCommand { get; }
+    public AsyncRelayCommand ApplyApexlangSourceOnlyCommand { get; }
+    public AsyncRelayCommand ApplyApexlangValidateOnlyCommand { get; }
+    public AsyncRelayCommand ApplyApexlangValidateAndImportCommand { get; }
+    public RelayCommand CancelApexlangPlanCommand { get; }
+    public RelayCommand ShowApexlangChangedFilesCommand { get; }
+    public RelayCommand ShowApexlangDiagnosticsCommand { get; }
+    public AsyncRelayCommand OpenApexApplicationCommand { get; }
+    public AsyncRelayCommand OpenApexBuilderCommand { get; }
     public AsyncRelayCommand CopyOperationLogCommand { get; }
     public RelayCommand ClearOperationLogCommand { get; }
     public RelayCommand ToggleOperationLogVisibilityCommand { get; }
@@ -191,6 +223,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     public bool IsOperationLogVisible => SelectedWorkspaceTabIndex == OperationLogTabIndex;
+    public bool IsAssistantTabVisible => SelectedWorkspaceTabIndex == AssistantTabIndex;
 
     public string OperationLogToggleLabel => IsOperationLogVisible ? "Hide Operation Log" : "Show Operation Log";
 
@@ -216,6 +249,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool ShowMainQuickActionsSection => IsSelectedWorkspaceReady && HasDetailVisibleActions;
     public bool ShowMainProgressSection => IsSelectedWorkspacePreparing;
     public bool ShowMainOperationLogSection => IsSelectedWorkspacePreparing && ShowOperationLogPanel;
+    public bool SupportsApexAssistant => SelectedWorkspace?.Snapshot is { } snapshot && OracleWorkspaceFamily.HasApex(snapshot.Definition);
+    public bool HasApexAssistantPlan => _apexAssistantPlanResponse is not null;
+    public bool HasApexAssistantReview => !string.IsNullOrWhiteSpace(ApexAssistantReviewText);
+    public bool HasApexAssistantChangedFiles => !string.IsNullOrWhiteSpace(ApexAssistantChangedFilesText);
+    public bool HasApexAssistantDiagnostics => !string.IsNullOrWhiteSpace(ApexAssistantDiagnosticsText);
+    public bool ApexAssistantHasUnresolvedQuestions => _apexAssistantPlanResponse?.UnresolvedQuestions.Count > 0;
+    public bool ApexAssistantConfirmationRequired => _apexAssistantPlanResponse?.ConfirmationRequired == true;
+    public bool CanOpenApexPreviewActions => SelectedWorkspace?.Snapshot?.Assistant is { State: WorkspaceApexAssistantState.Completed };
     public bool ShowMainRecoverySection => IsSelectedWorkspaceNeedsRebuild && !string.IsNullOrWhiteSpace(DetailSummary);
     public bool ShowMainTroubleshootingSection => IsSelectedWorkspaceUnavailable && HasDetailAdvancedActions;
     public string WorkspaceProgressTitle => string.IsNullOrWhiteSpace(CurrentWorkspaceOperationName) ? "No active workspace operation" : CurrentWorkspaceOperationName;
@@ -256,6 +297,82 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         private set => SetProperty(ref _emptyStateMessage, value);
     }
 
+    public string ApexAssistantPrompt
+    {
+        get => _apexAssistantPrompt;
+        set
+        {
+            if (SetProperty(ref _apexAssistantPrompt, value))
+            {
+                PlanApexlangChangeCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ApexAssistantReviewText
+    {
+        get => _apexAssistantReviewText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantReviewText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantReview));
+            }
+        }
+    }
+
+    public string ApexAssistantChangedFilesText
+    {
+        get => _apexAssistantChangedFilesText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantChangedFilesText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantChangedFiles));
+                ShowApexlangChangedFilesCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ApexAssistantDiagnosticsText
+    {
+        get => _apexAssistantDiagnosticsText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantDiagnosticsText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantDiagnostics));
+                ShowApexlangDiagnosticsCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ApexAssistantExecutionSummary
+    {
+        get => _apexAssistantExecutionSummary;
+        private set => SetProperty(ref _apexAssistantExecutionSummary, value);
+    }
+
+    public string ApexAssistantClassificationLabel
+    {
+        get => _apexAssistantClassificationLabel;
+        private set => SetProperty(ref _apexAssistantClassificationLabel, value);
+    }
+
+    public bool ApexAssistantApprovalConfirmed
+    {
+        get => _apexAssistantApprovalConfirmed;
+        set
+        {
+            if (SetProperty(ref _apexAssistantApprovalConfirmed, value))
+            {
+                ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
+                ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
+                ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public WorkspaceSummaryViewModel? SelectedWorkspace
     {
         get => _selectedWorkspace;
@@ -278,12 +395,24 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 AttachWorkspaceCommand.RaiseCanExecuteChanged();
                 ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
                 RetryWorkspaceCommand.RaiseCanExecuteChanged();
+                OpenApexAssistantCommand.RaiseCanExecuteChanged();
+                PlanApexlangChangeCommand.RaiseCanExecuteChanged();
+                ReviewApexlangPlanCommand.RaiseCanExecuteChanged();
+                ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
+                ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
+                ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+                CancelApexlangPlanCommand.RaiseCanExecuteChanged();
+                OpenApexApplicationCommand.RaiseCanExecuteChanged();
+                OpenApexBuilderCommand.RaiseCanExecuteChanged();
                 RaisePropertyChanged(nameof(HasSelectedWorkspace));
+                RaisePropertyChanged(nameof(SupportsApexAssistant));
+                RaisePropertyChanged(nameof(CanOpenApexPreviewActions));
                 RaisePropertyChanged(nameof(SelectedWorkspaceTypeLabel));
                 RaisePropertyChanged(nameof(SelectedWorkspaceStateLabel));
                 _workspaceTabAutoSwitchedForOperation = false;
                 _workspaceTabUserOverrodeDuringOperation = false;
                 _hadActiveWorkspaceOperation = false;
+                ResetApexAssistantPanel();
                 SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
                 RaiseWorkspaceSectionPropertyChanges();
             }
@@ -1330,6 +1459,95 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private async Task PushSynchronizationAsync()
         => await RunSimpleWorkspaceOperationAsync("Push Changes", "Pushing Git changes into Oracle APEX...", (rootPath, snapshot, sink) => _desktopShellService.PushSynchronizationAsync(rootPath, snapshot, sink));
 
+    private void OpenApexAssistant()
+    {
+        if (!SupportsApexAssistant)
+        {
+            return;
+        }
+
+        SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true);
+        if (string.IsNullOrWhiteSpace(ApexAssistantExecutionSummary))
+        {
+            ApexAssistantExecutionSummary = "Describe the APEXlang change you want, build a reviewable semantic plan, then approve or cancel it here.";
+        }
+    }
+
+    private bool CanOpenApexAssistant() => SupportsApexAssistant;
+
+    private bool CanPlanApexlangChange() => SupportsApexAssistant && !IsBusyForWorkspaceActions && !string.IsNullOrWhiteSpace(ApexAssistantPrompt);
+
+    private bool CanReviewApexlangPlan() => HasApexAssistantPlan;
+
+    private bool CanExecuteApexlangPlan()
+        => HasApexAssistantPlan
+            && !IsBusyForWorkspaceActions
+            && !ApexAssistantHasUnresolvedQuestions
+            && (!ApexAssistantConfirmationRequired || ApexAssistantApprovalConfirmed);
+
+    private bool CanCancelApexlangPlan() => HasApexAssistantPlan || !string.IsNullOrWhiteSpace(ApexAssistantPrompt);
+
+    private bool CanOpenApexApplication()
+        => CanOpenOracleService("App Home");
+
+    private bool CanOpenApexBuilder()
+        => CanOpenOracleService("APEX Builder");
+
+    private async Task PlanApexlangChangeAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Plan APEXlang Change", SelectedWorkspace.Name);
+        await RunApexAssistantPlanAsync();
+    }
+
+    private void ReviewApexlangPlan()
+        => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true);
+
+    private void CancelApexlangPlan()
+    {
+        ResetApexAssistantPanel();
+        ApexAssistantExecutionSummary = "Plan cancelled.";
+    }
+
+    private async Task ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior behavior)
+    {
+        if (SelectedWorkspace?.Snapshot is null || _apexAssistantPlanResponse?.Plan is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Apply APEXlang Plan", SelectedWorkspace.Name);
+        await RunApexAssistantExecutionAsync(behavior);
+    }
+
+    private async Task OpenSelectedOracleServiceAsync(string serviceName)
+    {
+        if (SelectedWorkspace?.Snapshot is null)
+        {
+            return;
+        }
+
+        var service = SelectedWorkspace.Snapshot.AvailableServices.FirstOrDefault(item => string.Equals(item.Name, serviceName, StringComparison.OrdinalIgnoreCase));
+        if (service is null)
+        {
+            return;
+        }
+
+        var target = !string.IsNullOrWhiteSpace(service.HostUrl)
+            ? service.HostUrl
+            : string.IsNullOrWhiteSpace(service.DocsPath)
+                ? string.Empty
+                : Path.Combine(SelectedWorkspace.RootPath, service.DocsPath.Replace('/', Path.DirectorySeparatorChar));
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            await _desktopShellService.OpenPathAsync(target);
+        }
+    }
+
     private async Task ConnectExistingOracleApexApplicationAsync()
     {
         if (SelectedWorkspace?.Snapshot is not { } snapshot || _interactionService is null)
@@ -1382,6 +1600,104 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
+    private async Task RunApexAssistantPlanAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Planning semantic APEXlang changes...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var request = new OracleApexAssistantRequest { Prompt = ApexAssistantPrompt };
+            var result = await _desktopShellService.PlanOracleApexChangeAsync(SelectedWorkspace.RootPath, request, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            _apexAssistantPlanResponse = result.Response;
+            RaisePropertyChanged(nameof(HasApexAssistantPlan));
+            RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
+            RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+            ApexAssistantReviewText = result.Response.Review;
+            ApexAssistantClassificationLabel = result.Response.Classification.ToString();
+            ApexAssistantExecutionSummary = result.Message;
+            ApexAssistantChangedFilesText = string.Join(Environment.NewLine, result.Response.Plan.ExpectedChangedFiles);
+            ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.UnresolvedQuestions.Concat(result.Response.Warnings));
+            ApexAssistantApprovalConfirmed = false;
+            CompleteOperationTranscript(result.Transcript);
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private async Task RunApexAssistantExecutionAsync(OracleApexAssistantPostEditBehavior behavior)
+    {
+        if (SelectedWorkspace?.Snapshot is null || _apexAssistantPlanResponse?.Plan is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = behavior switch
+            {
+                OracleApexAssistantPostEditBehavior.SourceOnly => "Applying semantic changes...",
+                OracleApexAssistantPostEditBehavior.ValidateOnly => "Applying semantic changes and validating...",
+                OracleApexAssistantPostEditBehavior.ValidateAndImport => "Applying semantic changes, validating, and importing...",
+                _ => "Applying semantic changes...",
+            };
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var request = new OracleApexAssistantRequest { Prompt = ApexAssistantPrompt, ConfirmPlan = ApexAssistantApprovalConfirmed, PostEditBehavior = behavior };
+            var result = await _desktopShellService.ExecuteOracleApexPlanAsync(SelectedWorkspace.RootPath, request, _apexAssistantPlanResponse.Plan, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            ApexAssistantExecutionSummary = result.Message;
+            ApexAssistantChangedFilesText = string.Join(Environment.NewLine, result.Response.ChangedFiles);
+            ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.Diagnostics.Entries.Select(entry => entry.Message).Concat(result.Response.Warnings).Concat(result.Response.UnresolvedQuestions));
+            CompleteOperationTranscript(result.Transcript);
+            if (result.Response.IsSuccess)
+            {
+                _apexAssistantPlanResponse = null;
+                RaisePropertyChanged(nameof(HasApexAssistantPlan));
+                RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
+                RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+            }
+
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private void ResetApexAssistantPanel()
+    {
+        _apexAssistantPlanResponse = null;
+        ApexAssistantReviewText = string.Empty;
+        ApexAssistantChangedFilesText = string.Empty;
+        ApexAssistantDiagnosticsText = string.Empty;
+        ApexAssistantExecutionSummary = string.Empty;
+        ApexAssistantClassificationLabel = string.Empty;
+        ApexAssistantApprovalConfirmed = false;
+        RaisePropertyChanged(nameof(HasApexAssistantPlan));
+        RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
+        RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+    }
+
+    private bool CanOpenOracleService(string serviceName)
+        => SelectedWorkspace?.Snapshot?.AvailableServices.Any(item => string.Equals(item.Name, serviceName, StringComparison.OrdinalIgnoreCase) && (!string.IsNullOrWhiteSpace(item.HostUrl) || !string.IsNullOrWhiteSpace(item.DocsPath))) == true;
+
     private void UpdateWorkspaceTabsForOperationState()
     {
         var hasActiveOperation = HasActiveWorkspaceOperation;
@@ -1407,6 +1723,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     public void AppendOperationTranscriptLine(OperationTranscriptLine line)
     {
+        if (!IsOperationLogVisible)
+        {
+            SetSelectedWorkspaceTab(OperationLogTabIndex, markAsManual: false);
+        }
+
         EnsureActiveOperationTranscript("Workspace operation", SelectedWorkspace?.Name ?? string.Empty, line.Timestamp);
         AppendOperationTranscriptLineCore(line, flushImmediately: true);
     }
@@ -1437,6 +1758,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     {
         ResetOperationTranscriptState();
         LastOperationTranscript = null;
+        if (IsOperationLogVisible)
+        {
+            SetSelectedWorkspaceTab(OverviewTabIndex, markAsManual: false);
+        }
     }
 
     public string GetCopyAllOperationLogText()
@@ -2339,6 +2664,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
         var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
         var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
+        var planApexlangAction = CreatePresentationAction(workspace, "Plan APEXlang Change", "Build a reviewable semantic APEXlang plan before changing application source.", SupportsApexAssistant && !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), async () => { OpenApexAssistant(); await Task.CompletedTask; }, useWorkspaceScopedCommands);
         var supportsSynchronization = workspace.Snapshot?.Synchronization.IsSupported == true;
         var shouldShowRebuildRuntime = effectiveReadiness?.Status != WorkspaceReadinessStatus.Ready
             || workspace.Record.LastProvisioningHealth is not null
@@ -2361,6 +2687,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             CreatePresentationAction(workspace, "Show Diff", BuildSynchronizationDescription(workspace, "diff"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), DiffSynchronizationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Pull Changes", BuildSynchronizationDescription(workspace, "pull"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PullSynchronizationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Push Changes", BuildSynchronizationDescription(workspace, "push"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PushSynchronizationAsync, useWorkspaceScopedCommands),
+            planApexlangAction,
             CreatePresentationAction(workspace, "Create Application", "Create a new Oracle APEX application for the configured environment. This flow is still intentionally disabled while connect-first synchronization stabilizes.", false, "Create Application is not available yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Connect Existing Application", "Discover an existing Oracle APEX application, bind it into workspace metadata, export it to source control, and validate the exported source.", CanConnectExistingOracleApexApplicationWorkspace(workspace), GetConnectExistingOracleApexApplicationDisabledReason(workspace), ConnectExistingOracleApexApplicationAsync, useWorkspaceScopedCommands),
             CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
@@ -3770,6 +4097,17 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         BackupWorkspaceCommand.RaiseCanExecuteChanged();
         ReprovisionWorkspaceCommand.RaiseCanExecuteChanged();
         RetryWorkspaceCommand.RaiseCanExecuteChanged();
+        OpenApexAssistantCommand.RaiseCanExecuteChanged();
+        PlanApexlangChangeCommand.RaiseCanExecuteChanged();
+        ReviewApexlangPlanCommand.RaiseCanExecuteChanged();
+        ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
+        ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
+        ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+        CancelApexlangPlanCommand.RaiseCanExecuteChanged();
+        ShowApexlangChangedFilesCommand.RaiseCanExecuteChanged();
+        ShowApexlangDiagnosticsCommand.RaiseCanExecuteChanged();
+        OpenApexApplicationCommand.RaiseCanExecuteChanged();
+        OpenApexBuilderCommand.RaiseCanExecuteChanged();
         RefreshWorkspacePresentations();
         if (SelectedWorkspace is not null)
         {

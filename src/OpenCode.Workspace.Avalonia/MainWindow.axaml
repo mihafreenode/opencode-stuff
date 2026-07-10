@@ -307,7 +307,7 @@
             </TabItem>
 
             <TabItem Header="Operation Log">
-              <Border Classes="panel-subtle" Margin="0,8,0,0">
+              <Border Classes="panel-subtle" Margin="0,8,0,0" IsVisible="{Binding ShowOperationLogPanel}">
                 <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
                   <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
                     <TextBlock Text="Operation Log" Classes="section-title" />
@@ -315,7 +315,9 @@
                     <Button Grid.Column="2" Content="Copy all" Command="{Binding CopyOperationLogCommand}" />
                     <Button Grid.Column="3" Content="Clear view" Command="{Binding ClearOperationLogCommand}" />
                   </Grid>
-                  <TextBlock Grid.Row="1" Text="Full live workspace output. The log viewer owns its own scrolling." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                  <DockPanel Grid.Row="1" LastChildFill="True">
+                    <TextBlock Text="Full live workspace output. The log viewer owns its own scrolling." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                  </DockPanel>
                   <TextBox Grid.Row="2"
                            Text="{Binding OperationLogText}"
                            IsReadOnly="True"
@@ -328,6 +330,70 @@
                            TextChanged="WorkspaceOperationLogTextChanged" />
                 </Grid>
               </Border>
+            </TabItem>
+
+            <TabItem Header="APEXlang Assistant" IsVisible="{Binding SupportsApexAssistant}">
+              <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="14" Margin="0,8,0,0">
+                  <Border Classes="panel-subtle">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Plan APEXlang Change" Classes="section-title" />
+                      <TextBlock Text="Prompt → semantic plan → review → approve → atomic edit → validate → optional import." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      <TextBox Text="{Binding ApexAssistantPrompt}" Watermark="Describe the Oracle APEX change you want to make" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="96" />
+                      <WrapPanel>
+                        <Button Content="Plan APEXlang Change" Classes="accent" Command="{Binding PlanApexlangChangeCommand}" Margin="0,0,8,8" />
+                        <Button Content="Review Plan" Command="{Binding ReviewApexlangPlanCommand}" Margin="0,0,8,8" />
+                        <Button Content="Cancel Plan" Command="{Binding CancelApexlangPlanCommand}" Margin="0,0,8,8" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantReview}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Review Plan" Classes="section-title" />
+                      <TextBlock Text="{Binding ApexAssistantClassificationLabel}" FontWeight="SemiBold" />
+                      <CheckBox Content="I approve this risky plan" IsChecked="{Binding ApexAssistantApprovalConfirmed}" IsVisible="{Binding ApexAssistantConfirmationRequired}" />
+                      <TextBlock Text="{Binding ApexAssistantExecutionSummary}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBox Text="{Binding ApexAssistantReviewText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="220" />
+                      <WrapPanel>
+                        <Button Content="Apply Source Only" Command="{Binding ApplyApexlangSourceOnlyCommand}" Margin="0,0,8,8" />
+                        <Button Content="Apply and Validate" Command="{Binding ApplyApexlangValidateOnlyCommand}" Margin="0,0,8,8" />
+                        <Button Content="Apply, Validate and Import" Classes="accent" Command="{Binding ApplyApexlangValidateAndImportCommand}" Margin="0,0,8,8" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantChangedFiles}">
+                    <StackPanel Spacing="8">
+                      <WrapPanel>
+                        <TextBlock Text="Changed Files" Classes="section-title" Margin="0,0,12,0" />
+                        <Button Content="Show Changed Files" Command="{Binding ShowApexlangChangedFilesCommand}" Margin="0,0,8,8" />
+                      </WrapPanel>
+                      <TextBox Text="{Binding ApexAssistantChangedFilesText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="84" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantDiagnostics}">
+                    <StackPanel Spacing="8">
+                      <WrapPanel>
+                        <TextBlock Text="Diagnostics" Classes="section-title" Margin="0,0,12,0" />
+                        <Button Content="Show Diagnostics" Command="{Binding ShowApexlangDiagnosticsCommand}" Margin="0,0,8,8" />
+                      </WrapPanel>
+                      <TextBox Text="{Binding ApexAssistantDiagnosticsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding CanOpenApexPreviewActions}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Preview" Classes="section-title" />
+                      <WrapPanel>
+                        <Button Content="Open Application" Command="{Binding OpenApexApplicationCommand}" Margin="0,0,8,8" />
+                        <Button Content="Open Builder" Command="{Binding OpenApexBuilderCommand}" Margin="0,0,8,8" />
+                      </WrapPanel>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Advanced">

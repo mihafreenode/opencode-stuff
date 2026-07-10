@@ -2534,6 +2534,174 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OracleApexWorkspace_BuildsAssistantPlanForReview()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var service = new FakeDesktopShellService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = currentSnapshot!,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse
+                {
+                    Request = request,
+                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Review = "Summary: Create Reports page\nClassification: Additive",
+                    Classification = OracleApexPlanClassification.Additive,
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                },
+            })
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        await page.PlanApexlangChangeCommand.ExecuteAsync();
+
+        Assert.True(page.HasApexAssistantPlan);
+        Assert.Contains("Classification: Additive", page.ApexAssistantReviewText, StringComparison.Ordinal);
+        Assert.Equal(3, page.SelectedWorkspaceTabIndex);
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_BlocksAssistantExecutionWhenQuestionsRemain()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var service = new FakeDesktopShellService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = currentSnapshot!,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse
+                {
+                    Request = request,
+                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Review = "Questions remain",
+                    Classification = OracleApexPlanClassification.PotentiallyConflicting,
+                    UnresolvedQuestions = ["Choose a navigation menu."],
+                    ConfirmationRequired = true,
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                },
+            })
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Add navigation entry";
+        await page.PlanApexlangChangeCommand.ExecuteAsync();
+
+        Assert.False(page.ApplyApexlangSourceOnlyCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_ShowsAssistantRollbackDiagnostics()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var service = new FakeDesktopShellService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = currentSnapshot!,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse
+                {
+                    Request = request,
+                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Review = "Review",
+                    Classification = OracleApexPlanClassification.Additive,
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                },
+            }),
+            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = currentSnapshot!,
+                Message = "Rolled back after validation failure.",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = false,
+                    Summary = "Rolled back after validation failure.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    Diagnostics = new OracleApexSemanticEditDiagnostics { Entries = [new OracleApexWorkspaceIndexDiagnostic { Message = "Region type is missing.", Severity = "Error", Code = "missing-required-property" }] },
+                },
+            })
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        await page.PlanApexlangChangeCommand.ExecuteAsync();
+        await page.ApplyApexlangSourceOnlyCommand.ExecuteAsync();
+
+        Assert.Contains("Rolled back", page.ApexAssistantExecutionSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Region type is missing.", page.ApexAssistantDiagnosticsText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_EnablesAssistantPreviewActionsAfterImport()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var completed = new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
+            Assistant = new WorkspaceApexAssistantSnapshot { State = WorkspaceApexAssistantState.Completed, Summary = "Completed", CanOpenApplication = true, CanOpenBuilder = true },
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
+        };
+        var service = new FakeDesktopShellService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = currentSnapshot!,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse
+                {
+                    Request = request,
+                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Review = "Review",
+                    Classification = OracleApexPlanClassification.Additive,
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                },
+            }),
+            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = completed,
+                Message = "Applied, validated, and imported.",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantExecutionResponse { IsSuccess = true, Summary = "Applied, validated, and imported.", WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            })
+        };
+        var page = new WorkspacesPageViewModel(service);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        await page.PlanApexlangChangeCommand.ExecuteAsync();
+        await page.ApplyApexlangValidateAndImportCommand.ExecuteAsync();
+
+        Assert.True(page.CanOpenApexPreviewActions);
+        Assert.True(page.OpenApexApplicationCommand.CanExecute(null));
+        Assert.True(page.OpenApexBuilderCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task NonOracleWorkspace_DisablesConnectExistingApplicationAction()
     {
         var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
@@ -4777,6 +4945,8 @@ public sealed class ShellViewModelTests
         public Func<string, string, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? SavePointResultFactoryAsync { get; set; }
         public Func<string, string, string, string, string, WorkspaceSnapshot?, CancellationToken, Task<OracleApexApplicationDiscoveryResult>>? OracleApexDiscoveryResultFactoryAsync { get; set; }
         public Func<string, ConnectOracleApexApplicationDraft, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceOperationResult>>? ConnectOracleApexApplicationResultFactoryAsync { get; set; }
+        public Func<string, OracleApexAssistantRequest, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantPlanResult>>? OracleApexAssistantPlanFactoryAsync { get; set; }
+        public Func<string, OracleApexAssistantRequest, OracleApexEditPlan, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantExecutionResult>>? OracleApexAssistantExecutionFactoryAsync { get; set; }
         public Func<string, WorkspaceSnapshot?, CancellationToken, Task<WorkspaceSnapshot>>? AcknowledgeOracleNoticeAsyncFactory { get; set; }
         public WorkspacePublishAssessment PublishAssessment { get; set; } = new()
         {
@@ -5267,6 +5437,38 @@ public sealed class ShellViewModelTests
                 ?? Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("oracle-connect"), Message = "Connected.", Transcript = new OperationTranscript() });
         }
 
+        public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(string rootPath, OracleApexAssistantRequest request, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => OracleApexAssistantPlanFactoryAsync?.Invoke(rootPath, request, currentSnapshot, logSink, cancellationToken)
+                ?? Task.FromResult(new WorkspaceApexAssistantPlanResult
+                {
+                    Snapshot = currentSnapshot ?? CreateSnapshot("assistant-plan"),
+                    Message = "plan",
+                    Transcript = new OperationTranscript(),
+                    Response = new OracleApexAssistantPlanResponse
+                    {
+                        Request = request,
+                        Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                        Review = "review",
+                        Classification = OracleApexPlanClassification.Additive,
+                        WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    },
+                });
+
+        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan plan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+            => OracleApexAssistantExecutionFactoryAsync?.Invoke(rootPath, request, plan, currentSnapshot, logSink, cancellationToken)
+                ?? Task.FromResult(new WorkspaceApexAssistantExecutionResult
+                {
+                    Snapshot = currentSnapshot ?? CreateSnapshot("assistant-apply"),
+                    Message = "applied",
+                    Transcript = new OperationTranscript(),
+                    Response = new OracleApexAssistantExecutionResponse
+                    {
+                        IsSuccess = true,
+                        Summary = "applied",
+                        WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    },
+                });
+
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Validated.", Transcript = new OperationTranscript() });
 
@@ -5483,6 +5685,8 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(string rootPath, OracleApexAssistantRequest request, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan plan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -5607,6 +5811,8 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> CreateSavePointAsync(string rootPath, string message, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string rootPath, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(string rootPath, ConnectOracleApexApplicationDraft draft, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(string rootPath, OracleApexAssistantRequest request, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
+        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan plan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

@@ -128,6 +128,32 @@ public sealed class RuntimeResourceCleanupResult
     public required OperationTranscript Transcript { get; init; }
 }
 
+public sealed class WorkspaceApexAssistantPlanOperationViewModel
+{
+    public int Sequence { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Target { get; init; } = string.Empty;
+    public string Properties { get; init; } = string.Empty;
+    public string References { get; init; } = string.Empty;
+    public string ExpectedFiles { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceApexAssistantPlanResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required OracleApexAssistantPlanResponse Response { get; init; }
+}
+
+public sealed class WorkspaceApexAssistantExecutionResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required OracleApexAssistantExecutionResponse Response { get; init; }
+}
+
 public sealed class SavePointDraft
 {
     public required string Message { get; init; }
