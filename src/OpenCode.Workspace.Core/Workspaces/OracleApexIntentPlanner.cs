@@ -186,6 +186,8 @@ public sealed class OracleApexIntentPlanner
             plan.Summary = expansion.Blueprint.Summary;
             plan.Alternatives = expansion.Blueprint.Alternatives;
             plan.DeploymentTargets = expansion.Blueprint.DeploymentTargets;
+            plan.BlueprintModules = expansion.Blueprint.Modules.Select(module => module.Name).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
+            plan.BlueprintEntities = expansion.Blueprint.Modules.Select(module => module.Entity?.DisplayName ?? string.Empty).Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
             foreach (var assumption in expansion.Blueprint.Assumptions)
             {
                 plan.Assumptions.Add(assumption);
@@ -651,6 +653,8 @@ public sealed class OracleApexEditPlan
     public IReadOnlyList<string> NewSharedComponents { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> NewNavigationEntries { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> DeploymentTargets { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> BlueprintModules { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> BlueprintEntities { get; set; } = Array.Empty<string>();
     public IReadOnlyList<OracleApexBlueprintAlternative> Alternatives { get; set; } = Array.Empty<OracleApexBlueprintAlternative>();
     public string EstimatedComplexity { get; set; } = string.Empty;
     public OracleApexPlanClassification Classification { get; set; }

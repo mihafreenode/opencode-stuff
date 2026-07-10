@@ -207,6 +207,130 @@ public sealed class OracleApexAssistantServiceTests
     }
 
     [Fact]
+    public async Task ExecutePlan_ValidationFailure_ReturnsCompilerDiagnosticsAndRepairPlan()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var sync = new FakeSyncService
+            {
+                ValidationState = WorkspaceSynchronizationState.ValidationFailed,
+                ValidationSuccess = false,
+                ValidationResultFactory = _ => new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = new WorkspaceSynchronizationSnapshot
+                    {
+                        State = WorkspaceSynchronizationState.ValidationFailed,
+                        DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot { EnvironmentName = "dev", State = WorkspaceSynchronizationState.ValidationFailed },
+                    },
+                    Message = "validation failed",
+                    ProcessResult = CreateProcessResult("validate", 1, standardErrorLines: ["ERROR src/apex/pages/p00003-reports.apx:4:5 [APEX-1001] component=page property=alias - Missing required property 'alias'."]),
+                    Validation = new OracleApexValidationResult
+                    {
+                        IsSuccess = false,
+                        Diagnostics = [new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5, Component = "page", Property = "alias", Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing required property 'alias'.", Category = "missing-required-property" }],
+                    },
+                },
+            };
+            var service = new OracleApexAssistantService(sync);
+            var snapshot = CreateSnapshot(root, syncState: WorkspaceSynchronizationState.InSync);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            var response = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.ValidateOnly }, plan);
+
+            Assert.True(response.IsSuccess);
+            Assert.NotNull(response.CompilerValidation);
+            Assert.NotEmpty(response.CompilerValidation!.Diagnostics);
+            Assert.NotNull(response.SuggestedRepairPlan);
+            Assert.True(response.SuggestedRepairPlan!.Operations.Count > 0 || response.SuggestedRepairPlan.UnresolvedQuestions.Count > 0);
+            Assert.False(response.SafeToContinueDeployment);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task ExecutePlan_AutoRepair_RevalidatesAfterRepair()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            WriteAutoRepairSettings(root, enabled: true);
+            var validationCalls = 0;
+            var sync = new FakeSyncService
+            {
+                ValidationResultFactory = _ =>
+                {
+                    validationCalls++;
+                    return validationCalls == 1
+                        ? new WorkspaceSynchronizationOperationResult
+                        {
+                            Snapshot = new WorkspaceSynchronizationSnapshot
+                            {
+                                State = WorkspaceSynchronizationState.ValidationFailed,
+                                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot { EnvironmentName = "dev", State = WorkspaceSynchronizationState.ValidationFailed },
+                            },
+                            Message = "validation failed",
+                            ProcessResult = CreateProcessResult("validate", 1, standardErrorLines: ["ERROR src/apex/pages/p00003-reports.apx:4:5 [APEX-1001] component=page property=alias - Missing required property 'alias'."]),
+                            Validation = new OracleApexValidationResult
+                            {
+                                IsSuccess = false,
+                                Diagnostics = [new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5, Component = "page", Property = "alias", Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing required property 'alias'.", Category = "missing-required-property" }],
+                            },
+                        }
+                        : new WorkspaceSynchronizationOperationResult
+                        {
+                            Snapshot = new WorkspaceSynchronizationSnapshot
+                            {
+                                State = WorkspaceSynchronizationState.InSync,
+                                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot { EnvironmentName = "dev", State = WorkspaceSynchronizationState.InSync },
+                            },
+                            Message = "validated",
+                            ProcessResult = CreateProcessResult("validate", 0),
+                            Validation = new OracleApexValidationResult { IsSuccess = true },
+                        };
+                },
+            };
+            var service = new OracleApexAssistantService(sync);
+            var snapshot = CreateSnapshot(root, syncState: WorkspaceSynchronizationState.InSync);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            var response = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.ValidateOnly, EnableSafeAutomaticRepair = true }, plan);
+
+            Assert.True(response.IsSuccess);
+            Assert.True(response.SafeToContinueDeployment);
+            Assert.Equal(2, validationCalls);
+            Assert.NotNull(response.CompilerValidation);
+            Assert.True(response.CompilerValidation!.IsSuccess);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task ExecutePlan_NonDevelopmentImportRequiresExplicitOverride()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+            var snapshot = CreateSnapshot(root, environmentName: "production", syncState: WorkspaceSynchronizationState.InSync);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", EnvironmentName = "production" }).Plan;
+
+            var response = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", EnvironmentName = "production", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.ValidateAndImport }, plan);
+
+            Assert.True(response.IsSuccess);
+            Assert.False(response.SafeToContinueDeployment);
+            Assert.Contains(response.Warnings, warning => warning.Contains("requires explicit override", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
     public async Task ExecutePlan_DivergedSynchronizationBlocksUnsafeAutomaticDeployment()
     {
         var root = CreateTempRoot();
@@ -251,13 +375,13 @@ public sealed class OracleApexAssistantServiceTests
         Assert.Contains("do not edit raw `.apx` text directly", skill, StringComparison.Ordinal);
     }
 
-    private static WorkspaceSnapshot CreateSnapshot(string root, WorkspaceSynchronizationState syncState = WorkspaceSynchronizationState.InSync)
+    private static WorkspaceSnapshot CreateSnapshot(string root, WorkspaceSynchronizationState syncState = WorkspaceSynchronizationState.InSync, string environmentName = "dev")
     {
         var paths = WorkspacePathBuilder.Build(root);
         return new WorkspaceSnapshot
         {
             Record = new WorkspaceRecord { Name = "oracle-apexlang", RootPath = root, RepositoryPath = root, ConfigurationPath = paths.WorkspaceYamlPath, CreatedUtc = DateTimeOffset.UtcNow, LastOpenedUtc = DateTimeOffset.UtcNow },
-            Definition = CreateDefinition(),
+            Definition = CreateDefinition(environmentName),
             Paths = paths,
             ConfigurationPath = paths.WorkspaceYamlPath,
             RuntimeState = WorkspaceRuntimeState.Stopped,
@@ -268,7 +392,7 @@ public sealed class OracleApexAssistantServiceTests
                 State = syncState,
                 DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
                 {
-                    EnvironmentName = "dev",
+                    EnvironmentName = environmentName,
                     SyncMode = WorkspaceSynchronizationModes.Manual,
                     State = syncState,
                 },
@@ -276,7 +400,7 @@ public sealed class OracleApexAssistantServiceTests
                 [
                     new WorkspaceSynchronizationEnvironmentSnapshot
                     {
-                        EnvironmentName = "dev",
+                        EnvironmentName = environmentName,
                         SyncMode = WorkspaceSynchronizationModes.Manual,
                         State = syncState,
                     },
@@ -288,7 +412,7 @@ public sealed class OracleApexAssistantServiceTests
         };
     }
 
-    private static WorkspaceDefinition CreateDefinition()
+    private static WorkspaceDefinition CreateDefinition(string environmentName = "dev")
         => new()
         {
             Workspace = new WorkspaceMetadata { Name = "oracle-apexlang", Image = "ubuntu:24.04" },
@@ -298,13 +422,25 @@ public sealed class OracleApexAssistantServiceTests
             {
                 Apex = new OracleApexWorkspacePreferences
                 {
-                    DefaultEnvironment = "dev",
+                    DefaultEnvironment = environmentName,
                     Environments = new Dictionary<string, OracleApexEnvironmentPreferences>
                     {
-                        ["dev"] = CreateEnvironment(),
+                        [environmentName] = CreateEnvironment(),
                     },
                 },
             },
+        };
+
+    private static ProcessResult CreateProcessResult(string command, int exitCode, IReadOnlyList<string>? standardOutputLines = null, IReadOnlyList<string>? standardErrorLines = null)
+        => new()
+        {
+            Command = command,
+            ExitCode = exitCode,
+            StandardOutput = standardOutputLines is null ? string.Empty : string.Join(Environment.NewLine, standardOutputLines),
+            StandardError = standardErrorLines is null ? string.Empty : string.Join(Environment.NewLine, standardErrorLines),
+            StandardOutputLines = standardOutputLines ?? Array.Empty<string>(),
+            StandardErrorLines = standardErrorLines ?? Array.Empty<string>(),
+            Duration = TimeSpan.Zero,
         };
 
     private static OracleApexEnvironmentPreferences CreateEnvironment()
@@ -364,6 +500,15 @@ navigation menu secondary-navigation (
         File.WriteAllText(Path.Combine(atlasPath, "state.json"), "{}\n");
     }
 
+    private static void WriteAutoRepairSettings(string root, bool enabled)
+    {
+        var knowledgePath = Path.Combine(root, ".opencode", "knowledge", "apex-assistant");
+        Directory.CreateDirectory(knowledgePath);
+        File.WriteAllText(Path.Combine(knowledgePath, "settings.json"), $$"""
+{ "SafeAutomaticRepairEnabled": {{enabled.ToString().ToLowerInvariant()}} }
+""");
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"oracle-apex-assistant-tests-{Guid.NewGuid():N}");
@@ -385,6 +530,8 @@ navigation menu secondary-navigation (
         public int ImportCalls { get; private set; }
         public WorkspaceSynchronizationState ValidationState { get; set; } = WorkspaceSynchronizationState.InSync;
         public bool ValidationSuccess { get; set; } = true;
+        public Func<string?, WorkspaceSynchronizationOperationResult>? ValidationResultFactory { get; set; }
+        public Func<string?, WorkspaceSynchronizationOperationResult>? ImportResultFactory { get; set; }
 
         public Task<WorkspaceSynchronizationStatusResult> GetStatusAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceSynchronizationStatusResult { Snapshot = snapshot.Synchronization });
@@ -392,6 +539,11 @@ navigation menu secondary-navigation (
         public Task<WorkspaceSynchronizationOperationResult> ValidateAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         {
             ValidateCalls++;
+            if (ValidationResultFactory is not null)
+            {
+                return Task.FromResult(ValidationResultFactory(environmentName));
+            }
+
             return Task.FromResult(new WorkspaceSynchronizationOperationResult
             {
                 Snapshot = new WorkspaceSynchronizationSnapshot
@@ -407,6 +559,11 @@ navigation menu secondary-navigation (
         public Task<WorkspaceSynchronizationOperationResult> ImportAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
         {
             ImportCalls++;
+            if (ImportResultFactory is not null)
+            {
+                return Task.FromResult(ImportResultFactory(environmentName));
+            }
+
             return Task.FromResult(new WorkspaceSynchronizationOperationResult
             {
                 Snapshot = snapshot.Synchronization,
@@ -415,15 +572,15 @@ navigation menu secondary-navigation (
             });
         }
 
-        private static ProcessResult CreateProcessResult(string command, int exitCode)
+        private static ProcessResult CreateProcessResult(string command, int exitCode, IReadOnlyList<string>? standardOutputLines = null, IReadOnlyList<string>? standardErrorLines = null)
             => new()
             {
                 Command = command,
                 ExitCode = exitCode,
-                StandardOutput = string.Empty,
-                StandardError = string.Empty,
-                StandardOutputLines = Array.Empty<string>(),
-                StandardErrorLines = Array.Empty<string>(),
+                StandardOutput = standardOutputLines is null ? string.Empty : string.Join(Environment.NewLine, standardOutputLines),
+                StandardError = standardErrorLines is null ? string.Empty : string.Join(Environment.NewLine, standardErrorLines),
+                StandardOutputLines = standardOutputLines ?? Array.Empty<string>(),
+                StandardErrorLines = standardErrorLines ?? Array.Empty<string>(),
                 Duration = TimeSpan.Zero,
             };
     }

@@ -17,6 +17,8 @@ public sealed class OracleApexAssistantService
     private readonly IOracleApexSemanticEditor _semanticEditor;
     private readonly OracleApexComponentCatalog _componentCatalog;
     private readonly IOracleApexAssistantSynchronizationService _synchronizationService;
+    private readonly OracleApexValidationFeedbackService _validationFeedbackService;
+    private readonly OracleApexSemanticRepairService _repairService;
 
     public OracleApexAssistantService(
         IOracleApexAssistantSynchronizationService synchronizationService,
@@ -24,7 +26,9 @@ public sealed class OracleApexAssistantService
         OracleApexWorkspaceIndexBuilder? workspaceIndexBuilder = null,
         OracleApexCodeActionService? codeActionService = null,
         IOracleApexSemanticEditor? semanticEditor = null,
-        OracleApexComponentCatalog? componentCatalog = null)
+        OracleApexComponentCatalog? componentCatalog = null,
+        OracleApexValidationFeedbackService? validationFeedbackService = null,
+        OracleApexSemanticRepairService? repairService = null)
     {
         _componentCatalog = componentCatalog ?? OracleApexComponentCatalog.Default;
         _workspaceIndexBuilder = workspaceIndexBuilder ?? new OracleApexWorkspaceIndexBuilder();
@@ -32,12 +36,14 @@ public sealed class OracleApexAssistantService
         _codeActionService = codeActionService ?? new OracleApexCodeActionService(_workspaceIndexBuilder, _semanticEditor);
         _intentPlanner = intentPlanner ?? new OracleApexIntentPlanner(_workspaceIndexBuilder, _componentCatalog, _codeActionService, _semanticEditor);
         _synchronizationService = synchronizationService;
+        _validationFeedbackService = validationFeedbackService ?? new OracleApexValidationFeedbackService();
+        _repairService = repairService ?? new OracleApexSemanticRepairService(_workspaceIndexBuilder, _codeActionService);
     }
 
     public OracleApexAssistantPlanResponse CreatePlan(WorkspaceSnapshot snapshot, OracleApexAssistantRequest request)
     {
         var environment = ResolveEnvironment(snapshot, request.EnvironmentName);
-        var environmentName = request.EnvironmentName ?? snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? snapshot.Definition.Oracle.Apex.DefaultEnvironment ?? "dev";
+        var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
         var currentIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName);
         var planResult = _intentPlanner.CreatePlan(snapshot.Paths.RootPath, environment, environmentName, request.Prompt);
         var warnings = new List<string>(planResult.Plan.Warnings);
@@ -64,7 +70,7 @@ public sealed class OracleApexAssistantService
     public async Task<OracleApexAssistantExecutionResponse> ExecutePlanAsync(WorkspaceSnapshot snapshot, OracleApexAssistantRequest request, OracleApexEditPlan plan, CancellationToken cancellationToken = default)
     {
         var environment = ResolveEnvironment(snapshot, request.EnvironmentName);
-        var environmentName = request.EnvironmentName ?? snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? snapshot.Definition.Oracle.Apex.DefaultEnvironment ?? "dev";
+        var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
         var postEditBehavior = ResolvePostEditBehavior(request, snapshot.Synchronization.DefaultEnvironment);
 
         if (plan.UnresolvedQuestions.Count > 0)
@@ -107,31 +113,72 @@ public sealed class OracleApexAssistantService
 
         WorkspaceSynchronizationOperationResult? validationResult = null;
         WorkspaceSynchronizationOperationResult? importResult = null;
+        WorkspaceSynchronizationStatusResult? refreshedStatus = null;
+        OracleApexValidationResult? compilerValidation = null;
+        OracleApexEditPlan? repairPlan = null;
         var deploymentSafe = true;
+        var workingSnapshot = snapshot;
 
         if (postEditBehavior != OracleApexAssistantPostEditBehavior.SourceOnly)
         {
-            validationResult = await _synchronizationService.ValidateAsync(snapshot, environmentName, cancellationToken).ConfigureAwait(false);
+            validationResult = await _synchronizationService.ValidateAsync(workingSnapshot, environmentName, cancellationToken).ConfigureAwait(false);
+            compilerValidation = NormalizeCompilerValidation(validationResult.Validation, validationResult.ProcessResult, execution.WorkspaceIndex, plan);
+            _validationFeedbackService.PersistEvidence(snapshot, compilerValidation);
             if (validationResult.Snapshot.DefaultEnvironment?.State == WorkspaceSynchronizationState.ValidationFailed || validationResult.ProcessResult?.IsSuccess == false)
             {
-                deploymentSafe = false;
-                return new OracleApexAssistantExecutionResponse
+                repairPlan = _repairService.CreateRepairPlan(snapshot.Paths.RootPath, environment, environmentName, plan, compilerValidation);
+                if (ShouldAutoRepair(snapshot, request, repairPlan))
                 {
-                    IsSuccess = true,
-                    Summary = "Plan applied, but validation failed. Import was blocked.",
-                    ChangedFiles = execution.ChangedFiles,
-                    Diagnostics = execution.Diagnostics,
-                    WorkspaceIndex = execution.WorkspaceIndex,
-                    PostEditBehavior = postEditBehavior,
-                    ValidationResult = validationResult,
-                    SafeToContinueDeployment = false,
-                };
+                    var repairExecution = _intentPlanner.ExecutePlan(snapshot.Paths.RootPath, environment, environmentName, repairPlan, confirmDestructive: true);
+                    if (repairExecution.IsSuccess)
+                    {
+                        _validationFeedbackService.PersistEvidence(snapshot, compilerValidation, repairPlan);
+                        workingSnapshot = CloneWithSynchronization(snapshot, validationResult.Snapshot);
+                        validationResult = await _synchronizationService.ValidateAsync(workingSnapshot, environmentName, cancellationToken).ConfigureAwait(false);
+                        compilerValidation = NormalizeCompilerValidation(validationResult.Validation, validationResult.ProcessResult, repairExecution.WorkspaceIndex, repairPlan);
+                        _validationFeedbackService.PersistEvidence(snapshot, compilerValidation);
+                        if (validationResult.Snapshot.DefaultEnvironment?.State != WorkspaceSynchronizationState.ValidationFailed && validationResult.ProcessResult?.IsSuccess != false)
+                        {
+                            execution = new OracleApexEditPlanExecutionResult
+                            {
+                                IsSuccess = true,
+                                Summary = repairExecution.Summary,
+                                ChangedFiles = execution.ChangedFiles.Concat(repairExecution.ChangedFiles).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                                Diagnostics = repairExecution.Diagnostics,
+                                WorkspaceIndex = repairExecution.WorkspaceIndex,
+                            };
+                        }
+                    }
+                }
+
+                if (validationResult.Snapshot.DefaultEnvironment?.State == WorkspaceSynchronizationState.ValidationFailed || validationResult.ProcessResult?.IsSuccess == false)
+                {
+                    deploymentSafe = false;
+                    return new OracleApexAssistantExecutionResponse
+                    {
+                        IsSuccess = true,
+                        Summary = "Plan applied, but validation failed. Import was blocked.",
+                        ChangedFiles = execution.ChangedFiles,
+                        Diagnostics = execution.Diagnostics,
+                        WorkspaceIndex = execution.WorkspaceIndex,
+                        PostEditBehavior = postEditBehavior,
+                        ValidationResult = validationResult,
+                        CompilerValidation = compilerValidation,
+                        SuggestedRepairPlan = repairPlan,
+                        RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings),
+                        SafeToContinueDeployment = false,
+                        Stage = OracleApexAssistantStage.SqlclValidation,
+                        GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+                    };
+                }
             }
         }
 
         if (postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateAndImport)
         {
-            var syncState = snapshot.Synchronization.DefaultEnvironment?.State ?? WorkspaceSynchronizationState.Unknown;
+            var syncState = snapshot.Synchronization.DefaultEnvironment?.State is WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead
+                ? snapshot.Synchronization.DefaultEnvironment.State
+                : validationResult?.Snapshot.DefaultEnvironment?.State ?? snapshot.Synchronization.DefaultEnvironment?.State ?? WorkspaceSynchronizationState.Unknown;
             if (syncState is WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead)
             {
                 return new OracleApexAssistantExecutionResponse
@@ -143,13 +190,36 @@ public sealed class OracleApexAssistantService
                     WorkspaceIndex = execution.WorkspaceIndex,
                     PostEditBehavior = postEditBehavior,
                     ValidationResult = validationResult,
+                    CompilerValidation = compilerValidation,
                     SafeToContinueDeployment = false,
                     Warnings = [$"Synchronization state '{syncState}' blocks automatic import."],
+                    Stage = OracleApexAssistantStage.Import,
+                    GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
                 };
             }
 
-            importResult = await _synchronizationService.ImportAsync(snapshot, environmentName, cancellationToken).ConfigureAwait(false);
+            if (!IsDevelopmentEnvironment(environmentName) && !request.AllowNonDevelopmentDeployment)
+            {
+                return new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Plan applied and validated, but import was blocked because the target environment is not a development environment.",
+                    ChangedFiles = execution.ChangedFiles,
+                    Diagnostics = execution.Diagnostics,
+                    WorkspaceIndex = execution.WorkspaceIndex,
+                    PostEditBehavior = postEditBehavior,
+                    ValidationResult = validationResult,
+                    CompilerValidation = compilerValidation,
+                    SafeToContinueDeployment = false,
+                    Warnings = [$"Environment '{environmentName}' requires explicit override before deployment."],
+                    Stage = OracleApexAssistantStage.Import,
+                    GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+                };
+            }
+
+            importResult = await _synchronizationService.ImportAsync(workingSnapshot, environmentName, cancellationToken).ConfigureAwait(false);
             deploymentSafe = importResult.ProcessResult?.IsSuccess != false;
+            refreshedStatus = await _synchronizationService.GetStatusAsync(workingSnapshot, environmentName, cancellationToken).ConfigureAwait(false);
         }
 
         return new OracleApexAssistantExecutionResponse
@@ -161,10 +231,40 @@ public sealed class OracleApexAssistantService
             WorkspaceIndex = execution.WorkspaceIndex,
             PostEditBehavior = postEditBehavior,
             ValidationResult = validationResult,
+            CompilerValidation = compilerValidation,
             ImportResult = importResult,
             SafeToContinueDeployment = deploymentSafe,
+            SuggestedRepairPlan = repairPlan,
+            RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings),
+            Synchronization = refreshedStatus?.Snapshot ?? importResult?.Snapshot ?? validationResult?.Snapshot ?? snapshot.Synchronization,
+            Stage = postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateAndImport ? OracleApexAssistantStage.Preview : postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateOnly ? OracleApexAssistantStage.SqlclValidation : OracleApexAssistantStage.SemanticGeneration,
+            GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
         };
     }
+
+    public OracleApexAssistantRepairPlanResponse CreateRepairPlan(WorkspaceSnapshot snapshot, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation)
+    {
+        var environment = ResolveEnvironment(snapshot, request.EnvironmentName);
+        var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
+        var repairPlan = _repairService.CreateRepairPlan(snapshot.Paths.RootPath, environment, environmentName, sourcePlan, validation);
+        return new OracleApexAssistantRepairPlanResponse
+        {
+            Plan = repairPlan,
+            Review = BuildReview(repairPlan, repairPlan.Warnings),
+            CompilerValidation = validation,
+        };
+    }
+
+    public Task<OracleApexAssistantExecutionResponse> ExecuteRepairPlanAsync(WorkspaceSnapshot snapshot, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, CancellationToken cancellationToken = default)
+        => ExecutePlanAsync(snapshot, new OracleApexAssistantRequest
+        {
+            Prompt = request.Prompt,
+            EnvironmentName = request.EnvironmentName,
+            ConfirmPlan = true,
+            EnableSafeAutomaticRepair = request.EnableSafeAutomaticRepair,
+            AllowNonDevelopmentDeployment = request.AllowNonDevelopmentDeployment,
+            PostEditBehavior = request.PostEditBehavior == OracleApexAssistantPostEditBehavior.Auto ? OracleApexAssistantPostEditBehavior.ValidateOnly : request.PostEditBehavior,
+        }, repairPlan, cancellationToken);
 
     private static OracleApexEnvironmentPreferences ResolveEnvironment(WorkspaceSnapshot snapshot, string? environmentName)
     {
@@ -178,6 +278,11 @@ public sealed class OracleApexAssistantService
             : environmentName;
         return snapshot.Definition.Oracle.Apex.Environments[resolved!];
     }
+
+    private static string ResolveEnvironmentName(WorkspaceSnapshot snapshot, string? environmentName)
+        => string.IsNullOrWhiteSpace(environmentName)
+            ? snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? snapshot.Definition.Oracle.Apex.DefaultEnvironment ?? "dev"
+            : environmentName;
 
     private static OracleApexAssistantPostEditBehavior ResolvePostEditBehavior(OracleApexAssistantRequest request, WorkspaceSynchronizationEnvironmentSnapshot? environment)
     {
@@ -354,6 +459,53 @@ public sealed class OracleApexAssistantService
             _ => execution.Summary,
         };
     }
+
+    private OracleApexValidationResult NormalizeCompilerValidation(OracleApexValidationResult? validation, ProcessResult? processResult, OracleApexWorkspaceIndex index, OracleApexEditPlan plan)
+    {
+        if (validation is null)
+        {
+            return _validationFeedbackService.BuildValidationResult(processResult, index, plan);
+        }
+
+        return validation.Mappings.Count == 0
+            ? _validationFeedbackService.MapValidationResult(validation, index, plan)
+            : validation;
+    }
+
+    private bool ShouldAutoRepair(WorkspaceSnapshot snapshot, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan)
+    {
+        var settings = _validationFeedbackService.ReadWorkspaceSettings(snapshot);
+        return settings.SafeAutomaticRepairEnabled
+            && request.EnableSafeAutomaticRepair
+            && repairPlan.UnresolvedQuestions.Count == 0
+            && repairPlan.Operations.Count > 0
+            && repairPlan.Classification == OracleApexPlanClassification.Additive;
+    }
+
+    private static bool IsDevelopmentEnvironment(string environmentName)
+        => string.Equals(environmentName, "dev", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environmentName, "development", StringComparison.OrdinalIgnoreCase);
+
+    private static WorkspaceSnapshot CloneWithSynchronization(WorkspaceSnapshot snapshot, WorkspaceSynchronizationSnapshot synchronization)
+        => new()
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = synchronization,
+            Assistant = snapshot.Assistant,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
+        };
 }
 
 public sealed class OracleApexAssistantRequest
@@ -362,6 +514,8 @@ public sealed class OracleApexAssistantRequest
     public string EnvironmentName { get; init; } = string.Empty;
     public OracleApexAssistantPostEditBehavior PostEditBehavior { get; init; } = OracleApexAssistantPostEditBehavior.Auto;
     public bool ConfirmPlan { get; init; }
+    public bool EnableSafeAutomaticRepair { get; init; }
+    public bool AllowNonDevelopmentDeployment { get; init; }
 }
 
 public sealed class OracleApexAssistantPlanResponse
@@ -388,11 +542,35 @@ public sealed class OracleApexAssistantExecutionResponse
     public OracleApexWorkspaceIndex WorkspaceIndex { get; init; } = new();
     public OracleApexAssistantPostEditBehavior PostEditBehavior { get; init; }
     public WorkspaceSynchronizationOperationResult? ValidationResult { get; init; }
+    public OracleApexValidationResult? CompilerValidation { get; init; }
     public WorkspaceSynchronizationOperationResult? ImportResult { get; init; }
     public bool SafeToContinueDeployment { get; init; }
     public bool ConfirmationRequired { get; init; }
     public IReadOnlyList<string> UnresolvedQuestions { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+    public OracleApexEditPlan? SuggestedRepairPlan { get; init; }
+    public string RepairReview { get; init; } = string.Empty;
+    public WorkspaceSynchronizationSnapshot? Synchronization { get; init; }
+    public OracleApexAssistantStage Stage { get; init; }
+    public string GitStatusSummary { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexAssistantRepairPlanResponse
+{
+    public OracleApexEditPlan Plan { get; init; } = new();
+    public string Review { get; init; } = string.Empty;
+    public OracleApexValidationResult CompilerValidation { get; init; } = new();
+}
+
+public enum OracleApexAssistantStage
+{
+    SemanticGeneration,
+    SemanticValidation,
+    SqlclValidation,
+    RepairPlanning,
+    RepairExecution,
+    Import,
+    Preview,
 }
 
 public enum OracleApexAssistantPostEditBehavior

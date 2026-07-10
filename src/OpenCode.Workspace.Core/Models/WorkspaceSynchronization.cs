@@ -108,6 +108,7 @@ public sealed class WorkspaceSynchronizationOperationResult
     public required WorkspaceSynchronizationSnapshot Snapshot { get; init; }
     public required string Message { get; init; }
     public ProcessResult? ProcessResult { get; init; }
+    public OracleApexValidationResult? Validation { get; init; }
 }
 
 public sealed class WorkspaceSynchronizationDiffResult

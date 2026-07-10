@@ -15,13 +15,15 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly OracleApexAtlasBuilder _atlasBuilder;
     private readonly OracleApexDeploymentProfileCatalog _deploymentProfileCatalog;
+    private readonly OracleApexValidationFeedbackService _validationFeedbackService;
 
     public OracleApexWorkspaceSynchronizationProvider(
         WorkspaceSynchronizationStateService stateService,
         IContainerRuntime containerRuntime,
         IProcessRunner processRunner,
         WorkspaceYamlService workspaceYamlService,
-        OracleApexAtlasBuilder? atlasBuilder = null)
+        OracleApexAtlasBuilder? atlasBuilder = null,
+        OracleApexValidationFeedbackService? validationFeedbackService = null)
     {
         _stateService = stateService;
         _containerRuntime = containerRuntime;
@@ -29,6 +31,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
         _workspaceYamlService = workspaceYamlService;
         _atlasBuilder = atlasBuilder ?? new OracleApexAtlasBuilder();
         _deploymentProfileCatalog = new OracleApexDeploymentProfileCatalog();
+        _validationFeedbackService = validationFeedbackService ?? new OracleApexValidationFeedbackService();
     }
 
     public string ProviderId => "oracle-apex";
@@ -187,6 +190,7 @@ EXIT
                 Snapshot = BuildSnapshot(request.Snapshot, state),
                 Message = BuildDeploymentAwareMessage($"APEX validation failed for environment '{environment.EnvironmentName}'.", deployment),
                 ProcessResult = result,
+                Validation = _validationFeedbackService.BuildValidationResult(result, new OracleApexWorkspaceIndexBuilder().Build(request.Snapshot.Paths.RootPath, request.Snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], environment.EnvironmentName), new OracleApexEditPlan()),
             };
         }
 
@@ -207,6 +211,7 @@ EXIT
                 Snapshot = BuildSnapshot(request.Snapshot, updatedState),
                 Message = BuildDeploymentAwareMessage($"Oracle APEX validation failed for environment '{environment.EnvironmentName}'.", deployment),
                 ProcessResult = validateResult,
+                Validation = _validationFeedbackService.BuildValidationResult(validateResult, new OracleApexWorkspaceIndexBuilder().Build(request.Snapshot.Paths.RootPath, request.Snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], environment.EnvironmentName), new OracleApexEditPlan()),
             };
         }
 
@@ -257,6 +262,7 @@ EXIT
             Snapshot = BuildSnapshot(request.Snapshot, updatedState),
             Message = BuildDeploymentAwareMessage($"Validated APEX source for environment '{environment.EnvironmentName}'. Current state: {syncState}.", deployment),
             ProcessResult = validateResult,
+            Validation = _validationFeedbackService.BuildValidationResult(validateResult, new OracleApexWorkspaceIndexBuilder().Build(request.Snapshot.Paths.RootPath, request.Snapshot.Definition.Oracle.Apex.Environments[environment.EnvironmentName], environment.EnvironmentName), new OracleApexEditPlan()),
         };
     }
 
@@ -1130,6 +1136,7 @@ exit
             Snapshot = BuildSnapshot(snapshot, state),
             Message = string.Join(Environment.NewLine, deployment.Errors),
             ProcessResult = processResult,
+            Validation = _validationFeedbackService.BuildValidationResult(processResult, new OracleApexWorkspaceIndex(), new OracleApexEditPlan()),
         };
     }
 
