@@ -30,6 +30,44 @@ public sealed class OracleApexIntentPlannerTests
     }
 
     [Fact]
+    public void CreatePlan_HighLevelCrudRequest_ProducesAlternativesAndBlocksExecutionUntilChosen()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            var planner = new OracleApexIntentPlanner();
+
+            var result = planner.CreatePlan(root, CreateEnvironment(), "dev", "Build CRUD for Products");
+
+            Assert.False(result.Validation.IsValid);
+            Assert.Equal(2, result.Plan.Alternatives.Count);
+            Assert.Contains(result.Plan.UnresolvedQuestions, question => question.Contains("Choose an implementation approach", StringComparison.OrdinalIgnoreCase));
+            Assert.Empty(result.Plan.Operations);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public void CreatePlan_HighLevelModuleRequest_ReusesExistingPagesAndPlansOnlyMissingParts()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WritePackageWithCustomerPage(root);
+            var planner = new OracleApexIntentPlanner();
+
+            var result = planner.CreatePlan(root, CreateEnvironment(), "dev", "Build customer management module with report and form pages");
+
+            Assert.True(result.Validation.IsValid);
+            Assert.DoesNotContain(result.Plan.Operations, operation => operation.Title == "Create page 'Customers'");
+            Assert.Contains(result.Plan.Operations, operation => operation.Title.Contains("form page", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(result.Plan.Assumptions, item => item.Contains("Reuse existing component Navigation", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
     public void CreatePlan_CompletesRequiredPropertiesForNewPages()
     {
         var root = CreateTempRoot();
@@ -120,6 +158,26 @@ public sealed class OracleApexIntentPlannerTests
             Assert.Contains(result.WorkspaceIndex.Pages, page => page.Identifier == "Customers Form");
             Assert.Contains(result.WorkspaceIndex.NavigationEntries, entry => entry.Identifier == "Customers");
             Assert.True(result.ChangedFiles.Count > 0);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public void ExecutePlan_HighLevelIntentWithExplicitApproach_AppliesBlueprintOperations()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            var planner = new OracleApexIntentPlanner();
+            var plan = planner.CreatePlan(root, CreateEnvironment(), "dev", "Build customer management module with report and form pages").Plan;
+
+            var result = planner.ExecutePlan(root, CreateEnvironment(), "dev", plan);
+
+            Assert.True(result.IsSuccess, result.Summary);
+            Assert.Contains(result.WorkspaceIndex.Pages, page => page.Identifier == "Customers");
+            Assert.Contains(result.WorkspaceIndex.Pages, page => page.Identifier == "Customer Form");
+            Assert.Contains(result.WorkspaceIndex.NavigationEntries, entry => entry.Identifier == "Customers");
         }
         finally { DeleteTempRoot(root); }
     }
@@ -217,6 +275,18 @@ navigation menu main-navigation (
         File.WriteAllText(sourceRoot, """
 navigation menu secondary-navigation (
     name: Secondary Navigation
+)
+""");
+    }
+
+    private static void WritePackageWithCustomerPage(string root)
+    {
+        WriteValidPackage(root);
+        File.WriteAllText(Path.Combine(root, "src", "apex", "pages", "p00003-customers.apx"), """
+page customers (
+    id: 3
+    name: Customers
+    alias: CUSTOMERS
 )
 """);
     }

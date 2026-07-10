@@ -231,11 +231,62 @@ public sealed class OracleApexAssistantService
     {
         var lines = new List<string>
         {
-            $"Summary: {plan.Intent}",
+            $"Summary: {plan.Summary}",
             $"Classification: {plan.Classification}",
             $"Confirmation required: {(plan.RequiresConfirmation ? "Yes" : "No")}",
-            "Operations:",
+            $"Estimated complexity: {plan.EstimatedComplexity}",
         };
+
+        if (plan.NewPages.Count > 0)
+        {
+            lines.Add($"New pages: {string.Join(", ", plan.NewPages)}");
+        }
+
+        if (plan.NewSharedComponents.Count > 0)
+        {
+            lines.Add($"New shared components: {string.Join(", ", plan.NewSharedComponents)}");
+        }
+
+        if (plan.NewNavigationEntries.Count > 0)
+        {
+            lines.Add($"New navigation entries: {string.Join(", ", plan.NewNavigationEntries)}");
+        }
+
+        if (plan.SecurityChanges.Count > 0)
+        {
+            lines.Add("Security changes:");
+            foreach (var change in plan.SecurityChanges)
+            {
+                lines.Add($"- {change}");
+            }
+        }
+
+        if (plan.ValidationChanges.Count > 0)
+        {
+            lines.Add("Validation changes:");
+            foreach (var change in plan.ValidationChanges)
+            {
+                lines.Add($"- {change}");
+            }
+        }
+
+        if (plan.DeploymentTargets.Count > 0)
+        {
+            lines.Add($"Deployment targets: {string.Join(", ", plan.DeploymentTargets)}");
+        }
+
+        if (plan.Alternatives.Count > 0)
+        {
+            lines.Add("Alternatives:");
+            foreach (var alternative in plan.Alternatives)
+            {
+                var recommended = alternative.IsRecommended ? " (recommended)" : string.Empty;
+                lines.Add($"- {alternative.Label}{recommended}: {alternative.Description}");
+                lines.Add($"  Trade-offs: {alternative.TradeOffs}");
+            }
+        }
+
+        lines.Add("Operations:");
 
         foreach (var operation in plan.Operations.OrderBy(item => item.Sequence))
         {

@@ -27,6 +27,26 @@ public sealed class OracleApexAssistantServiceTests
     }
 
     [Fact]
+    public void CreatePlan_HighLevelIntentReview_IncludesAlternativesAndCategorizedChanges()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+
+            var response = service.CreatePlan(CreateSnapshot(root), new OracleApexAssistantRequest { Prompt = "Build CRUD for Products" });
+
+            Assert.Contains("Estimated complexity:", response.Review, StringComparison.Ordinal);
+            Assert.Contains("Alternatives:", response.Review, StringComparison.Ordinal);
+            Assert.Contains("Unresolved Questions:", response.Review, StringComparison.Ordinal);
+            Assert.Equal(2, response.Plan.Alternatives.Count);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
     public async Task ExecutePlan_DestructivePlanRequiresApproval()
     {
         var root = CreateTempRoot();
