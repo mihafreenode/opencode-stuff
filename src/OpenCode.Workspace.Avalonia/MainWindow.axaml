@@ -338,11 +338,21 @@
                   <Border Classes="panel-subtle">
                     <StackPanel Spacing="8">
                       <TextBlock Text="Plan APEXlang Change" Classes="section-title" />
-                      <TextBlock Text="Prompt → semantic plan → review → approve → atomic edit → validate → optional import." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      <TextBlock Text="Prompt → semantic plan → review → semantic edit → SQLcl validation → repair → revalidate → import → preview." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                       <TextBox Text="{Binding ApexAssistantPrompt}" Watermark="Describe the Oracle APEX change you want to make" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="96" />
+                      <TextBlock Text="{Binding ApexAssistantStageLabel}" FontWeight="SemiBold" IsVisible="{Binding HasApexAssistantReview}" />
+                      <CheckBox Content="Allow safe semantic auto-repair for this request" IsChecked="{Binding ApexAssistantAllowSafeAutomaticRepair}" IsVisible="{Binding ApexAssistantSafeAutomaticRepairConfigured}" />
+                      <TextBlock Text="Safe automatic repair is active for this request." Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding ApexAssistantSafeAutomaticRepairActive}" />
+                      <CheckBox Content="Allow deployment to a non-development environment for this request" IsChecked="{Binding ApexAssistantAllowNonDevelopmentImport}" />
                       <WrapPanel>
                         <Button Content="Plan APEXlang Change" Classes="accent" Command="{Binding PlanApexlangChangeCommand}" Margin="0,0,8,8" />
                         <Button Content="Review Plan" Command="{Binding ReviewApexlangPlanCommand}" Margin="0,0,8,8" />
+                        <Button Content="Build Repair Plan" Command="{Binding BuildApexlangRepairPlanCommand}" Margin="0,0,8,8" />
+                        <Button Content="Apply Repair" Command="{Binding ApplyApexlangRepairCommand}" Margin="0,0,8,8" />
+                        <Button Content="Revalidate" Command="{Binding RevalidateApexlangCommand}" Margin="0,0,8,8" />
+                        <Button Content="Import" Command="{Binding ImportApexlangCommand}" Margin="0,0,8,8" />
+                        <Button Content="Open Diagnostic Source" Command="{Binding OpenApexDiagnosticSourceCommand}" Margin="0,0,8,8" />
+                        <Button Content="Roll Back Generated Change" Command="{Binding RollBackApexlangGeneratedChangeCommand}" Margin="0,0,8,8" />
                         <Button Content="Cancel Plan" Command="{Binding CancelApexlangPlanCommand}" Margin="0,0,8,8" />
                       </WrapPanel>
                     </StackPanel>
@@ -376,10 +386,31 @@
                   <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantDiagnostics}">
                     <StackPanel Spacing="8">
                       <WrapPanel>
-                        <TextBlock Text="Diagnostics" Classes="section-title" Margin="0,0,12,0" />
+                        <TextBlock Text="Semantic Diagnostics And Warnings" Classes="section-title" Margin="0,0,12,0" />
                         <Button Content="Show Diagnostics" Command="{Binding ShowApexlangDiagnosticsCommand}" Margin="0,0,8,8" />
                       </WrapPanel>
                       <TextBox Text="{Binding ApexAssistantDiagnosticsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantCompilerDiagnostics}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Compiler Diagnostics" Classes="section-title" />
+                      <TextBox Text="{Binding ApexAssistantCompilerDiagnosticsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="180" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantRepairReview}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Repair Review" Classes="section-title" />
+                      <TextBox Text="{Binding ApexAssistantRepairReviewText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="180" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantEvidence}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Evidence" Classes="section-title" />
+                      <TextBox Text="{Binding ApexAssistantEvidenceText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
                     </StackPanel>
                   </Border>
 

@@ -138,6 +138,27 @@ public sealed class WorkspaceApexAssistantPlanOperationViewModel
     public string ExpectedFiles { get; init; } = string.Empty;
 }
 
+public sealed class WorkspaceApexAssistantCompilerDiagnosticViewModel
+{
+    public string Severity { get; init; } = string.Empty;
+    public string CompilerCode { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string FilePath { get; init; } = string.Empty;
+    public int Line { get; init; }
+    public int Column { get; init; }
+    public string SemanticComponent { get; init; } = string.Empty;
+    public string PlannedOperation { get; init; } = string.Empty;
+    public string BlueprintModule { get; init; } = string.Empty;
+    public string BlueprintEntity { get; init; } = string.Empty;
+    public string SourceLocation => string.IsNullOrWhiteSpace(FilePath) ? string.Empty : $"{FilePath}:{Line}:{Column}";
+}
+
+public sealed class WorkspaceApexAssistantEvidenceEntryViewModel
+{
+    public string Title { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+}
+
 public sealed class WorkspaceApexAssistantPlanResult
 {
     public required WorkspaceSnapshot Snapshot { get; init; }
@@ -152,6 +173,30 @@ public sealed class WorkspaceApexAssistantExecutionResult
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
     public required OracleApexAssistantExecutionResponse Response { get; init; }
+}
+
+public sealed class WorkspaceApexAssistantRepairPlanResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required OracleApexAssistantRepairPlanResponse Response { get; init; }
+}
+
+public sealed class WorkspaceApexAssistantValidationResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required WorkspaceSynchronizationOperationResult Response { get; init; }
+}
+
+public sealed class WorkspaceApexAssistantImportResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required WorkspaceSynchronizationOperationResult Response { get; init; }
 }
 
 public sealed class SavePointDraft

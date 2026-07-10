@@ -1241,6 +1241,122 @@ public sealed class DesktopShellService : IDesktopShellService
         };
     }
 
+    public async Task<WorkspaceApexAssistantRepairPlanResult> BuildOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Build APEXlang Repair Plan", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        append(OperationTranscriptLineKind.Status, "Mapping compiler diagnostics");
+        append(OperationTranscriptLineKind.Status, "Building semantic repair plan");
+        var response = _oracleApexAssistantService.CreateRepairPlan(snapshot, request, sourcePlan, validation);
+        append(OperationTranscriptLineKind.Result, response.Review);
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = true;
+        return new WorkspaceApexAssistantRepairPlanResult
+        {
+            Snapshot = CloneSnapshotWithAssistantState(snapshot, new WorkspaceApexAssistantSnapshot
+            {
+                State = response.Plan.UnresolvedQuestions.Count > 0 ? WorkspaceApexAssistantState.AwaitingConfirmation : WorkspaceApexAssistantState.PlanReadyForReview,
+                Summary = response.Review,
+            }),
+            Message = response.Review,
+            Transcript = transcript,
+            Response = response,
+        };
+    }
+
+    public async Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Apply APEXlang Repair", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        append(OperationTranscriptLineKind.Status, "Applying semantic repair operations");
+        var response = await _oracleApexAssistantService.ExecuteRepairPlanAsync(snapshot, request, repairPlan, cancellationToken);
+        if (response.ValidationResult is not null)
+        {
+            append(OperationTranscriptLineKind.Status, "Revalidating");
+            append(OperationTranscriptLineKind.Result, response.ValidationResult.Message);
+        }
+
+        var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = response.IsSuccess;
+        return new WorkspaceApexAssistantExecutionResult
+        {
+            Snapshot = CloneSnapshotWithAssistantState(refreshed, BuildAssistantState(response, refreshed)),
+            Message = response.Summary,
+            Transcript = transcript,
+            Response = response,
+        };
+    }
+
+    public async Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Validate APEXlang Application", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        append(OperationTranscriptLineKind.Status, "Running SQLcl validation");
+        var response = await _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, environmentName, cancellationToken: cancellationToken);
+        append(OperationTranscriptLineKind.Result, response.Message);
+        var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = response.ProcessResult?.IsSuccess != false;
+        return new WorkspaceApexAssistantValidationResult
+        {
+            Snapshot = refreshed,
+            Message = response.Message,
+            Transcript = transcript,
+            Response = response,
+        };
+    }
+
+    public async Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, bool allowNonDevelopmentDeployment, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Import APEXlang Application", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        var syncState = snapshot.Synchronization.DefaultEnvironment?.State ?? WorkspaceSynchronizationState.Unknown;
+        if (syncState is WorkspaceSynchronizationState.ValidationFailed or WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead)
+        {
+            var blockedMessage = $"Import blocked because synchronization state is '{syncState}'.";
+            append(OperationTranscriptLineKind.Result, blockedMessage);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            return new WorkspaceApexAssistantImportResult
+            {
+                Snapshot = snapshot,
+                Message = blockedMessage,
+                Transcript = transcript,
+                Response = new WorkspaceSynchronizationOperationResult { Snapshot = snapshot.Synchronization, Message = blockedMessage },
+            };
+        }
+
+        if (!allowNonDevelopmentDeployment && !string.Equals(environmentName, "dev", StringComparison.OrdinalIgnoreCase) && !string.Equals(environmentName, "development", StringComparison.OrdinalIgnoreCase))
+        {
+            var blockedMessage = $"Import blocked because environment '{environmentName}' is not a development environment.";
+            append(OperationTranscriptLineKind.Result, blockedMessage);
+            transcript.CompletedUtc = DateTimeOffset.UtcNow;
+            transcript.Succeeded = false;
+            return new WorkspaceApexAssistantImportResult
+            {
+                Snapshot = snapshot,
+                Message = blockedMessage,
+                Transcript = transcript,
+                Response = new WorkspaceSynchronizationOperationResult { Snapshot = snapshot.Synchronization, Message = blockedMessage },
+            };
+        }
+
+        append(OperationTranscriptLineKind.Status, "Importing validated source");
+        var response = await _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, environmentName, cancellationToken: cancellationToken);
+        append(OperationTranscriptLineKind.Result, response.Message);
+        var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = response.ProcessResult?.IsSuccess != false;
+        return new WorkspaceApexAssistantImportResult
+        {
+            Snapshot = refreshed,
+            Message = response.Message,
+            Transcript = transcript,
+            Response = response,
+        };
+    }
+
     public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, deploymentProfileOverride: deploymentProfileOverride, cancellationToken: cancellationToken));
 
@@ -2273,21 +2389,22 @@ public sealed class DesktopShellService : IDesktopShellService
     private static WorkspaceApexAssistantSnapshot BuildAssistantState(OracleApexAssistantExecutionResponse response, WorkspaceSnapshot snapshot)
         => new()
         {
-            State = response.IsSuccess
-                ? response.PostEditBehavior == OracleApexAssistantPostEditBehavior.ValidateAndImport && response.ImportResult is not null
-                    ? WorkspaceApexAssistantState.Completed
-                    : response.PostEditBehavior == OracleApexAssistantPostEditBehavior.ValidateOnly && response.ValidationResult is not null
-                        ? WorkspaceApexAssistantState.Completed
-                        : WorkspaceApexAssistantState.Completed
-                : response.Diagnostics.Entries.Count > 0 && response.ChangedFiles.Count == 0
-                    ? WorkspaceApexAssistantState.RolledBack
-                    : WorkspaceApexAssistantState.Failed,
+            State = response.Stage switch
+            {
+                OracleApexAssistantStage.SemanticGeneration => WorkspaceApexAssistantState.Applying,
+                OracleApexAssistantStage.SemanticValidation or OracleApexAssistantStage.SqlclValidation => response.CompilerValidation?.IsSuccess == false ? WorkspaceApexAssistantState.Failed : WorkspaceApexAssistantState.Validating,
+                OracleApexAssistantStage.RepairPlanning => WorkspaceApexAssistantState.AwaitingConfirmation,
+                OracleApexAssistantStage.RepairExecution => WorkspaceApexAssistantState.Applying,
+                OracleApexAssistantStage.Import => response.SafeToContinueDeployment ? WorkspaceApexAssistantState.Importing : WorkspaceApexAssistantState.Failed,
+                OracleApexAssistantStage.Preview => WorkspaceApexAssistantState.Completed,
+                _ => response.IsSuccess ? WorkspaceApexAssistantState.Completed : WorkspaceApexAssistantState.Failed,
+            },
             Summary = response.Summary,
             WasRolledBack = !response.IsSuccess && response.ChangedFiles.Count == 0,
             CanOpenApplication = snapshot.AvailableServices.Any(service => string.Equals(service.Name, "App Home", StringComparison.OrdinalIgnoreCase)),
             CanOpenBuilder = snapshot.AvailableServices.Any(service => string.Equals(service.Name, "APEX Builder", StringComparison.OrdinalIgnoreCase)),
             ChangedFiles = response.ChangedFiles,
-            Diagnostics = response.Diagnostics.Entries.Select(entry => entry.Message).ToList(),
+            Diagnostics = response.CompilerValidation?.Diagnostics.Select(entry => entry.Message).ToList() ?? response.Diagnostics.Entries.Select(entry => entry.Message).ToList(),
         };
 
     private sealed class DesktopOracleApexAssistantSynchronizationService(WorkspaceOrchestrator orchestrator) : IOracleApexAssistantSynchronizationService

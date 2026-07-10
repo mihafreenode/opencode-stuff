@@ -60,10 +60,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string _apexAssistantReviewText = string.Empty;
     private string _apexAssistantChangedFilesText = string.Empty;
     private string _apexAssistantDiagnosticsText = string.Empty;
+    private string _apexAssistantCompilerDiagnosticsText = string.Empty;
+    private string _apexAssistantRepairReviewText = string.Empty;
+    private string _apexAssistantEvidenceText = string.Empty;
     private string _apexAssistantExecutionSummary = string.Empty;
     private string _apexAssistantClassificationLabel = string.Empty;
+    private string _apexAssistantStageLabel = string.Empty;
     private bool _apexAssistantApprovalConfirmed;
+    private bool _apexAssistantAllowSafeAutomaticRepair;
+    private bool _apexAssistantAllowNonDevelopmentImport;
     private OracleApexAssistantPlanResponse? _apexAssistantPlanResponse;
+    private OracleApexAssistantRepairPlanResponse? _apexAssistantRepairPlanResponse;
+    private OracleApexAssistantExecutionResponse? _apexAssistantExecutionResponse;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService, IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest>? templates = null)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -93,6 +101,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ApplyApexlangSourceOnlyCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.SourceOnly), CanExecuteApexlangPlan);
         ApplyApexlangValidateOnlyCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.ValidateOnly), CanExecuteApexlangPlan);
         ApplyApexlangValidateAndImportCommand = new AsyncRelayCommand(() => ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior.ValidateAndImport), CanExecuteApexlangPlan);
+        BuildApexlangRepairPlanCommand = new AsyncRelayCommand(BuildApexlangRepairPlanAsync, CanBuildApexlangRepairPlan);
+        ApplyApexlangRepairCommand = new AsyncRelayCommand(ApplyApexlangRepairAsync, CanApplyApexlangRepair);
+        RevalidateApexlangCommand = new AsyncRelayCommand(RevalidateApexlangAsync, CanRevalidateApexlang);
+        ImportApexlangCommand = new AsyncRelayCommand(ImportApexlangAsync, CanImportApexlang);
+        OpenApexDiagnosticSourceCommand = new AsyncRelayCommand(OpenApexDiagnosticSourceAsync, CanOpenApexDiagnosticSource);
+        RollBackApexlangGeneratedChangeCommand = new RelayCommand(RollBackApexlangGeneratedChange, CanRollBackApexlangGeneratedChange);
         CancelApexlangPlanCommand = new RelayCommand(CancelApexlangPlan, CanCancelApexlangPlan);
         ShowApexlangChangedFilesCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantChangedFiles);
         ShowApexlangDiagnosticsCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantDiagnostics);
@@ -133,6 +147,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand ApplyApexlangSourceOnlyCommand { get; }
     public AsyncRelayCommand ApplyApexlangValidateOnlyCommand { get; }
     public AsyncRelayCommand ApplyApexlangValidateAndImportCommand { get; }
+    public AsyncRelayCommand BuildApexlangRepairPlanCommand { get; }
+    public AsyncRelayCommand ApplyApexlangRepairCommand { get; }
+    public AsyncRelayCommand RevalidateApexlangCommand { get; }
+    public AsyncRelayCommand ImportApexlangCommand { get; }
+    public AsyncRelayCommand OpenApexDiagnosticSourceCommand { get; }
+    public RelayCommand RollBackApexlangGeneratedChangeCommand { get; }
     public RelayCommand CancelApexlangPlanCommand { get; }
     public RelayCommand ShowApexlangChangedFilesCommand { get; }
     public RelayCommand ShowApexlangDiagnosticsCommand { get; }
@@ -254,9 +274,14 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool HasApexAssistantReview => !string.IsNullOrWhiteSpace(ApexAssistantReviewText);
     public bool HasApexAssistantChangedFiles => !string.IsNullOrWhiteSpace(ApexAssistantChangedFilesText);
     public bool HasApexAssistantDiagnostics => !string.IsNullOrWhiteSpace(ApexAssistantDiagnosticsText);
+    public bool HasApexAssistantCompilerDiagnostics => !string.IsNullOrWhiteSpace(ApexAssistantCompilerDiagnosticsText);
+    public bool HasApexAssistantRepairReview => !string.IsNullOrWhiteSpace(ApexAssistantRepairReviewText);
+    public bool HasApexAssistantEvidence => !string.IsNullOrWhiteSpace(ApexAssistantEvidenceText);
     public bool ApexAssistantHasUnresolvedQuestions => _apexAssistantPlanResponse?.UnresolvedQuestions.Count > 0;
     public bool ApexAssistantConfirmationRequired => _apexAssistantPlanResponse?.ConfirmationRequired == true;
     public bool CanOpenApexPreviewActions => SelectedWorkspace?.Snapshot?.Assistant is { State: WorkspaceApexAssistantState.Completed };
+    public bool ApexAssistantSafeAutomaticRepairConfigured => ReadSafeAutomaticRepairConfigured(SelectedWorkspace?.Snapshot);
+    public bool ApexAssistantSafeAutomaticRepairActive => ApexAssistantSafeAutomaticRepairConfigured && ApexAssistantAllowSafeAutomaticRepair;
     public bool ShowMainRecoverySection => IsSelectedWorkspaceNeedsRebuild && !string.IsNullOrWhiteSpace(DetailSummary);
     public bool ShowMainTroubleshootingSection => IsSelectedWorkspaceUnavailable && HasDetailAdvancedActions;
     public string WorkspaceProgressTitle => string.IsNullOrWhiteSpace(CurrentWorkspaceOperationName) ? "No active workspace operation" : CurrentWorkspaceOperationName;
@@ -347,6 +372,43 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
+    public string ApexAssistantCompilerDiagnosticsText
+    {
+        get => _apexAssistantCompilerDiagnosticsText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantCompilerDiagnosticsText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantCompilerDiagnostics));
+                OpenApexDiagnosticSourceCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ApexAssistantRepairReviewText
+    {
+        get => _apexAssistantRepairReviewText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantRepairReviewText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantRepairReview));
+            }
+        }
+    }
+
+    public string ApexAssistantEvidenceText
+    {
+        get => _apexAssistantEvidenceText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantEvidenceText, value))
+            {
+                RaisePropertyChanged(nameof(HasApexAssistantEvidence));
+            }
+        }
+    }
+
     public string ApexAssistantExecutionSummary
     {
         get => _apexAssistantExecutionSummary;
@@ -359,6 +421,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         private set => SetProperty(ref _apexAssistantClassificationLabel, value);
     }
 
+    public string ApexAssistantStageLabel
+    {
+        get => _apexAssistantStageLabel;
+        private set => SetProperty(ref _apexAssistantStageLabel, value);
+    }
+
     public bool ApexAssistantApprovalConfirmed
     {
         get => _apexAssistantApprovalConfirmed;
@@ -369,6 +437,31 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
                 ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
                 ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+                ApplyApexlangRepairCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool ApexAssistantAllowSafeAutomaticRepair
+    {
+        get => _apexAssistantAllowSafeAutomaticRepair;
+        set
+        {
+            if (SetProperty(ref _apexAssistantAllowSafeAutomaticRepair, value))
+            {
+                RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairActive));
+            }
+        }
+    }
+
+    public bool ApexAssistantAllowNonDevelopmentImport
+    {
+        get => _apexAssistantAllowNonDevelopmentImport;
+        set
+        {
+            if (SetProperty(ref _apexAssistantAllowNonDevelopmentImport, value))
+            {
+                ImportApexlangCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -401,6 +494,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
                 ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
                 ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
                 ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+                BuildApexlangRepairPlanCommand.RaiseCanExecuteChanged();
+                ApplyApexlangRepairCommand.RaiseCanExecuteChanged();
+                RevalidateApexlangCommand.RaiseCanExecuteChanged();
+                ImportApexlangCommand.RaiseCanExecuteChanged();
+                OpenApexDiagnosticSourceCommand.RaiseCanExecuteChanged();
+                RollBackApexlangGeneratedChangeCommand.RaiseCanExecuteChanged();
                 CancelApexlangPlanCommand.RaiseCanExecuteChanged();
                 OpenApexApplicationCommand.RaiseCanExecuteChanged();
                 OpenApexBuilderCommand.RaiseCanExecuteChanged();
@@ -1467,6 +1566,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
 
         SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true);
+        RefreshAssistantEvidence(SelectedWorkspace?.Snapshot);
         if (string.IsNullOrWhiteSpace(ApexAssistantExecutionSummary))
         {
             ApexAssistantExecutionSummary = "Describe the APEXlang change you want, build a reviewable semantic plan, then approve or cancel it here.";
@@ -1484,6 +1584,38 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             && !IsBusyForWorkspaceActions
             && !ApexAssistantHasUnresolvedQuestions
             && (!ApexAssistantConfirmationRequired || ApexAssistantApprovalConfirmed);
+
+    private bool CanBuildApexlangRepairPlan()
+        => !IsBusyForWorkspaceActions
+            && _apexAssistantExecutionResponse?.CompilerValidation is { Diagnostics.Count: > 0 };
+
+    private bool CanApplyApexlangRepair()
+        => !IsBusyForWorkspaceActions
+            && _apexAssistantRepairPlanResponse?.Plan is { UnresolvedQuestions.Count: 0, Operations.Count: > 0 }
+            && (!_apexAssistantRepairPlanResponse.Plan.RequiresConfirmation || ApexAssistantApprovalConfirmed);
+
+    private bool CanRevalidateApexlang()
+        => SupportsApexAssistant && !IsBusyForWorkspaceActions && SelectedWorkspace?.Snapshot is not null;
+
+    private bool CanImportApexlang()
+    {
+        if (SelectedWorkspace?.Snapshot?.Synchronization.DefaultEnvironment is not { } environment || IsBusyForWorkspaceActions)
+        {
+            return false;
+        }
+
+        if (!ApexAssistantAllowNonDevelopmentImport && !string.Equals(environment.EnvironmentName, "dev", StringComparison.OrdinalIgnoreCase) && !string.Equals(environment.EnvironmentName, "development", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return environment.State is not (WorkspaceSynchronizationState.ValidationFailed or WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead);
+    }
+
+    private bool CanOpenApexDiagnosticSource()
+        => GetPrimaryCompilerDiagnosticFilePath() is not null;
+
+    private bool CanRollBackApexlangGeneratedChange() => false;
 
     private bool CanCancelApexlangPlan() => HasApexAssistantPlan || !string.IsNullOrWhiteSpace(ApexAssistantPrompt);
 
@@ -1512,6 +1644,146 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ResetApexAssistantPanel();
         ApexAssistantExecutionSummary = "Plan cancelled.";
     }
+
+    private async Task BuildApexlangRepairPlanAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null || _apexAssistantPlanResponse?.Plan is null || _apexAssistantExecutionResponse?.CompilerValidation is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Build APEXlang Repair Plan", SelectedWorkspace.Name);
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Building semantic repair plan...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var request = BuildAssistantRequest(OracleApexAssistantPostEditBehavior.ValidateOnly);
+            var result = await _desktopShellService.BuildOracleApexRepairPlanAsync(SelectedWorkspace.RootPath, request, _apexAssistantPlanResponse.Plan, _apexAssistantExecutionResponse.CompilerValidation, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            _apexAssistantRepairPlanResponse = result.Response;
+            ApexAssistantRepairReviewText = result.Response.Review;
+            ApexAssistantStageLabel = "Repair plan available";
+            CompleteOperationTranscript(result.Transcript);
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private async Task ApplyApexlangRepairAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null || _apexAssistantRepairPlanResponse?.Plan is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Apply APEXlang Repair", SelectedWorkspace.Name);
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Applying semantic repair...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var request = BuildAssistantRequest(OracleApexAssistantPostEditBehavior.ValidateOnly);
+            var result = await _desktopShellService.ExecuteOracleApexRepairPlanAsync(SelectedWorkspace.RootPath, request, _apexAssistantRepairPlanResponse.Plan, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            ApplyApexAssistantExecutionResult(result, preservePlan: true);
+            ApexAssistantStageLabel = result.Response.Stage switch
+            {
+                OracleApexAssistantStage.SqlclValidation => "Revalidation running",
+                OracleApexAssistantStage.Preview => "Ready to import",
+                _ => "Repair applying",
+            };
+            CompleteOperationTranscript(result.Transcript);
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private async Task RevalidateApexlangAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Validate APEXlang Application", SelectedWorkspace.Name);
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Running SQLcl validation...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var environmentName = ResolveAssistantEnvironmentName(SelectedWorkspace.Snapshot);
+            var result = await _desktopShellService.ValidateOracleApexGeneratedApplicationAsync(SelectedWorkspace.RootPath, environmentName, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            ApplyValidationResult(result.Response, result.Message);
+            CompleteOperationTranscript(result.Transcript);
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private async Task ImportApexlangAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Import APEXlang Application", SelectedWorkspace.Name);
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Importing validated APEXlang source...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var environmentName = ResolveAssistantEnvironmentName(SelectedWorkspace.Snapshot);
+            var result = await _desktopShellService.ImportOracleApexGeneratedApplicationAsync(SelectedWorkspace.RootPath, environmentName, ApexAssistantAllowNonDevelopmentImport, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            ApexAssistantExecutionSummary = result.Message;
+            ApexAssistantStageLabel = result.Response.ProcessResult?.IsSuccess == false ? "Import blocked" : "Import completed";
+            RefreshAssistantEvidence(result.Snapshot);
+            CompleteOperationTranscript(result.Transcript);
+            SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
+
+    private async Task OpenApexDiagnosticSourceAsync()
+    {
+        var path = GetPrimaryCompilerDiagnosticFilePath();
+        if (path is null)
+        {
+            return;
+        }
+
+        await _desktopShellService.OpenPathAsync(path);
+    }
+
+    private void RollBackApexlangGeneratedChange()
+        => ApexAssistantExecutionSummary = "Roll back of generated source is not available yet for this workspace.";
 
     private async Task ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior behavior)
     {
@@ -1623,9 +1895,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ApexAssistantReviewText = result.Response.Review;
             ApexAssistantClassificationLabel = result.Response.Classification.ToString();
             ApexAssistantExecutionSummary = result.Message;
+            ApexAssistantStageLabel = "Plan ready for review";
             ApexAssistantChangedFilesText = string.Join(Environment.NewLine, result.Response.Plan.ExpectedChangedFiles);
             ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.UnresolvedQuestions.Concat(result.Response.Warnings));
+            ApexAssistantCompilerDiagnosticsText = string.Empty;
+            ApexAssistantRepairReviewText = string.Empty;
             ApexAssistantApprovalConfirmed = false;
+            _apexAssistantRepairPlanResponse = null;
+            _apexAssistantExecutionResponse = null;
+            RefreshAssistantEvidence(result.Snapshot);
             CompleteOperationTranscript(result.Transcript);
             SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
         }
@@ -1656,19 +1934,20 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             };
             RaiseWorkspaceActionCommandStates();
             var sink = new OperationTranscriptSink(this);
-            var request = new OracleApexAssistantRequest { Prompt = ApexAssistantPrompt, ConfirmPlan = ApexAssistantApprovalConfirmed, PostEditBehavior = behavior };
+            var request = BuildAssistantRequest(behavior);
             var result = await _desktopShellService.ExecuteOracleApexPlanAsync(SelectedWorkspace.RootPath, request, _apexAssistantPlanResponse.Plan, SelectedWorkspace.Snapshot, sink);
             ReplaceSelectedWorkspace(result.Snapshot);
-            ApexAssistantExecutionSummary = result.Message;
-            ApexAssistantChangedFilesText = string.Join(Environment.NewLine, result.Response.ChangedFiles);
-            ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.Diagnostics.Entries.Select(entry => entry.Message).Concat(result.Response.Warnings).Concat(result.Response.UnresolvedQuestions));
+            ApplyApexAssistantExecutionResult(result, preservePlan: !result.Response.IsSuccess || result.Response.SuggestedRepairPlan is not null || result.Response.ValidationResult?.Snapshot.DefaultEnvironment?.State == WorkspaceSynchronizationState.ValidationFailed);
             CompleteOperationTranscript(result.Transcript);
             if (result.Response.IsSuccess)
             {
-                _apexAssistantPlanResponse = null;
-                RaisePropertyChanged(nameof(HasApexAssistantPlan));
-                RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
-                RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+                if (result.Response.SuggestedRepairPlan is null && result.Response.Stage != OracleApexAssistantStage.SqlclValidation)
+                {
+                    _apexAssistantPlanResponse = null;
+                    RaisePropertyChanged(nameof(HasApexAssistantPlan));
+                    RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
+                    RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+                }
             }
 
             SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: false);
@@ -1684,16 +1963,155 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private void ResetApexAssistantPanel()
     {
         _apexAssistantPlanResponse = null;
+        _apexAssistantRepairPlanResponse = null;
+        _apexAssistantExecutionResponse = null;
         ApexAssistantReviewText = string.Empty;
         ApexAssistantChangedFilesText = string.Empty;
         ApexAssistantDiagnosticsText = string.Empty;
+        ApexAssistantCompilerDiagnosticsText = string.Empty;
+        ApexAssistantRepairReviewText = string.Empty;
+        ApexAssistantEvidenceText = string.Empty;
         ApexAssistantExecutionSummary = string.Empty;
         ApexAssistantClassificationLabel = string.Empty;
+        ApexAssistantStageLabel = string.Empty;
         ApexAssistantApprovalConfirmed = false;
+        ApexAssistantAllowSafeAutomaticRepair = false;
+        ApexAssistantAllowNonDevelopmentImport = false;
         RaisePropertyChanged(nameof(HasApexAssistantPlan));
         RaisePropertyChanged(nameof(ApexAssistantHasUnresolvedQuestions));
         RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
+        RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairConfigured));
+        RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairActive));
     }
+
+    private OracleApexAssistantRequest BuildAssistantRequest(OracleApexAssistantPostEditBehavior behavior)
+        => new()
+        {
+            Prompt = ApexAssistantPrompt,
+            ConfirmPlan = ApexAssistantApprovalConfirmed,
+            PostEditBehavior = behavior,
+            EnvironmentName = SelectedWorkspace?.Snapshot is null ? string.Empty : ResolveAssistantEnvironmentName(SelectedWorkspace.Snapshot),
+            EnableSafeAutomaticRepair = ApexAssistantAllowSafeAutomaticRepair,
+            AllowNonDevelopmentDeployment = ApexAssistantAllowNonDevelopmentImport,
+        };
+
+    private void ApplyApexAssistantExecutionResult(WorkspaceApexAssistantExecutionResult result, bool preservePlan)
+    {
+        _apexAssistantExecutionResponse = result.Response;
+        ApexAssistantExecutionSummary = result.Message;
+        ApexAssistantChangedFilesText = string.Join(Environment.NewLine, result.Response.ChangedFiles);
+        ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.Diagnostics.Entries.Select(entry => entry.Message).Concat(result.Response.Warnings).Concat(result.Response.UnresolvedQuestions));
+        ApexAssistantCompilerDiagnosticsText = FormatCompilerDiagnostics(result.Response.CompilerValidation);
+        ApexAssistantRepairReviewText = result.Response.RepairReview;
+        ApexAssistantStageLabel = DescribeAssistantStage(result.Response);
+        RefreshAssistantEvidence(result.Snapshot);
+        _apexAssistantRepairPlanResponse = result.Response.SuggestedRepairPlan is null
+            ? _apexAssistantRepairPlanResponse
+            : new OracleApexAssistantRepairPlanResponse { Plan = result.Response.SuggestedRepairPlan, Review = result.Response.RepairReview, CompilerValidation = result.Response.CompilerValidation ?? new OracleApexValidationResult() };
+        if (!preservePlan)
+        {
+            _apexAssistantPlanResponse = null;
+            RaisePropertyChanged(nameof(HasApexAssistantPlan));
+        }
+    }
+
+    private void ApplyValidationResult(WorkspaceSynchronizationOperationResult result, string message)
+    {
+        ApexAssistantExecutionSummary = message;
+        ApexAssistantCompilerDiagnosticsText = FormatCompilerDiagnostics(result.Validation);
+        ApexAssistantStageLabel = result.Validation?.IsSuccess == true ? "Ready to import" : "Validation failed";
+        ApexAssistantDiagnosticsText = result.Message;
+        RefreshAssistantEvidence(SelectedWorkspace?.Snapshot);
+    }
+
+    private static string DescribeAssistantStage(OracleApexAssistantExecutionResponse response)
+        => response.Stage switch
+        {
+            OracleApexAssistantStage.SemanticGeneration => "Semantic edit completed",
+            OracleApexAssistantStage.SemanticValidation => "Semantic validation",
+            OracleApexAssistantStage.SqlclValidation when response.CompilerValidation?.IsSuccess == false => "Validation failed",
+            OracleApexAssistantStage.SqlclValidation => "SQLcl validation running",
+            OracleApexAssistantStage.RepairPlanning => "Repair plan available",
+            OracleApexAssistantStage.RepairExecution => "Repair applying",
+            OracleApexAssistantStage.Import when response.SafeToContinueDeployment => "Ready to import",
+            OracleApexAssistantStage.Import => "Import blocked",
+            OracleApexAssistantStage.Preview when response.ImportResult is not null => "Import completed",
+            OracleApexAssistantStage.Preview => "Ready to import",
+            _ => string.Empty,
+        };
+
+    private string FormatCompilerDiagnostics(OracleApexValidationResult? validation)
+    {
+        if (validation is null || validation.Diagnostics.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(Environment.NewLine + Environment.NewLine, validation.Mappings.DefaultIfEmpty().Zip(validation.Diagnostics, (mapping, diagnostic) =>
+        {
+            var resolvedMapping = mapping ?? new OracleApexDiagnosticMapping { Diagnostic = diagnostic };
+            return string.Join(Environment.NewLine,
+            new[]
+            {
+                $"Severity: {diagnostic.Severity}",
+                $"Code: {diagnostic.CompilerCode}",
+                $"Message: {diagnostic.Message}",
+                $"Source: {diagnostic.FilePath}:{diagnostic.Line}:{diagnostic.Column}",
+                $"Semantic component: {resolvedMapping.WorkspaceSemanticType} {resolvedMapping.WorkspaceIdentifier}".Trim(),
+                $"Planned operation: {resolvedMapping.PlannedOperationTitle}",
+                $"Blueprint: {resolvedMapping.BlueprintModule} / {resolvedMapping.BlueprintEntity}".TrimEnd(' ', '/'),
+            }.Where(line => !string.IsNullOrWhiteSpace(line)));
+        }));
+    }
+
+    private void RefreshAssistantEvidence(WorkspaceSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            ApexAssistantEvidenceText = string.Empty;
+            return;
+        }
+
+        var evidencePath = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "evidence.json");
+        if (!File.Exists(evidencePath))
+        {
+            ApexAssistantEvidenceText = string.Empty;
+            return;
+        }
+
+        var lines = new List<string>();
+        var json = File.ReadAllText(evidencePath);
+        lines.Add("Validation and repair evidence");
+        lines.Add(json);
+        if (snapshot.Synchronization.DefaultEnvironment is { } environment)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Last validation: {environment.LastValidationUtc}");
+            lines.Add($"Last deployment: {environment.LastDeploymentUtc}");
+            lines.Add($"Deployment result: {environment.LastDeploymentResult}");
+        }
+
+        ApexAssistantEvidenceText = string.Join(Environment.NewLine, lines);
+        RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairConfigured));
+        RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairActive));
+    }
+
+    private static bool ReadSafeAutomaticRepairConfigured(WorkspaceSnapshot? snapshot)
+        => snapshot is not null && File.Exists(Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "settings.json"));
+
+    private string? GetPrimaryCompilerDiagnosticFilePath()
+    {
+        var file = _apexAssistantExecutionResponse?.CompilerValidation?.Diagnostics.FirstOrDefault(diagnostic => !string.IsNullOrWhiteSpace(diagnostic.FilePath))?.FilePath;
+        if (string.IsNullOrWhiteSpace(file) || SelectedWorkspace is null)
+        {
+            return null;
+        }
+
+        return Path.Combine(SelectedWorkspace.RootPath, file.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    private static string ResolveAssistantEnvironmentName(WorkspaceSnapshot snapshot)
+        => snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? snapshot.Definition.Oracle.Apex.DefaultEnvironment ?? "dev";
 
     private bool CanOpenOracleService(string serviceName)
         => SelectedWorkspace?.Snapshot?.AvailableServices.Any(item => string.Equals(item.Name, serviceName, StringComparison.OrdinalIgnoreCase) && (!string.IsNullOrWhiteSpace(item.HostUrl) || !string.IsNullOrWhiteSpace(item.DocsPath))) == true;
@@ -4103,9 +4521,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ApplyApexlangSourceOnlyCommand.RaiseCanExecuteChanged();
         ApplyApexlangValidateOnlyCommand.RaiseCanExecuteChanged();
         ApplyApexlangValidateAndImportCommand.RaiseCanExecuteChanged();
+        BuildApexlangRepairPlanCommand.RaiseCanExecuteChanged();
+        ApplyApexlangRepairCommand.RaiseCanExecuteChanged();
+        RevalidateApexlangCommand.RaiseCanExecuteChanged();
+        ImportApexlangCommand.RaiseCanExecuteChanged();
         CancelApexlangPlanCommand.RaiseCanExecuteChanged();
         ShowApexlangChangedFilesCommand.RaiseCanExecuteChanged();
         ShowApexlangDiagnosticsCommand.RaiseCanExecuteChanged();
+        OpenApexDiagnosticSourceCommand.RaiseCanExecuteChanged();
+        RollBackApexlangGeneratedChangeCommand.RaiseCanExecuteChanged();
         OpenApexApplicationCommand.RaiseCanExecuteChanged();
         OpenApexBuilderCommand.RaiseCanExecuteChanged();
         RefreshWorkspacePresentations();
