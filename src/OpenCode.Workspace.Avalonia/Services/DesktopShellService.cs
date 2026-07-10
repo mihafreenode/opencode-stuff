@@ -1357,6 +1357,36 @@ public sealed class DesktopShellService : IDesktopShellService
         };
     }
 
+    public async Task<WorkspaceApexAssistantRollbackResult> RollBackOracleApexGeneratedChangeAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
+    {
+        var transcript = CreateTranscript("Roll Back APEXlang Generated Change", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out _);
+        var snapshot = currentSnapshot ?? await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: false, includeSessionInspection: false);
+        append(OperationTranscriptLineKind.Status, "Validating rollback manifest");
+        var response = await _oracleApexAssistantService.RollBackGeneratedChangeAsync(snapshot, environmentName, cancellationToken);
+        append(OperationTranscriptLineKind.Result, response.Summary);
+        var refreshed = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
+        transcript.CompletedUtc = DateTimeOffset.UtcNow;
+        transcript.Succeeded = response.IsSuccess;
+        return new WorkspaceApexAssistantRollbackResult
+        {
+            Snapshot = CloneSnapshotWithAssistantState(refreshed, new WorkspaceApexAssistantSnapshot
+            {
+                State = response.IsSuccess ? WorkspaceApexAssistantState.RolledBack : WorkspaceApexAssistantState.Failed,
+                Summary = response.Summary,
+                WasRolledBack = response.IsSuccess,
+                CanOpenApplication = refreshed.AvailableServices.Any(service => string.Equals(service.Name, "App Home", StringComparison.OrdinalIgnoreCase)),
+                CanOpenBuilder = refreshed.AvailableServices.Any(service => string.Equals(service.Name, "APEX Builder", StringComparison.OrdinalIgnoreCase)),
+                ChangedFiles = response.RestoredFiles,
+                RollbackAvailable = response.RollbackManifest?.RollbackState == OracleApexAssistantRollbackState.Available,
+                RollbackBlockedReason = response.RollbackManifest?.RollbackBlockedReason ?? string.Empty,
+                RollbackState = response.RollbackState,
+            }),
+            Message = response.Summary,
+            Transcript = transcript,
+            Response = response,
+        };
+    }
+
     public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
         => RunSynchronizationOperationAsync(rootPath, currentSnapshot, logSink, cancellationToken, "Validate", snapshot => _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, deploymentProfileOverride: deploymentProfileOverride, cancellationToken: cancellationToken));
 
@@ -1633,6 +1663,34 @@ public sealed class DesktopShellService : IDesktopShellService
         startInfo.UseShellExecute = false;
         Process.Start(startInfo);
         return Task.CompletedTask;
+    }
+
+    public async Task<WorkspaceSourceNavigationResult> OpenSourceLocationAsync(string path, int line, int column, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var gotoTarget = $"{path}:{Math.Max(1, line)}:{Math.Max(1, column)}";
+                var startInfo = new ProcessStartInfo("cmd.exe", $"/c code --goto \"{gotoTarget}\"") { UseShellExecute = false, CreateNoWindow = true };
+                using var process = Process.Start(startInfo);
+                if (process is not null)
+                {
+                    return new WorkspaceSourceNavigationResult { Message = $"Opened {gotoTarget}.", UsedFallback = false };
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        await OpenPathAsync(path, cancellationToken);
+        return new WorkspaceSourceNavigationResult
+        {
+            Message = $"Opened '{path}'. Requested location: line {line}, column {column}.",
+            UsedFallback = true,
+        };
     }
 
     public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)

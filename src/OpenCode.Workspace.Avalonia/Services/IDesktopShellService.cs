@@ -41,6 +41,7 @@ public interface IDesktopShellService
     Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
     Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
     Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, bool allowNonDevelopmentDeployment, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceApexAssistantRollbackResult> RollBackOracleApexGeneratedChangeAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
     Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
     Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default);
     Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
@@ -60,4 +61,5 @@ public interface IDesktopShellService
     Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default);
     Task<RuntimeResourceCleanupResult> CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default);
     Task OpenPathAsync(string path, CancellationToken cancellationToken = default);
+    Task<WorkspaceSourceNavigationResult> OpenSourceLocationAsync(string path, int line, int column, CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenCode.Workspace.Core.Models;
@@ -83,6 +85,168 @@ public sealed class OracleApexValidationFeedbackService
         }
 
         File.WriteAllText(statePath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }).Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    public OracleApexAssistantWorkspaceEvidenceState ReadEvidence(WorkspaceSnapshot snapshot)
+    {
+        var statePath = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "evidence.json");
+        return File.Exists(statePath)
+            ? JsonSerializer.Deserialize<OracleApexAssistantWorkspaceEvidenceState>(File.ReadAllText(statePath)) ?? new OracleApexAssistantWorkspaceEvidenceState()
+            : new OracleApexAssistantWorkspaceEvidenceState();
+    }
+
+    public void AppendEvidenceEntry(WorkspaceSnapshot snapshot, OracleApexAssistantEvidenceEntry entry)
+    {
+        var knowledgeRoot = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant");
+        Directory.CreateDirectory(knowledgeRoot);
+        var statePath = Path.Combine(knowledgeRoot, "evidence.json");
+        var state = ReadEvidence(snapshot);
+        var entries = state.Entries.ToList();
+        entries.Add(entry);
+        if (entries.Count > 20)
+        {
+            entries = entries.OrderByDescending(item => item.TimestampUtc).Take(20).OrderBy(item => item.TimestampUtc).ToList();
+        }
+
+        var updated = new OracleApexAssistantWorkspaceEvidenceState
+        {
+            ValidationByComponentType = state.ValidationByComponentType,
+            MissingProperties = state.MissingProperties,
+            FailedBlueprintOperations = state.FailedBlueprintOperations,
+            AppliedRepairActions = state.AppliedRepairActions,
+            Entries = entries,
+        };
+        File.WriteAllText(statePath, JsonSerializer.Serialize(updated, new JsonSerializerOptions { WriteIndented = true }).Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    public OracleApexAssistantRollbackManifest? ReadRollbackManifest(WorkspaceSnapshot snapshot)
+    {
+        var manifestPath = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "rollback-manifest.json");
+        return File.Exists(manifestPath)
+            ? JsonSerializer.Deserialize<OracleApexAssistantRollbackManifest>(File.ReadAllText(manifestPath))
+            : null;
+    }
+
+    public void WriteRollbackManifest(WorkspaceSnapshot snapshot, OracleApexAssistantRollbackManifest manifest)
+    {
+        var knowledgeRoot = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant");
+        Directory.CreateDirectory(knowledgeRoot);
+        var manifestPath = Path.Combine(knowledgeRoot, "rollback-manifest.json");
+        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }).Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    public OracleApexAssistantRollbackManifest CreateRollbackManifest(WorkspaceSnapshot snapshot, string environmentName, string sourcePath, IReadOnlyList<string> changedFiles)
+    {
+        var executionId = $"apex-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}";
+        var transactionRoot = Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "transactions", executionId, "before");
+        Directory.CreateDirectory(transactionRoot);
+        var files = new List<OracleApexAssistantRollbackFile>();
+        foreach (var changedFile in changedFiles.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var relativePath = NormalizeRelativePath(snapshot.Paths.RootPath, changedFile);
+            var absolutePath = ResolveManifestAbsolutePath(snapshot.Paths.RootPath, sourcePath, relativePath);
+            var backupRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+            var backupAbsolutePath = Path.Combine(transactionRoot, backupRelativePath);
+            var existedBefore = File.Exists(absolutePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(backupAbsolutePath)!);
+            if (existedBefore)
+            {
+                File.Copy(absolutePath, backupAbsolutePath, overwrite: true);
+            }
+
+            files.Add(new OracleApexAssistantRollbackFile
+            {
+                RelativePath = relativePath,
+                OriginalHash = existedBefore ? ComputeFileHash(absolutePath) : string.Empty,
+                BackupRelativePath = NormalizeRelativePath(snapshot.Paths.OpencodePath, backupAbsolutePath),
+                ExistedBeforeExecution = existedBefore,
+            });
+        }
+
+        return new OracleApexAssistantRollbackManifest
+        {
+            ExecutionId = executionId,
+            TimestampUtc = DateTimeOffset.UtcNow,
+            EnvironmentName = environmentName,
+            SourcePath = sourcePath,
+            RollbackState = OracleApexAssistantRollbackState.Available,
+            Files = files,
+        };
+    }
+
+    public OracleApexAssistantRollbackManifest FinalizeRollbackManifest(WorkspaceSnapshot snapshot, OracleApexAssistantRollbackManifest manifest)
+        => new()
+        {
+            ExecutionId = manifest.ExecutionId,
+            TimestampUtc = manifest.TimestampUtc,
+            EnvironmentName = manifest.EnvironmentName,
+            SourcePath = manifest.SourcePath,
+            RollbackState = manifest.RollbackState,
+                RollbackBlockedReason = manifest.RollbackBlockedReason,
+                RollbackResult = manifest.RollbackResult,
+                Files = manifest.Files.Select(file => new OracleApexAssistantRollbackFile
+                {
+                    RelativePath = file.RelativePath,
+                    OriginalHash = file.OriginalHash,
+                    PostExecutionHash = ComputeCurrentHash(snapshot.Paths.RootPath, manifest.SourcePath, file.RelativePath),
+                    BackupRelativePath = file.BackupRelativePath,
+                    ExistedBeforeExecution = file.ExistedBeforeExecution,
+                }).ToList(),
+        };
+
+    public (bool IsSafe, string Reason) CanRollback(WorkspaceSnapshot snapshot, OracleApexAssistantRollbackManifest? manifest)
+    {
+        if (manifest is null)
+        {
+            return (false, "No assistant rollback manifest is available.");
+        }
+
+        if (manifest.RollbackState == OracleApexAssistantRollbackState.Completed)
+        {
+            return (false, "Rollback already completed for this assistant transaction.");
+        }
+
+        var changedAfterExecution = new List<string>();
+        foreach (var file in manifest.Files)
+        {
+            var absolutePath = ResolveManifestAbsolutePath(snapshot.Paths.RootPath, manifest.SourcePath, file.RelativePath);
+            var currentHash = File.Exists(absolutePath) ? ComputeFileHash(absolutePath) : string.Empty;
+            if (!string.Equals(currentHash, file.PostExecutionHash, StringComparison.OrdinalIgnoreCase))
+            {
+                changedAfterExecution.Add(file.RelativePath);
+            }
+        }
+
+        return changedAfterExecution.Count > 0
+            ? (false, $"Later edits were detected in: {string.Join(", ", changedAfterExecution)}")
+            : (true, string.Empty);
+    }
+
+    public static string ComputeFileHash(string path)
+    {
+        using var sha = SHA256.Create();
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(sha.ComputeHash(stream));
+    }
+
+    private static string NormalizeRelativePath(string rootPath, string path)
+        => Path.IsPathRooted(path)
+            ? Path.GetRelativePath(rootPath, path).Replace(Path.DirectorySeparatorChar, '/')
+            : path.Replace(Path.DirectorySeparatorChar, '/');
+
+    private static string ComputeCurrentHash(string rootPath, string sourcePath, string relativePath)
+    {
+        var absolutePath = ResolveManifestAbsolutePath(rootPath, sourcePath, relativePath);
+        return File.Exists(absolutePath) ? ComputeFileHash(absolutePath) : string.Empty;
+    }
+
+    private static string ResolveManifestAbsolutePath(string rootPath, string sourcePath, string relativePath)
+    {
+        var normalizedRelative = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        var normalizedSource = sourcePath.Replace('/', Path.DirectorySeparatorChar);
+        return normalizedRelative.StartsWith(normalizedSource + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(rootPath, normalizedRelative)
+            : Path.Combine(rootPath, normalizedSource, normalizedRelative);
     }
 
     public OracleApexAssistantWorkspaceSettings ReadWorkspaceSettings(WorkspaceSnapshot snapshot)

@@ -63,6 +63,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private string _apexAssistantCompilerDiagnosticsText = string.Empty;
     private string _apexAssistantRepairReviewText = string.Empty;
     private string _apexAssistantEvidenceText = string.Empty;
+    private string _apexAssistantSelectedDiagnosticText = string.Empty;
     private string _apexAssistantExecutionSummary = string.Empty;
     private string _apexAssistantClassificationLabel = string.Empty;
     private string _apexAssistantStageLabel = string.Empty;
@@ -72,6 +73,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private OracleApexAssistantPlanResponse? _apexAssistantPlanResponse;
     private OracleApexAssistantRepairPlanResponse? _apexAssistantRepairPlanResponse;
     private OracleApexAssistantExecutionResponse? _apexAssistantExecutionResponse;
+    private int _apexAssistantSelectedDiagnosticIndex;
 
     public WorkspacesPageViewModel(IDesktopShellService desktopShellService, IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest>? templates = null)
         : base("Workspaces", "Inspect local workspaces, repository state, and runtime readiness.")
@@ -106,7 +108,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RevalidateApexlangCommand = new AsyncRelayCommand(RevalidateApexlangAsync, CanRevalidateApexlang);
         ImportApexlangCommand = new AsyncRelayCommand(ImportApexlangAsync, CanImportApexlang);
         OpenApexDiagnosticSourceCommand = new AsyncRelayCommand(OpenApexDiagnosticSourceAsync, CanOpenApexDiagnosticSource);
-        RollBackApexlangGeneratedChangeCommand = new RelayCommand(RollBackApexlangGeneratedChange, CanRollBackApexlangGeneratedChange);
+        NextApexDiagnosticCommand = new RelayCommand(SelectNextApexDiagnostic, CanSelectNextApexDiagnostic);
+        PreviousApexDiagnosticCommand = new RelayCommand(SelectPreviousApexDiagnostic, CanSelectPreviousApexDiagnostic);
+        CopyApexDiagnosticCommand = new AsyncRelayCommand(CopyApexDiagnosticAsync, CanCopyApexDiagnostic);
+        RollBackApexlangGeneratedChangeCommand = new AsyncRelayCommand(RollBackApexlangGeneratedChangeAsync, CanRollBackApexlangGeneratedChange);
         CancelApexlangPlanCommand = new RelayCommand(CancelApexlangPlan, CanCancelApexlangPlan);
         ShowApexlangChangedFilesCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantChangedFiles);
         ShowApexlangDiagnosticsCommand = new RelayCommand(() => SetSelectedWorkspaceTab(AssistantTabIndex, markAsManual: true), () => HasApexAssistantDiagnostics);
@@ -152,7 +157,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public AsyncRelayCommand RevalidateApexlangCommand { get; }
     public AsyncRelayCommand ImportApexlangCommand { get; }
     public AsyncRelayCommand OpenApexDiagnosticSourceCommand { get; }
-    public RelayCommand RollBackApexlangGeneratedChangeCommand { get; }
+    public RelayCommand NextApexDiagnosticCommand { get; }
+    public RelayCommand PreviousApexDiagnosticCommand { get; }
+    public AsyncRelayCommand CopyApexDiagnosticCommand { get; }
+    public AsyncRelayCommand RollBackApexlangGeneratedChangeCommand { get; }
     public RelayCommand CancelApexlangPlanCommand { get; }
     public RelayCommand ShowApexlangChangedFilesCommand { get; }
     public RelayCommand ShowApexlangDiagnosticsCommand { get; }
@@ -277,11 +285,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool HasApexAssistantCompilerDiagnostics => !string.IsNullOrWhiteSpace(ApexAssistantCompilerDiagnosticsText);
     public bool HasApexAssistantRepairReview => !string.IsNullOrWhiteSpace(ApexAssistantRepairReviewText);
     public bool HasApexAssistantEvidence => !string.IsNullOrWhiteSpace(ApexAssistantEvidenceText);
+    public bool HasSelectedApexDiagnostic => !string.IsNullOrWhiteSpace(ApexAssistantSelectedDiagnosticText);
     public bool ApexAssistantHasUnresolvedQuestions => _apexAssistantPlanResponse?.UnresolvedQuestions.Count > 0;
     public bool ApexAssistantConfirmationRequired => _apexAssistantPlanResponse?.ConfirmationRequired == true;
     public bool CanOpenApexPreviewActions => SelectedWorkspace?.Snapshot?.Assistant is { State: WorkspaceApexAssistantState.Completed };
     public bool ApexAssistantSafeAutomaticRepairConfigured => ReadSafeAutomaticRepairConfigured(SelectedWorkspace?.Snapshot);
     public bool ApexAssistantSafeAutomaticRepairActive => ApexAssistantSafeAutomaticRepairConfigured && ApexAssistantAllowSafeAutomaticRepair;
+    public string ApexAssistantDiagnosticPositionLabel => GetSelectedDiagnosticCount() == 0 ? string.Empty : $"Diagnostic {ApexAssistantSelectedDiagnosticIndex + 1} of {GetSelectedDiagnosticCount()}";
+    public bool ApexAssistantRollbackAvailable => _apexAssistantExecutionResponse?.RollbackManifest?.RollbackState == OracleApexAssistantRollbackState.Available;
+    public string ApexAssistantRollbackBlockedReason => _apexAssistantExecutionResponse?.RollbackManifest?.RollbackBlockedReason ?? string.Empty;
+    public bool HasApexAssistantRollbackBlockedReason => !string.IsNullOrWhiteSpace(ApexAssistantRollbackBlockedReason);
     public bool ShowMainRecoverySection => IsSelectedWorkspaceNeedsRebuild && !string.IsNullOrWhiteSpace(DetailSummary);
     public bool ShowMainTroubleshootingSection => IsSelectedWorkspaceUnavailable && HasDetailAdvancedActions;
     public string WorkspaceProgressTitle => string.IsNullOrWhiteSpace(CurrentWorkspaceOperationName) ? "No active workspace operation" : CurrentWorkspaceOperationName;
@@ -397,6 +410,18 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
     }
 
+    public string ApexAssistantSelectedDiagnosticText
+    {
+        get => _apexAssistantSelectedDiagnosticText;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantSelectedDiagnosticText, value))
+            {
+                RaisePropertyChanged(nameof(HasSelectedApexDiagnostic));
+            }
+        }
+    }
+
     public string ApexAssistantEvidenceText
     {
         get => _apexAssistantEvidenceText;
@@ -462,6 +487,23 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             if (SetProperty(ref _apexAssistantAllowNonDevelopmentImport, value))
             {
                 ImportApexlangCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public int ApexAssistantSelectedDiagnosticIndex
+    {
+        get => _apexAssistantSelectedDiagnosticIndex;
+        private set
+        {
+            if (SetProperty(ref _apexAssistantSelectedDiagnosticIndex, value))
+            {
+                RefreshSelectedDiagnosticText();
+                RaisePropertyChanged(nameof(ApexAssistantDiagnosticPositionLabel));
+                OpenApexDiagnosticSourceCommand.RaiseCanExecuteChanged();
+                NextApexDiagnosticCommand.RaiseCanExecuteChanged();
+                PreviousApexDiagnosticCommand.RaiseCanExecuteChanged();
+                CopyApexDiagnosticCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -1613,9 +1655,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private bool CanOpenApexDiagnosticSource()
-        => GetPrimaryCompilerDiagnosticFilePath() is not null;
+        => GetSelectedCompilerDiagnostic() is not null;
 
-    private bool CanRollBackApexlangGeneratedChange() => false;
+    private bool CanSelectNextApexDiagnostic()
+        => ApexAssistantSelectedDiagnosticIndex + 1 < GetSelectedDiagnosticCount();
+
+    private bool CanSelectPreviousApexDiagnostic()
+        => ApexAssistantSelectedDiagnosticIndex > 0 && GetSelectedDiagnosticCount() > 0;
+
+    private bool CanCopyApexDiagnostic()
+        => _clipboardService is not null && GetSelectedCompilerDiagnostic() is not null;
+
+    private bool CanRollBackApexlangGeneratedChange()
+        => !IsBusyForWorkspaceActions && ApexAssistantRollbackAvailable;
 
     private bool CanCancelApexlangPlan() => HasApexAssistantPlan || !string.IsNullOrWhiteSpace(ApexAssistantPrompt);
 
@@ -1773,17 +1825,75 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private async Task OpenApexDiagnosticSourceAsync()
     {
-        var path = GetPrimaryCompilerDiagnosticFilePath();
-        if (path is null)
+        var diagnostic = GetSelectedCompilerDiagnostic();
+        if (diagnostic is null || SelectedWorkspace is null)
         {
             return;
         }
 
-        await _desktopShellService.OpenPathAsync(path);
+        var path = Path.Combine(SelectedWorkspace.RootPath, diagnostic.FilePath.Replace('/', Path.DirectorySeparatorChar));
+        var result = await _desktopShellService.OpenSourceLocationAsync(path, diagnostic.Line, diagnostic.Column);
+        if (result.UsedFallback)
+        {
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = result.Message });
+        }
     }
 
-    private void RollBackApexlangGeneratedChange()
-        => ApexAssistantExecutionSummary = "Roll back of generated source is not available yet for this workspace.";
+    private void SelectNextApexDiagnostic()
+    {
+        if (CanSelectNextApexDiagnostic())
+        {
+            ApexAssistantSelectedDiagnosticIndex++;
+        }
+    }
+
+    private void SelectPreviousApexDiagnostic()
+    {
+        if (CanSelectPreviousApexDiagnostic())
+        {
+            ApexAssistantSelectedDiagnosticIndex--;
+        }
+    }
+
+    private async Task CopyApexDiagnosticAsync()
+    {
+        if (_clipboardService is null || GetSelectedCompilerDiagnostic() is null)
+        {
+            return;
+        }
+
+        await _clipboardService.SetTextAsync(ApexAssistantSelectedDiagnosticText);
+    }
+
+    private async Task RollBackApexlangGeneratedChangeAsync()
+    {
+        if (SelectedWorkspace?.Snapshot is null || !ApexAssistantRollbackAvailable)
+        {
+            return;
+        }
+
+        StartOperationTranscript("Roll Back APEXlang Generated Change", SelectedWorkspace.Name);
+        try
+        {
+            _isWorkspaceActionRunning = true;
+            _workspaceActionStatusMessage = "Rolling back assistant-generated changes...";
+            RaiseWorkspaceActionCommandStates();
+            var sink = new OperationTranscriptSink(this);
+            var environmentName = ResolveAssistantEnvironmentName(SelectedWorkspace.Snapshot);
+            var result = await _desktopShellService.RollBackOracleApexGeneratedChangeAsync(SelectedWorkspace.RootPath, environmentName, SelectedWorkspace.Snapshot, sink);
+            ReplaceSelectedWorkspace(result.Snapshot);
+            ApexAssistantExecutionSummary = result.Message;
+            ApexAssistantStageLabel = result.Response.IsSuccess ? "Rollback completed" : "Rollback blocked";
+            RefreshAssistantEvidence(result.Snapshot);
+            CompleteOperationTranscript(result.Transcript);
+        }
+        finally
+        {
+            _isWorkspaceActionRunning = false;
+            RaiseWorkspaceActionCommandStates();
+            UpdateDetailPanel();
+        }
+    }
 
     private async Task ExecuteApexlangPlanAsync(OracleApexAssistantPostEditBehavior behavior)
     {
@@ -1900,6 +2010,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             ApexAssistantDiagnosticsText = string.Join(Environment.NewLine, result.Response.UnresolvedQuestions.Concat(result.Response.Warnings));
             ApexAssistantCompilerDiagnosticsText = string.Empty;
             ApexAssistantRepairReviewText = string.Empty;
+            ApexAssistantSelectedDiagnosticIndex = 0;
+            ApexAssistantSelectedDiagnosticText = string.Empty;
             ApexAssistantApprovalConfirmed = false;
             _apexAssistantRepairPlanResponse = null;
             _apexAssistantExecutionResponse = null;
@@ -1971,6 +2083,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ApexAssistantCompilerDiagnosticsText = string.Empty;
         ApexAssistantRepairReviewText = string.Empty;
         ApexAssistantEvidenceText = string.Empty;
+        ApexAssistantSelectedDiagnosticText = string.Empty;
         ApexAssistantExecutionSummary = string.Empty;
         ApexAssistantClassificationLabel = string.Empty;
         ApexAssistantStageLabel = string.Empty;
@@ -1982,6 +2095,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         RaisePropertyChanged(nameof(ApexAssistantConfirmationRequired));
         RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairConfigured));
         RaisePropertyChanged(nameof(ApexAssistantSafeAutomaticRepairActive));
+        RaisePropertyChanged(nameof(ApexAssistantRollbackAvailable));
+        RaisePropertyChanged(nameof(ApexAssistantRollbackBlockedReason));
+        RaisePropertyChanged(nameof(HasApexAssistantRollbackBlockedReason));
     }
 
     private OracleApexAssistantRequest BuildAssistantRequest(OracleApexAssistantPostEditBehavior behavior)
@@ -2005,6 +2121,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ApexAssistantRepairReviewText = result.Response.RepairReview;
         ApexAssistantStageLabel = DescribeAssistantStage(result.Response);
         RefreshAssistantEvidence(result.Snapshot);
+        ApexAssistantSelectedDiagnosticIndex = 0;
+        RaisePropertyChanged(nameof(ApexAssistantRollbackAvailable));
+        RaisePropertyChanged(nameof(ApexAssistantRollbackBlockedReason));
+        RaisePropertyChanged(nameof(HasApexAssistantRollbackBlockedReason));
         _apexAssistantRepairPlanResponse = result.Response.SuggestedRepairPlan is null
             ? _apexAssistantRepairPlanResponse
             : new OracleApexAssistantRepairPlanResponse { Plan = result.Response.SuggestedRepairPlan, Review = result.Response.RepairReview, CompilerValidation = result.Response.CompilerValidation ?? new OracleApexValidationResult() };
@@ -2022,6 +2142,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         ApexAssistantStageLabel = result.Validation?.IsSuccess == true ? "Ready to import" : "Validation failed";
         ApexAssistantDiagnosticsText = result.Message;
         RefreshAssistantEvidence(SelectedWorkspace?.Snapshot);
+        ApexAssistantSelectedDiagnosticIndex = 0;
+        RaisePropertyChanged(nameof(ApexAssistantRollbackAvailable));
+        RaisePropertyChanged(nameof(ApexAssistantRollbackBlockedReason));
+        RaisePropertyChanged(nameof(HasApexAssistantRollbackBlockedReason));
     }
 
     private static string DescribeAssistantStage(OracleApexAssistantExecutionResponse response)
@@ -2099,15 +2223,31 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     private static bool ReadSafeAutomaticRepairConfigured(WorkspaceSnapshot? snapshot)
         => snapshot is not null && File.Exists(Path.Combine(snapshot.Paths.OpencodePath, "knowledge", "apex-assistant", "settings.json"));
 
-    private string? GetPrimaryCompilerDiagnosticFilePath()
+    private OracleApexCompilerDiagnostic? GetSelectedCompilerDiagnostic()
     {
-        var file = _apexAssistantExecutionResponse?.CompilerValidation?.Diagnostics.FirstOrDefault(diagnostic => !string.IsNullOrWhiteSpace(diagnostic.FilePath))?.FilePath;
-        if (string.IsNullOrWhiteSpace(file) || SelectedWorkspace is null)
-        {
-            return null;
-        }
+        var diagnostics = _apexAssistantExecutionResponse?.CompilerValidation?.Diagnostics;
+        return diagnostics is null || diagnostics.Count == 0 || ApexAssistantSelectedDiagnosticIndex < 0 || ApexAssistantSelectedDiagnosticIndex >= diagnostics.Count
+            ? null
+            : diagnostics[ApexAssistantSelectedDiagnosticIndex];
+    }
 
-        return Path.Combine(SelectedWorkspace.RootPath, file.Replace('/', Path.DirectorySeparatorChar));
+    private int GetSelectedDiagnosticCount()
+        => _apexAssistantExecutionResponse?.CompilerValidation?.Diagnostics.Count ?? 0;
+
+    private void RefreshSelectedDiagnosticText()
+    {
+        var diagnostic = GetSelectedCompilerDiagnostic();
+        ApexAssistantSelectedDiagnosticText = diagnostic is null
+            ? string.Empty
+            : string.Join(Environment.NewLine,
+            [
+                $"Severity: {diagnostic.Severity}",
+                $"Code: {diagnostic.CompilerCode}",
+                $"Message: {diagnostic.Message}",
+                $"File: {diagnostic.FilePath}",
+                $"Line: {diagnostic.Line}",
+                $"Column: {diagnostic.Column}",
+            ]);
     }
 
     private static string ResolveAssistantEnvironmentName(WorkspaceSnapshot snapshot)

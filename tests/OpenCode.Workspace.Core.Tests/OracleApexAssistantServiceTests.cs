@@ -355,6 +355,119 @@ public sealed class OracleApexAssistantServiceTests
     }
 
     [Fact]
+    public async Task ExecutePlan_SuccessfulExecution_CreatesRollbackManifest()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+            var snapshot = CreateSnapshot(root);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            var response = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, plan);
+
+            Assert.True(response.IsSuccess);
+            Assert.NotNull(response.RollbackManifest);
+            Assert.Equal(OracleApexAssistantRollbackState.Available, response.RollbackManifest!.RollbackState);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task Rollback_BeforeExecution_IsUnavailable()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+
+            var response = await service.RollBackGeneratedChangeAsync(CreateSnapshot(root));
+
+            Assert.False(response.IsSuccess);
+            Assert.Equal(OracleApexAssistantRollbackState.Blocked, response.RollbackState);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task Rollback_RestoresOnlyAssistantTouchedFiles()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var untouchedPath = Path.Combine(root, "src", "apex", "readme.txt");
+            File.WriteAllText(untouchedPath, "keep me\n");
+            var service = new OracleApexAssistantService(new FakeSyncService());
+            var snapshot = CreateSnapshot(root);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            var execution = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, plan);
+            var rollback = await service.RollBackGeneratedChangeAsync(snapshot);
+            var rebuilt = new OracleApexWorkspaceIndexBuilder().Build(root, CreateEnvironment(), "dev");
+
+            Assert.True(rollback.IsSuccess);
+            Assert.DoesNotContain(rebuilt.Pages, page => page.Identifier == "Reports");
+            Assert.Equal("keep me\n", File.ReadAllText(untouchedPath));
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task Rollback_LaterEditsToTouchedFiles_BlockRestore()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+            var snapshot = CreateSnapshot(root);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            var execution = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, plan);
+            var reportsPath = Path.Combine(root, "src", "apex", "pages", "p00003-reports.apx");
+            File.AppendAllText(reportsPath, "-- later user edit\n");
+
+            var rollback = await service.RollBackGeneratedChangeAsync(snapshot);
+
+            Assert.False(rollback.IsSuccess);
+            Assert.Equal(OracleApexAssistantRollbackState.Blocked, rollback.RollbackState);
+            Assert.Contains("later edits", rollback.Summary, StringComparison.OrdinalIgnoreCase);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task Rollback_RecordsEvidenceAndRefreshesSynchronization()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WriteValidPackage(root);
+            WriteAtlasState(root);
+            var sync = new FakeSyncService();
+            var service = new OracleApexAssistantService(sync);
+            var snapshot = CreateSnapshot(root);
+            var plan = service.CreatePlan(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+
+            await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, plan);
+            var rollback = await service.RollBackGeneratedChangeAsync(snapshot);
+            var evidence = new OracleApexValidationFeedbackService().ReadEvidence(snapshot);
+
+            Assert.True(rollback.IsSuccess);
+            Assert.NotNull(rollback.Synchronization);
+            Assert.Contains(evidence.Entries, entry => string.Equals(entry.RollbackResult, "Rollback completed.", StringComparison.Ordinal));
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
     public void OracleApexLangSkill_ProhibitsRawApxMutation()
     {
         var definition = CreateDefinition();

@@ -97,6 +97,7 @@ public sealed class OracleApexAssistantService
             };
         }
 
+        var rollbackManifest = _validationFeedbackService.CreateRollbackManifest(snapshot, environmentName, environment.SourcePath ?? "src/apex", plan.ExpectedChangedFiles);
         var execution = _intentPlanner.ExecutePlan(snapshot.Paths.RootPath, environment, environmentName, plan, confirmDestructive: request.ConfirmPlan);
         if (!execution.IsSuccess)
         {
@@ -108,8 +109,12 @@ public sealed class OracleApexAssistantService
                 Diagnostics = execution.Diagnostics,
                 WorkspaceIndex = execution.WorkspaceIndex,
                 PostEditBehavior = postEditBehavior,
+                RollbackManifest = rollbackManifest,
             };
         }
+
+        rollbackManifest = _validationFeedbackService.FinalizeRollbackManifest(snapshot, rollbackManifest);
+        _validationFeedbackService.WriteRollbackManifest(snapshot, rollbackManifest);
 
         WorkspaceSynchronizationOperationResult? validationResult = null;
         WorkspaceSynchronizationOperationResult? importResult = null;
@@ -154,6 +159,7 @@ public sealed class OracleApexAssistantService
                 if (validationResult.Snapshot.DefaultEnvironment?.State == WorkspaceSynchronizationState.ValidationFailed || validationResult.ProcessResult?.IsSuccess == false)
                 {
                     deploymentSafe = false;
+                    _validationFeedbackService.AppendEvidenceEntry(snapshot, BuildEvidenceEntry(rollbackManifest.ExecutionId, execution.ChangedFiles, compilerValidation, repairPlan is null ? string.Empty : "Repair plan available", string.Empty, OracleApexAssistantRollbackState.Available, string.Empty));
                     return new OracleApexAssistantExecutionResponse
                     {
                         IsSuccess = true,
@@ -169,6 +175,7 @@ public sealed class OracleApexAssistantService
                         SafeToContinueDeployment = false,
                         Stage = OracleApexAssistantStage.SqlclValidation,
                         GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+                        RollbackManifest = rollbackManifest,
                     };
                 }
             }
@@ -181,6 +188,7 @@ public sealed class OracleApexAssistantService
                 : validationResult?.Snapshot.DefaultEnvironment?.State ?? snapshot.Synchronization.DefaultEnvironment?.State ?? WorkspaceSynchronizationState.Unknown;
             if (syncState is WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead)
             {
+                _validationFeedbackService.AppendEvidenceEntry(snapshot, BuildEvidenceEntry(rollbackManifest.ExecutionId, execution.ChangedFiles, compilerValidation, repairPlan is null ? string.Empty : "Repair plan available", $"Blocked by synchronization state {syncState}", OracleApexAssistantRollbackState.Available, string.Empty));
                 return new OracleApexAssistantExecutionResponse
                 {
                     IsSuccess = true,
@@ -195,11 +203,13 @@ public sealed class OracleApexAssistantService
                     Warnings = [$"Synchronization state '{syncState}' blocks automatic import."],
                     Stage = OracleApexAssistantStage.Import,
                     GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+                    RollbackManifest = rollbackManifest,
                 };
             }
 
             if (!IsDevelopmentEnvironment(environmentName) && !request.AllowNonDevelopmentDeployment)
             {
+                _validationFeedbackService.AppendEvidenceEntry(snapshot, BuildEvidenceEntry(rollbackManifest.ExecutionId, execution.ChangedFiles, compilerValidation, repairPlan is null ? string.Empty : "Repair plan available", $"Blocked for non-development environment {environmentName}", OracleApexAssistantRollbackState.Available, string.Empty));
                 return new OracleApexAssistantExecutionResponse
                 {
                     IsSuccess = true,
@@ -214,6 +224,7 @@ public sealed class OracleApexAssistantService
                     Warnings = [$"Environment '{environmentName}' requires explicit override before deployment."],
                     Stage = OracleApexAssistantStage.Import,
                     GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+                    RollbackManifest = rollbackManifest,
                 };
             }
 
@@ -221,6 +232,8 @@ public sealed class OracleApexAssistantService
             deploymentSafe = importResult.ProcessResult?.IsSuccess != false;
             refreshedStatus = await _synchronizationService.GetStatusAsync(workingSnapshot, environmentName, cancellationToken).ConfigureAwait(false);
         }
+
+        _validationFeedbackService.AppendEvidenceEntry(snapshot, BuildEvidenceEntry(rollbackManifest.ExecutionId, execution.ChangedFiles, compilerValidation, repairPlan is null ? string.Empty : "Repair plan available", importResult?.Message ?? string.Empty, OracleApexAssistantRollbackState.Available, string.Empty));
 
         return new OracleApexAssistantExecutionResponse
         {
@@ -239,6 +252,7 @@ public sealed class OracleApexAssistantService
             Synchronization = refreshedStatus?.Snapshot ?? importResult?.Snapshot ?? validationResult?.Snapshot ?? snapshot.Synchronization,
             Stage = postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateAndImport ? OracleApexAssistantStage.Preview : postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateOnly ? OracleApexAssistantStage.SqlclValidation : OracleApexAssistantStage.SemanticGeneration,
             GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
+            RollbackManifest = rollbackManifest,
         };
     }
 
@@ -265,6 +279,94 @@ public sealed class OracleApexAssistantService
             AllowNonDevelopmentDeployment = request.AllowNonDevelopmentDeployment,
             PostEditBehavior = request.PostEditBehavior == OracleApexAssistantPostEditBehavior.Auto ? OracleApexAssistantPostEditBehavior.ValidateOnly : request.PostEditBehavior,
         }, repairPlan, cancellationToken);
+
+    public async Task<OracleApexAssistantRollbackResponse> RollBackGeneratedChangeAsync(WorkspaceSnapshot snapshot, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var manifest = _validationFeedbackService.ReadRollbackManifest(snapshot);
+        var rollbackSafety = _validationFeedbackService.CanRollback(snapshot, manifest);
+        if (!rollbackSafety.IsSafe || manifest is null)
+        {
+            return new OracleApexAssistantRollbackResponse
+            {
+                IsSuccess = false,
+                Summary = rollbackSafety.Reason,
+                RollbackManifest = manifest,
+                RollbackState = OracleApexAssistantRollbackState.Blocked,
+            };
+        }
+
+        var environment = ResolveEnvironment(snapshot, environmentName ?? manifest.EnvironmentName);
+        var resolvedEnvironmentName = ResolveEnvironmentName(snapshot, environmentName ?? manifest.EnvironmentName);
+        var rollbackBackups = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var file in manifest.Files)
+            {
+                var absolutePath = ResolveManifestAbsolutePath(snapshot.Paths.RootPath, manifest.SourcePath, file.RelativePath);
+                rollbackBackups[file.RelativePath] = File.Exists(absolutePath) ? File.ReadAllText(absolutePath) : null;
+                var backupAbsolutePath = Path.Combine(snapshot.Paths.OpencodePath, file.BackupRelativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (file.ExistedBeforeExecution)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+                    File.Copy(backupAbsolutePath, absolutePath, overwrite: true);
+                }
+                else if (File.Exists(absolutePath))
+                {
+                    File.Delete(absolutePath);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            RestoreRollbackBackups(snapshot.Paths.RootPath, rollbackBackups);
+            var failedManifest = new OracleApexAssistantRollbackManifest
+            {
+                ExecutionId = manifest.ExecutionId,
+                TimestampUtc = manifest.TimestampUtc,
+                EnvironmentName = manifest.EnvironmentName,
+                SourcePath = manifest.SourcePath,
+                RollbackState = OracleApexAssistantRollbackState.Failed,
+                RollbackBlockedReason = manifest.RollbackBlockedReason,
+                RollbackResult = exception.Message,
+                Files = manifest.Files,
+            };
+            _validationFeedbackService.WriteRollbackManifest(snapshot, failedManifest);
+            _validationFeedbackService.AppendEvidenceEntry(snapshot, new OracleApexAssistantEvidenceEntry { ExecutionId = manifest.ExecutionId, TimestampUtc = DateTimeOffset.UtcNow, RollbackAvailability = OracleApexAssistantRollbackState.Failed.ToString(), RollbackResult = exception.Message, AffectedFiles = manifest.Files.Select(item => item.RelativePath).ToList() });
+            return new OracleApexAssistantRollbackResponse
+            {
+                IsSuccess = false,
+                Summary = exception.Message,
+                RollbackManifest = failedManifest,
+                RollbackState = OracleApexAssistantRollbackState.Failed,
+            };
+        }
+
+        var workspaceIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, resolvedEnvironmentName);
+        var synchronization = (await _synchronizationService.GetStatusAsync(snapshot, resolvedEnvironmentName, cancellationToken).ConfigureAwait(false)).Snapshot;
+        var completedManifest = new OracleApexAssistantRollbackManifest
+        {
+            ExecutionId = manifest.ExecutionId,
+            TimestampUtc = manifest.TimestampUtc,
+            EnvironmentName = manifest.EnvironmentName,
+            SourcePath = manifest.SourcePath,
+            RollbackState = OracleApexAssistantRollbackState.Completed,
+            RollbackBlockedReason = string.Empty,
+            RollbackResult = "Rollback completed.",
+            Files = manifest.Files,
+        };
+        _validationFeedbackService.WriteRollbackManifest(snapshot, completedManifest);
+        _validationFeedbackService.AppendEvidenceEntry(snapshot, new OracleApexAssistantEvidenceEntry { ExecutionId = manifest.ExecutionId, TimestampUtc = DateTimeOffset.UtcNow, RollbackAvailability = OracleApexAssistantRollbackState.Completed.ToString(), RollbackResult = "Rollback completed.", AffectedFiles = manifest.Files.Select(item => item.RelativePath).ToList() });
+        return new OracleApexAssistantRollbackResponse
+        {
+            IsSuccess = true,
+            Summary = "Rollback completed.",
+            RollbackManifest = completedManifest,
+            RollbackState = OracleApexAssistantRollbackState.Completed,
+            WorkspaceIndex = workspaceIndex,
+            Synchronization = synchronization,
+            RestoredFiles = manifest.Files.Select(item => item.RelativePath).ToList(),
+        };
+    }
 
     private static OracleApexEnvironmentPreferences ResolveEnvironment(WorkspaceSnapshot snapshot, string? environmentName)
     {
@@ -506,6 +608,48 @@ public sealed class OracleApexAssistantService
             Readiness = snapshot.Readiness,
             AvailableServices = snapshot.AvailableServices,
         };
+
+    private static void RestoreRollbackBackups(string rootPath, IReadOnlyDictionary<string, string?> backups)
+    {
+        foreach (var backup in backups)
+        {
+            var absolutePath = Path.Combine(rootPath, backup.Key.Replace('/', Path.DirectorySeparatorChar));
+            if (backup.Value is null)
+            {
+                if (File.Exists(absolutePath))
+                {
+                    File.Delete(absolutePath);
+                }
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+                File.WriteAllText(absolutePath, backup.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
+            }
+        }
+    }
+
+    private static OracleApexAssistantEvidenceEntry BuildEvidenceEntry(string executionId, IReadOnlyList<string> affectedFiles, OracleApexValidationResult? validation, string repairResult, string importResult, OracleApexAssistantRollbackState rollbackState, string rollbackResult)
+        => new()
+        {
+            ExecutionId = executionId,
+            TimestampUtc = DateTimeOffset.UtcNow,
+            ValidationResult = validation is null ? string.Empty : validation.IsSuccess ? "Succeeded" : validation.Summary,
+            RepairResult = repairResult,
+            ImportResult = importResult,
+            RollbackAvailability = rollbackState.ToString(),
+            RollbackResult = rollbackResult,
+            AffectedFiles = affectedFiles,
+        };
+
+    private static string ResolveManifestAbsolutePath(string rootPath, string sourcePath, string relativePath)
+    {
+        var normalizedRelative = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        var normalizedSource = sourcePath.Replace('/', Path.DirectorySeparatorChar);
+        return normalizedRelative.StartsWith(normalizedSource + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(rootPath, normalizedRelative)
+            : Path.Combine(rootPath, normalizedSource, normalizedRelative);
+    }
 }
 
 public sealed class OracleApexAssistantRequest
@@ -553,6 +697,7 @@ public sealed class OracleApexAssistantExecutionResponse
     public WorkspaceSynchronizationSnapshot? Synchronization { get; init; }
     public OracleApexAssistantStage Stage { get; init; }
     public string GitStatusSummary { get; init; } = string.Empty;
+    public OracleApexAssistantRollbackManifest? RollbackManifest { get; init; }
 }
 
 public sealed class OracleApexAssistantRepairPlanResponse
@@ -571,6 +716,17 @@ public enum OracleApexAssistantStage
     RepairExecution,
     Import,
     Preview,
+}
+
+public sealed class OracleApexAssistantRollbackResponse
+{
+    public bool IsSuccess { get; init; }
+    public string Summary { get; init; } = string.Empty;
+    public OracleApexAssistantRollbackManifest? RollbackManifest { get; init; }
+    public OracleApexAssistantRollbackState RollbackState { get; init; }
+    public OracleApexWorkspaceIndex WorkspaceIndex { get; init; } = new();
+    public WorkspaceSynchronizationSnapshot? Synchronization { get; init; }
+    public IReadOnlyList<string> RestoredFiles { get; init; } = Array.Empty<string>();
 }
 
 public enum OracleApexAssistantPostEditBehavior

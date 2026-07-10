@@ -352,6 +352,9 @@
                         <Button Content="Revalidate" Command="{Binding RevalidateApexlangCommand}" Margin="0,0,8,8" />
                         <Button Content="Import" Command="{Binding ImportApexlangCommand}" Margin="0,0,8,8" />
                         <Button Content="Open Diagnostic Source" Command="{Binding OpenApexDiagnosticSourceCommand}" Margin="0,0,8,8" />
+                        <Button Content="Previous Diagnostic" Command="{Binding PreviousApexDiagnosticCommand}" Margin="0,0,8,8" />
+                        <Button Content="Next Diagnostic" Command="{Binding NextApexDiagnosticCommand}" Margin="0,0,8,8" />
+                        <Button Content="Copy Diagnostic" Command="{Binding CopyApexDiagnosticCommand}" Margin="0,0,8,8" />
                         <Button Content="Roll Back Generated Change" Command="{Binding RollBackApexlangGeneratedChangeCommand}" Margin="0,0,8,8" />
                         <Button Content="Cancel Plan" Command="{Binding CancelApexlangPlanCommand}" Margin="0,0,8,8" />
                       </WrapPanel>
@@ -396,7 +399,9 @@
                   <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantCompilerDiagnostics}">
                     <StackPanel Spacing="8">
                       <TextBlock Text="Compiler Diagnostics" Classes="section-title" />
+                      <TextBlock Text="{Binding ApexAssistantDiagnosticPositionLabel}" FontWeight="SemiBold" />
                       <TextBox Text="{Binding ApexAssistantCompilerDiagnosticsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="180" />
+                      <TextBox Text="{Binding ApexAssistantSelectedDiagnosticText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" IsVisible="{Binding HasSelectedApexDiagnostic}" />
                     </StackPanel>
                   </Border>
 
@@ -411,6 +416,20 @@
                     <StackPanel Spacing="8">
                       <TextBlock Text="Evidence" Classes="section-title" />
                       <TextBox Text="{Binding ApexAssistantEvidenceText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding ApexAssistantRollbackAvailable}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Rollback" Classes="section-title" />
+                      <TextBlock Text="The assistant can restore only files touched by the last assistant transaction." TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel-subtle" IsVisible="{Binding HasApexAssistantRollbackBlockedReason}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Rollback Blocked" Classes="section-title" />
+                      <TextBlock Text="{Binding ApexAssistantRollbackBlockedReason}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                   </Border>
 

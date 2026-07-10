@@ -187,6 +187,11 @@ public sealed class WorkspaceApexAssistantSnapshot
     public bool CanOpenBuilder { get; init; }
     public IReadOnlyList<string> ChangedFiles { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Diagnostics { get; init; } = Array.Empty<string>();
+    public int SelectedDiagnosticIndex { get; init; }
+    public int DiagnosticCount { get; init; }
+    public bool RollbackAvailable { get; init; }
+    public string RollbackBlockedReason { get; init; } = string.Empty;
+    public OracleApexAssistantRollbackState RollbackState { get; init; } = OracleApexAssistantRollbackState.NotAvailable;
 }
 
 public enum WorkspaceApexAssistantState

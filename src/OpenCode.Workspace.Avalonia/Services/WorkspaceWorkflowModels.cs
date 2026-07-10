@@ -153,6 +153,12 @@ public sealed class WorkspaceApexAssistantCompilerDiagnosticViewModel
     public string SourceLocation => string.IsNullOrWhiteSpace(FilePath) ? string.Empty : $"{FilePath}:{Line}:{Column}";
 }
 
+public sealed class WorkspaceSourceNavigationResult
+{
+    public string Message { get; init; } = string.Empty;
+    public bool UsedFallback { get; init; }
+}
+
 public sealed class WorkspaceApexAssistantEvidenceEntryViewModel
 {
     public string Title { get; init; } = string.Empty;
@@ -197,6 +203,14 @@ public sealed class WorkspaceApexAssistantImportResult
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
     public required WorkspaceSynchronizationOperationResult Response { get; init; }
+}
+
+public sealed class WorkspaceApexAssistantRollbackResult
+{
+    public required WorkspaceSnapshot Snapshot { get; init; }
+    public required string Message { get; init; }
+    public required OperationTranscript Transcript { get; init; }
+    public required OracleApexAssistantRollbackResponse Response { get; init; }
 }
 
 public sealed class SavePointDraft

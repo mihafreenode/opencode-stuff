@@ -39,6 +39,7 @@ public sealed class OracleApexAssistantWorkspaceEvidenceState
     public Dictionary<string, int> MissingProperties { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> FailedBlueprintOperations { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> AppliedRepairActions { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<OracleApexAssistantEvidenceEntry> Entries { get; init; } = [];
 }
 
 public sealed class OracleApexComponentValidationEvidence
@@ -50,4 +51,48 @@ public sealed class OracleApexComponentValidationEvidence
 public sealed class OracleApexAssistantWorkspaceSettings
 {
     public bool SafeAutomaticRepairEnabled { get; init; }
+}
+
+public sealed class OracleApexAssistantEvidenceEntry
+{
+    public string ExecutionId { get; init; } = string.Empty;
+    public DateTimeOffset TimestampUtc { get; init; }
+    public string ValidationResult { get; init; } = string.Empty;
+    public string RepairResult { get; init; } = string.Empty;
+    public string ImportResult { get; init; } = string.Empty;
+    public string RollbackAvailability { get; init; } = string.Empty;
+    public string RollbackResult { get; init; } = string.Empty;
+    public IReadOnlyList<string> AffectedFiles { get; init; } = Array.Empty<string>();
+}
+
+public sealed class OracleApexAssistantRollbackManifest
+{
+    public string ExecutionId { get; init; } = string.Empty;
+    public DateTimeOffset TimestampUtc { get; init; }
+    public string EnvironmentName { get; init; } = string.Empty;
+    public string SourcePath { get; init; } = string.Empty;
+    public OracleApexAssistantRollbackState RollbackState { get; init; } = OracleApexAssistantRollbackState.NotAvailable;
+    public string RollbackBlockedReason { get; init; } = string.Empty;
+    public string RollbackResult { get; init; } = string.Empty;
+    public IReadOnlyList<OracleApexAssistantRollbackFile> Files { get; init; } = Array.Empty<OracleApexAssistantRollbackFile>();
+}
+
+public sealed class OracleApexAssistantRollbackFile
+{
+    public string RelativePath { get; init; } = string.Empty;
+    public string OriginalHash { get; init; } = string.Empty;
+    public string PostExecutionHash { get; init; } = string.Empty;
+    public string BackupRelativePath { get; init; } = string.Empty;
+    public bool ExistedBeforeExecution { get; init; }
+}
+
+public enum OracleApexAssistantRollbackState
+{
+    NotAvailable,
+    Available,
+    ConfirmationRequired,
+    Running,
+    Completed,
+    Blocked,
+    Failed,
 }
