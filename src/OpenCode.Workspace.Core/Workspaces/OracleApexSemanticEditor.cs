@@ -2,7 +2,13 @@ using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Workspaces;
 
-public sealed class OracleApexSemanticEditor
+public interface IOracleApexSemanticEditor
+{
+    OracleApexSemanticEditResult Apply(string rootPath, OracleApexEnvironmentPreferences environment, string environmentName, params OracleApexSemanticEditOperation[] operations);
+    OracleApexSemanticEditResult Apply(string rootPath, OracleApexEnvironmentPreferences environment, string environmentName, IReadOnlyList<OracleApexSemanticEditOperation> operations);
+}
+
+public sealed class OracleApexSemanticEditor : IOracleApexSemanticEditor
 {
     private readonly OracleApexWorkspaceIndexBuilder _workspaceIndexBuilder;
     private readonly OracleApexComponentCatalog _componentCatalog;
@@ -138,6 +144,9 @@ public sealed class OracleApexSemanticEditor
                 RenameNode(rootPath, environment, operation, index, backups, changedFiles, "navigation-entry", ["label"]);
                 UpdateReferences(rootPath, environment, index, backups, changedFiles, "navigation-entry", operation.TargetIdentifier, operation.NewIdentifier, ["parent-entry"]);
                 break;
+            case OracleApexSemanticEditKind.UpdateProperties:
+                UpdateProperties(rootPath, environment, operation, index, backups, changedFiles);
+                break;
             default:
                 throw new InvalidOperationException($"Semantic edit operation '{operation.Kind}' is not supported.");
         }
@@ -271,6 +280,20 @@ public sealed class OracleApexSemanticEditor
         foreach (var propertyName in matched)
         {
             UpdateProperty(rootPath, environment, entry, propertyName, operation.NewIdentifier, backups, changedFiles);
+        }
+    }
+
+    private void UpdateProperties(string rootPath, OracleApexEnvironmentPreferences environment, OracleApexSemanticEditOperation operation, OracleApexWorkspaceIndex index, IDictionary<string, string?> backups, ISet<string> changedFiles)
+    {
+        if (string.IsNullOrWhiteSpace(operation.ComponentType))
+        {
+            throw new InvalidOperationException("UpdateProperties requires a component type.");
+        }
+
+        var entry = RequireEntry(index, operation.ComponentType, operation.TargetIdentifier, operation.ParentIdentifier);
+        foreach (var pair in operation.Properties)
+        {
+            UpdateProperty(rootPath, environment, entry, pair.Key, pair.Value, backups, changedFiles);
         }
     }
 
@@ -665,6 +688,9 @@ public sealed class OracleApexSemanticEditOperation
 
     public static OracleApexSemanticEditOperation RenameNavigationEntry(string menuName, string entryName, string newEntryName)
         => new() { Kind = OracleApexSemanticEditKind.RenameNavigationEntry, ParentIdentifier = menuName, TargetIdentifier = entryName, NewIdentifier = newEntryName };
+
+    public static OracleApexSemanticEditOperation UpdateProperties(string componentType, string identifier, IReadOnlyDictionary<string, string> properties, string? parentIdentifier = null)
+        => new() { Kind = OracleApexSemanticEditKind.UpdateProperties, ComponentType = componentType, TargetIdentifier = identifier, ParentIdentifier = parentIdentifier ?? string.Empty, Properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase) };
 }
 
 public enum OracleApexSemanticEditKind
@@ -686,6 +712,7 @@ public enum OracleApexSemanticEditKind
     RenameSharedComponent,
     AddNavigationEntry,
     RenameNavigationEntry,
+    UpdateProperties,
 }
 
 public sealed class OracleApexSemanticEditResult

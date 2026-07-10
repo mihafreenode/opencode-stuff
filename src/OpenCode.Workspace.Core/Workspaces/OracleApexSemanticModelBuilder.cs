@@ -476,6 +476,7 @@ public sealed class OracleApexSemanticModelBuilder
 
         if (!parentComponent.ChildComponents.Contains(child.SemanticType, StringComparer.OrdinalIgnoreCase))
         {
+            var identifier = ResolveIdentifier(child);
             diagnostics.Add(new OracleApexSemanticDiagnostic
             {
                 Severity = OracleApexSemanticDiagnosticSeverity.Error,
@@ -484,6 +485,8 @@ public sealed class OracleApexSemanticModelBuilder
                 SourceFile = child.SourceFile,
                 Line = child.Line,
                 Column = child.Column,
+                NodeId = $"{child.SourceFile}:{child.Line}:{child.SemanticType}:{identifier}",
+                SemanticType = child.SemanticType,
             });
         }
     }
