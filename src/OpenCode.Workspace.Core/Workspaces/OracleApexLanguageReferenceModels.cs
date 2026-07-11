@@ -63,3 +63,45 @@ public sealed class OracleApexLanguageReferenceCompatibilityWarning
     public string OfficialValue { get; init; } = string.Empty;
     public string AtlasValue { get; init; } = string.Empty;
 }
+
+public sealed class OracleApexLanguageReferenceDiffReport
+{
+    public string FromApexVersion { get; init; } = string.Empty;
+    public string ToApexVersion { get; init; } = string.Empty;
+    public string FromGrammarVersion { get; init; } = string.Empty;
+    public string ToGrammarVersion { get; init; } = string.Empty;
+    public OracleApexLanguageReferenceProvenance FromProvenance { get; init; } = new();
+    public OracleApexLanguageReferenceProvenance ToProvenance { get; init; } = new();
+    public IReadOnlyList<OracleApexLanguageReferenceDifference> Differences { get; init; } = Array.Empty<OracleApexLanguageReferenceDifference>();
+    public OracleApexLanguageReferenceAtlasCompatibilityDiff AtlasCompatibility { get; init; } = new();
+}
+
+public sealed class OracleApexLanguageReferenceDifference
+{
+    public string Kind { get; init; } = string.Empty;
+    public string ComponentName { get; init; } = string.Empty;
+    public string RelatedComponentName { get; init; } = string.Empty;
+    public string PropertyPath { get; init; } = string.Empty;
+    public string BeforeValue { get; init; } = string.Empty;
+    public string AfterValue { get; init; } = string.Empty;
+    public IReadOnlyList<string> AddedValues { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> RemovedValues { get; init; } = Array.Empty<string>();
+    public OracleApexLanguageReferenceDifferenceProvenance Provenance { get; init; } = new();
+}
+
+public sealed class OracleApexLanguageReferenceDifferenceProvenance
+{
+    public OracleApexLanguageReferenceProvenance FromCatalog { get; init; } = new();
+    public OracleApexLanguageReferenceProvenance ToCatalog { get; init; } = new();
+    public string FromDocumentationReference { get; init; } = string.Empty;
+    public string ToDocumentationReference { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexLanguageReferenceAtlasCompatibilityDiff
+{
+    public int PreviousWarningCount { get; init; }
+    public int CurrentWarningCount { get; init; }
+    public bool DriftIncreased { get; init; }
+    public IReadOnlyList<OracleApexLanguageReferenceCompatibilityWarning> AddedWarnings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityWarning>();
+    public IReadOnlyList<OracleApexLanguageReferenceCompatibilityWarning> RemovedWarnings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityWarning>();
+}

@@ -1,0 +1,17 @@
+<component> ::= <app> | <page> | <rest-handler> | <deployment>
+
+<app> ::= "app" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <app-body-line> } <indent> ")" <line-end>
+<app-child-component> ::= <page> | <rest-handler> | <deployment>
+<app-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT; maxLen=255 *)
+  | "alias" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<page> ::= "page" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <page-body-line> } <indent> ")" <line-end>
+<page-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "alias" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<rest-handler> ::= "restHandler" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <rest-handler-body-line> } <indent> ")" <line-end>
+<rest-handler-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "method" : <ws> <string-like-value> (* enum=[GET, POST] *)
+
+<deployment> ::= "deployment" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <deployment-body-line> } <indent> ")" <line-end>
+<deployment-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)

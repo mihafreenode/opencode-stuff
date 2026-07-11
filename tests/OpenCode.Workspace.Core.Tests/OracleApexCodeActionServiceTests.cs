@@ -128,6 +128,27 @@ public sealed class OracleApexCodeActionServiceTests
         finally { DeleteTempRoot(root); }
     }
 
+    [Fact]
+    public void GetAvailableActions_IncludesReviewOnlyMigrationActions()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WritePackageWithReferenceMigrationIssues(root);
+            var service = new OracleApexCodeActionService();
+
+            var actions = service.GetAvailableActions(root, CreateEnvironment(), "dev");
+
+            var reviewAction = Assert.Single(actions, item => item.Kind == OracleApexCodeActionKind.ReviewVersionMigrationImpact && item.ReviewMessage.Contains("TRACE", StringComparison.OrdinalIgnoreCase));
+            var result = service.Execute(root, CreateEnvironment(), "dev", new OracleApexCodeActionRequest { ActionId = reviewAction.Id });
+
+            Assert.True(result.IsSuccess);
+            Assert.Contains("TRACE", result.Summary, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(result.ChangedFiles);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
     private static OracleApexEnvironmentPreferences CreateEnvironment()
         => new() { ApplicationId = 100, Workspace = "TEST", ParsingSchema = "TESTSCHEMA", SourcePath = "src/apex" };
 
@@ -215,6 +236,39 @@ page home (
             name: P1_NESTED_ITEM
         )
     )
+)
+""");
+    }
+
+    private static void WritePackageWithReferenceMigrationIssues(string root)
+    {
+        var sourceRoot = Path.Combine(root, "src", "apex");
+        Directory.CreateDirectory(Path.Combine(sourceRoot, "pages"));
+        File.WriteAllText(Path.Combine(sourceRoot, "application.apx"), """
+application customer-orders-demo (
+    id: 100
+    name: Customer Orders Demo
+    alias: CUSTOMER-ORDERS-DEMO
+    apexlang-version: 25.2
+    theme: Vita
+)
+""");
+        File.WriteAllText(Path.Combine(sourceRoot, "pages", "p00001-home.apx"), """
+page home (
+    id: 1
+    name: Home
+    legacy-template: wizard
+)
+""");
+        File.WriteAllText(Path.Combine(sourceRoot, "audit-handler.apx"), """
+rest handler audit-handler (
+    name: AUDIT_HANDLER
+    method: TRACE
+)
+""");
+        File.WriteAllText(Path.Combine(sourceRoot, "legacy-banner.apx"), """
+legacyBanner warning-banner (
+    title: Legacy warning
 )
 """);
     }

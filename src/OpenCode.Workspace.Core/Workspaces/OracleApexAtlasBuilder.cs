@@ -12,6 +12,11 @@ public sealed class OracleApexAtlasBuilder
     private const string ComponentCatalogDocumentationRelativePath = "docs/oracle-apex-component-catalog.md";
     private const string WorkspaceIndexFileName = "workspace-index.json";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly OracleApexLanguageReferenceCatalog PreviousLanguageReferenceCatalog = OracleApexBuiltInLanguageReference.CreatePrevious();
+    private static readonly OracleApexLanguageReferenceCatalog CurrentLanguageReferenceCatalog = OracleApexBuiltInLanguageReference.Create();
+    private static readonly OracleApexLanguageReferenceCompatibilityResult PreviousLanguageReferenceCompatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(PreviousLanguageReferenceCatalog);
+    private static readonly OracleApexLanguageReferenceCompatibilityResult CurrentLanguageReferenceCompatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(CurrentLanguageReferenceCatalog);
+    private static readonly OracleApexLanguageReferenceDiffReport BuiltInLanguageReferenceDiff = new OracleApexLanguageReferenceCatalogComparer().Compare(PreviousLanguageReferenceCatalog, CurrentLanguageReferenceCatalog, PreviousLanguageReferenceCompatibility, CurrentLanguageReferenceCompatibility);
     private static readonly string[] KnownBlockTypes =
     [
         "authorization scheme",
@@ -252,8 +257,9 @@ public sealed class OracleApexAtlasBuilder
 
     private void WriteLanguageReferenceArtifacts(WorkspacePaths paths, string sourceHash)
     {
-        var referenceCatalog = OracleApexBuiltInLanguageReference.Create();
-        var compatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(referenceCatalog);
+        var referenceCatalog = CurrentLanguageReferenceCatalog;
+        var compatibility = CurrentLanguageReferenceCompatibility;
+        var diffMarkdown = new OracleApexLanguageReferenceCatalogComparer().BuildMarkdown(BuiltInLanguageReferenceDiff);
         var root = Path.Combine(paths.OpencodePath, "knowledge", LanguageReferenceDirectoryName);
         Directory.CreateDirectory(root);
         WriteJson(Path.Combine(root, "language-reference-state.json"), new
@@ -285,7 +291,9 @@ public sealed class OracleApexAtlasBuilder
             property.AppliesWhen,
         })).OrderBy(item => item.Component, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.PropertyPath, StringComparer.OrdinalIgnoreCase).ToList());
         WriteJson(Path.Combine(root, "catalog-compatibility.json"), compatibility);
+        WriteJson(Path.Combine(root, "language-reference-diff.json"), BuiltInLanguageReferenceDiff);
         WriteFile(Path.Combine(root, "docs", "language-reference-summary.md"), BuildLanguageReferenceSummary(referenceCatalog, compatibility));
+        WriteFile(Path.Combine(root, "docs", "language-reference-diff.md"), diffMarkdown);
         WriteFile(Path.Combine(root, "prompts", "apexlang-language-reference.md"), BuildLanguageReferencePrompt(referenceCatalog, compatibility));
     }
 

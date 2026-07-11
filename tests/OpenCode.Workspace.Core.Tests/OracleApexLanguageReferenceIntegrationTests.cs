@@ -84,7 +84,9 @@ app demo (
             Assert.True(result.IsSuccess);
             Assert.NotEmpty(Directory.GetFiles(paths.OpencodePath, "language-reference-state.json", SearchOption.AllDirectories));
             Assert.NotEmpty(Directory.GetFiles(paths.OpencodePath, "catalog-compatibility.json", SearchOption.AllDirectories));
+            Assert.NotEmpty(Directory.GetFiles(paths.OpencodePath, "language-reference-diff.json", SearchOption.AllDirectories));
             Assert.NotEmpty(Directory.GetFiles(paths.OpencodePath, "language-reference-summary.md", SearchOption.AllDirectories));
+            Assert.NotEmpty(Directory.GetFiles(paths.OpencodePath, "language-reference-diff.md", SearchOption.AllDirectories));
         }
         finally { DeleteTempRoot(root); }
     }

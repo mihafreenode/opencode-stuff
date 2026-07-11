@@ -2,6 +2,64 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 internal static class OracleApexBuiltInLanguageReference
 {
+    public static OracleApexLanguageReferenceCatalog CreatePrevious()
+    {
+        var components = new Dictionary<string, OracleApexLanguageReferenceComponent>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["application"] = Component("application", "app", "comp-0900", [], ["page", "authorization-scheme", "navigation-menu", "rest-data-source", "legacy-banner"],
+            [
+                Property("name", "string", required: true, defaultValue: string.Empty, maxLength: "128"),
+                Property("alias", "string"),
+                Property("theme", "string", defaultValue: "Vita"),
+            ],
+            [Group("navigationMenu", [Property("navigationMenu.listPosition", "enum", required: true, defaultValue: "top", enumValues: ["top", "side", "legacy"]), Property("navigationMenu.list", "string")])],
+            ["app (\n  name: \"Demo Legacy\"\n  alias: \"DEMO\"\n  theme: \"Vita\"\n)"]),
+            ["page"] = Component("page", "page", "comp-4000", ["application"], ["region", "item", "computation", "validation"],
+            [
+                Property("name", "string", required: true),
+                Property("alias", "string"),
+                Property("id", "integer"),
+                Property("legacy-template", "string"),
+            ],
+            [],
+            ["page home (\n  name: \"Home\"\n)"]),
+            ["region"] = Component("region", "region", "comp-5110", ["page"], ["item", "button", "process", "region"],
+            [
+                Property("title", "string", required: true),
+                Property("type", "string"),
+                Property("source-type", "string"),
+            ],
+            [],
+            ["region report_region (\n  title: \"Report\"\n)" ]),
+            ["item"] = Component("item", "pageItem", "comp-5120", ["page", "region"], [], [Property("name", "string", required: true), Property("type", "string"), Property("label", "string"), Property("lov", "string")], [], []),
+            ["button"] = Component("button", "button", "comp-5130", ["page", "region"], [], [Property("name", "string", required: true), Property("label", "string"), Property("target-page", "integer")], [], []),
+            ["process"] = Component("process", "process", "comp-5530", ["page", "region"], [], [Property("name", "string", required: true), Property("type", "string")], [], []),
+            ["computation"] = Component("computation", "computation", "comp-5520", ["page"], [], [Property("name", "string", required: true)], [], []),
+            ["validation"] = Component("validation", "validation", "comp-5510", ["page"], [], [Property("name", "string")], [], []),
+            ["authorization-scheme"] = Component("authorization-scheme", "authorization", "comp-3060", ["application"], [], [Property("name", "string", required: true)], [], []),
+            ["navigation-menu"] = Component("navigation-menu", "list", "comp-3520", ["application"], ["navigation-entry"], [Property("name", "string", required: true)], [], []),
+            ["navigation-entry"] = Component("navigation-entry", "entry", "comp-3525", ["navigation-menu"], [], [Property("label", "string", required: true), Property("target-page", "integer"), Property("parent-entry", "string")], [], []),
+            ["rest-data-source"] = Component("rest-data-source", "restDataSource", "comp-3080", ["application"], ["operation", "parameter"], [Property("name", "string", required: true)], [], []),
+            ["rest-handler"] = Component("rest-handler", "restHandler", string.Empty, ["application"], [], [Property("name", "string", required: true), Property("method", "enum", enumValues: ["GET", "POST", "TRACE"])], [], []),
+            ["legacy-banner"] = Component("legacy-banner", "legacyBanner", "comp-0999", ["application"], [], [Property("title", "string")], [], []),
+        };
+
+        return new OracleApexLanguageReferenceCatalog
+        {
+            ApexVersion = "25.2",
+            GrammarVersion = "25.2",
+            Provenance = new OracleApexLanguageReferenceProvenance
+            {
+                SourceKind = "official-normalized-index",
+                SourceLocation = "https://docs.oracle.com/en/database/oracle/apex/25.2/apxln/index.html",
+                GrammarLocation = "https://docs.oracle.com/en/database/oracle/apex/25.2/apxln/apexlang.ebnf",
+                ApexVersion = "25.2",
+                ImportedUtc = DateTimeOffset.UnixEpoch,
+            },
+            Components = components,
+        };
+    }
+
     public static OracleApexLanguageReferenceCatalog Create()
     {
         var components = new Dictionary<string, OracleApexLanguageReferenceComponent>(StringComparer.OrdinalIgnoreCase)
@@ -65,7 +123,7 @@ internal static class OracleApexBuiltInLanguageReference
                 SourceLocation = "https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/index.html",
                 GrammarLocation = "https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/apexlang.ebnf",
                 ApexVersion = "26.1",
-                ImportedUtc = DateTimeOffset.UtcNow,
+                ImportedUtc = DateTimeOffset.UnixEpoch,
             },
             Components = components,
         };

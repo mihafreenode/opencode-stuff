@@ -83,6 +83,30 @@ public sealed class OracleApexWorkspaceIndexBuilderTests
         }
     }
 
+    [Fact]
+    public void Build_IncludesVersionMigrationDiagnostics()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            WritePackageWithReferenceMigrationIssues(root);
+            var builder = new OracleApexWorkspaceIndexBuilder();
+
+            var index = builder.Build(root, CreateEnvironment(), "dev");
+
+            Assert.Contains(index.Diagnostics, entry => entry.Code == "reference-version-mismatch");
+            Assert.Contains(index.Diagnostics, entry => entry.Code == "reference-property-removed" && entry.Message.Contains("theme", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(index.Diagnostics, entry => entry.Code == "reference-component-removed" && entry.Message.Contains("legacybanner", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(index.Diagnostics, entry => entry.Code == "reference-enum-value-removed" && entry.Message.Contains("TRACE", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(index.Diagnostics, entry => entry.Code == "reference-property-became-required" && entry.Message.Contains("alias", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
     private static WorkspaceDefinition CreateDefinition()
         => new()
         {
@@ -201,6 +225,43 @@ page not-a-deployment (
 )
 """);
         }
+    }
+
+    private static void WritePackageWithReferenceMigrationIssues(string root)
+    {
+        var sourceRoot = Path.Combine(root, "src", "apex");
+        Directory.CreateDirectory(Path.Combine(sourceRoot, "pages"));
+
+        File.WriteAllText(Path.Combine(sourceRoot, "application.apx"), """
+application customer-orders-demo (
+    id: 100
+    name: Customer Orders Demo
+    alias: CUSTOMER-ORDERS-DEMO
+    apexlang-version: 25.2
+    theme: Vita
+)
+""");
+
+        File.WriteAllText(Path.Combine(sourceRoot, "pages", "p00001-home.apx"), """
+page home (
+    id: 1
+    name: Home
+    legacy-template: wizard
+)
+""");
+
+        File.WriteAllText(Path.Combine(sourceRoot, "audit-handler.apx"), """
+rest handler audit-handler (
+    name: AUDIT_HANDLER
+    method: TRACE
+)
+""");
+
+        File.WriteAllText(Path.Combine(sourceRoot, "legacy-banner.apx"), """
+legacyBanner warning-banner (
+    title: Legacy warning
+)
+""");
     }
 
     private static string CreateTempRoot()

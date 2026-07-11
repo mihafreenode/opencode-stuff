@@ -11,6 +11,12 @@ public interface IOracleApexAssistantSynchronizationService
 
 public sealed class OracleApexAssistantService
 {
+    private static readonly OracleApexLanguageReferenceDiffReport BuiltInReferenceDiff = new OracleApexLanguageReferenceCatalogComparer().Compare(
+        OracleApexBuiltInLanguageReference.CreatePrevious(),
+        OracleApexBuiltInLanguageReference.Create(),
+        OracleApexComponentCatalog.AtlasSeed.CompareWithReference(OracleApexBuiltInLanguageReference.CreatePrevious()),
+        OracleApexComponentCatalog.AtlasSeed.CompareWithReference(OracleApexBuiltInLanguageReference.Create()));
+
     private readonly OracleApexIntentPlanner _intentPlanner;
     private readonly OracleApexWorkspaceIndexBuilder _workspaceIndexBuilder;
     private readonly OracleApexCodeActionService _codeActionService;
@@ -425,12 +431,9 @@ public sealed class OracleApexAssistantService
             warnings.Add($"Target environment '{environmentName}' is not a development environment.");
         }
 
-        var application = index.SemanticModel.Application;
-        var declaredCatalogVersion = application?.GetProperty("apexlang-version") ?? application?.GetProperty("apex-version");
-        var catalogVersion = OracleApexComponentCatalog.Default.Components.Values.SelectMany(item => item.SupportedApexVersions).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).LastOrDefault() ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(declaredCatalogVersion) && !string.Equals(declaredCatalogVersion, catalogVersion, StringComparison.OrdinalIgnoreCase))
+        foreach (var warning in new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(BuiltInReferenceDiff).BuildWarnings(index))
         {
-            warnings.Add($"Component catalog version '{catalogVersion}' does not match project metadata version '{declaredCatalogVersion}'.");
+            warnings.Add(warning);
         }
     }
 

@@ -5,6 +5,12 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class OracleApexWorkspaceIndexBuilder
 {
+    private static readonly OracleApexLanguageReferenceDiffReport BuiltInReferenceDiff = new OracleApexLanguageReferenceCatalogComparer().Compare(
+        OracleApexBuiltInLanguageReference.CreatePrevious(),
+        OracleApexBuiltInLanguageReference.Create(),
+        OracleApexComponentCatalog.AtlasSeed.CompareWithReference(OracleApexBuiltInLanguageReference.CreatePrevious()),
+        OracleApexComponentCatalog.AtlasSeed.CompareWithReference(OracleApexBuiltInLanguageReference.Create()));
+
     private readonly OracleApexSemanticModelBuilder _semanticModelBuilder;
 
     public OracleApexWorkspaceIndexBuilder(OracleApexSemanticModelBuilder? semanticModelBuilder = null)
@@ -79,7 +85,11 @@ public sealed class OracleApexWorkspaceIndexBuilder
             Column = profile.Column,
             NodeId = $"deployment:{profile.SourceFile}:{profile.Name}",
             SemanticType = "deployment-profile",
-        })).OrderBy(item => item.SourceFile, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Line).ToList();
+        })).Concat(new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(BuiltInReferenceDiff).Analyze(semanticModel))
+        .OrderBy(item => item.SourceFile, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(item => item.Line)
+        .ThenBy(item => item.Code, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
         var searchEntries = entries.Select(entry => new OracleApexWorkspaceIndexSearchEntry
         {

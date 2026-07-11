@@ -79,6 +79,19 @@ public sealed class OracleApexCodeActionService
             });
         }
 
+        foreach (var diagnostic in index.Diagnostics.Where(item => item.Code.StartsWith("reference-", StringComparison.OrdinalIgnoreCase) && item.Code != "reference-property-became-required"))
+        {
+            actions.Add(new OracleApexCodeAction
+            {
+                Id = $"review-migration:{diagnostic.Code}:{diagnostic.NodeId}:{diagnostic.Line}:{diagnostic.Column}",
+                Kind = OracleApexCodeActionKind.ReviewVersionMigrationImpact,
+                Title = $"Review APEXlang migration impact: {diagnostic.Message}",
+                TargetNodeId = diagnostic.NodeId,
+                TargetSemanticType = diagnostic.SemanticType,
+                ReviewMessage = diagnostic.Message,
+            });
+        }
+
         return actions.OrderBy(action => action.Title, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -87,6 +100,18 @@ public sealed class OracleApexCodeActionService
         var index = _workspaceIndexBuilder.Build(rootPath, environment, environmentName);
         var action = GetAvailableActions(rootPath, environment, environmentName).FirstOrDefault(item => string.Equals(item.Id, request.ActionId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Oracle APEX code action '{request.ActionId}' was not found.");
+
+        if (action.Kind == OracleApexCodeActionKind.ReviewVersionMigrationImpact)
+        {
+            return new OracleApexCodeActionResult
+            {
+                IsSuccess = true,
+                Summary = action.ReviewMessage,
+                ChangedFiles = [],
+                Diagnostics = new OracleApexSemanticEditDiagnostics { Entries = index.Diagnostics },
+                WorkspaceIndex = index,
+            };
+        }
 
         var operations = BuildOperations(action, request, index);
         var result = _semanticEditor.Apply(rootPath, environment, environmentName, operations);
@@ -128,6 +153,7 @@ public sealed class OracleApexCodeActionService
             OracleApexCodeActionKind.RemoveRegionSafely => [OracleApexSemanticEditOperation.RemoveRegion(RequireParentIdentifier(index, target), action.TargetIdentifier)],
             OracleApexCodeActionKind.FixMissingRequiredProperties => [OracleApexSemanticEditOperation.UpdateProperties(action.TargetSemanticType, target?.Identifier ?? action.TargetIdentifier, RequireSingleProperty(request, action.RequiredPropertyName), GetParentIdentifier(index, target))],
             OracleApexCodeActionKind.FixInvalidParentPlacement => BuildFixInvalidParentOperations(index, action, target),
+            OracleApexCodeActionKind.ReviewVersionMigrationImpact => Array.Empty<OracleApexSemanticEditOperation>(),
             _ => throw new InvalidOperationException($"Oracle APEX code action '{action.Kind}' is not supported."),
         };
     }
@@ -165,6 +191,7 @@ public sealed class OracleApexCodeActionService
                 OracleApexCodeActionKind.RemoveRegionSafely => $"Removed region '{action.TargetIdentifier}' safely.",
                 OracleApexCodeActionKind.FixMissingRequiredProperties => $"Fixed missing required property '{action.RequiredPropertyName}' for '{action.TargetSemanticType}'.",
                 OracleApexCodeActionKind.FixInvalidParentPlacement => $"Moved '{action.TargetIdentifier}' to a valid parent.",
+                OracleApexCodeActionKind.ReviewVersionMigrationImpact => action.ReviewMessage,
                 _ => result.Message,
             }
             : result.Message;
@@ -256,6 +283,7 @@ public sealed class OracleApexCodeAction
     public string ParentNodeId { get; init; } = string.Empty;
     public string DestinationNodeId { get; init; } = string.Empty;
     public string RequiredPropertyName { get; init; } = string.Empty;
+    public string ReviewMessage { get; init; } = string.Empty;
 }
 
 public enum OracleApexCodeActionKind
@@ -271,6 +299,7 @@ public enum OracleApexCodeActionKind
     RemoveRegionSafely,
     FixMissingRequiredProperties,
     FixInvalidParentPlacement,
+    ReviewVersionMigrationImpact,
 }
 
 public sealed class OracleApexCodeActionRequest
