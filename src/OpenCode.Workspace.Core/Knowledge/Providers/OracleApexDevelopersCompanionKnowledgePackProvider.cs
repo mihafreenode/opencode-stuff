@@ -61,13 +61,13 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProvider : IKnowle
         var indexEntries = BuildIndexEntries(document, apexVersion);
         var generatedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["index.json"] = JsonSerializer.Serialize(indexEntries, JsonOptions),
-            [Path.Combine("prompts", "compact-context.md")] = BuildCompactContext(indexEntries, apexVersion),
+            [KnowledgePackPathNormalizer.NormalizeRelativePath("index.json")] = JsonSerializer.Serialize(indexEntries, JsonOptions),
+            [KnowledgePackPathNormalizer.NormalizeRelativePath(Path.Combine("prompts", "compact-context.md"))] = BuildCompactContext(indexEntries, apexVersion),
         };
 
         foreach (var file in sectionFiles)
         {
-            generatedFiles[file.Key] = file.Value;
+            generatedFiles[KnowledgePackPathNormalizer.NormalizeRelativePath(file.Key)] = file.Value;
         }
 
         var sourceHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -154,7 +154,7 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProvider : IKnowle
             var (chapter, section) = flatSections[index];
             var chapterSlug = Slug(chapter.Title);
             var sectionSlug = Slug(section.Title);
-            var relativePath = Path.Combine("docs", chapterSlug, sectionSlug + ".md");
+            var relativePath = KnowledgePackPathNormalizer.NormalizeRelativePath(Path.Combine("docs", chapterSlug, sectionSlug + ".md"));
             files[relativePath] = BuildSectionMarkdown(title, apexVersion, sourceUrl, sourceHash, chapter.Title, section, flatSections.ElementAtOrDefault(index - 1).section?.Title, flatSections.ElementAtOrDefault(index + 1).section?.Title);
         }
 
@@ -214,7 +214,7 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProvider : IKnowle
                 entries.Add(new CompanionIndexEntry
                 {
                     Title = section.Title,
-                    Path = Path.Combine("docs", chapterSlug, Slug(section.Title) + ".md").Replace(Path.DirectorySeparatorChar, '/'),
+                    Path = KnowledgePackPathNormalizer.NormalizeRelativePath(Path.Combine("docs", chapterSlug, Slug(section.Title) + ".md")),
                     Chapter = chapter.Title,
                     Headings = section.Headings.Count == 0 ? [section.Title] : section.Headings,
                     Keywords = ExtractKeywords(section.Content),

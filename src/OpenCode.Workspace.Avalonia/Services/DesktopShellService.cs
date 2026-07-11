@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Text;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
@@ -38,6 +39,7 @@ public sealed class DesktopShellService : IDesktopShellService
     private readonly WorkspaceLaunchPlanResolver _workspaceLaunchPlanResolver;
     private readonly WorkspaceRuntimeExplorerService _workspaceRuntimeExplorerService;
     private readonly OracleApexAssistantService _oracleApexAssistantService;
+    private readonly IProcessRunner _processRunner;
 
     public DesktopShellService(
         WorkspaceOrchestrator workspaceOrchestrator,
@@ -50,8 +52,10 @@ public sealed class DesktopShellService : IDesktopShellService
         WorkspacePublishAssessmentService workspacePublishAssessmentService,
         WorkspaceRemovalService workspaceRemovalService,
         OracleSoftwareNoticeService oracleSoftwareNoticeService,
-        WindowsTerminalProfileSetupService windowsTerminalProfileSetupService)
+        WindowsTerminalProfileSetupService windowsTerminalProfileSetupService,
+        IProcessRunner? processRunner = null)
     {
+        _processRunner = processRunner ?? new ProcessRunner();
         _workspaceOrchestrator = workspaceOrchestrator;
         _workspaceDiscoveryReportService = new WorkspaceDiscoveryReportService(workspaceOrchestrator, workspaceRepository);
         _workspaceRepository = workspaceRepository;
@@ -65,7 +69,7 @@ public sealed class DesktopShellService : IDesktopShellService
         _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
         _windowsTerminalProfileSetupService = windowsTerminalProfileSetupService;
         _workspaceLaunchPlanResolver = new WorkspaceLaunchPlanResolver();
-        _workspaceRuntimeExplorerService = new WorkspaceRuntimeExplorerService(workspaceRepository, new WorkspaceRuntimeStateService(), new WorkspaceYamlService(), timelineService, new ProcessRunner());
+        _workspaceRuntimeExplorerService = new WorkspaceRuntimeExplorerService(workspaceRepository, new WorkspaceRuntimeStateService(), new WorkspaceYamlService(), timelineService, _processRunner);
         _oracleApexAssistantService = new OracleApexAssistantService(new DesktopOracleApexAssistantSynchronizationService(workspaceOrchestrator));
     }
 
@@ -2006,15 +2010,33 @@ public sealed class DesktopShellService : IDesktopShellService
         }
 
         var containerName = DockerService.GetWorkspaceContainerName(snapshot.Definition);
-        var processRunner = new ProcessRunner();
-        var dockerExec = await processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "true"], cancellationToken: cancellationToken);
+        ProcessResult dockerExec;
+        try
+        {
+            dockerExec = await _processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "true"], cancellationToken: cancellationToken);
+        }
+        catch (Exception exception) when (IsMissingExecutable(exception))
+        {
+            checks.Add(new WorkspaceTroubleshootingCheck
+            {
+                Label = "Docker exec",
+                Value = "Docker CLI unavailable: executable not found. Install Docker Desktop or Docker Engine and ensure docker is on PATH.",
+            });
+            checks.Add(new WorkspaceTroubleshootingCheck
+            {
+                Label = "Workspace shell script in container",
+                Value = "Skipped: Docker CLI unavailable because the docker executable was not found.",
+            });
+            return checks;
+        }
+
         checks.Add(new WorkspaceTroubleshootingCheck
         {
             Label = "Docker exec",
             Value = dockerExec.IsSuccess ? "Docker exec to workspace container works." : $"Failed: {FirstFailureLine(dockerExec)}",
         });
 
-        var shellScript = await processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "test -f /opt/opencode-workspace/config/opencode-workspace-shell.sh && echo present"], cancellationToken: cancellationToken);
+        var shellScript = await _processRunner.RunAsync("docker", ["exec", containerName, "sh", "-lc", "test -f /opt/opencode-workspace/config/opencode-workspace-shell.sh && echo present"], cancellationToken: cancellationToken);
         checks.Add(new WorkspaceTroubleshootingCheck
         {
             Label = "Workspace shell script in container",
@@ -2091,6 +2113,9 @@ public sealed class DesktopShellService : IDesktopShellService
 
     private static string FirstFailureLine(ProcessResult result)
         => result.StandardErrorLines.Concat(result.StandardOutputLines).FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))?.Trim() ?? $"Exit code {result.ExitCode}";
+
+    private static bool IsMissingExecutable(Exception exception)
+        => exception is Win32Exception or FileNotFoundException;
 
     private static string ExtractPrimaryFailureLine(string message)
         => message.Replace("\r\n", "\n", StringComparison.Ordinal)

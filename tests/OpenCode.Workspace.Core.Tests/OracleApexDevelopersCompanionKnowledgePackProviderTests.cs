@@ -26,6 +26,7 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProviderTests
 
             Assert.Contains("docs/working-with-apexlang/reading-apexlang-syntax.md", result.GeneratedFiles.Keys, StringComparer.OrdinalIgnoreCase);
             Assert.Contains("docs/working-with-apexlang/builder-and-external-tools.md", result.GeneratedFiles.Keys, StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain(result.GeneratedFiles.Keys, key => key.Contains('\\', StringComparison.Ordinal));
             var syntaxDoc = result.GeneratedFiles["docs/working-with-apexlang/reading-apexlang-syntax.md"];
             Assert.Contains("Source page: 12", syntaxDoc, StringComparison.Ordinal);
             Assert.Contains("Previous section: Overview", syntaxDoc, StringComparison.Ordinal);
@@ -36,6 +37,7 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProviderTests
             using var indexDocument = JsonDocument.Parse(result.GeneratedFiles["index.json"]);
             var readingEntry = indexDocument.RootElement.EnumerateArray().Single(entry => entry.GetProperty("title").GetString() == "Reading APEXlang Syntax");
             Assert.Equal("Working with APEXlang", readingEntry.GetProperty("chapter").GetString());
+            Assert.Equal("docs/working-with-apexlang/reading-apexlang-syntax.md", readingEntry.GetProperty("path").GetString());
             Assert.Contains(readingEntry.GetProperty("concepts").EnumerateArray().Select(item => item.GetString()).Where(item => item is not null), item => string.Equals(item, "@ reference", StringComparison.Ordinal));
             Assert.Contains(readingEntry.GetProperty("concepts").EnumerateArray().Select(item => item.GetString()).Where(item => item is not null), item => string.Equals(item, "@/ reference", StringComparison.Ordinal));
         }
@@ -72,6 +74,11 @@ public sealed class OracleApexDevelopersCompanionKnowledgePackProviderTests
             var secondRun = await provisioner.ProvisionAsync(definition, paths);
             Assert.Equal("user-edit\n", File.ReadAllText(sectionPath));
             Assert.Contains(secondRun.Warnings, warning => warning.Contains("preserved", StringComparison.OrdinalIgnoreCase));
+
+            var statePath = Path.Combine(paths.OpencodePath, "knowledge", "apex-developers-companion", "state.json");
+            using var stateDocument = JsonDocument.Parse(File.ReadAllText(statePath));
+            Assert.DoesNotContain(stateDocument.RootElement.GetProperty("generatedFileHashes").EnumerateObject().Select(item => item.Name), name => name.Contains('\\', StringComparison.Ordinal));
+            Assert.DoesNotContain(stateDocument.RootElement.GetProperty("skippedFiles").EnumerateArray().Select(item => item.GetString() ?? string.Empty), name => name.Contains('\\', StringComparison.Ordinal));
         }
         finally
         {

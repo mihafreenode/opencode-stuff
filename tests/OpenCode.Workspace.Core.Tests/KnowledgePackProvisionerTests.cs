@@ -116,6 +116,52 @@ public sealed class KnowledgePackProvisionerTests
         }
     }
 
+    [Fact]
+    public async Task ProvisionAsync_NormalizesRelativePathsToPortableForm()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            var definition = CreateDefinition(new WorkspaceKnowledgePackDefinition { Provider = "fake-provider" });
+            var provisioner = new KnowledgePackProvisioner([new FakeKnowledgePackProvider(_ => new ProvisionedKnowledgePackContent
+            {
+                GeneratedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["docs\\guide.md"] = "first\n",
+                },
+            })]);
+
+            var result = await provisioner.ProvisionAsync(definition, paths);
+            var statePath = Path.Combine(paths.OpencodePath, "knowledge", "fake-provider", "state.json");
+            using var document = JsonDocument.Parse(File.ReadAllText(statePath));
+
+            Assert.Empty(result.Errors);
+            Assert.True(File.Exists(Path.Combine(paths.OpencodePath, "knowledge", "fake-provider", "docs", "guide.md")));
+            Assert.True(document.RootElement.GetProperty("generatedFileHashes").TryGetProperty("docs/guide.md", out _));
+            Assert.DoesNotContain(document.RootElement.GetProperty("generatedFileHashes").EnumerateObject().Select(item => item.Name), name => name.Contains('\\', StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public void KnowledgePackPathNormalizer_NormalizesWindowsAndUnixPathsConsistently()
+    {
+        var normalizerType = typeof(KnowledgePackProvisioner).Assembly.GetType("OpenCode.Workspace.Core.Knowledge.KnowledgePackPathNormalizer", throwOnError: true)!;
+        var normalizeMethod = normalizerType.GetMethod("NormalizeRelativePath", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)!;
+
+        var windows = (string)normalizeMethod.Invoke(null, ["docs\\working-with-apexlang\\overview.md"])!;
+        var unix = (string)normalizeMethod.Invoke(null, ["docs/working-with-apexlang/overview.md"])!;
+
+        Assert.Equal("docs/working-with-apexlang/overview.md", windows);
+        Assert.Equal(windows, unix);
+        Assert.ThrowsAny<Exception>(() => normalizeMethod.Invoke(null, [Path.Combine(Path.GetTempPath(), "absolute.md")]));
+    }
+
     private static ProvisionedKnowledgePackContent CreateContent(string body)
     {
         return new ProvisionedKnowledgePackContent

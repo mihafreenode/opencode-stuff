@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Catalog;
@@ -468,7 +469,16 @@ public sealed class DesktopShellServiceReprovisionStateTests
                 Readiness = fixture.OpenSnapshot.Readiness,
             };
 
-            var report = await fixture.Service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });
+            var processRunner = new FakeProcessRunner((fileName, arguments) =>
+            {
+                Assert.Equal("docker", fileName);
+                return Task.FromResult(arguments.Contains("true", StringComparer.Ordinal)
+                    ? SuccessProcessResult(fileName, arguments, "")
+                    : SuccessProcessResult(fileName, arguments, "present"));
+            });
+            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+
+            var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });
 
             Assert.Contains(report.Facts, item => item.Label == "Launch state");
             Assert.Contains(report.Facts, item => item.Label == "Selected service");
@@ -479,6 +489,54 @@ public sealed class DesktopShellServiceReprovisionStateTests
             Assert.Contains(report.Facts, item => item.Label == "Workspace shell script in container");
             Assert.Contains(report.Facts, item => item.Label == "Windows Terminal launch readiness");
             Assert.Contains(report.Facts, item => item.Label == "Last attach failure");
+            Assert.Equal(2, processRunner.InvocationCount);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task TroubleshootWorkspace_WhenDockerCommandFails_ReportsFailureButReturnsChecks()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Docker Failure");
+            var snapshot = CreateRunningTroubleshootingSnapshot(fixture.OpenSnapshot);
+            var processRunner = new FakeProcessRunner((fileName, arguments) => Task.FromResult(FailureProcessResult(fileName, arguments, "docker exec failed")));
+            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+
+            var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = snapshot.Paths.RootPath, Snapshot = snapshot, WorkspaceName = snapshot.Definition.Workspace.Name });
+
+            Assert.Contains(report.Facts, item => item.Label == "Docker exec" && item.Value.Contains("Failed: docker exec failed", StringComparison.Ordinal));
+            Assert.Contains(report.Facts, item => item.Label == "Workspace shell script in container" && item.Value.Contains("Failed: docker exec failed", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task TroubleshootWorkspace_WhenDockerExecutableMissing_ReportsDiagnosticWithoutThrowing()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Docker Missing");
+            var snapshot = CreateRunningTroubleshootingSnapshot(fixture.OpenSnapshot);
+            var processRunner = new FakeProcessRunner((_, _) => throw new Win32Exception("executable not found"));
+            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+
+            var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = snapshot.Paths.RootPath, Snapshot = snapshot, WorkspaceName = snapshot.Definition.Workspace.Name });
+
+            Assert.Contains(report.Facts, item => item.Label == "Docker exec" && item.Value.Contains("Docker CLI unavailable", StringComparison.Ordinal));
+            Assert.Contains(report.Facts, item => item.Label == "Docker exec" && item.Value.Contains("executable not found", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(report.Facts, item => item.Label == "Workspace shell script in container" && item.Value.Contains("Skipped", StringComparison.Ordinal));
         }
         finally
         {
@@ -734,8 +792,78 @@ public sealed class DesktopShellServiceReprovisionStateTests
         return fixture with { OpenSnapshot = snapshot };
     }
 
-    private static DesktopShellService CreateDesktopShellService(WorkspaceOrchestrator orchestrator, WorkspaceRepository repository, WorkspaceTimelineService timelineService, WorkspaceCheckpointService checkpointService)
-        => new(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+    private static DesktopShellService CreateDesktopShellService(WorkspaceOrchestrator orchestrator, WorkspaceRepository repository, WorkspaceTimelineService timelineService, WorkspaceCheckpointService checkpointService, IProcessRunner? processRunner = null)
+    {
+        var effectiveProcessRunner = processRunner ?? new ProcessRunner();
+        return new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())), effectiveProcessRunner);
+    }
+
+    private static WorkspaceSnapshot CreateRunningTroubleshootingSnapshot(WorkspaceSnapshot source)
+        => new()
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = source.Record.Name,
+                RootPath = source.Record.RootPath,
+                RepositoryPath = source.Record.RepositoryPath,
+                ConfigurationPath = source.Record.ConfigurationPath,
+                SourceType = source.Record.SourceType,
+                ImportedFromExistingCheckout = source.Record.ImportedFromExistingCheckout,
+                OriginalDefaultBranch = source.Record.OriginalDefaultBranch,
+                SelectedWorkspaceBranch = source.Record.SelectedWorkspaceBranch,
+                RemoteOriginUrl = source.Record.RemoteOriginUrl,
+                CreatedUtc = source.Record.CreatedUtc,
+                LastOpenedUtc = source.Record.LastOpenedUtc,
+                LastPreparedUtc = source.Record.LastPreparedUtc,
+                OracleSoftwareNoticeShown = source.Record.OracleSoftwareNoticeShown,
+                LastOperationName = "Open Workspace",
+                LastOperationResult = "Open Workspace could not finish preparing the terminal. Troubleshoot Workspace can inspect the runtime files and launch readiness.",
+                LastOperationSucceeded = false,
+                LastOperationUtc = DateTimeOffset.UtcNow,
+            },
+            Definition = source.Definition,
+            Paths = source.Paths,
+            ConfigurationPath = source.ConfigurationPath,
+            RuntimeState = WorkspaceRuntimeState.Running,
+            Safety = source.Safety,
+            Session = source.Session,
+            AppliedState = source.AppliedState,
+            LocalRuntimeState = source.LocalRuntimeState,
+            ResolvedRuntimePlan = source.ResolvedRuntimePlan,
+            UpdateRequired = false,
+            Health = new WorkspaceHealthSnapshot
+            {
+                OverallStatus = WorkspaceHealthStatus.Attention,
+                Summary = "Workspace services are available, but OpenCode terminal could not be prepared.",
+                Recommendation = "Troubleshoot Workspace.",
+                Services = [new WorkspaceServiceHealthSnapshot { ServiceId = "pgadmin", Name = "pgAdmin", Category = "Application", Status = WorkspaceHealthStatus.Healthy, StatusLabel = "Available", Summary = "pgAdmin is available.", Recommendation = "Open Workspace.", Timestamp = DateTimeOffset.UtcNow }],
+            },
+            Readiness = source.Readiness,
+        };
+
+    private static ProcessResult SuccessProcessResult(string fileName, IEnumerable<string> arguments, string output)
+        => new()
+        {
+            Command = fileName + " " + string.Join(" ", arguments),
+            ExitCode = 0,
+            StandardOutput = output,
+            StandardError = string.Empty,
+            StandardOutputLines = string.IsNullOrWhiteSpace(output) ? [] : [output],
+            StandardErrorLines = [],
+            Duration = TimeSpan.Zero,
+        };
+
+    private static ProcessResult FailureProcessResult(string fileName, IEnumerable<string> arguments, string error)
+        => new()
+        {
+            Command = fileName + " " + string.Join(" ", arguments),
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = error,
+            StandardOutputLines = [],
+            StandardErrorLines = [error],
+            Duration = TimeSpan.Zero,
+        };
 
     private static WorkspaceResolver CreateResolver()
     {
@@ -889,6 +1017,17 @@ public sealed class DesktopShellServiceReprovisionStateTests
                 DiagnosticExplanation = "Runtime unavailable for test.",
                 HostPlatform = hostPlatform,
             });
+        }
+    }
+
+    private sealed class FakeProcessRunner(Func<string, IReadOnlyList<string>, Task<ProcessResult>> handler) : IProcessRunner
+    {
+        public int InvocationCount { get; private set; }
+
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+        {
+            InvocationCount++;
+            return handler(fileName, arguments.ToList());
         }
     }
 

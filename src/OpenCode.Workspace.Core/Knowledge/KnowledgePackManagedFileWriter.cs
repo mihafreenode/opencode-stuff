@@ -12,7 +12,7 @@ internal sealed class KnowledgePackManagedFileWriter
 
         foreach (var file in files.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
         {
-            var relativePath = file.Key.Replace('\\', '/');
+            var relativePath = KnowledgePackPathNormalizer.NormalizeRelativePath(file.Key);
             var outputPath = Path.Combine(providerRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
             var desiredHash = WorkspaceAppliedStateService.ComputeHash(file.Value.Replace("\r\n", "\n", StringComparison.Ordinal));
             generatedHashes[relativePath] = desiredHash;
