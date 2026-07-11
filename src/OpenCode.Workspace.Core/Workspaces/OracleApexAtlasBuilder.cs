@@ -7,6 +7,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 public sealed class OracleApexAtlasBuilder
 {
     private const string AtlasDirectoryName = "apexlang-atlas";
+    private const string LanguageReferenceDirectoryName = "apexlang-language-reference";
     private const string DocumentationRelativePath = "docs/oracle-apex-atlas.md";
     private const string ComponentCatalogDocumentationRelativePath = "docs/oracle-apex-component-catalog.md";
     private const string WorkspaceIndexFileName = "workspace-index.json";
@@ -162,6 +163,7 @@ public sealed class OracleApexAtlasBuilder
                 DocumentationPath = DocumentationRelativePath,
             };
             WriteJson(Path.Combine(atlasRootPath, "state.json"), state);
+            WriteLanguageReferenceArtifacts(paths, sourceHash);
 
             var docsDirectory = Path.GetDirectoryName(docsPath);
             if (!string.IsNullOrWhiteSpace(docsDirectory))
@@ -246,6 +248,107 @@ public sealed class OracleApexAtlasBuilder
         }
 
         return node;
+    }
+
+    private void WriteLanguageReferenceArtifacts(WorkspacePaths paths, string sourceHash)
+    {
+        var referenceCatalog = OracleApexBuiltInLanguageReference.Create();
+        var compatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(referenceCatalog);
+        var root = Path.Combine(paths.OpencodePath, "knowledge", LanguageReferenceDirectoryName);
+        Directory.CreateDirectory(root);
+        WriteJson(Path.Combine(root, "language-reference-state.json"), new
+        {
+            status = "ready",
+            apexVersion = referenceCatalog.ApexVersion,
+            grammarVersion = referenceCatalog.GrammarVersion,
+            sourceHash,
+            provenance = referenceCatalog.Provenance,
+        });
+        WriteJson(Path.Combine(root, "grammar-version.json"), new { apexVersion = referenceCatalog.ApexVersion, grammarVersion = referenceCatalog.GrammarVersion });
+        WriteJson(Path.Combine(root, "component-reference-index.json"), referenceCatalog.Components.Values.Select(component => new
+        {
+            component.CanonicalName,
+            component.DisplayName,
+            component.DocumentationAnchor,
+            Parents = component.ParentComponents,
+            Children = component.ChildComponents,
+            ExampleCount = component.CanonicalExamples.Count,
+        }).OrderBy(item => item.CanonicalName, StringComparer.OrdinalIgnoreCase).ToList());
+        WriteJson(Path.Combine(root, "property-reference-index.json"), referenceCatalog.Components.Values.SelectMany(component => component.DirectProperties.Concat(component.PropertyGroups.SelectMany(group => group.Properties)).Select(property => new
+        {
+            Component = component.CanonicalName,
+            property.PropertyPath,
+            property.DataType,
+            property.Required,
+            property.DefaultValue,
+            property.EnumValues,
+            property.AppliesWhen,
+        })).OrderBy(item => item.Component, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.PropertyPath, StringComparer.OrdinalIgnoreCase).ToList());
+        WriteJson(Path.Combine(root, "catalog-compatibility.json"), compatibility);
+        WriteFile(Path.Combine(root, "docs", "language-reference-summary.md"), BuildLanguageReferenceSummary(referenceCatalog, compatibility));
+        WriteFile(Path.Combine(root, "prompts", "apexlang-language-reference.md"), BuildLanguageReferencePrompt(referenceCatalog, compatibility));
+    }
+
+    private static string BuildLanguageReferenceSummary(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility)
+    {
+        var lines = new List<string>
+        {
+            "# APEXlang Language Reference Summary",
+            string.Empty,
+            $"- APEX version: {referenceCatalog.ApexVersion}",
+            $"- Grammar version: {referenceCatalog.GrammarVersion}",
+            $"- Components: {referenceCatalog.Components.Count}",
+            $"- Compatibility warnings: {compatibility.Warnings.Count}",
+            string.Empty,
+            "## Core Components",
+        };
+
+        foreach (var component in referenceCatalog.Components.Values.OrderBy(item => item.CanonicalName, StringComparer.OrdinalIgnoreCase).Take(20))
+        {
+            lines.Add($"- {component.CanonicalName}: children={(component.ChildComponents.Count == 0 ? "none" : string.Join(", ", component.ChildComponents))}; properties={component.DirectProperties.Count + component.PropertyGroups.Sum(group => group.Properties.Count)}");
+        }
+
+        if (compatibility.Warnings.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Compatibility Warnings");
+            foreach (var warning in compatibility.Warnings.Take(20))
+            {
+                lines.Add($"- {warning.ComponentName} {warning.PropertyName}: {warning.Message}");
+            }
+        }
+
+        return string.Join("\n", lines) + "\n";
+    }
+
+    private static string BuildLanguageReferencePrompt(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility)
+    {
+        var lines = new List<string>
+        {
+            "# APEXlang Language Reference",
+            $"Official reference version: {referenceCatalog.ApexVersion}",
+            $"Grammar version: {referenceCatalog.GrammarVersion}",
+            "",
+            "Use the official hierarchy and documented properties first. Use Atlas enrichment for Builder-specific metadata and SQLcl as the final validation authority.",
+            "",
+            "## Canonical Components",
+        };
+
+        foreach (var component in referenceCatalog.Components.Values.OrderBy(item => item.CanonicalName, StringComparer.OrdinalIgnoreCase).Take(12))
+        {
+            lines.Add($"- {component.CanonicalName}: parents={(component.ParentComponents.Count == 0 ? "root" : string.Join(", ", component.ParentComponents))}; children={(component.ChildComponents.Count == 0 ? "none" : string.Join(", ", component.ChildComponents))}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Compatibility Notes");
+        lines.Add(compatibility.Warnings.Count == 0 ? "- No known Atlas/reference discrepancies in the built-in index." : string.Join("\n", compatibility.Warnings.Take(10).Select(warning => $"- {warning.Message}")));
+        return string.Join("\n", lines) + "\n";
+    }
+
+    private static void WriteFile(string path, string content)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content.Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
     private static ApplicationAtlasEntry BuildApplicationFromSemanticModel(OracleApexSemanticNode applicationNode, OracleApexEnvironmentPreferences environment, string environmentName)
@@ -996,7 +1099,10 @@ public sealed class OracleApexAtlasBuilder
         => value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
     private static void WriteJson<T>(string path, T value)
-        => File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions).Replace("\r\n", "\n", StringComparison.Ordinal));
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions).Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
 
     private static string Slugify(string value)
         => string.IsNullOrWhiteSpace(value)

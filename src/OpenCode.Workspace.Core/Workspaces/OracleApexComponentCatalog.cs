@@ -2,7 +2,8 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class OracleApexComponentCatalog
 {
-    public static OracleApexComponentCatalog Default { get; } = CreateDefault();
+    public static OracleApexComponentCatalog AtlasSeed { get; } = CreateDefault();
+    public static OracleApexComponentCatalog Default { get; } = AtlasSeed.MergeWithReference(OracleApexBuiltInLanguageReference.Create(), null);
 
     public IReadOnlyDictionary<string, OracleApexComponentDefinition> Components { get; }
 
@@ -16,6 +17,117 @@ public sealed class OracleApexComponentCatalog
 
     public bool TryGetComponent(string semanticType, out OracleApexComponentDefinition? component)
         => Components.TryGetValue(semanticType, out component);
+
+    public OracleApexComponentCatalog MergeWithReference(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult? compatibility)
+    {
+        var merged = new Dictionary<string, OracleApexComponentDefinition>(Components, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var referenceComponent in referenceCatalog.Components.Values)
+        {
+            if (!merged.TryGetValue(referenceComponent.CanonicalName, out var existing))
+            {
+                merged[referenceComponent.CanonicalName] = new OracleApexComponentDefinition
+                {
+                    CanonicalName = referenceComponent.CanonicalName,
+                    DisplayName = string.IsNullOrWhiteSpace(referenceComponent.DisplayName) ? referenceComponent.CanonicalName : referenceComponent.DisplayName,
+                    ParentComponents = referenceComponent.ParentComponents,
+                    ChildComponents = referenceComponent.ChildComponents,
+                    Properties = referenceComponent.DirectProperties.Concat(referenceComponent.PropertyGroups.SelectMany(group => group.Properties)).Select(ToPropertyDefinition).ToList(),
+                    RequiredProperties = referenceComponent.DirectProperties.Concat(referenceComponent.PropertyGroups.SelectMany(group => group.Properties)).Where(item => item.Required).Select(item => item.PropertyPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    DocumentationReference = BuildOfficialDocumentationReference(referenceCatalog.Provenance.SourceLocation, referenceComponent.DocumentationAnchor),
+                    SupportedApexVersions = [referenceCatalog.ApexVersion],
+                    CanonicalExamples = referenceComponent.CanonicalExamples,
+                    Provenance = new OracleApexReferenceProvenance
+                    {
+                        SourceKind = referenceCatalog.Provenance.SourceKind,
+                        SourceLocation = referenceCatalog.Provenance.SourceLocation,
+                        ApexVersion = referenceCatalog.ApexVersion,
+                    },
+                };
+                continue;
+            }
+
+            var propertyMap = existing.Properties.ToDictionary(property => property.Name, property => property, StringComparer.OrdinalIgnoreCase);
+            foreach (var referenceProperty in referenceComponent.DirectProperties.Concat(referenceComponent.PropertyGroups.SelectMany(group => group.Properties)))
+            {
+                var normalizedProperty = ToPropertyDefinition(referenceProperty);
+                if (propertyMap.TryGetValue(normalizedProperty.Name, out var existingProperty))
+                {
+                    propertyMap[normalizedProperty.Name] = MergeProperty(existingProperty, normalizedProperty);
+                }
+                else
+                {
+                    propertyMap[normalizedProperty.Name] = new OracleApexPropertyDefinition
+                    {
+                        Name = normalizedProperty.Name,
+                        PropertyType = normalizedProperty.PropertyType,
+                        Required = false,
+                        EnumValues = normalizedProperty.EnumValues,
+                        DefaultValue = normalizedProperty.DefaultValue,
+                        AppliesWhen = normalizedProperty.AppliesWhen,
+                        MaxLength = normalizedProperty.MaxLength,
+                        NumericBounds = normalizedProperty.NumericBounds,
+                        ValidationConstraint = normalizedProperty.ValidationConstraint,
+                    };
+                }
+            }
+
+                merged[referenceComponent.CanonicalName] = new OracleApexComponentDefinition
+                {
+                    CanonicalName = existing.CanonicalName,
+                    DisplayName = string.IsNullOrWhiteSpace(existing.DisplayName) ? referenceComponent.DisplayName : existing.DisplayName,
+                ParentComponents = referenceComponent.ParentComponents.Count == 0 ? existing.ParentComponents : referenceComponent.ParentComponents,
+                ChildComponents = referenceComponent.ChildComponents.Count == 0 ? existing.ChildComponents : referenceComponent.ChildComponents,
+                Properties = propertyMap.Values.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+                RequiredProperties = propertyMap.Values.Where(item => item.Required).Select(item => item.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                DocumentationReference = BuildOfficialDocumentationReference(referenceCatalog.Provenance.SourceLocation, referenceComponent.DocumentationAnchor),
+                SupportedApexVersions = existing.SupportedApexVersions.Concat([referenceCatalog.ApexVersion]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList(),
+                CanonicalExamples = referenceComponent.CanonicalExamples.Count == 0 ? existing.CanonicalExamples : referenceComponent.CanonicalExamples,
+                Provenance = new OracleApexReferenceProvenance
+                {
+                    SourceKind = referenceCatalog.Provenance.SourceKind,
+                    SourceLocation = referenceCatalog.Provenance.SourceLocation,
+                    ApexVersion = referenceCatalog.ApexVersion,
+                },
+            };
+        }
+
+        return new OracleApexComponentCatalog(merged);
+    }
+
+    public OracleApexLanguageReferenceCompatibilityResult CompareWithReference(OracleApexLanguageReferenceCatalog referenceCatalog)
+    {
+        var warnings = new List<OracleApexLanguageReferenceCompatibilityWarning>();
+        foreach (var referenceComponent in referenceCatalog.Components.Values)
+        {
+            if (!Components.TryGetValue(referenceComponent.CanonicalName, out var component))
+            {
+                warnings.Add(new OracleApexLanguageReferenceCompatibilityWarning
+                {
+                    ComponentName = referenceComponent.CanonicalName,
+                    Message = $"Official component '{referenceComponent.CanonicalName}' is not represented in the Atlas-enriched catalog.",
+                    OfficialValue = referenceComponent.CanonicalName,
+                });
+                continue;
+            }
+
+            foreach (var referenceProperty in referenceComponent.DirectProperties.Concat(referenceComponent.PropertyGroups.SelectMany(group => group.Properties)))
+            {
+                if (!component.Properties.Any(property => string.Equals(property.Name, referenceProperty.PropertyPath, StringComparison.OrdinalIgnoreCase)))
+                {
+                    warnings.Add(new OracleApexLanguageReferenceCompatibilityWarning
+                    {
+                        ComponentName = referenceComponent.CanonicalName,
+                        PropertyName = referenceProperty.PropertyPath,
+                        Message = $"Official property '{referenceProperty.PropertyPath}' is missing from the Atlas-enriched catalog component '{referenceComponent.CanonicalName}'.",
+                        OfficialValue = referenceProperty.DataType,
+                    });
+                }
+            }
+        }
+
+        return new OracleApexLanguageReferenceCompatibilityResult { Warnings = warnings };
+    }
 
     public string BuildDocumentation()
     {
@@ -168,7 +280,7 @@ public sealed class OracleApexComponentCatalog
         return new OracleApexComponentCatalog(components);
     }
 
-    private static OracleApexPropertyDefinition Property(string name, string propertyType, bool required = false, IReadOnlyList<string>? enumValues = null)
+    internal static OracleApexPropertyDefinition Property(string name, string propertyType, bool required = false, IReadOnlyList<string>? enumValues = null)
         => new()
         {
             Name = name,
@@ -176,6 +288,37 @@ public sealed class OracleApexComponentCatalog
             Required = required,
             EnumValues = enumValues ?? Array.Empty<string>(),
         };
+
+    private static OracleApexPropertyDefinition ToPropertyDefinition(OracleApexLanguageReferenceProperty property)
+        => new()
+        {
+            Name = property.PropertyPath,
+            PropertyType = property.DataType,
+            Required = property.Required,
+            EnumValues = property.EnumValues,
+            DefaultValue = property.DefaultValue,
+            AppliesWhen = property.AppliesWhen,
+            MaxLength = property.MaxLength,
+            NumericBounds = property.NumericBounds,
+            ValidationConstraint = property.ValidationConstraint,
+        };
+
+    private static OracleApexPropertyDefinition MergeProperty(OracleApexPropertyDefinition existing, OracleApexPropertyDefinition incoming)
+        => new()
+        {
+            Name = existing.Name,
+            PropertyType = string.IsNullOrWhiteSpace(existing.PropertyType) ? incoming.PropertyType : existing.PropertyType,
+            Required = existing.Required,
+            EnumValues = existing.EnumValues.Count == 0 ? incoming.EnumValues : existing.EnumValues,
+            DefaultValue = string.IsNullOrWhiteSpace(existing.DefaultValue) ? incoming.DefaultValue : existing.DefaultValue,
+            AppliesWhen = string.IsNullOrWhiteSpace(existing.AppliesWhen) ? incoming.AppliesWhen : existing.AppliesWhen,
+            MaxLength = string.IsNullOrWhiteSpace(existing.MaxLength) ? incoming.MaxLength : existing.MaxLength,
+            NumericBounds = string.IsNullOrWhiteSpace(existing.NumericBounds) ? incoming.NumericBounds : existing.NumericBounds,
+            ValidationConstraint = string.IsNullOrWhiteSpace(existing.ValidationConstraint) ? incoming.ValidationConstraint : existing.ValidationConstraint,
+        };
+
+    private static string BuildOfficialDocumentationReference(string sourceLocation, string anchor)
+        => string.IsNullOrWhiteSpace(anchor) ? sourceLocation : $"{sourceLocation.TrimEnd('#')}#{anchor}";
 
     private static void Add(
         IDictionary<string, OracleApexComponentDefinition> components,
@@ -209,6 +352,8 @@ public sealed class OracleApexComponentDefinition
     public IReadOnlyList<string> RequiredProperties { get; init; } = Array.Empty<string>();
     public string DocumentationReference { get; init; } = string.Empty;
     public IReadOnlyList<string> SupportedApexVersions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> CanonicalExamples { get; init; } = Array.Empty<string>();
+    public OracleApexReferenceProvenance Provenance { get; init; } = new();
 }
 
 public sealed class OracleApexPropertyDefinition
@@ -217,4 +362,16 @@ public sealed class OracleApexPropertyDefinition
     public string PropertyType { get; init; } = string.Empty;
     public bool Required { get; init; }
     public IReadOnlyList<string> EnumValues { get; init; } = Array.Empty<string>();
+    public string DefaultValue { get; init; } = string.Empty;
+    public string AppliesWhen { get; init; } = string.Empty;
+    public string MaxLength { get; init; } = string.Empty;
+    public string NumericBounds { get; init; } = string.Empty;
+    public string ValidationConstraint { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexReferenceProvenance
+{
+    public string SourceKind { get; init; } = string.Empty;
+    public string SourceLocation { get; init; } = string.Empty;
+    public string ApexVersion { get; init; } = string.Empty;
 }

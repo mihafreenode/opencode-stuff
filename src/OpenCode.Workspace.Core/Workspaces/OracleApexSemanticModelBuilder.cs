@@ -6,6 +6,19 @@ public sealed class OracleApexSemanticModelBuilder
 {
     private static readonly string[] KnownBlockTypes =
     [
+        "app",
+        "authentication",
+        "authorization",
+        "buildOption",
+        "dynamicAction",
+        "pageItem",
+        "restDataSource",
+        "restModule",
+        "restHandler",
+        "appProcess",
+        "appItem",
+        "appComputation",
+        "validation",
         "authorization scheme",
         "authentication scheme",
         "navigation menu",
@@ -156,6 +169,7 @@ public sealed class OracleApexSemanticModelBuilder
     {
         var roots = new List<RawNode>();
         var stack = new Stack<RawNode>();
+        var groupStack = new Stack<string>();
         var lines = File.ReadAllLines(filePath);
 
         for (var index = 0; index < lines.Length; index++)
@@ -178,6 +192,20 @@ public sealed class OracleApexSemanticModelBuilder
                 var closed = stack.Pop();
                 closed.EndLine = index + 1;
                 closed.EndColumn = Column(rawLine, trimmed);
+                continue;
+            }
+
+            if (trimmed == "}")
+            {
+                if (groupStack.Count > 0)
+                {
+                    groupStack.Pop();
+                }
+                else
+                {
+                    diagnostics.Add(Diagnostic(filePath, index + 1, Column(rawLine, trimmed), "unexpected-group-close", "Unexpected closing group token in APEXlang file."));
+                }
+
                 continue;
             }
 
@@ -204,6 +232,21 @@ public sealed class OracleApexSemanticModelBuilder
                 }
 
                 stack.Push(node);
+                groupStack.Clear();
+                continue;
+            }
+
+            if (trimmed.EndsWith('{'))
+            {
+                if (stack.Count == 0)
+                {
+                    diagnostics.Add(Diagnostic(filePath, index + 1, Column(rawLine, trimmed), "orphan-group", "Property group exists outside any known APEXlang component block."));
+                }
+                else
+                {
+                    groupStack.Push(CleanValue(trimmed[..^1]).Trim());
+                }
+
                 continue;
             }
 
@@ -218,7 +261,13 @@ public sealed class OracleApexSemanticModelBuilder
             var propertyMatch = PropertyPattern.Match(trimmed);
             if (propertyMatch.Success)
             {
-                current.Properties[NormalizeToken(propertyMatch.Groups["key"].Value)] = CleanValue(propertyMatch.Groups["value"].Value);
+                var propertyKey = NormalizeToken(propertyMatch.Groups["key"].Value);
+                if (groupStack.Count > 0)
+                {
+                    propertyKey = string.Join('.', groupStack.Reverse().Select(NormalizeToken).Append(propertyKey));
+                }
+
+                current.Properties[propertyKey] = CleanValue(propertyMatch.Groups["value"].Value);
             }
         }
 
@@ -569,6 +618,18 @@ public sealed class OracleApexSemanticModelBuilder
     private static string ToSemanticType(string blockType)
         => NormalizeToken(blockType) switch
         {
+            "app" => "application",
+            "authentication" => "authentication-scheme",
+            "authorization" => "authorization-scheme",
+            "buildoption" => "build-option",
+            "dynamicaction" => "dynamic-action",
+            "pageitem" => "item",
+            "restdatasource" => "rest-data-source",
+            "restmodule" => "rest-module",
+            "resthandler" => "rest-handler",
+            "appprocess" => "process",
+            "appitem" => "item",
+            "appcomputation" => "computation",
             "authorization-scheme" => "authorization-scheme",
             "authentication-scheme" => "authentication-scheme",
             "navigation-menu" => "navigation-menu",
@@ -581,6 +642,8 @@ public sealed class OracleApexSemanticModelBuilder
             "rest-module" => "rest-module",
             "rest-handler" => "rest-handler",
             "deployment" => "deployment-profile",
+            "buildoptiona" or "buildoptionb" => "build-option",
+            "validationa" or "validationb" => "validation",
             _ => NormalizeToken(blockType),
         };
 

@@ -1,0 +1,32 @@
+<component> ::= <app> | <page> | <region> | <page-item> | <authentication> | <authorization> | <lov> | <validation>
+
+<app> ::= "app" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <app-body-line> } <indent> ")" <line-end>
+<app-child-component> ::= <page> | <authentication> | <authorization> | <lov>
+<app-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "alias" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<page> ::= "page" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <page-body-line> } <indent> ")" <line-end>
+<page-child-component> ::= <region> | <page-item> | <validation>
+<page-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "alias" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<region> ::= "region" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <region-body-line> } <indent> ")" <line-end>
+<region-child-component> ::= <page-item>
+<region-direct-property> ::= "title" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "type" : <ws> <string-like-value> (* required; type: SELECT LIST *)
+
+<page-item> ::= "pageItem" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <page-item-body-line> } <indent> ")" <line-end>
+<page-item-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+  | "type" : <ws> ( "text" | "select" ) (* required; type: SELECT LIST *)
+
+<validation> ::= "validation" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <validation-body-line> } <indent> ")" <line-end>
+<validation-direct-property> ::= "name" : <ws> <string-like-value> (* type: TEXT *)
+
+<authentication> ::= "authentication" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <authentication-body-line> } <indent> ")" <line-end>
+<authentication-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<authorization> ::= "authorization" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <authorization-body-line> } <indent> ")" <line-end>
+<authorization-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
+
+<lov> ::= "lov" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <lov-body-line> } <indent> ")" <line-end>
+<lov-direct-property> ::= "name" : <ws> <string-like-value> (* required; type: TEXT *)
