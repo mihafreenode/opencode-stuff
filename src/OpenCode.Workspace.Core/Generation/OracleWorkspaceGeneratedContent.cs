@@ -78,6 +78,12 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("docs", "oracle-tools", "apexlang-hello-world.md")] = withGeneratedHeader(ApexLangHelloWorldDoc());
             files[Path.Combine("docs", "reference", "oracle-apexlang-navigation.md")] = withGeneratedHeader(OracleApexLangNavigationDoc());
             files[Path.Combine("skills", "oracle", "apexlang.md")] = OracleApexLangSkillDoc();
+            foreach (var tutorialFile in OracleApexGuidedTourBuilder.BuildFiles())
+            {
+                files[tutorialFile.Key] = tutorialFile.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || tutorialFile.Key.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                    ? tutorialFile.Value
+                    : withGeneratedHeader(tutorialFile.Value);
+            }
             foreach (var reference in OracleApexSyntaxReferenceBuilder.BuildFiles(ReadingApexlangSyntaxSource(), "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/reading-apexlang-syntax.html", "26.1"))
             {
                 files[reference.Key] = withGeneratedHeader(reference.Value);
