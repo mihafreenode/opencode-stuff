@@ -3,65 +3,30 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 public sealed class AvailableWorkspaceServiceRowViewModel
 {
     public AvailableWorkspaceServiceRowViewModel(
-        string service,
-        string category,
-        string description,
-        string status,
-        bool actionsEnabled,
-        string openOrCommand,
-        string credentials,
-        string docsPath,
-        AsyncRelayCommand? openServiceCommand,
-        AsyncRelayCommand? copyUrlCommand,
-        AsyncRelayCommand? copyCredentialsCommand,
-        AsyncRelayCommand? copyCommandCommand,
-        AsyncRelayCommand? openDocsCommand)
+        WorkspacePresentedService service,
+        IReadOnlyList<ActionItemViewModel> actions)
     {
-        Service = service;
-        Category = category;
-        Description = description;
-        Status = status;
-        ActionsEnabled = actionsEnabled;
-        OpenOrCommand = openOrCommand;
-        Credentials = credentials;
-        DocsPath = docsPath;
-        OpenServiceCommand = openServiceCommand;
-        CopyUrlCommand = copyUrlCommand;
-        CopyCredentialsCommand = copyCredentialsCommand;
-        CopyCommandCommand = copyCommandCommand;
-        OpenDocsCommand = openDocsCommand;
+        PresentedService = service;
+        Actions = actions;
     }
 
-    public string Service { get; }
-    public string Category { get; }
-    public string Description { get; }
-    public string Status { get; }
-    public bool ActionsEnabled { get; }
+    public WorkspacePresentedService PresentedService { get; }
+    public string Service => PresentedService.Service;
+    public string Category => PresentedService.Category;
+    public string Description => PresentedService.Description;
+    public string Status => PresentedService.Status;
     public string ServiceGlyph => ResolveServiceGlyph(Service, Category);
-    public bool IsReadyStatus => Status.Contains("Ready", StringComparison.OrdinalIgnoreCase);
-    public bool IsWarningStatus => Status.Contains("Rebuild", StringComparison.OrdinalIgnoreCase)
-        || Status.Contains("Update", StringComparison.OrdinalIgnoreCase)
-        || Status.Contains("Pending", StringComparison.OrdinalIgnoreCase);
-    public bool IsUnavailableStatus => Status.Contains("Unavailable", StringComparison.OrdinalIgnoreCase)
-        || Status.Contains("Error", StringComparison.OrdinalIgnoreCase)
-        || Status.Contains("Stopped", StringComparison.OrdinalIgnoreCase);
-    public string OpenOrCommand { get; }
-    public string Credentials { get; }
-    public string DocsPath { get; }
-    public AsyncRelayCommand? OpenServiceCommand { get; }
-    public AsyncRelayCommand? CopyUrlCommand { get; }
-    public AsyncRelayCommand? CopyCredentialsCommand { get; }
-    public AsyncRelayCommand? CopyCommandCommand { get; }
-    public AsyncRelayCommand? OpenDocsCommand { get; }
+    public bool IsReadyStatus => PresentedService.Tone == WorkspacePresentationTone.Ready;
+    public bool IsWarningStatus => PresentedService.Tone == WorkspacePresentationTone.Warning;
+    public bool IsUnavailableStatus => PresentedService.Tone == WorkspacePresentationTone.Unavailable;
+    public string OpenOrCommand => PresentedService.OpenOrCommand;
+    public string Credentials => PresentedService.Credentials;
+    public string DocsPath => PresentedService.DocsPath;
+    public IReadOnlyList<ActionItemViewModel> Actions { get; }
     public bool HasDescription => !string.IsNullOrWhiteSpace(Description);
     public bool HasStatus => !string.IsNullOrWhiteSpace(Status);
     public bool HasCredentials => !string.IsNullOrWhiteSpace(Credentials);
     public bool HasDocsPath => !string.IsNullOrWhiteSpace(DocsPath);
-    public bool CanOpenService => OpenServiceCommand is not null;
-    public bool CanCopyUrl => CopyUrlCommand is not null;
-    public bool CanCopyCredentials => CopyCredentialsCommand is not null;
-    public bool CanCopyCommand => CopyCommandCommand is not null;
-    public bool CanOpenDocs => OpenDocsCommand is not null;
 
     private static string ResolveServiceGlyph(string service, string category)
     {

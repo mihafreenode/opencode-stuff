@@ -28,6 +28,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private readonly IDesktopShellService _desktopShellService;
     private readonly IReadOnlyList<OpenCode.Workspace.Core.Models.TemplateManifest> _templates;
+    private readonly WorkspacePresentationStateResolver _presentationStateResolver = new();
     private WorkspaceSummaryViewModel? _selectedWorkspace;
     private string _emptyStateTitle = string.Empty;
     private string _emptyStateMessage = string.Empty;
@@ -264,13 +265,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool HasRecentActivity => RecentActivity.Count > 0;
     public bool HasCapabilityGroups => CapabilityGroups.Count > 0;
     public string SelectedWorkspaceTypeLabel => SelectedWorkspace?.WorkspaceTypeLabel ?? "Workspace";
-    public string SelectedWorkspaceStateLabel => SelectedWorkspace?.RuntimeStatusLabel ?? "Unavailable";
-    public bool IsSelectedWorkspacePreparing => HasSelectedWorkspace && (HasActiveWorkspaceOperation || SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Preparing);
-    public bool IsSelectedWorkspaceReady => HasSelectedWorkspace && !IsSelectedWorkspacePreparing && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.Ready;
-    public bool IsSelectedWorkspaceNeedsRebuild => HasSelectedWorkspace && !IsSelectedWorkspacePreparing && SelectedWorkspace?.Readiness?.Status == WorkspaceReadinessStatus.NeedsRebuild;
-    public bool IsSelectedWorkspaceUnavailable => HasSelectedWorkspace
-        && !IsSelectedWorkspacePreparing
-        && (SelectedWorkspace?.Readiness is null || SelectedWorkspace.Readiness.Status == WorkspaceReadinessStatus.Unavailable);
+    public string SelectedWorkspaceStateLabel => SelectedWorkspace?.PresentationState?.StatusLabel ?? SelectedWorkspace?.RuntimeStatusLabel ?? "Unavailable";
+    public bool IsSelectedWorkspacePreparing => SelectedWorkspace?.PresentationState?.Status == WorkspacePresentationStatusKind.Provisioning;
+    public bool IsSelectedWorkspaceReady => SelectedWorkspace?.PresentationState?.Status == WorkspacePresentationStatusKind.Ready;
+    public bool IsSelectedWorkspaceNeedsRebuild => SelectedWorkspace?.PresentationState?.Status == WorkspacePresentationStatusKind.NeedsRebuild;
+    public bool IsSelectedWorkspaceUnavailable => SelectedWorkspace?.PresentationState?.Status is WorkspacePresentationStatusKind.Invalid or WorkspacePresentationStatusKind.Unavailable or WorkspacePresentationStatusKind.ProvisioningFailed or WorkspacePresentationStatusKind.NeedsRecovery or WorkspacePresentationStatusKind.Stopped;
     public bool ShowHeroPrimaryAction => HasSelectedWorkspace && ShowDetailPrimaryAction;
     public bool ShowMainAvailableServicesSection => HasCapabilityGroups && !IsSelectedWorkspacePreparing;
     public bool ShowMainRecentActivitySection => IsSelectedWorkspaceReady && HasRecentActivity;
@@ -893,14 +892,60 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
             try
             {
-                await PrepareSelectedWorkspaceAsync(startTranscript: false, initialStatusMessage: "Provisioning workspace...", preserveExistingTranscript: true);
+                _isWorkspaceActionRunning = true;
+                _workspaceActionStatusMessage = "Provisioning workspace...";
+                RaiseWorkspaceActionCommandStates();
+                AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = "Provisioning workspace..." });
+                var prepareResult = await _desktopShellService.PrepareWorkspaceAsync(snapshot.Paths.RootPath, SelectedWorkspace?.Snapshot ?? snapshot, new OperationTranscriptSink(this));
+                FlushPendingOperationLogToUi(forceDrainAll: true);
+                ReplaceSelectedWorkspace(prepareResult.Snapshot);
+                CompleteOperationTranscript(prepareResult.Transcript);
+                await LoadAsync();
+                SelectWorkspaceByRootPath(prepareResult.Snapshot.Paths.RootPath);
+                DetailSummary = prepareResult.Message;
             }
             catch
             {
                 await LoadAsync();
                 SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
+                if (SelectedWorkspace?.Snapshot is { } failedSnapshot)
+                {
+                    ReplaceSelectedWorkspace(new WorkspaceSnapshot
+                    {
+                        Record = failedSnapshot.Record,
+                        Definition = failedSnapshot.Definition,
+                        Paths = failedSnapshot.Paths,
+                        ConfigurationPath = failedSnapshot.ConfigurationPath,
+                        RuntimeState = failedSnapshot.RuntimeState,
+                        Safety = failedSnapshot.Safety,
+                        Session = failedSnapshot.Session,
+                        AppliedState = failedSnapshot.AppliedState,
+                        LocalRuntimeState = failedSnapshot.LocalRuntimeState,
+                        ResolvedRuntimePlan = failedSnapshot.ResolvedRuntimePlan,
+                        UpdateRequired = failedSnapshot.UpdateRequired,
+                        Health = failedSnapshot.Health,
+                        AvailableServices = failedSnapshot.AvailableServices,
+                        Readiness = new WorkspaceReadinessSnapshot
+                        {
+                            Status = WorkspaceReadinessStatus.ProvisioningFailed,
+                            CurrentActivity = WorkspaceActivity.None,
+                            PrimaryAction = WorkspacePrimaryAction.RetryProvisioning,
+                            Summary = $"Workspace '{snapshot.Definition.Workspace.Name}' was created, but provisioning failed.",
+                        },
+                    });
+                }
                 DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' was created, but provisioning failed.";
                 DetailRecommendation = "Retry Provisioning or Run Diagnostics.";
+            }
+            finally
+            {
+                _isWorkspaceActionRunning = false;
+                _workspaceActionStatusMessage = string.Empty;
+                RaiseWorkspaceActionCommandStates();
+                if (SelectedWorkspace is not null)
+                {
+                    UpdateDetailPanel();
+                }
             }
         }
         catch (Exception exception)
@@ -2671,12 +2716,21 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailTitle = SelectedWorkspace.Name;
         var failureGuidance = TryBuildFailureGuidance(SelectedWorkspace);
         var provisioningHealth = SelectedWorkspace.Record.LastProvisioningHealth;
-        var presentation = BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false);
+        ApplyWorkspacePresentationToSummary(SelectedWorkspace);
+        var state = SelectedWorkspace.PresentationState;
+        if (state is null)
+        {
+            return;
+        }
+
+        var presentation = ToWorkspacePresentation(state, SelectedWorkspace);
         DetailSummary = SelectedWorkspace.HasTransientOperationFailure && !HasActiveWorkspaceOperation
             ? SummarizeTransientOperationMessage(SelectedWorkspace.LastActivity)
-            : ShouldPreferLastOperationResultForDetails(SelectedWorkspace)
+            : ShouldPreferOperationResultForDetails(SelectedWorkspace)
                 ? SelectedWorkspace.Record.LastOperationResult!
-            : presentation.Summary;
+            : string.IsNullOrWhiteSpace(state.Readiness?.Summary)
+                ? presentation.Summary
+                : state.Readiness!.Summary;
         DetailRecommendation = presentation.Recommendation;
         DetailAvailableServices.Clear();
         DetailServices.Clear();
@@ -2689,7 +2743,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             DetailItems.Add(new DetailItemViewModel("Needs Attention", string.IsNullOrWhiteSpace(DetailRecommendation) ? "Next: Refresh." : $"Next: {DetailRecommendation}"));
             DetailItems.Add(new DetailItemViewModel("Development Environment", "Unknown because workspace details could not be loaded."));
             DetailItems.Add(new DetailItemViewModel("Technical Evidence", BuildMissingSnapshotTechnicalEvidence(SelectedWorkspace)));
-            ApplyDetailPresentation(presentation);
+            ApplyDetailPresentation(state, SelectedWorkspace);
             return;
         }
 
@@ -2716,7 +2770,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             }
         }
 
-        foreach (var service in SelectedWorkspace.Snapshot?.AvailableServices ?? [])
+        foreach (var service in state.AvailableServices)
         {
             DetailAvailableServices.Add(BuildAvailableServiceRow(service, SelectedWorkspace));
         }
@@ -2724,7 +2778,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         PopulateCapabilityGroups();
 
         PopulateRecentActivity(SelectedWorkspace, presentation);
-        ApplyDetailPresentation(presentation);
+        ApplyDetailPresentation(state, SelectedWorkspace);
         UpdateOperationLogAutoVisibility();
         RaiseWorkspaceSectionPropertyChanges();
     }
@@ -3194,29 +3248,41 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             _ => "Info:",
         };
 
-    private void ApplyDetailPresentation(WorkspacePresentation presentation)
+    private void ApplyDetailPresentation(WorkspacePresentationState state, WorkspaceSummaryViewModel workspace)
     {
         DetailActions.Clear();
         DetailVisibleActions.Clear();
         DetailAdvancedActions.Clear();
         DetailPrimaryAction = null;
 
-        DetailPrimaryAction = presentation.PrimaryAction;
-        if (presentation.PrimaryAction is not null)
+        DetailPrimaryAction = BuildActionItem(workspace, state.PrimaryAction, useWorkspaceScopedCommands: false);
+        if (DetailPrimaryAction is not null)
         {
-            DetailActions.Add(presentation.PrimaryAction);
+            DetailActions.Add(DetailPrimaryAction);
         }
 
-        foreach (var action in presentation.SecondaryActions)
+        foreach (var action in state.SecondaryActions)
         {
-            DetailVisibleActions.Add(action);
-            DetailActions.Add(action);
+            var item = BuildActionItem(workspace, action, useWorkspaceScopedCommands: false);
+            if (item is null)
+            {
+                continue;
+            }
+
+            DetailVisibleActions.Add(item);
+            DetailActions.Add(item);
         }
 
-        foreach (var action in presentation.AdvancedActions)
+        foreach (var action in state.AdvancedActions)
         {
-            DetailActions.Add(action);
-            DetailAdvancedActions.Add(action);
+            var item = BuildActionItem(workspace, action, useWorkspaceScopedCommands: false);
+            if (item is null)
+            {
+                continue;
+            }
+
+            DetailActions.Add(item);
+            DetailAdvancedActions.Add(item);
         }
 
         if (DetailAdvancedActions.Count == 0)
@@ -3242,7 +3308,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        ApplyDetailPresentation(BuildWorkspacePresentation(SelectedWorkspace, useWorkspaceScopedCommands: false));
+        ApplyWorkspacePresentationToSummary(SelectedWorkspace);
+        if (SelectedWorkspace.PresentationState is not null)
+        {
+            ApplyDetailPresentation(SelectedWorkspace.PresentationState, SelectedWorkspace);
+        }
     }
 
     private void RefreshWorkspacePresentations()
@@ -3254,178 +3324,118 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private void ApplyWorkspacePresentationToSummary(WorkspaceSummaryViewModel workspace)
-        => workspace.ApplyPresentation(BuildWorkspacePresentation(workspace, useWorkspaceScopedCommands: true));
-
-    private WorkspacePresentation BuildWorkspacePresentation(WorkspaceSummaryViewModel workspace, bool useWorkspaceScopedCommands)
     {
+        var state = _presentationStateResolver.Resolve(CreatePresentationContext(workspace));
+
+        workspace.ApplyPresentationState(state, BuildActionItem(workspace, state.PrimaryAction, useWorkspaceScopedCommands: true));
+    }
+
+    private WorkspacePresentationResolutionContext CreatePresentationContext(WorkspaceSummaryViewModel workspace)
+    {
+        var isSelectedWorkspaceOperation = ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation;
         var effectiveReadiness = BuildEffectiveReadiness(workspace);
-        var failureGuidance = TryBuildFailureGuidance(workspace);
-        var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
-        var openDevelopmentShellAction = CreatePresentationAction(workspace, "Open Development Shell", BuildOpenDevelopmentShellDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
-        var retryProvisioningAction = CreatePresentationAction(workspace, "Retry Provisioning", BuildRetryProvisioningDescription(workspace), CanPrepareWorkspace(workspace), GetPrepareDisabledReason(workspace), () => PrepareSelectedWorkspaceAsync(), useWorkspaceScopedCommands);
-        var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
-        var investigateProblemAction = CreatePresentationAction(workspace, "Run Diagnostics", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
-        var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
-        var refreshAction = new ActionItemViewModel("Refresh", "Refresh the workspace list and reload workspace details.", !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), RefreshWorkspacesCommand);
-        var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
-        var planApexlangAction = CreatePresentationAction(workspace, "Plan APEXlang Change", "Build a reviewable semantic APEXlang plan before changing application source.", SupportsApexAssistant && !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), async () => { OpenApexAssistant(); await Task.CompletedTask; }, useWorkspaceScopedCommands);
-        var supportsSynchronization = workspace.Snapshot?.Synchronization.IsSupported == true;
-        var shouldShowRebuildRuntime = effectiveReadiness?.Status is not (WorkspaceReadinessStatus.Ready or WorkspaceReadinessStatus.ProvisioningFailed)
-            || workspace.Record.LastProvisioningHealth is not null
-            || (workspace.Record.LastOperationSucceeded == false && effectiveReadiness?.Status != WorkspaceReadinessStatus.ProvisioningFailed);
-        var advancedActions = new List<ActionItemViewModel>();
-        if (effectiveReadiness?.Status == WorkspaceReadinessStatus.ProvisioningFailed)
-        {
-            advancedActions.Add(retryProvisioningAction);
-        }
-
-        if (shouldShowRebuildRuntime)
-        {
-            advancedActions.Add(rebuildRuntimeAction);
-        }
-
-        advancedActions.AddRange(
-        [
-            investigateProblemAction,
-            CreatePresentationAction(workspace, "Start Only", BuildStartDescription(workspace), CanStartWorkspace(workspace), GetStartDisabledReason(workspace), StartSelectedWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Attach Only", BuildAttachDescription(workspace), CanAttachWorkspace(workspace), GetAttachDisabledReason(workspace), AttachSelectedWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Validate", BuildSynchronizationDescription(workspace, "validate"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ValidateSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Export", BuildSynchronizationDescription(workspace, "export"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ExportSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Import", BuildSynchronizationDescription(workspace, "import"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), ImportSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Synchronize", BuildSynchronizationDescription(workspace, "synchronize"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Show Diff", BuildSynchronizationDescription(workspace, "diff"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), DiffSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Pull Changes", BuildSynchronizationDescription(workspace, "pull"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PullSynchronizationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Push Changes", BuildSynchronizationDescription(workspace, "push"), supportsSynchronization && CanRunSynchronizationWorkspace(workspace), GetSynchronizationDisabledReason(workspace), PushSynchronizationAsync, useWorkspaceScopedCommands),
-            planApexlangAction,
-            CreatePresentationAction(workspace, "Create Application", "Create a new Oracle APEX application for the configured environment. This flow is still intentionally disabled while connect-first synchronization stabilizes.", false, "Create Application is not available yet.", SynchronizeWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Connect Existing Application", "Discover an existing Oracle APEX application, bind it into workspace metadata, export it to source control, and validate the exported source.", CanConnectExistingOracleApexApplicationWorkspace(workspace), GetConnectExistingOracleApexApplicationDisabledReason(workspace), ConnectExistingOracleApexApplicationAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Save Point", BuildSavePointDescription(workspace), CanCreateSavePointWorkspace(workspace), GetSavePointDisabledReason(workspace), CreateSavePointAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Checkpoint", BuildCheckpointDescription(workspace), CanCreateCheckpointWorkspace(workspace), GetCheckpointDisabledReason(workspace), CreateCheckpointAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Backup", BuildBackupDescription(workspace), CanBackupWorkspace(workspace), GetBackupDisabledReason(workspace), BackupWorkspaceAsync, useWorkspaceScopedCommands),
-            CreatePresentationAction(workspace, "Publish", BuildPublishDescription(workspace), CanPublishWorkspace(workspace), GetPublishDisabledReason(workspace), PublishWorkspaceAsync, useWorkspaceScopedCommands),
-            removeAction,
-        ]);
-
-        if (failureGuidance?.CanRetry == true && effectiveReadiness?.Status != WorkspaceReadinessStatus.ProvisioningFailed)
-        {
-            advancedActions.Insert(0, CreatePresentationAction(workspace, "Retry", BuildRetryDescription(workspace), CanRetryWorkspace(workspace), GetRetryDisabledReason(workspace), RetrySelectedWorkspaceAsync, useWorkspaceScopedCommands));
-        }
-
-        if (IsOracleApexMediaMissing(workspace))
-        {
-            advancedActions.Insert(0, new ActionItemViewModel(
-                "Open Oracle Download Page",
-                "Open the official Oracle APEX download page because Oracle media must be downloaded manually.",
-                true,
-                string.Empty,
-                new AsyncRelayCommand(OpenOracleApexDownloadPageAsync)));
-            advancedActions.Insert(0, new ActionItemViewModel(
-                "Open Download Folder",
-                "Open the shared OpenCode Stuff Oracle APEX download cache folder.",
-                true,
-                string.Empty,
-                new AsyncRelayCommand(OpenOracleApexDownloadFolderAsync)));
-        }
-
-        if (!workspace.HasSnapshot)
-        {
-            return new WorkspacePresentation
-            {
-                Headline = "Discovery Failed",
-                Summary = string.IsNullOrWhiteSpace(workspace.ErrorMessage) ? "Workspace details could not be loaded. Run Diagnostics or Refresh to continue." : workspace.ErrorMessage,
-                CurrentStatus = "Discovery Failed",
-                CurrentActivity = "None",
-                ActivitySummary = "No active workspace operation.",
-                Recommendation = "Run Diagnostics.",
-                PrimaryAction = new ActionItemViewModel("Run Diagnostics", investigateProblemAction.Description, investigateProblemAction.IsEnabled, investigateProblemAction.DisabledReason, investigateProblemAction.Command),
-                SecondaryActions = [refreshAction],
-                AdvancedActions = [investigateProblemAction, openFolderAction, removeAction],
-            };
-        }
-
-        return WorkspaceHealthAggregator.BuildPresentation(
+        return new WorkspacePresentationResolutionContext(
             workspace,
-            isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
-            currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
-            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty,
-            new WorkspacePresentationActions
-            {
-                OpenWorkspace = openWorkspaceAction,
-                OpenDevelopmentShell = openDevelopmentShellAction,
-                RetryProvisioning = retryProvisioningAction,
-                RebuildRuntime = rebuildRuntimeAction,
-                TroubleshootWorkspace = investigateProblemAction,
-                OpenFolder = openFolderAction,
-                AdvancedActions = advancedActions,
-            },
-            effectiveReadiness);
+            WorkspaceHealthAggregator.BuildState(
+                workspace,
+                isOperationInProgress: isSelectedWorkspaceOperation,
+                currentOperationName: isSelectedWorkspaceOperation ? CurrentWorkspaceOperationName : string.Empty,
+                currentStatusMessage: isSelectedWorkspaceOperation ? CurrentWorkspaceOperationStatus : string.Empty,
+                effectiveReadiness),
+            effectiveReadiness,
+            IsBusyForWorkspaceActions,
+            GetCurrentWorkspaceActionStatusMessage(),
+            isSelectedWorkspaceOperation,
+            isSelectedWorkspaceOperation ? CurrentWorkspaceOperationName : string.Empty,
+            isSelectedWorkspaceOperation ? CurrentWorkspaceOperationStatus : string.Empty,
+            _interactionService is not null,
+            _clipboardService is not null,
+            SupportsApexAssistant,
+            workspace.Snapshot?.Synchronization.IsSupported == true,
+            workspace.Snapshot is not null && OracleWorkspaceFamily.HasApex(workspace.Snapshot.Definition),
+            IsOracleApexMediaMissing(workspace),
+            workspace.Record.LastPreparedUtc is null && workspace.Record.LastOperationSucceeded == true && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal),
+            workspace.Snapshot?.LocalRuntimeState is null || workspace.Snapshot?.AppliedState is null || workspace.Snapshot?.UpdateRequired == true,
+            GetRetryOperationName(workspace),
+            GetRepairabilityAssessment(workspace)?.Classification,
+            BuildPresentedServiceCandidates(workspace));
     }
 
-    private AvailableWorkspaceServiceRowViewModel BuildAvailableServiceRow(WorkspaceServiceInfo service, WorkspaceSummaryViewModel workspace)
+    private IReadOnlyList<WorkspacePresentedServiceCandidate> BuildPresentedServiceCandidates(WorkspaceSummaryViewModel workspace)
     {
-        var readinessStatus = workspace.Readiness?.Status;
-        var actionsEnabled = readinessStatus == WorkspaceReadinessStatus.Ready;
-        var status = workspace.Health?.Services.FirstOrDefault(item => string.Equals(item.ServiceId, service.ServiceId, StringComparison.OrdinalIgnoreCase))?.StatusLabel;
-        if (string.IsNullOrWhiteSpace(status))
+        if (workspace.Snapshot is null)
         {
-            status = readinessStatus switch
-            {
-                WorkspaceReadinessStatus.Ready => "Ready",
-                WorkspaceReadinessStatus.NeedsRebuild => "Unavailable until rebuild",
-                WorkspaceReadinessStatus.Unavailable => "Unavailable",
-                WorkspaceReadinessStatus.Preparing => "Preparing",
-                _ => string.Empty,
-            };
+            return [];
         }
 
-        var primaryCommand = service.Commands.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Command))?.Command ?? string.Empty;
-        var openOrCommand = !string.IsNullOrWhiteSpace(service.HostUrl)
-            ? service.HostUrl
-            : string.IsNullOrWhiteSpace(primaryCommand)
-                ? "Open Workspace"
-                : primaryCommand;
-        var docsPath = string.IsNullOrWhiteSpace(service.DocsPath)
-            ? string.Empty
-            : Path.Combine(workspace.RootPath, service.DocsPath.Replace('/', Path.DirectorySeparatorChar));
-
-        AsyncRelayCommand? openServiceCommand = null;
-        if (string.Equals(service.ServiceId, "development-shell", StringComparison.OrdinalIgnoreCase))
+        return workspace.Snapshot.AvailableServices.Select(service =>
         {
-            openServiceCommand = new AsyncRelayCommand(OpenSelectedWorkspaceAsync);
-        }
-        else if (!string.IsNullOrWhiteSpace(service.HostUrl))
-        {
-            openServiceCommand = new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(service.HostUrl));
-        }
-
-        AsyncRelayCommand? copyUrlCommand = !string.IsNullOrWhiteSpace(service.HostUrl) && _clipboardService is not null
-            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(service.HostUrl))
-            : null;
-        AsyncRelayCommand? copyCredentialsCommand = !string.IsNullOrWhiteSpace(service.Credentials) && _clipboardService is not null
-            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(service.Credentials))
-            : null;
-        AsyncRelayCommand? copyCommandCommand = !string.IsNullOrWhiteSpace(primaryCommand) && _clipboardService is not null
-            ? new AsyncRelayCommand(() => _clipboardService.SetTextAsync(primaryCommand))
-            : null;
-        AsyncRelayCommand? openDocsCommand = !string.IsNullOrWhiteSpace(docsPath)
-            ? new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(docsPath))
-            : null;
-
-        return new AvailableWorkspaceServiceRowViewModel(
-            service.Name,
-            service.Category,
-            service.Description,
-            status,
-            actionsEnabled,
-            openOrCommand,
-            service.Credentials,
-            docsPath,
-            openServiceCommand,
-            copyUrlCommand,
-            copyCredentialsCommand,
-            copyCommandCommand,
-            openDocsCommand);
+            var primaryCommand = service.Commands.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Command))?.Command ?? string.Empty;
+            var docsPath = string.IsNullOrWhiteSpace(service.DocsPath)
+                ? string.Empty
+                : Path.Combine(workspace.RootPath, service.DocsPath.Replace('/', Path.DirectorySeparatorChar));
+            return new WorkspacePresentedServiceCandidate(
+                service.ServiceId,
+                service.Name,
+                service.Category,
+                service.Description,
+                service.HostUrl,
+                primaryCommand,
+                service.Credentials,
+                docsPath,
+                !string.IsNullOrWhiteSpace(service.HostUrl) || string.Equals(service.ServiceId, "development-shell", StringComparison.OrdinalIgnoreCase));
+        }).ToList();
     }
+
+    private AvailableWorkspaceServiceRowViewModel BuildAvailableServiceRow(WorkspacePresentedService service, WorkspaceSummaryViewModel workspace)
+        => new(
+            service,
+            BuildServiceActionItems(service, workspace));
+
+    private IReadOnlyList<ActionItemViewModel> BuildServiceActionItems(WorkspacePresentedService service, WorkspaceSummaryViewModel workspace)
+        => service.AvailableActions
+            .Where(action => action.IsVisible)
+            .Select(action => new ActionItemViewModel(
+                action.Label,
+                string.Empty,
+                action.IsEnabled,
+                action.DisabledReason,
+                ResolveServiceActionCommand(workspace, service, action.Kind),
+                isPrimary: action.Kind == WorkspacePresentedServiceActionKind.Open))
+            .ToList();
+
+    private System.Windows.Input.ICommand ResolveServiceActionCommand(WorkspaceSummaryViewModel workspace, WorkspacePresentedService service, WorkspacePresentedServiceActionKind kind)
+        => new AsyncRelayCommand(async () =>
+        {
+            SelectWorkspaceByRootPath(workspace.RootPath);
+
+            switch (kind)
+            {
+                case WorkspacePresentedServiceActionKind.Open:
+                    if (string.Equals(service.Service, "Development Shell", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ExecutePresentedActionAsync(workspace, WorkspacePresentedActionKind.OpenWorkspace, useWorkspaceScopedCommands: true);
+                    }
+                    else if (service.OpenOrCommand.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _desktopShellService.OpenPathAsync(service.OpenOrCommand);
+                    }
+
+                    break;
+                case WorkspacePresentedServiceActionKind.CopyUrl when _clipboardService is not null:
+                    await _clipboardService.SetTextAsync(service.OpenOrCommand);
+                    break;
+                case WorkspacePresentedServiceActionKind.CopyCredentials when _clipboardService is not null:
+                    await _clipboardService.SetTextAsync(service.Credentials);
+                    break;
+                case WorkspacePresentedServiceActionKind.CopyCommand when _clipboardService is not null:
+                    await _clipboardService.SetTextAsync(service.OpenOrCommand);
+                    break;
+                case WorkspacePresentedServiceActionKind.OpenDocumentation:
+                    await _desktopShellService.OpenPathAsync(service.DocsPath);
+                    break;
+            }
+        });
 
     private WorkspaceReadinessSnapshot? BuildEffectiveReadiness(WorkspaceSummaryViewModel workspace)
     {
@@ -3462,6 +3472,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             && workspace.Readiness?.Status == WorkspaceReadinessStatus.Ready
             && workspace.Record.LastOperationSucceeded == true;
 
+    private static bool ShouldPreferOperationResultForDetails(WorkspaceSummaryViewModel workspace)
+        => !string.IsNullOrWhiteSpace(workspace.Record.LastOperationResult)
+            && workspace.Record.LastOperationSucceeded == true
+            && workspace.Record.LastOperationName is "Create Save Point"
+                or "Create Checkpoint"
+                or "Backup"
+                or "Publish"
+                or "Open Existing Repository"
+                or "Remove";
+
     private static bool ShouldShowFailureEvidence(WorkspaceSummaryViewModel workspace)
     {
         if (workspace.Snapshot is null)
@@ -3477,13 +3497,135 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         return false;
     }
 
-    private WorkspaceAggregatedState BuildAggregatedState(WorkspaceSummaryViewModel workspace)
-        => WorkspaceHealthAggregator.BuildState(
-            workspace,
-            isOperationInProgress: ReferenceEquals(workspace, SelectedWorkspace) && HasActiveWorkspaceOperation,
-            currentOperationName: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationName : string.Empty,
-            currentStatusMessage: ReferenceEquals(workspace, SelectedWorkspace) ? CurrentWorkspaceOperationStatus : string.Empty,
-            BuildEffectiveReadiness(workspace));
+    private ActionItemViewModel? BuildActionItem(WorkspaceSummaryViewModel workspace, WorkspacePresentedAction? action, bool useWorkspaceScopedCommands)
+    {
+        if (action is null || !action.IsVisible)
+        {
+            return null;
+        }
+
+        var command = new AsyncRelayCommand(() => ExecutePresentedActionAsync(workspace, action.Kind, useWorkspaceScopedCommands));
+        return new ActionItemViewModel(action.Label, action.Description, action.IsEnabled, action.DisabledReason, command, action.IsPrimary);
+    }
+
+    private async Task ExecutePresentedActionAsync(WorkspaceSummaryViewModel workspace, WorkspacePresentedActionKind kind, bool useWorkspaceScopedCommands)
+    {
+        if (useWorkspaceScopedCommands)
+        {
+            SelectWorkspaceByRootPath(workspace.RootPath);
+        }
+
+        var resolvedWorkspace = SelectedWorkspace is not null && string.Equals(SelectedWorkspace.RootPath, workspace.RootPath, StringComparison.OrdinalIgnoreCase)
+            ? SelectedWorkspace
+            : workspace;
+        var state = _presentationStateResolver.Resolve(CreatePresentationContext(resolvedWorkspace));
+        var action = state.PrimaryAction?.Kind == kind
+            ? state.PrimaryAction
+            : state.SecondaryActions.Concat(state.AdvancedActions).FirstOrDefault(item => item.Kind == kind && item.IsVisible);
+
+        if (action is not null && !action.IsEnabled)
+        {
+            return;
+        }
+
+        switch (kind)
+        {
+            case WorkspacePresentedActionKind.Refresh:
+                await LoadAsync();
+                break;
+            case WorkspacePresentedActionKind.OpenWorkspace:
+                await OpenSelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.RetryProvisioning:
+                await PrepareSelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.RebuildRuntime:
+                await ResetRuntimeSelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.RunDiagnostics:
+                await TroubleshootWorkspaceInternalAsync();
+                break;
+            case WorkspacePresentedActionKind.OpenFolder:
+                await OpenSelectedWorkspaceFolderAsync();
+                break;
+            case WorkspacePresentedActionKind.StartOnly:
+                await StartSelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.AttachOnly:
+                await AttachSelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.Retry:
+                await RetrySelectedWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.Validate:
+                await ValidateSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.Export:
+                await ExportSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.Import:
+                await ImportSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.Synchronize:
+                await SynchronizeWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.ShowDiff:
+                await DiffSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.PullChanges:
+                await PullSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.PushChanges:
+                await PushSynchronizationAsync();
+                break;
+            case WorkspacePresentedActionKind.PlanApexlangChange:
+                OpenApexAssistant();
+                break;
+            case WorkspacePresentedActionKind.ConnectExistingApplication:
+                await ConnectExistingOracleApexApplicationAsync();
+                break;
+            case WorkspacePresentedActionKind.SavePoint:
+                await CreateSavePointAsync();
+                break;
+            case WorkspacePresentedActionKind.Checkpoint:
+                await CreateCheckpointAsync();
+                break;
+            case WorkspacePresentedActionKind.Backup:
+                await BackupWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.Publish:
+                await PublishWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.Remove:
+                await RemoveWorkspaceAsync();
+                break;
+            case WorkspacePresentedActionKind.OpenOracleDownloadPage:
+                await OpenOracleApexDownloadPageAsync();
+                break;
+            case WorkspacePresentedActionKind.OpenDownloadFolder:
+                await OpenOracleApexDownloadFolderAsync();
+                break;
+        }
+    }
+
+    private static WorkspacePresentation ToWorkspacePresentation(WorkspacePresentationState state, WorkspaceSummaryViewModel workspace)
+        => new()
+        {
+            Headline = state.StatusLabel,
+            Summary = state.Summary,
+            CurrentStatus = state.CurrentStatus,
+            CurrentActivity = state.CurrentActivity,
+            ActivitySummary = state.ActivitySummary,
+            Recommendation = state.Recommendation,
+            CapabilitiesSummary = state.CapabilitiesSummary,
+            ApplicationsSummary = state.ApplicationsSummary,
+            DevelopmentEnvironmentSummary = state.DevelopmentEnvironmentSummary,
+            ServicesSummary = state.ServicesSummary,
+            RecentHistoryNote = state.RecentHistoryNote,
+            PrimaryAction = null,
+            SecondaryActions = [],
+            AdvancedActions = [],
+        };
 
     private ActionItemViewModel CreatePresentationAction(WorkspaceSummaryViewModel workspace, string label, string description, bool isEnabled, string disabledReason, Func<Task> executeAsync, bool useWorkspaceScopedCommands)
         => new(
@@ -4649,8 +4791,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return;
         }
 
-        var operationFailed = false;
-
         try
         {
             Services.StartupLog.WriteGlobal($"Workspace operation '{operationName}' starting for '{SelectedWorkspace.Name}'.");
@@ -4679,7 +4819,6 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         }
         catch (Exception exception)
         {
-            operationFailed = true;
             Services.StartupLog.WriteGlobalException($"Workspace operation '{operationName}' failed", exception);
             _workspaceActionStatusMessage = exception.Message;
             SelectedWorkspace?.SetOperationFailureState(exception.Message, operationName);
@@ -4693,15 +4832,12 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         finally
         {
             _isWorkspaceActionRunning = false;
+            _workspaceActionStatusMessage = string.Empty;
             FlushPendingOperationLogToUi(forceDrainAll: true);
             RaiseWorkspaceActionCommandStates();
-            if (operationFailed)
+            if (SelectedWorkspace is not null)
             {
                 UpdateDetailPanel();
-            }
-            else
-            {
-                RefreshDetailActions();
             }
         }
     }

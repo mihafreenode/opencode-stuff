@@ -16,6 +16,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     private string _summary = string.Empty;
     private string _recommendation = string.Empty;
     private ActionItemViewModel? _primaryAction;
+    private WorkspacePresentationState? _presentationState;
 
     public WorkspaceSummaryViewModel(WorkspaceShellItem item)
     {
@@ -40,16 +41,10 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         ? _runtimeStatusLabelOverride ?? "Error"
         : !string.IsNullOrWhiteSpace(_runtimeStatusLabelOverride)
         ? _runtimeStatusLabelOverride!
-        : Snapshot?.Readiness is not null
-            ? WorkspaceReadinessPresentationFormatter.FormatStatusLabel(Snapshot.Readiness, this)
-        : FormatHealthStatusLabel(Snapshot!.Health.OverallStatus);
-    public bool IsReadyStatus => RuntimeStatusLabel.Contains("Ready", StringComparison.OrdinalIgnoreCase);
-    public bool IsWarningStatus => RuntimeStatusLabel.Contains("Rebuild", StringComparison.OrdinalIgnoreCase)
-        || RuntimeStatusLabel.Contains("Update", StringComparison.OrdinalIgnoreCase)
-        || RuntimeStatusLabel.Contains("Attention", StringComparison.OrdinalIgnoreCase);
-    public bool IsUnavailableStatus => RuntimeStatusLabel.Contains("Unavailable", StringComparison.OrdinalIgnoreCase)
-        || RuntimeStatusLabel.Contains("Error", StringComparison.OrdinalIgnoreCase)
-        || RuntimeStatusLabel.Contains("Failed", StringComparison.OrdinalIgnoreCase);
+        : PresentationState?.StatusLabel ?? FormatHealthStatusLabel(Snapshot!.Health.OverallStatus);
+    public bool IsReadyStatus => PresentationState?.Tone == WorkspacePresentationTone.Ready;
+    public bool IsWarningStatus => PresentationState?.Tone == WorkspacePresentationTone.Warning;
+    public bool IsUnavailableStatus => PresentationState is null || PresentationState.Tone == WorkspacePresentationTone.Unavailable;
     public string ProtectionLabel => IsLoading
         ? "Loading..."
         : HasError
@@ -116,9 +111,10 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
     public string RuntimeTarget => IsLoading ? "Loading..." : HasSnapshot ? Snapshot!.ResolvedRuntimePlan?.TargetPlatform ?? "Unknown" : "Unavailable";
     public WorkspaceHealthSnapshot? Health => Snapshot?.Health;
     public WorkspaceReadinessSnapshot? Readiness => Snapshot?.Readiness;
-    public string ReadinessPrimaryActionLabel => Readiness is null ? string.Empty : WorkspaceReadinessPresentationFormatter.FormatPrimaryActionLabel(Readiness);
-    public string ReadinessActivityLabel => Readiness is null ? string.Empty : WorkspaceReadinessPresentationFormatter.FormatActivityLabel(Readiness.CurrentActivity);
-    public bool IsReadinessOperationInProgress => Readiness?.IsOperationInProgress == true;
+    public string ReadinessPrimaryActionLabel => PresentationState?.PrimaryAction?.Label ?? string.Empty;
+    public string ReadinessActivityLabel => PresentationState?.CurrentActivity ?? string.Empty;
+    public bool IsReadinessOperationInProgress => PresentationState?.IsOperationRunning == true;
+    public WorkspacePresentationState? PresentationState => _presentationState;
     public string SafeWorkspaceName => BuildSafeWorkspaceToken(Name);
     public string RowAutomationId => $"WorkspaceRow_{SafeWorkspaceName}";
     public string RowAutomationName => $"WorkspaceRow_{SafeWorkspaceName}";
@@ -211,6 +207,16 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         PrimaryAction = presentation.PrimaryAction;
     }
 
+    public void ApplyPresentationState(WorkspacePresentationState presentationState, ActionItemViewModel? primaryAction)
+    {
+        _presentationState = presentationState;
+        Headline = presentationState.StatusLabel;
+        Summary = presentationState.Summary;
+        Recommendation = presentationState.Recommendation;
+        PrimaryAction = primaryAction;
+        RaiseWorkspaceDisplayChanged();
+    }
+
     private string DisplayNameFromRecord()
         => string.IsNullOrWhiteSpace(Record.Name) ? Record.RootPath : Record.Name;
 
@@ -241,6 +247,7 @@ public sealed class WorkspaceSummaryViewModel : ObservableObject
         RaisePropertyChanged(nameof(ReadinessPrimaryActionLabel));
         RaisePropertyChanged(nameof(ReadinessActivityLabel));
         RaisePropertyChanged(nameof(IsReadinessOperationInProgress));
+        RaisePropertyChanged(nameof(PresentationState));
         RaisePropertyChanged(nameof(Headline));
         RaisePropertyChanged(nameof(Summary));
         RaisePropertyChanged(nameof(Health));

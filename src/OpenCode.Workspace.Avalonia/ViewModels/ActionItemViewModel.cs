@@ -8,13 +8,15 @@ public sealed class ActionItemViewModel : ObservableObject
     private string _description;
     private string _disabledReason;
     private bool _isEnabled;
+    private bool _isPrimary;
 
-    public ActionItemViewModel(string label, string description, bool isEnabled, string disabledReason, ICommand command)
+    public ActionItemViewModel(string label, string description, bool isEnabled, string disabledReason, ICommand command, bool isPrimary = false)
     {
         _label = label;
         _description = description;
         _isEnabled = isEnabled;
         _disabledReason = disabledReason;
+        _isPrimary = isPrimary;
         Command = command;
     }
 
@@ -63,6 +65,20 @@ public sealed class ActionItemViewModel : ObservableObject
     }
 
     public bool ShowDisabledReason => !IsEnabled && !string.IsNullOrWhiteSpace(DisabledReason);
+
+    public bool IsPrimary
+    {
+        get => _isPrimary;
+        set
+        {
+            if (SetProperty(ref _isPrimary, value))
+            {
+                RaisePropertyChanged(nameof(IsQuiet));
+            }
+        }
+    }
+
+    public bool IsQuiet => !IsPrimary;
 
     public string AutomationId => Label switch
     {

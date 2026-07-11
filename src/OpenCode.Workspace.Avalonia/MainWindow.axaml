@@ -204,13 +204,26 @@
                                                        FontWeight="SemiBold" />
                                           </Border>
                                           <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding HasDescription}" />
-                                          <WrapPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal">
-                                            <Button Content="Open" Classes="accent" Command="{Binding OpenServiceCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenService}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                            <Button Content="Copy URL" Classes="quiet-action" Command="{Binding CopyUrlCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyUrl}" Margin="0,0,8,8" MinWidth="96" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                            <Button Content="Copy Credentials" Classes="quiet-action" Command="{Binding CopyCredentialsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCredentials}" Margin="0,0,8,8" MinWidth="132" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                            <Button Content="Copy Command" Classes="quiet-action" Command="{Binding CopyCommandCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanCopyCommand}" Margin="0,0,8,8" MinWidth="124" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                            <Button Content="Documentation" Classes="quiet-action" Command="{Binding OpenDocsCommand}" IsEnabled="{Binding ActionsEnabled}" IsVisible="{Binding CanOpenDocs}" Margin="0,0,8,8" MinWidth="120" HorizontalAlignment="Left" HorizontalContentAlignment="Center" />
-                                          </WrapPanel>
+                                          <ItemsControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" ItemsSource="{Binding Actions}">
+                                            <ItemsControl.ItemsPanel>
+                                              <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" />
+                                              </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                              <DataTemplate>
+                                                <Button Content="{Binding Label}"
+                                                        Command="{Binding Command}"
+                                                        IsEnabled="{Binding IsEnabled}"
+                                                        Classes.accent="{Binding IsPrimary}"
+                                                        Classes.quiet-action="{Binding IsQuiet}"
+                                                        Margin="0,0,8,8"
+                                                        MinWidth="96"
+                                                        HorizontalAlignment="Left"
+                                                        HorizontalContentAlignment="Center" />
+                                              </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                          </ItemsControl>
                                         </Grid>
                                       </Border>
                                     </DataTemplate>
@@ -1303,16 +1316,23 @@
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="4">
                           <TextBlock Text="{Binding OpenOrCommand}" TextWrapping="Wrap" />
-                          <WrapPanel ItemHeight="28" ItemWidth="112">
-                            <Button Content="Open Service" Command="{Binding OpenServiceCommand}" IsVisible="{Binding CanOpenService}" />
-                            <Button Content="Copy URL" Command="{Binding CopyUrlCommand}" IsVisible="{Binding CanCopyUrl}" />
-                            <Button Content="Copy Command" Command="{Binding CopyCommandCommand}" IsVisible="{Binding CanCopyCommand}" />
-                            <Button Content="Open Docs" Command="{Binding OpenDocsCommand}" IsVisible="{Binding CanOpenDocs}" />
-                          </WrapPanel>
+                          <ItemsControl ItemsSource="{Binding Actions}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <WrapPanel ItemHeight="28" ItemWidth="112" />
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate>
+                                <Button Content="{Binding Label}"
+                                        Command="{Binding Command}"
+                                        IsEnabled="{Binding IsEnabled}" />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
                         </StackPanel>
                         <StackPanel Grid.Column="2" Spacing="4">
                           <TextBlock Text="{Binding Credentials}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding HasCredentials}" />
-                          <Button Content="Copy Credentials" Command="{Binding CopyCredentialsCommand}" IsVisible="{Binding CanCopyCredentials}" />
                         </StackPanel>
                       </Grid>
                     </Border>
