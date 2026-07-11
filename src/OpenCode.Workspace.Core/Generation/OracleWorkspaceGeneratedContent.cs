@@ -78,6 +78,10 @@ internal static class OracleWorkspaceGeneratedContent
             files[Path.Combine("docs", "oracle-tools", "apexlang-hello-world.md")] = withGeneratedHeader(ApexLangHelloWorldDoc());
             files[Path.Combine("docs", "reference", "oracle-apexlang-navigation.md")] = withGeneratedHeader(OracleApexLangNavigationDoc());
             files[Path.Combine("skills", "oracle", "apexlang.md")] = OracleApexLangSkillDoc();
+            foreach (var reference in OracleApexSyntaxReferenceBuilder.BuildFiles(ReadingApexlangSyntaxSource(), "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/reading-apexlang-syntax.html", "26.1"))
+            {
+                files[reference.Key] = withGeneratedHeader(reference.Value);
+            }
             files[Path.Combine("apex", "application.apx")] = ApexApplicationStub();
             files[Path.Combine("sql", "customers-reference.sql")] = withGeneratedSqlHeader(CustomersReferenceSql());
             files[Path.Combine("sql", "hello-apexlang", "generate-hello-apexlang.sql")] = withGeneratedSqlHeader(GenerateHelloApexLangSql());
@@ -887,6 +891,8 @@ Recommended documentation indexes:
 Common workflows:
 
 - inspect the workspace index before planning a change
+- consult `.opencode/skills/apexlang/references/syntax-basics.md` and the other local syntax references before editing source
+- use `.opencode/knowledge/apex-developers-companion/prompts/compact-context.md` for conceptual and workflow guidance when the exact language reference is not enough
 - build a semantic plan and review assumptions, warnings, unresolved questions, affected symbols, and expected files
 - require explicit approval for destructive or potentially conflicting plans
 - execute APEXlang changes only through the semantic planner, code action service, or semantic editor workflow
@@ -912,10 +918,50 @@ Troubleshooting guidance:
 
 - if a concept is hard to place, map it back to Builder terminology with `docs/reference/oracle-apex-index.md`
 - use release notes when structure or naming appears version-specific
+- for real source-shape questions, retrieve the smallest relevant local reference first:
+  - `.opencode/skills/apexlang/references/identifiers-and-scopes.md`
+  - `.opencode/skills/apexlang/references/component-references.md`
+  - `.opencode/skills/apexlang/references/embedded-languages.md`
 
 Official documentation:
 
 - https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/
+- https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/reading-apexlang-syntax.html
+""";
+
+    private static string ReadingApexlangSyntaxSource() => """
+## Component Syntax
+<p>Components use a block form with a component type, optional identifier, and parentheses. Properties inside the block may be omitted when Builder defaults are acceptable.</p>
+<p>Arrays use repeated child entries or grouped values instead of ad hoc inline syntax. Source files usually follow exported naming conventions such as application roots, page files, and shared component folders.</p>
+
+## Identifiers And Scope
+<p>Identifiers name components within their local scope. Page items, regions, navigation entries, and shared components have different uniqueness boundaries, so reuse is allowed only where the owning scope differs.</p>
+
+## Component References
+<p>Use <code>@</code> for local component references and <code>@/</code> for Global Page or Universal Theme references. Keep the symbolic reference form so later export, review, and validation can resolve the intended target.</p>
+
+## Properties And Property Groups
+<p>Properties use <code>name: value</code>. Property groups keep related settings together and should stay structurally intact when editing exported source.</p>
+
+## Embedded Languages
+<p>Use fenced blocks for embedded SQL, PL/SQL, JavaScript, HTML, and CSS. Distinguish <code>javascript-browser</code> from <code>javascript-mle</code> because they execute in different runtimes.</p>
+<pre><code class="language-sql">select *
+from demo_customers;
+</code></pre>
+<pre><code class="language-plsql">begin
+    null;
+end;
+</code></pre>
+<pre><code class="language-javascript-browser">apex.message.showPageSuccess("Saved");
+</code></pre>
+<pre><code class="language-javascript-mle">export function transform(row) {
+  return row;
+}
+</code></pre>
+<pre><code class="language-html"><div class="hero">Hello</div>
+</code></pre>
+<pre><code class="language-css">.hero { color: #123456; }
+</code></pre>
 """;
 
     private static string OracleOrdsSkillDoc() => """

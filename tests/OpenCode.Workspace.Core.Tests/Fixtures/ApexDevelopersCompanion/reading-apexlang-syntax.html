@@ -1,0 +1,32 @@
+<h2>Component Syntax</h2>
+<p>Components use a block with a type, optional identifier, and parentheses. Properties can be omitted when Builder defaults are acceptable.</p>
+<p>Arrays use repeated child entries. Source files follow exported naming conventions.</p>
+
+<h2>Identifiers And Scope</h2>
+<p>A component identifier is unique only within its component scope. A page item can share a label with a shared component because the scopes differ.</p>
+
+<h2>Component References</h2>
+<p>Use &#64; for local references and &#64;/ for Global Page and Universal Theme references.</p>
+
+<h2>Properties And Property Groups</h2>
+<p>Property groups keep related properties together.</p>
+
+<h2>Embedded Languages</h2>
+<p>Use fenced code blocks for SQL, PL/SQL, JavaScript, HTML, and CSS. Distinguish javascript-browser from javascript-mle.</p>
+<pre><code class="language-sql">select *
+from demo_customers;
+</code></pre>
+<pre><code class="language-plsql">begin
+    null;
+end;
+</code></pre>
+<pre><code class="language-javascript-browser">apex.message.showPageSuccess("Saved");
+</code></pre>
+<pre><code class="language-javascript-mle">export function transform(row) {
+  return row;
+}
+</code></pre>
+<pre><code class="language-html"><div class="hero">Hello</div>
+</code></pre>
+<pre><code class="language-css">.hero { color: #123456; }
+</code></pre>

@@ -320,6 +320,7 @@ public sealed class OracleApexAtlasBuilder
             $"- Relevant findings: {workspaceSummary.RelevantFindingCount}",
             $"- Full diff JSON: {workspaceSummary.DiffJsonPath}",
             $"- Full diff Markdown: {workspaceSummary.DiffMarkdownPath}",
+            "- Developer Companion context: .opencode/knowledge/apex-developers-companion/prompts/compact-context.md",
             string.Empty,
             "## Core Components",
         };
@@ -381,6 +382,7 @@ public sealed class OracleApexAtlasBuilder
             "Full details:",
             $"- {workspaceSummary.DiffJsonPath}",
             $"- {workspaceSummary.DiffMarkdownPath}",
+            "- .opencode/knowledge/apex-developers-companion/prompts/compact-context.md",
             "",
             "## Canonical Components",
         ]);
@@ -931,6 +933,7 @@ public sealed class OracleApexAtlasBuilder
         }
         lines.Add($"- Detailed diff Markdown: {workspaceSummary.DiffMarkdownPath}");
         lines.Add($"- Detailed diff JSON: {workspaceSummary.DiffJsonPath}");
+        lines.Add("- Developer Companion context: .opencode/knowledge/apex-developers-companion/prompts/compact-context.md");
         lines.Add(string.Empty);
         lines.Add("Generated from exported APEXlang under `.opencode/knowledge/apexlang-atlas/`.");
         return string.Join("\n", lines) + "\n";

@@ -1,0 +1,23 @@
+id: oracle-apex-developers-companion-pack
+title: Oracle APEX Developer Companion Pack
+category: knowledge-pack
+lifecycle: stable
+description: Structured local Oracle APEX Developer's Companion guidance for conceptual APEXlang and workflow retrieval.
+sources:
+  - name: Reading APEXlang Syntax
+    url: https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/reading-apexlang-syntax.html
+    category: apexlang
+    description: Official syntax walkthrough for reading and navigating APEXlang source.
+  - name: Oracle APEX Developer's Companion PDF
+    url: https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/oracle-apex-developers-companion.pdf
+    category: apexlang
+    description: Official conceptual and workflow guidance for APEXlang, coding agents, Builder synchronization, and SQLcl usage.
+onboarding:
+  - docs/reference/agent-onboarding/oracle.md
+skillRefs:
+  - skills/oracle/apexlang.md
+workspacePaths:
+  knowledgeMap: docs/reference/oracle-knowledge-map.yaml
+  knowledgeMapId: oracle-knowledge-pack
+  knowledgeMapTitle: Oracle Knowledge Pack
+  sourceIndex: docs/reference/oracle-apex-developers-companion.md

@@ -1,0 +1,47 @@
+{
+  "title": "Oracle APEX Developer's Companion",
+  "apexVersion": "26.1",
+  "sourceUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/oracle-apex-developers-companion.pdf",
+  "chapters": [
+    {
+      "title": "Working with APEXlang",
+      "sections": [
+        {
+          "title": "Overview",
+          "officialUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/working-with-apexlang.html",
+          "pageStart": 10,
+          "headings": ["Overview"],
+          "content": "APEXlang lets teams read and review source-controlled Oracle APEX definitions. Builder synchronization and SQLcl validate the final behavior."
+        },
+        {
+          "title": "Reading APEXlang Syntax",
+          "officialUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/reading-apexlang-syntax.html",
+          "pageStart": 12,
+          "headings": ["Reading APEXlang Syntax", "Identifiers", "References"],
+          "content": "Use a component identifier within its component scope. Local references use @ and Global Page or Universal Theme references use @/. Use fenced code blocks for SQLcl export examples and fenced code block samples.\n\n```sql\nselect *\nfrom demo_customers;\n```\n\n```javascript-browser\napex.message.showPageSuccess(\"Saved\");\n```"
+        },
+        {
+          "title": "Using Coding Agents",
+          "officialUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/using-coding-agents.html",
+          "pageStart": 18,
+          "headings": ["Using Coding Agents"],
+          "content": "Review the component identifier, staticId usage, and Builder synchronization expectations before asking a coding agent to modify APEXlang source."
+        },
+        {
+          "title": "Using SQLcl",
+          "officialUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/using-sqlcl.html",
+          "pageStart": 24,
+          "headings": ["Using SQLcl"],
+          "content": "Use SQLcl export, SQLcl validate, and SQLcl import as the authoritative workflow around APEXlang changes."
+        },
+        {
+          "title": "Builder And External Tools",
+          "officialUrl": "https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/builder-and-external-tools.html",
+          "pageStart": 30,
+          "headings": ["Builder And External Tools"],
+          "content": "Builder synchronization matters when external tools or coding agents change shared component references, page item definitions, or Universal Theme assets."
+        }
+      ]
+    }
+  ]
+}

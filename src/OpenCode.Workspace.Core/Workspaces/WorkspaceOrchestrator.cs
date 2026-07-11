@@ -108,7 +108,7 @@ public sealed class WorkspaceOrchestrator
         _platformDetector = platformDetector;
         _runtimeResolver = runtimeResolver;
         _terminalLauncher = terminalLauncher;
-        _knowledgePackProvisioner = knowledgePackProvisioner ?? new KnowledgePackProvisioner([new ApexlangAtlasKnowledgePackProvider()]);
+        _knowledgePackProvisioner = knowledgePackProvisioner ?? new KnowledgePackProvisioner([new ApexlangAtlasKnowledgePackProvider(), new OracleApexDevelopersCompanionKnowledgePackProvider()]);
         _oracleApexAtlasBuilder = new OracleApexAtlasBuilder();
     }
 

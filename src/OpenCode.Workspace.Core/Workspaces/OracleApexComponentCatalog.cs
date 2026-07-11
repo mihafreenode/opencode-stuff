@@ -135,6 +135,13 @@ public sealed class OracleApexComponentCatalog
         {
             "# Oracle APEX Component Catalog",
             string.Empty,
+            "## Knowledge Links",
+            string.Empty,
+            "- Identifiers and scopes: `.opencode/skills/apexlang/references/identifiers-and-scopes.md`",
+            "- Component references: `.opencode/skills/apexlang/references/component-references.md`",
+            "- Embedded SQL, PL/SQL, JavaScript, HTML, and CSS: `.opencode/skills/apexlang/references/embedded-languages.md`",
+            "- Conceptual workflow guidance: `.opencode/knowledge/apex-developers-companion/prompts/compact-context.md`",
+            string.Empty,
             "## Supported Component Types",
             string.Empty,
         };

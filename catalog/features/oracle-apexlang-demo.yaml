@@ -10,6 +10,7 @@ knowledgePacks:
   - oracle-apex-documentation-pack
   - oracle-ords-documentation-pack
   - oracle-apexlang-documentation-pack
+  - oracle-apex-developers-companion-pack
 capabilities:
   - oracle
 dependencies:
