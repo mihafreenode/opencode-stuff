@@ -18,6 +18,8 @@ coverage/
 # Local workspaces used while validating the app
 .workspaces/
 .opencode/local/
+!.opencode/local/
+!.opencode/local/oracle-apex-development-loop.env.example
 
 # Runtime smoke validation artifacts
 artifacts/oracle-runtime-smoke/
