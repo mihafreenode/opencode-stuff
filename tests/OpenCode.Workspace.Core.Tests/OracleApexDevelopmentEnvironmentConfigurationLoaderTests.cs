@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Diagnostics;
+using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -36,6 +37,28 @@ public sealed class OracleApexDevelopmentEnvironmentConfigurationLoaderTests
         Assert.Equal("local-apex-dev", config.SqlclProfile);
         Assert.Equal(100, config.ApplicationId);
         Assert.Equal("development", config.DeploymentProfile);
+    }
+
+    [Fact]
+    public void ValidateEnvironment_ReportsMissingVariablesAndExamplePath()
+    {
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.EnabledVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.WorkspaceRootVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.EnvironmentVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.SqlclProfileVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.ApplicationIdVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.SourcePathVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.DeploymentProfileVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.BuilderUrlVariable, null);
+        SetEnv(OracleApexDevelopmentEnvironmentConfigurationLoader.ApplicationUrlVariable, null);
+        var loader = new OracleApexDevelopmentEnvironmentConfigurationLoader();
+
+        var result = loader.ValidateEnvironment();
+
+        Assert.False(result.HasRequiredConfiguration);
+        Assert.Contains(result.MissingVariables, item => item.Name == OracleApexDevelopmentEnvironmentConfigurationLoader.EnabledVariable);
+        Assert.Equal(OracleApexDevelopmentEnvironmentConfigurationLoader.ExampleConfigurationRelativePath, result.ExampleConfigurationRelativePath);
+        Assert.Contains("Copy '.opencode/local/oracle-apex-development-loop.env.example'", result.NextAction, StringComparison.Ordinal);
     }
 
     private static void SetEnv(string name, string? value)

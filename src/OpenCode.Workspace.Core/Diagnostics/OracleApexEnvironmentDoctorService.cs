@@ -6,21 +6,52 @@ namespace OpenCode.Workspace.Core.Diagnostics;
 
 public sealed class OracleApexEnvironmentDoctorService
 {
+    private readonly OracleApexDevelopmentEnvironmentConfigurationLoader _configurationLoader;
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly WorkspaceSynchronizationStateService _stateService;
     private readonly OracleApexWorkspaceIndexBuilder _workspaceIndexBuilder;
     private readonly IProcessRunner _processRunner;
 
     public OracleApexEnvironmentDoctorService(
+        OracleApexDevelopmentEnvironmentConfigurationLoader? configurationLoader = null,
         WorkspaceYamlService? workspaceYamlService = null,
         WorkspaceSynchronizationStateService? stateService = null,
         OracleApexWorkspaceIndexBuilder? workspaceIndexBuilder = null,
         IProcessRunner? processRunner = null)
     {
+        _configurationLoader = configurationLoader ?? new OracleApexDevelopmentEnvironmentConfigurationLoader();
         _workspaceYamlService = workspaceYamlService ?? new WorkspaceYamlService();
         _stateService = stateService ?? new WorkspaceSynchronizationStateService();
         _workspaceIndexBuilder = workspaceIndexBuilder ?? new OracleApexWorkspaceIndexBuilder();
         _processRunner = processRunner ?? new ProcessRunner();
+    }
+
+    public Task<OracleApexDoctorResult> DiagnoseLocalConfigurationAsync(CancellationToken cancellationToken = default)
+    {
+        var validation = _configurationLoader.ValidateEnvironment();
+        if (validation.HasRequiredConfiguration)
+        {
+            return DiagnoseAsync(_configurationLoader.TryLoad()!, cancellationToken);
+        }
+
+        var checks = new List<OracleApexDoctorCheckResult>();
+        if (!validation.IsEnabled)
+        {
+            checks.Add(Fail(
+                "Local development loop enabled",
+                $"Set '{OracleApexDevelopmentEnvironmentConfigurationLoader.EnabledVariable}' to '1' or 'true' before running the local Oracle APEX workflow.",
+                $"Copy '{OracleApexDevelopmentEnvironmentConfigurationLoader.ExampleConfigurationRelativePath}', fill the placeholder values locally, then export the variables into your shell."));
+        }
+
+        foreach (var missing in validation.MissingVariables)
+        {
+            checks.Add(Fail(
+                missing.Name,
+                $"'{missing.Name}' is missing. {missing.Purpose}",
+                $"Set '{missing.Name}' in your local shell or session. Example template: '{validation.ExampleConfigurationRelativePath}'."));
+        }
+
+        return Task.FromResult(BuildResult(Environment.CurrentDirectory, "dev", checks, validation.NextAction));
     }
 
     public async Task<OracleApexDoctorResult> DiagnoseAsync(OracleApexDevelopmentEnvironmentConfiguration configuration, CancellationToken cancellationToken = default)
@@ -112,7 +143,7 @@ public sealed class OracleApexEnvironmentDoctorService
         }
     }
 
-    private static OracleApexDoctorResult BuildResult(string workspaceRoot, string environmentName, IReadOnlyList<OracleApexDoctorCheckResult> checks)
+    private static OracleApexDoctorResult BuildResult(string workspaceRoot, string environmentName, IReadOnlyList<OracleApexDoctorCheckResult> checks, string? overrideSummary = null)
     {
         var hasErrors = checks.Any(check => check.Severity == DiagnosticSeverity.Error);
         var hasWarnings = checks.Any(check => check.Severity == DiagnosticSeverity.Warning);
@@ -123,11 +154,11 @@ public sealed class OracleApexEnvironmentDoctorService
             Checks = checks,
             IsSuccess = !hasErrors,
             HasWarnings = hasWarnings,
-            Summary = hasErrors
+            Summary = overrideSummary ?? (hasErrors
                 ? "Oracle APEX development environment is not ready for the full assistant workflow."
                 : hasWarnings
                     ? "Oracle APEX development environment is usable with warnings."
-                    : "Oracle APEX development environment is ready.",
+                    : "Oracle APEX development environment is ready."),
         };
     }
 

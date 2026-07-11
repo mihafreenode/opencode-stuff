@@ -2,6 +2,7 @@ using OpenCode.Workspace.Core.Diagnostics;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -86,6 +87,22 @@ public sealed class OracleApexEnvironmentDoctorServiceTests
             Assert.DoesNotContain(result.Checks, check => check.Severity == DiagnosticSeverity.Error);
         }
         finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task DiagnoseLocalConfigurationAsync_ReportsMissingVariablesWithRemediation()
+    {
+        Environment.SetEnvironmentVariable(OracleApexDevelopmentEnvironmentConfigurationLoader.EnabledVariable, null);
+        Environment.SetEnvironmentVariable(OracleApexDevelopmentEnvironmentConfigurationLoader.WorkspaceRootVariable, null);
+        Environment.SetEnvironmentVariable(OracleApexDevelopmentEnvironmentConfigurationLoader.SqlclProfileVariable, null);
+        var service = new OracleApexEnvironmentDoctorService(new OracleApexDevelopmentEnvironmentConfigurationLoader(), processRunner: new FakeProcessRunner());
+
+        var result = await service.DiagnoseLocalConfigurationAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(result.Checks, check => check.Name == "Local development loop enabled");
+        Assert.Contains(result.Checks, check => check.Name == OracleApexDevelopmentEnvironmentConfigurationLoader.WorkspaceRootVariable && check.Remediation.Contains(OracleApexDevelopmentEnvironmentConfigurationLoader.ExampleConfigurationRelativePath, StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Checks, check => string.IsNullOrWhiteSpace(check.Name));
     }
 
     private static void WriteWorkspace(string root, string? deploymentProfile, bool withAtlas = true)
