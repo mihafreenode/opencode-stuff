@@ -17,6 +17,7 @@ public sealed class OracleApexAtlasBuilder
     private static readonly OracleApexLanguageReferenceCompatibilityResult PreviousLanguageReferenceCompatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(PreviousLanguageReferenceCatalog);
     private static readonly OracleApexLanguageReferenceCompatibilityResult CurrentLanguageReferenceCompatibility = OracleApexComponentCatalog.AtlasSeed.CompareWithReference(CurrentLanguageReferenceCatalog);
     private static readonly OracleApexLanguageReferenceDiffReport BuiltInLanguageReferenceDiff = new OracleApexLanguageReferenceCatalogComparer().Compare(PreviousLanguageReferenceCatalog, CurrentLanguageReferenceCatalog, PreviousLanguageReferenceCompatibility, CurrentLanguageReferenceCompatibility);
+    private static readonly OracleApexLanguageReferenceWorkspaceImpactAnalyzer BuiltInLanguageReferenceAnalyzer = new(BuiltInLanguageReferenceDiff);
     private static readonly string[] KnownBlockTypes =
     [
         "authorization scheme",
@@ -168,7 +169,7 @@ public sealed class OracleApexAtlasBuilder
                 DocumentationPath = DocumentationRelativePath,
             };
             WriteJson(Path.Combine(atlasRootPath, "state.json"), state);
-            WriteLanguageReferenceArtifacts(paths, sourceHash);
+            WriteLanguageReferenceArtifacts(paths, sourceHash, workspaceIndex);
 
             var docsDirectory = Path.GetDirectoryName(docsPath);
             if (!string.IsNullOrWhiteSpace(docsDirectory))
@@ -176,7 +177,7 @@ public sealed class OracleApexAtlasBuilder
                 Directory.CreateDirectory(docsDirectory);
             }
 
-            File.WriteAllText(docsPath, BuildDocumentation(atlas).Replace("\r\n", "\n", StringComparison.Ordinal));
+            File.WriteAllText(docsPath, BuildDocumentation(atlas, workspaceIndex, ResolveAtlasVersion(paths)).Replace("\r\n", "\n", StringComparison.Ordinal));
             Directory.CreateDirectory(Path.GetDirectoryName(componentCatalogDocsPath)!);
             File.WriteAllText(componentCatalogDocsPath, _componentCatalog.BuildDocumentation().Replace("\r\n", "\n", StringComparison.Ordinal));
             return OracleApexAtlasBuildResult.Success(atlasRootPath, docsPath, sourceHash);
@@ -255,11 +256,14 @@ public sealed class OracleApexAtlasBuilder
         return node;
     }
 
-    private void WriteLanguageReferenceArtifacts(WorkspacePaths paths, string sourceHash)
+    private void WriteLanguageReferenceArtifacts(WorkspacePaths paths, string sourceHash, OracleApexWorkspaceIndex workspaceIndex)
     {
         var referenceCatalog = CurrentLanguageReferenceCatalog;
         var compatibility = CurrentLanguageReferenceCompatibility;
         var diffMarkdown = new OracleApexLanguageReferenceCatalogComparer().BuildMarkdown(BuiltInLanguageReferenceDiff);
+        var diffJsonPath = ".opencode/knowledge/apexlang-language-reference/language-reference-diff.json";
+        var diffMarkdownPath = ".opencode/knowledge/apexlang-language-reference/docs/language-reference-diff.md";
+        var workspaceSummary = BuiltInLanguageReferenceAnalyzer.BuildWorkspaceSummary(workspaceIndex, ResolveAtlasVersion(paths), diffJsonPath, diffMarkdownPath);
         var root = Path.Combine(paths.OpencodePath, "knowledge", LanguageReferenceDirectoryName);
         Directory.CreateDirectory(root);
         WriteJson(Path.Combine(root, "language-reference-state.json"), new
@@ -292,12 +296,12 @@ public sealed class OracleApexAtlasBuilder
         })).OrderBy(item => item.Component, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.PropertyPath, StringComparer.OrdinalIgnoreCase).ToList());
         WriteJson(Path.Combine(root, "catalog-compatibility.json"), compatibility);
         WriteJson(Path.Combine(root, "language-reference-diff.json"), BuiltInLanguageReferenceDiff);
-        WriteFile(Path.Combine(root, "docs", "language-reference-summary.md"), BuildLanguageReferenceSummary(referenceCatalog, compatibility));
+        WriteFile(Path.Combine(root, "docs", "language-reference-summary.md"), BuildLanguageReferenceSummary(referenceCatalog, compatibility, workspaceSummary));
         WriteFile(Path.Combine(root, "docs", "language-reference-diff.md"), diffMarkdown);
-        WriteFile(Path.Combine(root, "prompts", "apexlang-language-reference.md"), BuildLanguageReferencePrompt(referenceCatalog, compatibility));
+        WriteFile(Path.Combine(root, "prompts", "apexlang-language-reference.md"), BuildLanguageReferencePrompt(referenceCatalog, compatibility, workspaceSummary));
     }
 
-    private static string BuildLanguageReferenceSummary(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility)
+    private static string BuildLanguageReferenceSummary(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility, OracleApexLanguageReferenceWorkspaceCompatibilitySummary workspaceSummary)
     {
         var lines = new List<string>
         {
@@ -307,6 +311,15 @@ public sealed class OracleApexAtlasBuilder
             $"- Grammar version: {referenceCatalog.GrammarVersion}",
             $"- Components: {referenceCatalog.Components.Count}",
             $"- Compatibility warnings: {compatibility.Warnings.Count}",
+            string.Empty,
+            "## Version Compatibility",
+            $"- Project version: {ValueOrUnknown(workspaceSummary.ProjectVersion)}",
+            $"- Reference version: {workspaceSummary.ReferenceVersion}",
+            $"- Atlas version: {ValueOrUnknown(workspaceSummary.AtlasVersion)}",
+            $"- Status: {workspaceSummary.Status}",
+            $"- Relevant findings: {workspaceSummary.RelevantFindingCount}",
+            $"- Full diff JSON: {workspaceSummary.DiffJsonPath}",
+            $"- Full diff Markdown: {workspaceSummary.DiffMarkdownPath}",
             string.Empty,
             "## Core Components",
         };
@@ -326,10 +339,20 @@ public sealed class OracleApexAtlasBuilder
             }
         }
 
+        if (workspaceSummary.Findings.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Workspace Impact");
+            foreach (var finding in workspaceSummary.Findings)
+            {
+                lines.Add($"- {finding.Message}");
+            }
+        }
+
         return string.Join("\n", lines) + "\n";
     }
 
-    private static string BuildLanguageReferencePrompt(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility)
+    private static string BuildLanguageReferencePrompt(OracleApexLanguageReferenceCatalog referenceCatalog, OracleApexLanguageReferenceCompatibilityResult compatibility, OracleApexLanguageReferenceWorkspaceCompatibilitySummary workspaceSummary)
     {
         var lines = new List<string>
         {
@@ -339,8 +362,28 @@ public sealed class OracleApexAtlasBuilder
             "",
             "Use the official hierarchy and documented properties first. Use Atlas enrichment for Builder-specific metadata and SQLcl as the final validation authority.",
             "",
-            "## Canonical Components",
+            "## Version Compatibility",
+            $"- Project version: {ValueOrUnknown(workspaceSummary.ProjectVersion)}",
+            $"- Reference version: {workspaceSummary.ReferenceVersion}",
+            $"- Atlas version: {ValueOrUnknown(workspaceSummary.AtlasVersion)}",
+            $"- Status: {workspaceSummary.Status}",
+            $"- Relevant findings: {workspaceSummary.RelevantFindingCount}",
+            "",
+            "Workspace impact:",
         };
+
+        lines.AddRange(workspaceSummary.Findings.Count == 0
+            ? ["- none"]
+            : workspaceSummary.Findings.Select(finding => $"- {finding.Message}"));
+
+        lines.AddRange([
+            "",
+            "Full details:",
+            $"- {workspaceSummary.DiffJsonPath}",
+            $"- {workspaceSummary.DiffMarkdownPath}",
+            "",
+            "## Canonical Components",
+        ]);
 
         foreach (var component in referenceCatalog.Components.Values.OrderBy(item => item.CanonicalName, StringComparer.OrdinalIgnoreCase).Take(12))
         {
@@ -809,8 +852,13 @@ public sealed class OracleApexAtlasBuilder
         };
     }
 
-    private static string BuildDocumentation(AtlasDocument atlas)
+    private static string BuildDocumentation(AtlasDocument atlas, OracleApexWorkspaceIndex workspaceIndex, string atlasVersion)
     {
+        var workspaceSummary = BuiltInLanguageReferenceAnalyzer.BuildWorkspaceSummary(
+            workspaceIndex,
+            atlasVersion,
+            ".opencode/knowledge/apexlang-language-reference/language-reference-diff.json",
+            ".opencode/knowledge/apexlang-language-reference/docs/language-reference-diff.md");
         var lines = new List<string>
         {
             "# Oracle APEX Atlas",
@@ -863,9 +911,79 @@ public sealed class OracleApexAtlasBuilder
         lines.Add($"- REST endpoints: {atlas.Dependencies.Nodes.Count(node => node.Type == "rest-endpoint")}");
         lines.Add($"- PL/SQL identifiers: {atlas.Dependencies.Nodes.Count(node => node.Type == "plsql-identifier")}");
         lines.Add(string.Empty);
+        lines.Add("## APEXlang Version Compatibility");
+        lines.Add(string.Empty);
+        lines.Add($"- Current reference version: {BuiltInLanguageReferenceDiff.ToApexVersion}");
+        lines.Add($"- Previous reference version: {BuiltInLanguageReferenceDiff.FromApexVersion}");
+        lines.Add($"- Atlas version: {ValueOrUnknown(workspaceSummary.AtlasVersion)}");
+        lines.Add($"- Workspace status: {workspaceSummary.Status}");
+        lines.Add($"- Diff counts: components={CountDiffKinds("component-")}; relationships={CountDiffKinds("parent-") + CountDiffKinds("child-")}; properties={CountPropertyDiffs()}; documentation={CountDiffKinds("documentation-") + CountDiffKinds("canonical-example-")}; atlas-compatibility={BuiltInLanguageReferenceDiff.AtlasCompatibility.CurrentWarningCount}");
+        if (workspaceSummary.Findings.Count > 0)
+        {
+            foreach (var finding in workspaceSummary.Findings.Take(5))
+            {
+                lines.Add($"- Workspace impact: {finding.Message}");
+            }
+        }
+        else
+        {
+            lines.Add("- Workspace impact: none");
+        }
+        lines.Add($"- Detailed diff Markdown: {workspaceSummary.DiffMarkdownPath}");
+        lines.Add($"- Detailed diff JSON: {workspaceSummary.DiffJsonPath}");
+        lines.Add(string.Empty);
         lines.Add("Generated from exported APEXlang under `.opencode/knowledge/apexlang-atlas/`.");
         return string.Join("\n", lines) + "\n";
     }
+
+    private static int CountDiffKinds(string prefix)
+        => BuiltInLanguageReferenceDiff.Differences.Count(item => item.Kind.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    private static int CountPropertyDiffs()
+        => BuiltInLanguageReferenceDiff.Differences.Count(item => item.Kind.StartsWith("property-", StringComparison.OrdinalIgnoreCase));
+
+    private static string ResolveAtlasVersion(WorkspacePaths paths)
+    {
+        var workspaceMetadataPath = Path.Combine(paths.OpencodePath, "apexlang", "source", "apexlang_meta_data.json");
+        if (TryReadAtlasBuildId(workspaceMetadataPath, out var buildId))
+        {
+            return buildId;
+        }
+
+        var cacheRoot = Path.Combine(paths.OpencodePath, "cache", "apexlang");
+        if (Directory.Exists(cacheRoot))
+        {
+            foreach (var metadataPath in Directory.GetFiles(cacheRoot, "apexlang_meta_data.json", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                if (TryReadAtlasBuildId(metadataPath, out buildId))
+                {
+                    return buildId;
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryReadAtlasBuildId(string metadataPath, out string buildId)
+    {
+        buildId = string.Empty;
+        if (!File.Exists(metadataPath))
+        {
+            return false;
+        }
+
+        using var document = JsonDocument.Parse(File.ReadAllText(metadataPath));
+        if (document.RootElement.TryGetProperty("buildID", out var buildIdElement) || document.RootElement.TryGetProperty("buildId", out buildIdElement))
+        {
+            buildId = buildIdElement.GetString() ?? string.Empty;
+        }
+
+        return !string.IsNullOrWhiteSpace(buildId);
+    }
+
+    private static string ValueOrUnknown(string value)
+        => string.IsNullOrWhiteSpace(value) ? "unknown" : value;
 
     private static IReadOnlyList<ParsedNode> ParseFile(string filePath)
     {

@@ -381,6 +381,274 @@ public sealed class OracleApexLanguageReferenceWorkspaceImpactAnalyzer
             .OrderBy(item => item, StringComparer.Ordinal)
             .ToList();
 
+    public OracleApexLanguageReferenceWorkspaceCompatibilitySummary BuildWorkspaceSummary(
+        OracleApexWorkspaceIndex index,
+        string? atlasVersion,
+        string diffJsonPath,
+        string diffMarkdownPath,
+        int maxFindings = 10)
+    {
+        var findings = BuildWorkspaceFindings(index)
+            .GroupBy(BuildFindingKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(Math.Max(0, maxFindings))
+            .ToList();
+        var projectVersion = GetProjectVersion(index.SemanticModel);
+        return new OracleApexLanguageReferenceWorkspaceCompatibilitySummary
+        {
+            ProjectVersion = projectVersion,
+            ReferenceVersion = _diff.ToApexVersion,
+            PreviousReferenceVersion = _diff.FromApexVersion,
+            AtlasVersion = string.IsNullOrWhiteSpace(atlasVersion) ? "unknown" : atlasVersion,
+            Status = string.IsNullOrWhiteSpace(projectVersion) || string.Equals(projectVersion, _diff.ToApexVersion, StringComparison.OrdinalIgnoreCase)
+                ? (findings.Count == 0 ? "Compatible" : "Compatible with warnings")
+                : "Version mismatch",
+            RelevantFindingCount = findings.Count,
+            Findings = findings,
+            DiffJsonPath = diffJsonPath,
+            DiffMarkdownPath = diffMarkdownPath,
+        };
+    }
+
+    public OracleApexLanguageReferencePlanCompatibilitySummary AnalyzePlan(OracleApexWorkspaceIndex index, OracleApexEditPlan plan, int maxFindings = 10)
+    {
+        var findings = new List<OracleApexLanguageReferenceCompatibilityFinding>();
+        var projectVersion = GetProjectVersion(index.SemanticModel);
+        var projectTargetsCurrentReference = string.IsNullOrWhiteSpace(projectVersion) || string.Equals(projectVersion, _diff.ToApexVersion, StringComparison.OrdinalIgnoreCase);
+
+        foreach (var workspaceFinding in BuildWorkspaceFindings(index))
+        {
+            if (PlanTouchesFinding(plan, workspaceFinding))
+            {
+                findings.Add(workspaceFinding);
+            }
+        }
+
+        foreach (var operation in plan.Operations)
+        {
+            if (!projectTargetsCurrentReference)
+            {
+                var newerComponent = _diff.Differences.FirstOrDefault(item => item.Kind == "component-added" && string.Equals(item.ComponentName, operation.TargetComponentType, StringComparison.OrdinalIgnoreCase));
+                if (newerComponent is not null)
+                {
+                    findings.Add(CreateFinding(
+                        "plan-component-newer-version-only",
+                        "component",
+                        operation.TargetComponentType,
+                        string.Empty,
+                        $"Plan uses component '{operation.TargetComponentType}', which is only available in reference version '{_diff.ToApexVersion}' while the workspace targets '{projectVersion}'.",
+                        $"Use a component supported by APEXlang {projectVersion} or upgrade the workspace metadata before applying this plan.",
+                        blockingExecution: true,
+                        newerComponent.Provenance));
+                }
+            }
+
+            var removedComponent = _diff.Differences.FirstOrDefault(item => item.Kind == "component-removed" && string.Equals(item.ComponentName, operation.TargetComponentType, StringComparison.OrdinalIgnoreCase));
+            if (removedComponent is not null)
+            {
+                findings.Add(CreateFinding(
+                    "plan-component-removed",
+                    "component",
+                    operation.TargetComponentType,
+                    string.Empty,
+                    $"Plan uses component '{operation.TargetComponentType}', which was removed from the official APEXlang reference.",
+                    "Replace the removed component with a supported construct before applying this plan.",
+                    blockingExecution: true,
+                    removedComponent.Provenance));
+            }
+
+            foreach (var property in operation.Properties)
+            {
+                var removedProperty = _diff.Differences.FirstOrDefault(item => item.Kind == "property-removed" && string.Equals(item.ComponentName, operation.TargetComponentType, StringComparison.OrdinalIgnoreCase) && string.Equals(item.PropertyPath, property.Key, StringComparison.OrdinalIgnoreCase));
+                if (removedProperty is not null)
+                {
+                    findings.Add(CreateFinding(
+                        "plan-property-removed",
+                        "property",
+                        operation.TargetComponentType,
+                        property.Key,
+                        $"Plan uses property '{property.Key}' on component '{operation.TargetComponentType}', but that property was removed from the official APEXlang reference.",
+                        $"Remove property '{property.Key}' or replace it with a supported property before applying this plan.",
+                        blockingExecution: true,
+                        removedProperty.Provenance));
+                }
+
+                var enumChange = _diff.Differences.FirstOrDefault(item => item.Kind == "property-enum-changed" && string.Equals(item.ComponentName, operation.TargetComponentType, StringComparison.OrdinalIgnoreCase) && string.Equals(item.PropertyPath, property.Key, StringComparison.OrdinalIgnoreCase) && item.RemovedValues.Contains(property.Value, StringComparer.OrdinalIgnoreCase));
+                if (enumChange is not null)
+                {
+                    findings.Add(CreateFinding(
+                        "plan-enum-value-removed",
+                        "enum",
+                        operation.TargetComponentType,
+                        property.Key,
+                        $"Plan uses enum value '{property.Value}' for property '{property.Key}' on component '{operation.TargetComponentType}', but that value is no longer valid in reference version '{_diff.ToApexVersion}'.",
+                        $"Choose one of the supported enum values in '{enumChange.AfterValue}' before applying this plan.",
+                        blockingExecution: true,
+                        enumChange.Provenance));
+                }
+            }
+
+            var requiredChanges = _diff.Differences.Where(item => item.Kind == "property-required-changed" && string.Equals(item.ComponentName, operation.TargetComponentType, StringComparison.OrdinalIgnoreCase) && string.Equals(item.BeforeValue, "optional", StringComparison.OrdinalIgnoreCase) && string.Equals(item.AfterValue, "required", StringComparison.OrdinalIgnoreCase));
+            foreach (var requiredChange in requiredChanges)
+            {
+                if (!operation.Properties.ContainsKey(requiredChange.PropertyPath))
+                {
+                    findings.Add(CreateFinding(
+                        "plan-property-became-required",
+                        "property",
+                        operation.TargetComponentType,
+                        requiredChange.PropertyPath,
+                        $"Property '{requiredChange.PropertyPath}' is required for component '{operation.TargetComponentType}' in reference version '{_diff.ToApexVersion}'.",
+                        $"Set '{requiredChange.PropertyPath}' explicitly or rely on a validated generator path before applying this plan.",
+                        blockingExecution: false,
+                        requiredChange.Provenance));
+                }
+            }
+        }
+
+        if (_diff.AtlasCompatibility.DriftIncreased)
+        {
+            findings.Add(CreateFinding(
+                "plan-atlas-reference-drift",
+                "atlas",
+                string.Empty,
+                string.Empty,
+                $"Atlas and the official reference currently disagree more than before ({_diff.AtlasCompatibility.PreviousWarningCount} -> {_diff.AtlasCompatibility.CurrentWarningCount} warnings).",
+                "Treat SQLcl validation as authoritative for this plan.",
+                blockingExecution: false,
+                CreateGlobalProvenance()));
+        }
+
+        var normalizedFindings = findings
+            .GroupBy(BuildFindingKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(Math.Max(0, maxFindings))
+            .ToList();
+        var sqlclImportant = normalizedFindings.Any(item => item.Category is "property" or "enum" or "atlas") || !projectTargetsCurrentReference;
+        var shouldBlock = normalizedFindings.Any(item => item.BlockingExecution) && !HasSafeAlternative(plan);
+
+        return new OracleApexLanguageReferencePlanCompatibilitySummary
+        {
+            TargetApexlangVersion = _diff.ToApexVersion,
+            CompatibilityStatus = shouldBlock ? "Blocked" : normalizedFindings.Count == 0 ? "Compatible" : "Review required",
+            SqlclValidationIsEspeciallyImportant = sqlclImportant,
+            ShouldBlockExecution = shouldBlock,
+            Findings = normalizedFindings,
+        };
+    }
+
+    private List<OracleApexLanguageReferenceCompatibilityFinding> BuildWorkspaceFindings(OracleApexWorkspaceIndex index)
+        => index.Diagnostics
+            .Where(item => item.Code.StartsWith("reference-", StringComparison.OrdinalIgnoreCase))
+            .Select(CreateFindingFromDiagnostic)
+            .Where(item => item is not null)
+            .Cast<OracleApexLanguageReferenceCompatibilityFinding>()
+            .ToList();
+
+    private OracleApexLanguageReferenceCompatibilityFinding? CreateFindingFromDiagnostic(OracleApexWorkspaceIndexDiagnostic diagnostic)
+    {
+        var provenance = ResolveProvenance(diagnostic);
+        return diagnostic.Code switch
+        {
+            "reference-version-mismatch" => CreateFinding(diagnostic.Code, "version", string.Empty, string.Empty, diagnostic.Message, "Align the project metadata version with the active normalized reference before relying on new constructs.", false, provenance),
+            "reference-property-removed" => CreateFinding(diagnostic.Code, "property", diagnostic.SemanticType, ExtractNamedValue(diagnostic.Message, "Property"), diagnostic.Message, "Remove the property or replace it with a supported property through a reviewed semantic plan.", true, provenance),
+            "reference-property-became-required" => CreateFinding(diagnostic.Code, "property", diagnostic.SemanticType, ExtractNamedValue(diagnostic.Message, "Property"), diagnostic.Message, "Add the required property through the semantic planner or a review-only migration path before deployment.", false, provenance),
+            "reference-enum-value-removed" => CreateFinding(diagnostic.Code, "enum", diagnostic.SemanticType, ExtractNamedValueAfter(diagnostic.Message, "property"), diagnostic.Message, "Replace the invalid enum value with a supported value and validate with SQLcl.", true, provenance),
+            "reference-component-removed" => CreateFinding(diagnostic.Code, "component", ExtractNamedValue(diagnostic.Message, "Component"), string.Empty, diagnostic.Message, "Replace the removed component with a supported construct before deployment.", true, provenance),
+            "reference-atlas-drift-increased" => CreateFinding(diagnostic.Code, "atlas", string.Empty, string.Empty, diagnostic.Message, "Review Atlas drift details and treat SQLcl validation as authoritative.", false, provenance),
+            _ => null,
+        };
+    }
+
+    private OracleApexLanguageReferenceDifferenceProvenance ResolveProvenance(OracleApexWorkspaceIndexDiagnostic diagnostic)
+    {
+        var propertyPath = ExtractNamedValue(diagnostic.Message, "Property");
+        var componentName = string.IsNullOrWhiteSpace(diagnostic.SemanticType)
+            ? ExtractNamedValue(diagnostic.Message, "Component")
+            : diagnostic.SemanticType;
+        OracleApexLanguageReferenceDifference? difference = diagnostic.Code switch
+        {
+            "reference-property-removed" => _diff.Differences.FirstOrDefault(item => item.Kind == "property-removed" && string.Equals(item.ComponentName, componentName, StringComparison.OrdinalIgnoreCase) && string.Equals(item.PropertyPath, propertyPath, StringComparison.OrdinalIgnoreCase)),
+            "reference-property-became-required" => _diff.Differences.FirstOrDefault(item => item.Kind == "property-required-changed" && string.Equals(item.ComponentName, componentName, StringComparison.OrdinalIgnoreCase) && string.Equals(item.PropertyPath, propertyPath, StringComparison.OrdinalIgnoreCase)),
+            "reference-enum-value-removed" => _diff.Differences.FirstOrDefault(item => item.Kind == "property-enum-changed" && string.Equals(item.ComponentName, componentName, StringComparison.OrdinalIgnoreCase) && string.Equals(item.PropertyPath, ExtractNamedValueAfter(diagnostic.Message, "property"), StringComparison.OrdinalIgnoreCase)),
+            "reference-component-removed" => _diff.Differences.FirstOrDefault(item => item.Kind == "component-removed" && string.Equals(NormalizeComponentName(item.ComponentName), NormalizeComponentName(ExtractNamedValue(diagnostic.Message, "Component")), StringComparison.OrdinalIgnoreCase)),
+            _ => null,
+        };
+
+        return difference?.Provenance ?? CreateGlobalProvenance();
+    }
+
+    private OracleApexLanguageReferenceCompatibilityFinding CreateFinding(
+        string code,
+        string category,
+        string componentName,
+        string propertyPath,
+        string message,
+        string suggestedMigration,
+        bool blockingExecution,
+        OracleApexLanguageReferenceDifferenceProvenance provenance)
+        => new()
+        {
+            Code = code,
+            Category = category,
+            ComponentName = componentName,
+            PropertyPath = propertyPath,
+            Message = message,
+            SuggestedMigration = suggestedMigration,
+            BlockingExecution = blockingExecution,
+            Provenance = provenance,
+        };
+
+    private OracleApexLanguageReferenceDifferenceProvenance CreateGlobalProvenance()
+        => new()
+        {
+            FromCatalog = _diff.FromProvenance,
+            ToCatalog = _diff.ToProvenance,
+            FromDocumentationReference = _diff.FromProvenance.SourceLocation,
+            ToDocumentationReference = _diff.ToProvenance.SourceLocation,
+        };
+
+    private static bool PlanTouchesFinding(OracleApexEditPlan plan, OracleApexLanguageReferenceCompatibilityFinding finding)
+        => plan.Operations.Any(operation =>
+            (string.IsNullOrWhiteSpace(finding.ComponentName) || string.Equals(operation.TargetComponentType, finding.ComponentName, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(finding.PropertyPath) || operation.Properties.ContainsKey(finding.PropertyPath) || operation.Properties.Keys.Any(key => string.Equals(key, finding.PropertyPath, StringComparison.OrdinalIgnoreCase))));
+
+    private static bool HasSafeAlternative(OracleApexEditPlan plan)
+        => plan.Alternatives.Any(item => item.IsRecommended);
+
+    private static string BuildFindingKey(OracleApexLanguageReferenceCompatibilityFinding finding)
+        => $"{finding.Code}|{finding.ComponentName}|{finding.PropertyPath}";
+
+    private static string GetProjectVersion(OracleApexSemanticModel semanticModel)
+        => semanticModel.Application?.GetProperty("apexlang-version") ?? semanticModel.Application?.GetProperty("apex-version") ?? string.Empty;
+
+    private static string ExtractNamedValue(string message, string prefix)
+    {
+        var marker = prefix + " '";
+        var start = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return string.Empty;
+        }
+
+        start += marker.Length;
+        var end = message.IndexOf('\'', start);
+        return end > start ? message[start..end] : string.Empty;
+    }
+
+    private static string ExtractNamedValueAfter(string message, string token)
+    {
+        var tokenIndex = message.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (tokenIndex < 0)
+        {
+            return string.Empty;
+        }
+
+        var quoteStart = message.IndexOf('\'', tokenIndex);
+        var quoteEnd = quoteStart >= 0 ? message.IndexOf('\'', quoteStart + 1) : -1;
+        return quoteStart >= 0 && quoteEnd > quoteStart ? message[(quoteStart + 1)..quoteEnd] : string.Empty;
+    }
+
     private static OracleApexWorkspaceIndexDiagnostic CreateWorkspaceDiagnostic(string code, string message, OracleApexSemanticNode? application)
         => new()
         {

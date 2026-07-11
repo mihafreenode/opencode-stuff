@@ -105,3 +105,37 @@ public sealed class OracleApexLanguageReferenceAtlasCompatibilityDiff
     public IReadOnlyList<OracleApexLanguageReferenceCompatibilityWarning> AddedWarnings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityWarning>();
     public IReadOnlyList<OracleApexLanguageReferenceCompatibilityWarning> RemovedWarnings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityWarning>();
 }
+
+public sealed class OracleApexLanguageReferenceCompatibilityFinding
+{
+    public string Code { get; init; } = string.Empty;
+    public string Category { get; init; } = string.Empty;
+    public string ComponentName { get; init; } = string.Empty;
+    public string PropertyPath { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string SuggestedMigration { get; init; } = string.Empty;
+    public bool BlockingExecution { get; init; }
+    public OracleApexLanguageReferenceDifferenceProvenance Provenance { get; init; } = new();
+}
+
+public sealed class OracleApexLanguageReferenceWorkspaceCompatibilitySummary
+{
+    public string ProjectVersion { get; init; } = string.Empty;
+    public string ReferenceVersion { get; init; } = string.Empty;
+    public string PreviousReferenceVersion { get; init; } = string.Empty;
+    public string AtlasVersion { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public int RelevantFindingCount { get; init; }
+    public IReadOnlyList<OracleApexLanguageReferenceCompatibilityFinding> Findings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityFinding>();
+    public string DiffJsonPath { get; init; } = string.Empty;
+    public string DiffMarkdownPath { get; init; } = string.Empty;
+}
+
+public sealed class OracleApexLanguageReferencePlanCompatibilitySummary
+{
+    public string TargetApexlangVersion { get; init; } = string.Empty;
+    public string CompatibilityStatus { get; init; } = string.Empty;
+    public bool SqlclValidationIsEspeciallyImportant { get; init; }
+    public bool ShouldBlockExecution { get; init; }
+    public IReadOnlyList<OracleApexLanguageReferenceCompatibilityFinding> Findings { get; init; } = Array.Empty<OracleApexLanguageReferenceCompatibilityFinding>();
+}

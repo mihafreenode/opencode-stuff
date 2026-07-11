@@ -52,11 +52,13 @@ public sealed class OracleApexAssistantService
         var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
         var currentIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName);
         var planResult = _intentPlanner.CreatePlan(snapshot.Paths.RootPath, environment, environmentName, request.Prompt);
+        var compatibility = new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(BuiltInReferenceDiff).AnalyzePlan(currentIndex, planResult.Plan);
         var warnings = new List<string>(planResult.Plan.Warnings);
 
         AppendWorkspaceWarnings(snapshot, currentIndex, environmentName, warnings);
+        warnings.AddRange(compatibility.Findings.Select(item => item.Message).Where(message => !warnings.Contains(message, StringComparer.Ordinal)));
 
-        var review = BuildReview(planResult.Plan, warnings);
+        var review = BuildReview(planResult.Plan, warnings, compatibility);
         return new OracleApexAssistantPlanResponse
         {
             Request = request,
@@ -69,7 +71,8 @@ public sealed class OracleApexAssistantService
             ConfirmationRequired = planResult.Plan.RequiresConfirmation,
             WorkspaceIndex = currentIndex,
             PostEditBehavior = ResolvePostEditBehavior(request, snapshot.Synchronization.DefaultEnvironment),
-            SafeToContinueDeployment = planResult.Validation.IsValid && warnings.Count == 0,
+            SafeToContinueDeployment = planResult.Validation.IsValid && warnings.Count == 0 && !compatibility.ShouldBlockExecution,
+            Compatibility = compatibility,
         };
     }
 
@@ -78,6 +81,8 @@ public sealed class OracleApexAssistantService
         var environment = ResolveEnvironment(snapshot, request.EnvironmentName);
         var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
         var postEditBehavior = ResolvePostEditBehavior(request, snapshot.Synchronization.DefaultEnvironment);
+        var currentIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName);
+        var compatibility = new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(BuiltInReferenceDiff).AnalyzePlan(currentIndex, plan);
 
         if (plan.UnresolvedQuestions.Count > 0)
         {
@@ -86,8 +91,9 @@ public sealed class OracleApexAssistantService
                 IsSuccess = false,
                 Summary = "Plan execution is blocked until unresolved questions are answered.",
                 UnresolvedQuestions = plan.UnresolvedQuestions,
-                WorkspaceIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName),
+                WorkspaceIndex = currentIndex,
                 PostEditBehavior = postEditBehavior,
+                Compatibility = compatibility,
             };
         }
 
@@ -97,9 +103,23 @@ public sealed class OracleApexAssistantService
             {
                 IsSuccess = false,
                 Summary = "Plan execution requires explicit approval.",
-                WorkspaceIndex = _workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName),
+                WorkspaceIndex = currentIndex,
                 PostEditBehavior = postEditBehavior,
                 ConfirmationRequired = true,
+                Compatibility = compatibility,
+            };
+        }
+
+        if (compatibility.ShouldBlockExecution)
+        {
+            return new OracleApexAssistantExecutionResponse
+            {
+                IsSuccess = false,
+                Summary = "Plan execution is blocked because it uses a known invalid or removed APEXlang construct and no safe alternative is available.",
+                WorkspaceIndex = currentIndex,
+                PostEditBehavior = postEditBehavior,
+                Warnings = compatibility.Findings.Select(item => item.Message).ToList(),
+                Compatibility = compatibility,
             };
         }
 
@@ -177,7 +197,7 @@ public sealed class OracleApexAssistantService
                         ValidationResult = validationResult,
                         CompilerValidation = compilerValidation,
                         SuggestedRepairPlan = repairPlan,
-                        RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings),
+                        RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings, compatibility),
                         SafeToContinueDeployment = false,
                         Stage = OracleApexAssistantStage.SqlclValidation,
                         GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
@@ -254,11 +274,12 @@ public sealed class OracleApexAssistantService
             ImportResult = importResult,
             SafeToContinueDeployment = deploymentSafe,
             SuggestedRepairPlan = repairPlan,
-            RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings),
+            RepairReview = repairPlan is null ? string.Empty : BuildReview(repairPlan, repairPlan.Warnings, compatibility),
             Synchronization = refreshedStatus?.Snapshot ?? importResult?.Snapshot ?? validationResult?.Snapshot ?? snapshot.Synchronization,
             Stage = postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateAndImport ? OracleApexAssistantStage.Preview : postEditBehavior == OracleApexAssistantPostEditBehavior.ValidateOnly ? OracleApexAssistantStage.SqlclValidation : OracleApexAssistantStage.SemanticGeneration,
             GitStatusSummary = snapshot.Safety.AdvancedGit.StatusSummary,
             RollbackManifest = rollbackManifest,
+            Compatibility = compatibility,
         };
     }
 
@@ -267,11 +288,13 @@ public sealed class OracleApexAssistantService
         var environment = ResolveEnvironment(snapshot, request.EnvironmentName);
         var environmentName = ResolveEnvironmentName(snapshot, request.EnvironmentName);
         var repairPlan = _repairService.CreateRepairPlan(snapshot.Paths.RootPath, environment, environmentName, sourcePlan, validation);
+        var compatibility = new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(BuiltInReferenceDiff).AnalyzePlan(_workspaceIndexBuilder.Build(snapshot.Paths.RootPath, environment, environmentName), repairPlan);
         return new OracleApexAssistantRepairPlanResponse
         {
             Plan = repairPlan,
-            Review = BuildReview(repairPlan, repairPlan.Warnings),
+            Review = BuildReview(repairPlan, repairPlan.Warnings, compatibility),
             CompilerValidation = validation,
+            Compatibility = compatibility,
         };
     }
 
@@ -437,7 +460,7 @@ public sealed class OracleApexAssistantService
         }
     }
 
-    private static string BuildReview(OracleApexEditPlan plan, IReadOnlyCollection<string> warnings)
+    private static string BuildReview(OracleApexEditPlan plan, IReadOnlyCollection<string> warnings, OracleApexLanguageReferencePlanCompatibilitySummary compatibility)
     {
         var lines = new List<string>
         {
@@ -446,6 +469,20 @@ public sealed class OracleApexAssistantService
             $"Confirmation required: {(plan.RequiresConfirmation ? "Yes" : "No")}",
             $"Estimated complexity: {plan.EstimatedComplexity}",
         };
+
+        lines.Add("Compatibility:");
+        lines.Add($"- Target APEXlang version: {compatibility.TargetApexlangVersion}");
+        lines.Add($"- Compatibility status: {compatibility.CompatibilityStatus}");
+        lines.Add($"- SQLcl validation especially important: {(compatibility.SqlclValidationIsEspeciallyImportant ? "Yes" : "No")}");
+        foreach (var finding in compatibility.Findings.Take(5))
+        {
+            var scope = string.IsNullOrWhiteSpace(finding.PropertyPath)
+                ? finding.ComponentName
+                : $"{finding.ComponentName}.{finding.PropertyPath}";
+            lines.Add($"- {scope}: {finding.Message}");
+            lines.Add($"  Suggested migration: {finding.SuggestedMigration}");
+            lines.Add($"  Provenance: {finding.Provenance.ToDocumentationReference}");
+        }
 
         if (plan.NewPages.Count > 0)
         {
@@ -678,6 +715,7 @@ public sealed class OracleApexAssistantPlanResponse
     public OracleApexWorkspaceIndex WorkspaceIndex { get; init; } = new();
     public OracleApexAssistantPostEditBehavior PostEditBehavior { get; init; }
     public bool SafeToContinueDeployment { get; init; }
+    public OracleApexLanguageReferencePlanCompatibilitySummary Compatibility { get; init; } = new();
 }
 
 public sealed class OracleApexAssistantExecutionResponse
@@ -701,6 +739,7 @@ public sealed class OracleApexAssistantExecutionResponse
     public OracleApexAssistantStage Stage { get; init; }
     public string GitStatusSummary { get; init; } = string.Empty;
     public OracleApexAssistantRollbackManifest? RollbackManifest { get; init; }
+    public OracleApexLanguageReferencePlanCompatibilitySummary Compatibility { get; init; } = new();
 }
 
 public sealed class OracleApexAssistantRepairPlanResponse
@@ -708,6 +747,7 @@ public sealed class OracleApexAssistantRepairPlanResponse
     public OracleApexEditPlan Plan { get; init; } = new();
     public string Review { get; init; } = string.Empty;
     public OracleApexValidationResult CompilerValidation { get; init; } = new();
+    public OracleApexLanguageReferencePlanCompatibilitySummary Compatibility { get; init; } = new();
 }
 
 public enum OracleApexAssistantStage

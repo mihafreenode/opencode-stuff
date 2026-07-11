@@ -123,6 +123,7 @@ public sealed class OracleApexAtlasBuilderTests
         {
             var paths = WorkspacePathBuilder.Build(root);
             WriteSamplePackage(root);
+            WriteAtlasMetadata(root, "26.1.0+3102");
             var builder = new OracleApexAtlasBuilder();
 
             builder.Rebuild(CreateDefinition(), paths, "dev", force: true);
@@ -133,6 +134,9 @@ public sealed class OracleApexAtlasBuilderTests
             Assert.Contains("## Application Summary", documentation, StringComparison.Ordinal);
             Assert.Contains("## Page Inventory", documentation, StringComparison.Ordinal);
             Assert.Contains("Customer Orders Demo", documentation, StringComparison.Ordinal);
+            Assert.Contains("## APEXlang Version Compatibility", documentation, StringComparison.Ordinal);
+            Assert.Contains(".opencode/knowledge/apexlang-language-reference/docs/language-reference-diff.md", documentation, StringComparison.Ordinal);
+            Assert.Contains(".opencode/knowledge/apexlang-language-reference/language-reference-diff.json", documentation, StringComparison.Ordinal);
             Assert.Contains("# Oracle APEX Component Catalog", componentCatalogDocumentation, StringComparison.Ordinal);
         }
         finally
@@ -338,6 +342,15 @@ plugin custom-chart (
     }
 
     private static string CreateTempRoot() => Path.Combine(Path.GetTempPath(), $"oracle-apex-atlas-tests-{Guid.NewGuid():N}");
+
+    private static void WriteAtlasMetadata(string root, string buildId)
+    {
+        var atlasSourceRoot = Path.Combine(root, ".opencode", "apexlang", "source");
+        Directory.CreateDirectory(atlasSourceRoot);
+        File.WriteAllText(Path.Combine(atlasSourceRoot, "apexlang_meta_data.json"), $$"""
+{ "buildID": "{{buildId}}" }
+""");
+    }
 
     private static void DeleteTempRoot(string root)
     {

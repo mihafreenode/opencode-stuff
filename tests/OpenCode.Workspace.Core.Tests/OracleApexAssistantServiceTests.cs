@@ -47,6 +47,80 @@ public sealed class OracleApexAssistantServiceTests
     }
 
     [Fact]
+    public void CreatePlan_IncludesCompatibilitySummaryAndProvenance()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WritePackageWithReferenceCompatibilityIssues(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+
+            var response = service.CreatePlan(CreateSnapshot(root), new OracleApexAssistantRequest { Prompt = "Create Reports page" });
+
+            Assert.Contains("Compatibility:", response.Review, StringComparison.Ordinal);
+            Assert.Contains("Target APEXlang version:", response.Review, StringComparison.Ordinal);
+            Assert.Contains("SQLcl validation especially important: Yes", response.Review, StringComparison.Ordinal);
+            Assert.NotEmpty(response.Compatibility.Findings);
+            Assert.All(response.Compatibility.Findings, finding => Assert.NotEmpty(finding.Provenance.ToDocumentationReference));
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public void CompatibilityAnalyzer_WarnsForRemovedPropertyAndNewerVersionOnlyComponent()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WritePackageWithReferenceCompatibilityIssues(root);
+            var index = new OracleApexWorkspaceIndexBuilder().Build(root, CreateEnvironment(), "dev");
+            var importer = new OracleApexLanguageReferenceImporter();
+            var previous = importer.Import(
+                File.ReadAllText(Path.Combine(GetRepositoryRoot(), "tests", "OpenCode.Workspace.Core.Tests", "Fixtures", "apexlang-reference-v25.2.md")),
+                File.ReadAllText(Path.Combine(GetRepositoryRoot(), "tests", "OpenCode.Workspace.Core.Tests", "Fixtures", "apexlang-reference-v25.2.ebnf")),
+                new OracleApexLanguageReferenceProvenance { SourceKind = "fixture", SourceLocation = "previous", GrammarLocation = "previous", ApexVersion = "25.2", ImportedUtc = DateTimeOffset.UnixEpoch });
+            var current = importer.Import(
+                File.ReadAllText(Path.Combine(GetRepositoryRoot(), "tests", "OpenCode.Workspace.Core.Tests", "Fixtures", "apexlang-reference-v26.1.md")),
+                File.ReadAllText(Path.Combine(GetRepositoryRoot(), "tests", "OpenCode.Workspace.Core.Tests", "Fixtures", "apexlang-reference-v26.1.ebnf")),
+                new OracleApexLanguageReferenceProvenance { SourceKind = "fixture", SourceLocation = "current", GrammarLocation = "current", ApexVersion = "26.1", ImportedUtc = DateTimeOffset.UnixEpoch });
+            var diff = new OracleApexLanguageReferenceCatalogComparer().Compare(
+                previous,
+                current,
+                OracleApexComponentCatalog.AtlasSeed.CompareWithReference(previous),
+                OracleApexComponentCatalog.AtlasSeed.CompareWithReference(current));
+            var analyzer = new OracleApexLanguageReferenceWorkspaceImpactAnalyzer(diff);
+            var plan = new OracleApexEditPlan { Summary = "compatibility test" };
+            plan.Operations.Add(new OracleApexPlannedOperation
+            {
+                Sequence = 1,
+                Title = "Update removed property",
+                ExecutionMode = OracleApexPlannedExecutionMode.SemanticEditor,
+                SemanticOperations = [OracleApexSemanticEditOperation.UpdateProperties("application", "Customer Orders Demo", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["theme"] = "Vita" })],
+                TargetComponentType = "application",
+                TargetIdentifier = "Customer Orders Demo",
+                Properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["theme"] = "Vita" },
+            });
+            plan.Operations.Add(new OracleApexPlannedOperation
+            {
+                Sequence = 2,
+                Title = "Create deployment profile",
+                ExecutionMode = OracleApexPlannedExecutionMode.SemanticEditor,
+                SemanticOperations = [OracleApexSemanticEditOperation.AddSharedComponent("deployment", "DEV_DEPLOYMENT", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = "DEV_DEPLOYMENT" })],
+                TargetComponentType = "deployment",
+                TargetIdentifier = "DEV_DEPLOYMENT",
+                Properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = "DEV_DEPLOYMENT" },
+            });
+
+            var compatibility = analyzer.AnalyzePlan(index, plan);
+
+            Assert.Contains(compatibility.Findings, finding => finding.Code == "plan-property-removed");
+            Assert.Contains(compatibility.Findings, finding => finding.Code == "plan-component-newer-version-only");
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
     public async Task ExecutePlan_DestructivePlanRequiresApproval()
     {
         var root = CreateTempRoot();
@@ -105,6 +179,52 @@ public sealed class OracleApexAssistantServiceTests
             Assert.Contains(response.WorkspaceIndex.Pages, page => page.Identifier == "Reports");
             Assert.Equal(0, sync.ValidateCalls);
             Assert.Equal(0, sync.ImportCalls);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public async Task ExecutePlan_BlocksOnlyKnownInvalidCompatibilityConstructs()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            WritePackageWithReferenceCompatibilityIssues(root);
+            WriteAtlasState(root);
+            var service = new OracleApexAssistantService(new FakeSyncService());
+            var snapshot = CreateSnapshot(root);
+            var blockedPlan = new OracleApexEditPlan { Summary = "blocked compatibility plan" };
+            blockedPlan.Operations.Add(new OracleApexPlannedOperation
+            {
+                Sequence = 1,
+                Title = "Create deployment profile",
+                ExecutionMode = OracleApexPlannedExecutionMode.SemanticEditor,
+                SemanticOperations = [OracleApexSemanticEditOperation.AddSharedComponent("deployment-profile", "DEV_DEPLOYMENT", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = "DEV_DEPLOYMENT" })],
+                TargetComponentType = "deployment-profile",
+                TargetIdentifier = "DEV_DEPLOYMENT",
+                Properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = "DEV_DEPLOYMENT" },
+            });
+
+            var blocked = await service.ExecutePlanAsync(snapshot, new OracleApexAssistantRequest { Prompt = "Create deployment profile", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, blockedPlan);
+
+            Assert.False(blocked.IsSuccess);
+            Assert.Contains("known invalid or removed APEXlang construct", blocked.Summary, StringComparison.OrdinalIgnoreCase);
+
+            var validRoot = CreateTempRoot();
+            try
+            {
+                WriteValidPackage(validRoot);
+                WriteAtlasState(validRoot);
+                var validSnapshot = CreateSnapshot(validRoot);
+                var validPlan = service.CreatePlan(validSnapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page" }).Plan;
+                var allowed = await service.ExecutePlanAsync(validSnapshot, new OracleApexAssistantRequest { Prompt = "Create Reports page", ConfirmPlan = true, PostEditBehavior = OracleApexAssistantPostEditBehavior.SourceOnly }, validPlan);
+
+                Assert.True(allowed.IsSuccess, allowed.Summary);
+            }
+            finally
+            {
+                DeleteTempRoot(validRoot);
+            }
         }
         finally { DeleteTempRoot(root); }
     }
@@ -606,6 +726,27 @@ navigation menu secondary-navigation (
 """);
     }
 
+    private static void WritePackageWithReferenceCompatibilityIssues(string root)
+    {
+        var sourceRoot = Path.Combine(root, "src", "apex");
+        Directory.CreateDirectory(Path.Combine(sourceRoot, "pages"));
+        File.WriteAllText(Path.Combine(sourceRoot, "application.apx"), """
+application customer-orders-demo (
+    id: 100
+    name: Customer Orders Demo
+    alias: CUSTOMER-ORDERS-DEMO
+    apexlang-version: 25.2
+    theme: Vita
+)
+""");
+        File.WriteAllText(Path.Combine(sourceRoot, "pages", "p00001-home.apx"), """
+page home (
+    id: 1
+    name: Home
+)
+""");
+    }
+
     private static void WriteAtlasState(string root)
     {
         var atlasPath = Path.Combine(root, ".opencode", "knowledge", "apexlang-atlas");
@@ -628,6 +769,9 @@ navigation menu secondary-navigation (
         Directory.CreateDirectory(root);
         return root;
     }
+
+    private static string GetRepositoryRoot()
+        => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
     private static void DeleteTempRoot(string root)
     {
