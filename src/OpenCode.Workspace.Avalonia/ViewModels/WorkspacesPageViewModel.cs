@@ -889,7 +889,19 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             }
 
             SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
-            DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully.";
+            DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' created successfully. Provisioning runtime...";
+
+            try
+            {
+                await PrepareSelectedWorkspaceAsync(startTranscript: false, initialStatusMessage: "Provisioning workspace...", preserveExistingTranscript: true);
+            }
+            catch
+            {
+                await LoadAsync();
+                SelectWorkspaceByRootPath(snapshot.Paths.RootPath);
+                DetailSummary = $"Workspace '{snapshot.Definition.Workspace.Name}' was created, but provisioning failed.";
+                DetailRecommendation = "Retry Provisioning or Run Diagnostics.";
+            }
         }
         catch (Exception exception)
         {
@@ -1515,6 +1527,39 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         _clipboardService = clipboardService;
         CopyOperationLogCommand.RaiseCanExecuteChanged();
         UpdateDetailPanel();
+    }
+
+    private async Task PrepareSelectedWorkspaceAsync(bool startTranscript = true, string initialStatusMessage = "Provisioning workspace...", bool preserveExistingTranscript = false)
+    {
+        if (SelectedWorkspace is null)
+        {
+            return;
+        }
+
+        if (!await ConfirmOracleSoftwareNoticeIfRequiredAsync(SelectedWorkspace.Snapshot))
+        {
+            if (startTranscript)
+            {
+                StartOperationTranscript("Prepare", SelectedWorkspace.Name);
+                AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Result, Text = "Cancelled." });
+            }
+
+            DetailSummary = "Workspace provisioning cancelled.";
+            return;
+        }
+
+        if (startTranscript)
+        {
+            StartOperationTranscript("Prepare", SelectedWorkspace.Name);
+            AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Status, Text = initialStatusMessage });
+            DetailSummary = initialStatusMessage;
+        }
+
+        await RunWorkspaceOperationAsync(
+            "Prepare",
+            initialStatusMessage,
+            (rootPath, snapshot, sink) => _desktopShellService.PrepareWorkspaceAsync(rootPath, snapshot, sink),
+            preserveExistingTranscript: preserveExistingTranscript);
     }
 
     public void SetInteractionService(IWorkspaceInteractionService interactionService)
@@ -3217,6 +3262,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var failureGuidance = TryBuildFailureGuidance(workspace);
         var openWorkspaceAction = CreatePresentationAction(workspace, "Open Workspace", BuildOpenDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var openDevelopmentShellAction = CreatePresentationAction(workspace, "Open Development Shell", BuildOpenDevelopmentShellDescription(workspace), CanStartWorkspace(workspace), GetOpenDisabledReason(workspace), OpenSelectedWorkspaceAsync, useWorkspaceScopedCommands);
+        var retryProvisioningAction = CreatePresentationAction(workspace, "Retry Provisioning", BuildRetryProvisioningDescription(workspace), CanPrepareWorkspace(workspace), GetPrepareDisabledReason(workspace), () => PrepareSelectedWorkspaceAsync(), useWorkspaceScopedCommands);
         var rebuildRuntimeAction = CreatePresentationAction(workspace, "Rebuild Runtime", BuildResetRuntimeDescription(workspace), CanResetRuntimeWorkspace(workspace), GetResetRuntimeDisabledReason(workspace), ResetRuntimeSelectedWorkspaceAsync, useWorkspaceScopedCommands);
         var investigateProblemAction = CreatePresentationAction(workspace, "Run Diagnostics", BuildInvestigateProblemDescription(workspace), CanTroubleshootWorkspace(workspace), GetTroubleshootDisabledReason(workspace), TroubleshootWorkspaceInternalAsync, useWorkspaceScopedCommands);
         var openFolderAction = CreatePresentationAction(workspace, "Open Folder", "Open the workspace folder with the host shell.", true, string.Empty, OpenSelectedWorkspaceFolderAsync, useWorkspaceScopedCommands);
@@ -3224,10 +3270,15 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         var removeAction = CreatePresentationAction(workspace, "Remove", BuildRemoveDescription(workspace), CanRemoveWorkspace(workspace), GetRemoveDisabledReason(workspace), RemoveWorkspaceAsync, useWorkspaceScopedCommands);
         var planApexlangAction = CreatePresentationAction(workspace, "Plan APEXlang Change", "Build a reviewable semantic APEXlang plan before changing application source.", SupportsApexAssistant && !IsBusyForWorkspaceActions, GetCurrentWorkspaceActionStatusMessage(), async () => { OpenApexAssistant(); await Task.CompletedTask; }, useWorkspaceScopedCommands);
         var supportsSynchronization = workspace.Snapshot?.Synchronization.IsSupported == true;
-        var shouldShowRebuildRuntime = effectiveReadiness?.Status != WorkspaceReadinessStatus.Ready
+        var shouldShowRebuildRuntime = effectiveReadiness?.Status is not (WorkspaceReadinessStatus.Ready or WorkspaceReadinessStatus.ProvisioningFailed)
             || workspace.Record.LastProvisioningHealth is not null
-            || workspace.Record.LastOperationSucceeded == false;
+            || (workspace.Record.LastOperationSucceeded == false && effectiveReadiness?.Status != WorkspaceReadinessStatus.ProvisioningFailed);
         var advancedActions = new List<ActionItemViewModel>();
+        if (effectiveReadiness?.Status == WorkspaceReadinessStatus.ProvisioningFailed)
+        {
+            advancedActions.Add(retryProvisioningAction);
+        }
+
         if (shouldShowRebuildRuntime)
         {
             advancedActions.Add(rebuildRuntimeAction);
@@ -3255,7 +3306,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             removeAction,
         ]);
 
-        if (failureGuidance?.CanRetry == true)
+        if (failureGuidance?.CanRetry == true && effectiveReadiness?.Status != WorkspaceReadinessStatus.ProvisioningFailed)
         {
             advancedActions.Insert(0, CreatePresentationAction(workspace, "Retry", BuildRetryDescription(workspace), CanRetryWorkspace(workspace), GetRetryDisabledReason(workspace), RetrySelectedWorkspaceAsync, useWorkspaceScopedCommands));
         }
@@ -3301,6 +3352,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             {
                 OpenWorkspace = openWorkspaceAction,
                 OpenDevelopmentShell = openDevelopmentShellAction,
+                RetryProvisioning = retryProvisioningAction,
                 RebuildRuntime = rebuildRuntimeAction,
                 TroubleshootWorkspace = investigateProblemAction,
                 OpenFolder = openFolderAction,
@@ -3401,7 +3453,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     }
 
     private static bool IsReadinessTrackedOperation(string operationName)
-        => operationName is "Open Workspace" or "Start" or "Reprovision" or "Recover" or "Rebuild Runtime" or "Attach";
+        => operationName is "Open Workspace" or "Start" or "Prepare" or "Reprovision" or "Recover" or "Rebuild Runtime" or "Attach";
 
     private static bool ShouldPreferLastOperationResultForDetails(WorkspaceSummaryViewModel workspace)
         => !string.IsNullOrWhiteSpace(workspace.Record.LastOperationResult)
@@ -3824,6 +3876,9 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         };
     }
 
+    private bool CanPrepareWorkspace(WorkspaceSummaryViewModel? workspace)
+        => workspace is not null && !IsBusyForWorkspaceActions && CanStartWorkspace(workspace);
+
     private bool CanAttachWorkspace(WorkspaceSummaryViewModel? workspace)
     {
         if (IsBusyForWorkspaceActions)
@@ -3886,6 +3941,16 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private static bool CanTroubleshootWorkspace(WorkspaceSummaryViewModel? workspace)
         => workspace is { IsLoading: false };
+
+    private string GetPrepareDisabledReason(WorkspaceSummaryViewModel workspace)
+        => IsBusyForWorkspaceActions
+            ? GetCurrentWorkspaceActionStatusMessage()
+            : CanPrepareWorkspace(workspace) ? string.Empty : "Retry Provisioning is not available for the current workspace state.";
+
+    private static string BuildRetryProvisioningDescription(WorkspaceSummaryViewModel workspace)
+        => workspace.IsLoading
+            ? "Loading workspace details before retrying provisioning."
+            : "Retry initial runtime provisioning and refresh the workspace state without forcing a rebuild.";
 
     private static string BuildBackupArchiveFileName(WorkspaceSummaryViewModel workspace)
         => $"{WorkspacePathBuilder.Slugify(workspace.Name)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip";
@@ -4251,6 +4316,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         if (scope == WorkspaceFailureProblemScope.RuntimeProblem)
         {
+            if (string.Equals(workspace.Record.LastOperationName, "Prepare", StringComparison.Ordinal) && canRetry)
+            {
+                return "Retry Provisioning";
+            }
+
             if ((repairability?.Classification == WorkspaceRepairability.CleanupRepair
                     || string.Equals(health?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal))
                 && canCleanup)
@@ -4318,6 +4388,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             return primaryAction switch
             {
                 "Open Workspace" => "Open Workspace.",
+                "Retry Provisioning" => "Retry Provisioning.",
                 "Rebuild Runtime" => "Rebuild Runtime.",
                 "Run Diagnostics" => "Run Diagnostics.",
                 "Troubleshoot Workspace" => "Run Diagnostics.",
@@ -4458,6 +4529,11 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         if (recommendedAction.Contains("Troubleshoot Workspace", StringComparison.OrdinalIgnoreCase) && canTroubleshoot)
         {
             return "Run Diagnostics";
+        }
+
+        if (recommendedAction.Contains("Retry Provisioning", StringComparison.OrdinalIgnoreCase) && canRetry)
+        {
+            return "Retry Provisioning";
         }
 
         if (recommendedAction.Contains("Run Diagnostics", StringComparison.OrdinalIgnoreCase) && canTroubleshoot)

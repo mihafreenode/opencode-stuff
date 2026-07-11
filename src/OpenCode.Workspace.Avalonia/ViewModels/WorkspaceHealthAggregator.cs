@@ -113,7 +113,7 @@ internal static class WorkspaceHealthAggregator
             return null;
         }
 
-        foreach (var label in new[] { "Open Development Shell", "Open Workspace", "Troubleshoot Workspace", "Rebuild Runtime", "Run Diagnostics", "View Progress", "Retry" })
+        foreach (var label in new[] { "Open Development Shell", "Open Workspace", "Troubleshoot Workspace", "Retry Provisioning", "Rebuild Runtime", "Run Diagnostics", "View Progress", "Retry" })
         {
             if (recommendation.Contains(label, StringComparison.OrdinalIgnoreCase))
             {
@@ -187,6 +187,7 @@ internal static class WorkspaceHealthAggregator
             "Troubleshoot Workspace" => actions.TroubleshootWorkspace,
             "View Progress" => CloneAction(actions.OpenWorkspace, "View Progress"),
             "Run Diagnostics" => CloneAction(actions.TroubleshootWorkspace, "Run Diagnostics"),
+            "Retry Provisioning" => actions.RetryProvisioning,
             "Rebuild Runtime" => actions.RebuildRuntime,
             "Open Development Shell" => actions.OpenDevelopmentShell,
             _ => actions.OpenWorkspace,
@@ -303,6 +304,7 @@ internal sealed class WorkspacePresentationActions
 {
     public required ActionItemViewModel OpenWorkspace { get; init; }
     public required ActionItemViewModel OpenDevelopmentShell { get; init; }
+    public required ActionItemViewModel RetryProvisioning { get; init; }
     public required ActionItemViewModel RebuildRuntime { get; init; }
     public required ActionItemViewModel TroubleshootWorkspace { get; init; }
     public required ActionItemViewModel OpenFolder { get; init; }

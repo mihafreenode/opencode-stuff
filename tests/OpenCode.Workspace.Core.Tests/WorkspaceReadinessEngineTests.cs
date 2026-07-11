@@ -86,6 +86,53 @@ public sealed class WorkspaceReadinessEngineTests
     }
 
     [Fact]
+    public void Build_ProvisioningFailure_ReturnsProvisioningFailedWithRetryProvisioning()
+    {
+        var snapshot = CreateSnapshot(
+            runtimeState: WorkspaceRuntimeState.Stopped,
+            localRuntimeState: null,
+            appliedState: null,
+            provisioningHealth: new WorkspaceProvisioningHealthRecord
+            {
+                Summary = "Provisioning failed.",
+                RecommendedAction = "Retry Provisioning.",
+            });
+        snapshot = new WorkspaceSnapshot
+        {
+            Record = new WorkspaceRecord
+            {
+                Name = snapshot.Record.Name,
+                RootPath = snapshot.Record.RootPath,
+                RepositoryPath = snapshot.Record.RepositoryPath,
+                CreatedUtc = snapshot.Record.CreatedUtc,
+                LastOpenedUtc = snapshot.Record.LastOpenedUtc,
+                LastProvisioningHealth = snapshot.Record.LastProvisioningHealth,
+                LastOperationName = "Prepare",
+                LastOperationResult = "Provisioning failed due to missing runtime dependency.",
+                LastOperationSucceeded = false,
+            },
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Health = snapshot.Health,
+        };
+
+        var readiness = WorkspaceReadinessEngine.Build(new WorkspaceReadinessInput { Snapshot = snapshot, Health = CreateHealth() });
+
+        Assert.Equal(WorkspaceReadinessStatus.ProvisioningFailed, readiness.Status);
+        Assert.Equal(WorkspacePrimaryAction.RetryProvisioning, readiness.PrimaryAction);
+        Assert.False(readiness.CanRebuildRuntime);
+        Assert.Contains(readiness.AttentionItems, item => item.RecommendedActionLabel == "Retry Provisioning");
+    }
+
+    [Fact]
     public void Build_HostBlocker_ReturnsUnavailableWithRunDiagnostics()
     {
         var snapshot = CreateSnapshot(

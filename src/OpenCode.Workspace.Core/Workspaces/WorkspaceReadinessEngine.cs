@@ -14,11 +14,12 @@ public static class WorkspaceReadinessEngine
         var isFreshWorkspace = IsFreshWorkspace(snapshot);
         var hostBlocked = IsHostBlocked(snapshot, health);
         var needsRebuild = NeedsRebuild(snapshot, health);
+        var provisioningFailed = IsProvisioningFailure(snapshot, needsRebuild);
         var canOpenWorkspace = CanOpenWorkspace(snapshot);
         var capabilities = BuildCapabilities(snapshot, health, operation, launchReadinessProblem);
-        var attentionItems = BuildAttentionItems(snapshot, health, hostBlocked, needsRebuild, launchReadinessProblem, isFreshWorkspace);
+        var attentionItems = BuildAttentionItems(snapshot, health, hostBlocked, needsRebuild, provisioningFailed, launchReadinessProblem, isFreshWorkspace);
 
-        var status = DetermineStatus(snapshot, operation, hostBlocked, needsRebuild, capabilities);
+        var status = DetermineStatus(snapshot, operation, hostBlocked, needsRebuild, provisioningFailed, capabilities);
         var primaryAction = DeterminePrimaryAction(status, operation, hostBlocked, canOpenWorkspace);
 
         return new WorkspaceReadinessSnapshot
@@ -41,11 +42,17 @@ public static class WorkspaceReadinessEngine
         WorkspaceOperationState operation,
         bool hostBlocked,
         bool needsRebuild,
+        bool provisioningFailed,
         IReadOnlyList<WorkspaceCapabilitySnapshot> capabilities)
     {
         if (operation.IsInProgress)
         {
             return WorkspaceReadinessStatus.Preparing;
+        }
+
+        if (provisioningFailed)
+        {
+            return WorkspaceReadinessStatus.ProvisioningFailed;
         }
 
         if (needsRebuild)
@@ -73,6 +80,11 @@ public static class WorkspaceReadinessEngine
         if (status == WorkspaceReadinessStatus.Ready)
         {
             return WorkspacePrimaryAction.OpenWorkspace;
+        }
+
+        if (status == WorkspaceReadinessStatus.ProvisioningFailed)
+        {
+            return WorkspacePrimaryAction.RetryProvisioning;
         }
 
         if (status == WorkspaceReadinessStatus.NeedsRebuild)
@@ -163,7 +175,7 @@ public static class WorkspaceReadinessEngine
         };
     }
 
-    private static IReadOnlyList<WorkspaceAttentionItem> BuildAttentionItems(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool hostBlocked, bool needsRebuild, bool launchReadinessProblem, bool isFreshWorkspace)
+    private static IReadOnlyList<WorkspaceAttentionItem> BuildAttentionItems(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health, bool hostBlocked, bool needsRebuild, bool provisioningFailed, bool launchReadinessProblem, bool isFreshWorkspace)
     {
         var items = new List<WorkspaceAttentionItem>();
 
@@ -215,7 +227,21 @@ public static class WorkspaceReadinessEngine
             });
         }
 
-        if (needsRebuild)
+        if (provisioningFailed)
+        {
+            items.Add(new WorkspaceAttentionItem
+            {
+                Key = "runtime-provisioning-failed",
+                Label = "Runtime",
+                Severity = WorkspaceAttentionSeverity.Blocking,
+                Summary = string.IsNullOrWhiteSpace(snapshot?.Record.LastOperationResult)
+                    ? "Initial runtime provisioning did not complete successfully."
+                    : snapshot!.Record.LastOperationResult!,
+                RecommendedActionLabel = "Retry Provisioning",
+                Scope = WorkspaceAttentionScope.Runtime,
+            });
+        }
+        else if (needsRebuild)
         {
             items.Add(new WorkspaceAttentionItem
             {
@@ -367,6 +393,7 @@ public static class WorkspaceReadinessEngine
                 WorkspaceActivity.OpeningTerminal => "Opening terminal.",
                 _ => "Preparing workspace. This may take several minutes.",
             },
+            WorkspaceReadinessStatus.ProvisioningFailed => BuildProvisioningFailedSummary(snapshot, health),
             WorkspaceReadinessStatus.NeedsRebuild => TryBuildOracleApexReadinessSummary(snapshot, health)
                 ?? "Rebuild Runtime will recreate managed containers and volumes while keeping your files.",
             _ => hostBlocked
@@ -558,4 +585,20 @@ public static class WorkspaceReadinessEngine
             && snapshot.Record.LastPreparedUtc is null
             && snapshot.Record.LastOperationSucceeded == true
             && string.Equals(snapshot.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal);
+
+    private static bool IsProvisioningFailure(WorkspaceSnapshot? snapshot, bool needsRebuild)
+        => snapshot is not null
+            && !needsRebuild
+            && snapshot.Record.LastOperationSucceeded == false
+            && (string.Equals(snapshot.Record.LastOperationName, "Prepare", StringComparison.Ordinal)
+                || string.Equals(snapshot.Record.LastOperationName, "Reprovision", StringComparison.Ordinal)
+                || (string.Equals(snapshot.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal)
+                    && snapshot.Record.LastPreparedUtc is null))
+            && (snapshot.AppliedState is null || snapshot.LocalRuntimeState is null || snapshot.UpdateRequired);
+
+    private static string BuildProvisioningFailedSummary(WorkspaceSnapshot? snapshot, WorkspaceHealthSnapshot? health)
+        => TryBuildOracleApexReadinessSummary(snapshot, health)
+            ?? (!string.IsNullOrWhiteSpace(snapshot?.Record.LastOperationResult)
+                ? snapshot.Record.LastOperationResult!
+                : "Provisioning failed. Retry provisioning after reviewing diagnostics.");
 }

@@ -17,7 +17,7 @@ internal static class WorkspaceReadinessPresentationFormatter
             && workspace.Record.LastOperationSucceeded == true
             && string.Equals(workspace.Record.LastOperationName, "Create Workspace", StringComparison.Ordinal))
         {
-            return "Not Prepared";
+            return "Provisioning";
         }
 
         if (readiness.Status == WorkspaceReadinessStatus.Unavailable
@@ -29,7 +29,8 @@ internal static class WorkspaceReadinessPresentationFormatter
         return readiness.Status switch
         {
             WorkspaceReadinessStatus.Ready => "Workspace Ready",
-            WorkspaceReadinessStatus.Preparing => "Preparing",
+            WorkspaceReadinessStatus.Preparing => "Provisioning",
+            WorkspaceReadinessStatus.ProvisioningFailed => "Provisioning Failed",
             WorkspaceReadinessStatus.NeedsRebuild => "Needs Rebuild",
             _ => "Unavailable",
         };
@@ -58,6 +59,7 @@ internal static class WorkspaceReadinessPresentationFormatter
         => action switch
         {
             WorkspacePrimaryAction.ViewProgress => "Open Workspace",
+            WorkspacePrimaryAction.RetryProvisioning => "Retry Provisioning",
             WorkspacePrimaryAction.RebuildRuntime => "Rebuild Runtime",
             WorkspacePrimaryAction.RunDiagnostics => "Run Diagnostics",
             WorkspacePrimaryAction.OpenFolder => "Open Folder",

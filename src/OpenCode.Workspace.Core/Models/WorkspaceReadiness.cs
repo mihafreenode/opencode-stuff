@@ -18,6 +18,7 @@ public enum WorkspaceReadinessStatus
 {
     Ready,
     Preparing,
+    ProvisioningFailed,
     NeedsRebuild,
     Unavailable,
 }
@@ -36,6 +37,7 @@ public enum WorkspacePrimaryAction
 {
     OpenWorkspace,
     ViewProgress,
+    RetryProvisioning,
     RebuildRuntime,
     OpenFolder,
     RunDiagnostics,

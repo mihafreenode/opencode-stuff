@@ -370,6 +370,7 @@ public sealed class ShellViewModelTests
         await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
 
         Assert.NotNull(createdSnapshot);
+        Assert.Equal(1, service.PrepareCallCount);
         Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
     }
@@ -409,6 +410,7 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(0, interaction.OracleNoticePromptCount);
         Assert.NotNull(createdSnapshot);
+        Assert.Equal(1, service.PrepareCallCount);
         Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
     }
@@ -445,9 +447,60 @@ public sealed class ShellViewModelTests
         await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
 
         Assert.NotNull(createdSnapshot);
+        Assert.Equal(1, service.PrepareCallCount);
         Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, createdSnapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
         Assert.Equal(createdSnapshot.Paths.RootPath, page.SelectedWorkspace?.RootPath);
-        Assert.Contains("created successfully", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ready to open", page.DetailSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateWorkspace_WhenProvisioningFails_ShowsProvisioningFailedWithRetryProvisioning()
+    {
+        WorkspaceSnapshot? createdSnapshot = null;
+        var failedSnapshot = WithReadiness(
+            WithHealth(
+                CreateSnapshot("created-demo", includeRuntimeState: false, lastOperationName: "Prepare", lastOperationResult: "Provisioning failed.", lastOperationSucceeded: false),
+                CreateHealthSnapshot(WorkspaceHealthStatus.Degraded, "Provisioning failed.", "Retry Provisioning.")),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.ProvisioningFailed,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RetryProvisioning,
+                Summary = "Provisioning failed. Retry provisioning after reviewing diagnostics.",
+            });
+        var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
+        var service = new FakeDesktopShellService([])
+        {
+            CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
+            {
+                createdSnapshot = CreateSnapshot(definition.Workspace.Name, includeRuntimeState: false, lastOperationName: "Create Workspace", lastOperationSucceeded: true);
+                return Task.FromResult(createdSnapshot);
+            },
+            PrepareResultFactoryAsync = (_, _, _) => throw new InvalidOperationException("Provisioning failed."),
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = [new WorkspaceShellItem { Record = failedSnapshot.Record, Snapshot = failedSnapshot }],
+                Report = new WorkspaceLoadReport { RawRecordCount = 1, SnapshotAttemptCount = 1, SnapshotCount = 1, ItemsReturnedCount = 1, Timings = [] },
+            }),
+        };
+        var page = new WorkspacesPageViewModel(service);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "created-demo",
+                WorkspaceRootPath = Path.Combine(Path.GetTempPath(), $"created-demo-{Guid.NewGuid():N}"),
+                Template = template,
+            },
+        });
+
+        await ((AsyncRelayCommand)page.CreateWorkspaceCommand).ExecuteAsync();
+
+        Assert.Equal(1, service.PrepareCallCount);
+        Assert.Equal("Provisioning Failed", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Provisioning Failed", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Retry Provisioning", page.DetailPrimaryAction?.Label);
+        Assert.DoesNotContain(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
     }
 
     [Fact]
@@ -3128,8 +3181,8 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Not Prepared", page.SelectedWorkspace?.Headline);
-        Assert.Equal("Not Prepared", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.RuntimeStatusLabel);
     }
 
     [Fact]
@@ -3190,7 +3243,7 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
 
         Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
-        Assert.Equal("Preparing", page.SelectedWorkspace?.RuntimeStatusLabel);
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.RuntimeStatusLabel);
     }
 
     [Fact]
@@ -3370,11 +3423,11 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
-        Assert.Equal("Not Prepared", page.SelectedWorkspace?.Headline);
+        Assert.Equal("Provisioning", page.SelectedWorkspace?.Headline);
         Assert.Equal("Open Workspace will prepare the runtime and open the terminal.", page.DetailSummary);
         Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
         Assert.Equal("Open Workspace.", page.DetailRecommendation);
-        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value.Contains("Not Prepared", StringComparison.Ordinal));
+        Assert.Contains(page.DetailItems, item => item.Label == "Workspace" && item.Value.Contains("Provisioning", StringComparison.Ordinal));
     }
 
     [Fact]
