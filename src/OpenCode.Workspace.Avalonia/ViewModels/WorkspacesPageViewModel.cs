@@ -273,7 +273,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
     public bool ShowHeroPrimaryAction => HasSelectedWorkspace && ShowDetailPrimaryAction;
     public bool ShowMainAvailableServicesSection => HasCapabilityGroups && !IsSelectedWorkspacePreparing;
     public bool ShowMainRecentActivitySection => IsSelectedWorkspaceReady && HasRecentActivity;
-    public bool ShowMainQuickActionsSection => IsSelectedWorkspaceReady && HasDetailVisibleActions;
+    public bool ShowMainQuickActionsSection => HasDetailVisibleActions;
     public bool ShowMainProgressSection => IsSelectedWorkspacePreparing;
     public bool ShowMainOperationLogSection => IsSelectedWorkspacePreparing && ShowOperationLogPanel;
     public bool SupportsApexAssistant => SelectedWorkspace?.Snapshot is { } snapshot && OracleWorkspaceFamily.HasApex(snapshot.Definition);
@@ -3254,15 +3254,32 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         DetailVisibleActions.Clear();
         DetailAdvancedActions.Clear();
         DetailPrimaryAction = null;
+        var visibleActionKinds = new HashSet<WorkspacePresentedActionKind>();
 
         DetailPrimaryAction = BuildActionItem(workspace, state.PrimaryAction, useWorkspaceScopedCommands: false);
         if (DetailPrimaryAction is not null)
         {
             DetailActions.Add(DetailPrimaryAction);
+
+            if (ShouldPromotePrimaryActionToVisibleActions(state, state.PrimaryAction))
+            {
+                var promotedPrimary = BuildActionItem(workspace, state.PrimaryAction, useWorkspaceScopedCommands: false);
+                if (promotedPrimary is not null)
+                {
+                    DetailVisibleActions.Add(promotedPrimary);
+                    DetailActions.Add(promotedPrimary);
+                    visibleActionKinds.Add(state.PrimaryAction!.Kind);
+                }
+            }
         }
 
         foreach (var action in state.SecondaryActions)
         {
+            if (!visibleActionKinds.Add(action.Kind))
+            {
+                continue;
+            }
+
             var item = BuildActionItem(workspace, action, useWorkspaceScopedCommands: false);
             if (item is null)
             {
@@ -3292,7 +3309,13 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
         RaisePropertyChanged(nameof(HasDetailAdvancedActions));
         RaisePropertyChanged(nameof(SelectedWorkspace));
+        RaiseWorkspaceSectionPropertyChanges();
     }
+
+    private static bool ShouldPromotePrimaryActionToVisibleActions(WorkspacePresentationState state, WorkspacePresentedAction? action)
+        => action is not null
+            && action.IsVisible
+            && action.Kind is WorkspacePresentedActionKind.RebuildRuntime or WorkspacePresentedActionKind.RetryProvisioning;
 
     private void RefreshDetailActions()
     {

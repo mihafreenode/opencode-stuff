@@ -219,10 +219,18 @@ internal sealed class WorkspacePresentationStateResolver
         => status switch
         {
             WorkspacePresentationStatusKind.Invalid => CreateAction(context, WorkspacePresentedActionKind.RunDiagnostics, enabled: true, disabledReason: string.Empty, isPrimary: true),
-            WorkspacePresentationStatusKind.Provisioning => CreateOperationBlockedAction(context, WorkspacePresentedActionKind.OpenWorkspace, isPrimary: true),
+            WorkspacePresentationStatusKind.Provisioning => CreateOperationBlockedAction(context, ResolveRunningPrimaryActionKind(context), isPrimary: true),
             WorkspacePresentationStatusKind.ProvisioningFailed => CreateAction(context, WorkspacePresentedActionKind.RetryProvisioning, CanPrepareWorkspace(context), GetRetryProvisioningDisabledReason(context), isPrimary: true),
             WorkspacePresentationStatusKind.NeedsRebuild => CreateAction(context, WorkspacePresentedActionKind.RebuildRuntime, CanRebuildRuntime(context), GetRebuildRuntimeDisabledReason(context), isPrimary: true),
             _ => CreateAction(context, WorkspacePresentedActionKind.OpenWorkspace, CanStartWorkspace(context.Workspace), GetOpenWorkspaceDisabledReason(context), isPrimary: true),
+        };
+
+    private static WorkspacePresentedActionKind ResolveRunningPrimaryActionKind(WorkspacePresentationResolutionContext context)
+        => context.CurrentOperationName switch
+        {
+            "Rebuild Runtime" or "Recover" => WorkspacePresentedActionKind.RebuildRuntime,
+            "Prepare" when context.Workspace.Record.LastProvisioningHealth is not null || string.Equals(context.RetryOperationName, "Prepare", StringComparison.Ordinal) => WorkspacePresentedActionKind.RetryProvisioning,
+            _ => WorkspacePresentedActionKind.OpenWorkspace,
         };
 
     private static IReadOnlyList<WorkspacePresentedAction> ResolveSecondaryActions(WorkspacePresentationResolutionContext context, WorkspacePresentedAction? primaryAction)
@@ -546,7 +554,8 @@ internal sealed class WorkspacePresentationStateResolver
     private static bool CanRebuildRuntime(WorkspacePresentationResolutionContext context)
         => !context.IsWorkspaceActionBlocked
             && CanStartWorkspace(context.Workspace)
-            && (context.RepairabilityClassification == WorkspaceRepairability.CleanupRepair
+            && (context.EffectiveReadiness?.CanRebuildRuntime == true
+                || context.RepairabilityClassification == WorkspaceRepairability.CleanupRepair
                 || string.Equals(context.Workspace.Record.LastProvisioningHealth?.Repairability, WorkspaceRepairability.CleanupRepair.ToString(), StringComparison.Ordinal));
 
     private static bool CanAttachWorkspace(WorkspacePresentationResolutionContext context)

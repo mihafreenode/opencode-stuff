@@ -3954,9 +3954,128 @@ public sealed class ShellViewModelTests
 
         await page.LoadAsync();
 
+        Assert.Equal("Rebuild Runtime", page.SelectedWorkspace?.PrimaryAction?.Label);
         Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
-        Assert.Equal(["Open Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
+        Assert.Equal(["Rebuild Runtime", "Open Workspace", "Open Folder"], page.DetailVisibleActions.Select(item => item.Label));
         Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
+    }
+
+    [Fact]
+    public async Task NeedsRebuild_PromotesRebuildRuntime_OnCardAndOverviewWithoutAdvancedNavigation()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.NeedsRebuild,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
+                Summary = "Rebuild Runtime is the next normal recovery step.",
+                CanRebuildRuntime = true,
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Equal("Rebuild Runtime", page.SelectedWorkspace?.PrimaryAction?.Label);
+        Assert.True(page.SelectedWorkspace?.PrimaryAction?.IsEnabled);
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+        Assert.True(page.DetailPrimaryAction?.IsEnabled);
+        Assert.Contains(page.DetailVisibleActions, item => item.Label == "Rebuild Runtime" && item.IsEnabled);
+        Assert.Contains(page.DetailAdvancedActions, item => item.Label == "Rebuild Runtime");
+    }
+
+    [Fact]
+    public async Task ReadyWorkspace_DoesNotPromoteRebuildRuntime_IntoPrimaryPlacement()
+    {
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Equal("Open Workspace", page.DetailPrimaryAction?.Label);
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Rebuild Runtime");
+        Assert.NotEqual("Rebuild Runtime", page.SelectedWorkspace?.PrimaryAction?.Label);
+    }
+
+    [Fact]
+    public async Task ProvisioningFailed_PromotesRetryProvisioning_NotRebuildRuntime()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha", includeRuntimeState: false),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.ProvisioningFailed,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RetryProvisioning,
+                Summary = "Provisioning failed.",
+                CanOpenWorkspace = true,
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        Assert.Equal("Retry Provisioning", page.SelectedWorkspace?.PrimaryAction?.Label);
+        Assert.Equal("Retry Provisioning", page.DetailPrimaryAction?.Label);
+        Assert.Contains(page.DetailVisibleActions, item => item.Label == "Retry Provisioning");
+        Assert.DoesNotContain(page.DetailVisibleActions, item => item.Label == "Rebuild Runtime");
+        Assert.NotEqual("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+    }
+
+    [Fact]
+    public async Task ActiveRebuildOperation_KeepsPrimaryRecoveryActionVisible_WithDisabledReason()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.NeedsRebuild,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
+                Summary = "Rebuild Runtime is the next normal recovery step.",
+                CanRebuildRuntime = true,
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        page.StartOperationTranscriptForTesting("Rebuild Runtime", snapshot.Definition.Workspace.Name);
+        typeof(WorkspacesPageViewModel).GetField("_isWorkspaceActionRunning", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(page, true);
+        typeof(WorkspacesPageViewModel).GetField("_workspaceActionStatusMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(page, "Rebuild Runtime is running.");
+        typeof(WorkspacesPageViewModel).GetMethod("RefreshDetailActions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.Invoke(page, []);
+
+        Assert.Equal("Rebuild Runtime", page.DetailPrimaryAction?.Label);
+        Assert.False(page.DetailPrimaryAction?.IsEnabled);
+        Assert.Equal("Rebuild Runtime is running.", page.DetailPrimaryAction?.DisabledReason);
+        Assert.Contains(page.DetailVisibleActions, item => item.Label == "Rebuild Runtime" && !item.IsEnabled && item.DisabledReason == "Rebuild Runtime is running.");
+    }
+
+    [Fact]
+    public async Task PrimaryAction_IsNeverAdvancedOnly_WhenMarkedPrimary()
+    {
+        var snapshot = WithReadiness(
+            CreateSnapshot("alpha"),
+            new WorkspaceReadinessSnapshot
+            {
+                Status = WorkspaceReadinessStatus.NeedsRebuild,
+                CurrentActivity = WorkspaceActivity.None,
+                PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
+                Summary = "Rebuild Runtime is the next normal recovery step.",
+                CanRebuildRuntime = true,
+            });
+        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+
+        var primaryLabel = page.DetailPrimaryAction?.Label;
+        Assert.NotNull(primaryLabel);
+        Assert.True(
+            string.Equals(page.SelectedWorkspace?.PrimaryAction?.Label, primaryLabel, StringComparison.Ordinal)
+            || page.DetailVisibleActions.Any(item => string.Equals(item.Label, primaryLabel, StringComparison.Ordinal)));
     }
 
     [Fact]
