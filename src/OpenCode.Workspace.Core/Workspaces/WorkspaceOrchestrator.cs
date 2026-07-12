@@ -463,7 +463,7 @@ public sealed class WorkspaceOrchestrator
         Log(log, "app", "[create] Workspace definition written.");
         Log(log, "app", "[create] Writing generated workspace files.");
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
-        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: false);
+        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: true);
         Log(log, "app", "[create] Generated workspace files written.");
         Log(log, "app", "[create] Initializing workspace repository.");
         await _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false, log, cancellationToken);
@@ -697,7 +697,7 @@ public sealed class WorkspaceOrchestrator
         }
 
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
-        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: false);
+        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: true);
 
         var now = DateTimeOffset.UtcNow;
         _workspaceRepository.Save(new WorkspaceRecord
@@ -727,7 +727,7 @@ public sealed class WorkspaceOrchestrator
     {
         WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
-        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata, inspectHostAvailability: false);
+        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata, inspectHostAvailability: true);
         await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, explicitRegenerationRequested: true, cancellationToken: cancellationToken);
         await RunApexlangHelloWorldRegenerationAsync(snapshot, cancellationToken);
         _oracleApexAtlasBuilder.Rebuild(snapshot.Definition, snapshot.Paths, force: true);
@@ -821,7 +821,7 @@ public sealed class WorkspaceOrchestrator
         await ProvisionRunningWorkspaceAsync(snapshot, log, cancellationToken);
         await WriteRuntimeStateAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
-        var finalArtifacts = WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata);
+        var finalArtifacts = WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata, inspectHostAvailability: true);
         _workspaceAppliedStateService.Write(snapshot.Paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(finalArtifacts));
     }
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
 using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Workspaces;
@@ -8,16 +9,22 @@ public sealed class WorkspaceRuntimeResourceManager
 {
     private readonly WorkspaceRepository _workspaceRepository;
     private readonly WorkspaceRuntimeStateService _runtimeStateService;
-    private readonly Func<int, bool> _isPortAvailable;
+    private readonly Func<int, WorkspacePortUsage> _getPortUsage;
 
     public WorkspaceRuntimeResourceManager(
         WorkspaceRepository workspaceRepository,
         WorkspaceRuntimeStateService runtimeStateService,
-        Func<int, bool>? isPortAvailable = null)
+        Func<int, bool>? isPortAvailable = null,
+        Func<int, WorkspacePortUsage>? getPortUsage = null)
     {
         _workspaceRepository = workspaceRepository;
         _runtimeStateService = runtimeStateService;
-        _isPortAvailable = isPortAvailable ?? IsPortAvailable;
+        _getPortUsage = getPortUsage
+            ?? (isPortAvailable is null
+                ? GetPortUsage
+                : port => isPortAvailable(port)
+                    ? WorkspacePortUsage.Free(port)
+                    : WorkspacePortUsage.Occupied(port, "ExternalProcess", "Unknown external process"));
     }
 
     public WorkspaceRuntimeStateRecord ResolveState(
@@ -86,29 +93,48 @@ public sealed class WorkspaceRuntimeResourceManager
         bool inspectHostAvailability)
     {
         var currentAllocation = existingState?.Resources.Ports.FirstOrDefault(item => string.Equals(item.ResourceId, requirement.ResourceId, StringComparison.OrdinalIgnoreCase));
+        var currentManagedOwner = currentAllocation is null ? null : FindManagedOwner(currentWorkspaceRootPath, currentAllocation.AllocatedPort);
         if (currentAllocation is not null
             && currentAllocation.AllocatedPort > 0
             && !reservedPorts.Contains(currentAllocation.AllocatedPort)
-            && FindManagedOwner(currentWorkspaceRootPath, currentAllocation.AllocatedPort) is null
-            && (!inspectHostAvailability || _isPortAvailable(currentAllocation.AllocatedPort)))
+            && currentManagedOwner is null
+            && (!inspectHostAvailability || _getPortUsage(currentAllocation.AllocatedPort).Available))
         {
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, currentAllocation.AllocatedPort, currentAllocation.AllocationKind);
         }
 
+        if (currentAllocation is not null && inspectHostAvailability)
+        {
+            var currentUsage = _getPortUsage(currentAllocation.AllocatedPort);
+            if (!currentUsage.Available || currentManagedOwner is not null)
+            {
+                conflicts.Add(BuildConflict(
+                    requirement,
+                    currentManagedOwner,
+                    currentUsage,
+                    $"Persisted allocation {currentAllocation.AllocatedPort} cannot be reused."));
+            }
+        }
+
         var preferredOwner = FindManagedOwner(currentWorkspaceRootPath, requirement.PreferredPort);
+        var preferredUsage = inspectHostAvailability ? _getPortUsage(requirement.PreferredPort) : WorkspacePortUsage.Free(requirement.PreferredPort);
         if (!reservedPorts.Contains(requirement.PreferredPort)
             && preferredOwner is null
-            && (!inspectHostAvailability || _isPortAvailable(requirement.PreferredPort)))
+            && preferredUsage.Available)
         {
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, requirement.PreferredPort, "Preferred");
         }
 
-        var alternativePort = requirement.AlternativePorts.FirstOrDefault(port => !reservedPorts.Contains(port)
-            && FindManagedOwner(currentWorkspaceRootPath, port) is null
-            && (!inspectHostAvailability || _isPortAvailable(port)));
-        if (alternativePort > 0)
+        foreach (var alternativePort in requirement.AlternativePorts)
         {
-            conflicts.Add(BuildConflict(requirement, preferredOwner, $"Allocated alternative port {alternativePort}."));
+            var alternativeOwner = FindManagedOwner(currentWorkspaceRootPath, alternativePort);
+            var alternativeUsage = inspectHostAvailability ? _getPortUsage(alternativePort) : WorkspacePortUsage.Free(alternativePort);
+            if (reservedPorts.Contains(alternativePort) || alternativeOwner is not null || !alternativeUsage.Available)
+            {
+                continue;
+            }
+
+            conflicts.Add(BuildConflict(requirement, preferredOwner, preferredUsage, $"Allocated alternative port {alternativePort}."));
             return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, alternativePort, "Alternative");
         }
 
@@ -123,12 +149,12 @@ public sealed class WorkspaceRuntimeResourceManager
             {
                 if (reservedPorts.Contains(candidate)
                     || FindManagedOwner(currentWorkspaceRootPath, candidate) is not null
-                    || !_isPortAvailable(candidate))
+                    || !_getPortUsage(candidate).Available)
                 {
                     continue;
                 }
 
-                conflicts.Add(BuildConflict(requirement, preferredOwner, $"Allocated dynamic port {candidate}."));
+                conflicts.Add(BuildConflict(requirement, preferredOwner, preferredUsage, $"Allocated dynamic port {candidate}."));
                 return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, candidate, "Dynamic");
             }
         }
@@ -136,7 +162,7 @@ public sealed class WorkspaceRuntimeResourceManager
         return WorkspaceRuntimeResourceCatalog.CreatePortAllocation(requirement, requirement.PreferredPort, "Preferred");
     }
 
-    private WorkspaceResourceConflictRecord BuildConflict(WorkspacePortRequirement requirement, WorkspaceRecord? owner, string resolution)
+    private WorkspaceResourceConflictRecord BuildConflict(WorkspacePortRequirement requirement, WorkspaceRecord? owner, WorkspacePortUsage usage, string resolution)
     {
         var ownerName = owner?.Name;
         return new WorkspaceResourceConflictRecord
@@ -144,12 +170,19 @@ public sealed class WorkspaceRuntimeResourceManager
             ResourceId = requirement.ResourceId,
             DisplayName = requirement.DisplayName,
             PreferredPort = requirement.PreferredPort,
-            ConflictKind = string.IsNullOrWhiteSpace(ownerName) ? "ExternalProcess" : "ManagedWorkspace",
-            Owner = string.IsNullOrWhiteSpace(ownerName) ? "Unknown external process" : $"workspace {ownerName}",
+            ConflictKind = string.IsNullOrWhiteSpace(ownerName) ? usage.OwnerKind : "ManagedWorkspace",
+            Owner = string.IsNullOrWhiteSpace(ownerName) ? usage.OwnerDisplay : $"workspace {ownerName}",
             Impact = $"Cannot start {requirement.DisplayName} on preferred port {requirement.PreferredPort}.",
-            Recommendation = "Allocate another port.",
+            Recommendation = currentAllocationRecommendation(ownerName, usage),
             Resolution = resolution,
         };
+
+        static string currentAllocationRecommendation(string? managedOwner, WorkspacePortUsage currentUsage)
+            => !string.IsNullOrWhiteSpace(managedOwner)
+                ? "Open the owning managed workspace or reset its runtime before retrying."
+                : currentUsage.Available
+                    ? "Allocate another port."
+                    : "Stop the current owner or choose another managed port before retrying.";
     }
 
     private WorkspaceRecord? FindManagedOwner(string currentWorkspaceRootPath, int port)
@@ -257,4 +290,126 @@ public sealed class WorkspaceRuntimeResourceManager
             return false;
         }
     }
+
+    private static WorkspacePortUsage GetPortUsage(int port)
+    {
+        var dockerOwner = TryGetDockerPortOwner(port);
+        if (!string.IsNullOrWhiteSpace(dockerOwner))
+        {
+            return WorkspacePortUsage.Occupied(port, "DockerContainer", dockerOwner!);
+        }
+
+        if (IsPortAvailable(port))
+        {
+            return WorkspacePortUsage.Free(port);
+        }
+
+        var processOwner = TryGetProcessPortOwner(port);
+        if (!string.IsNullOrWhiteSpace(processOwner))
+        {
+            return WorkspacePortUsage.Occupied(port, "ExternalProcess", processOwner!);
+        }
+
+        return WorkspacePortUsage.Occupied(port, "ExternalProcess", "Unknown external process");
+    }
+
+    private static string? TryGetDockerPortOwner(int port)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "docker",
+                Arguments = "ps --format \"{{.Names}}\\t{{.Ports}}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            if (process is null)
+            {
+                return null;
+            }
+
+            if (!process.WaitForExit(3000) || process.ExitCode != 0)
+            {
+                return null;
+            }
+
+            foreach (var line in process.StandardOutput.ReadToEnd().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = line.Split('\t', 2);
+                if (parts.Length < 2 || !parts[1].Contains($":{port}->", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                return parts[0].Trim();
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private static string? TryGetProcessPortOwner(int port)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                using var process = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -Command \"$connections = Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue; if ($connections) {{ foreach ($connection in ($connections | Select-Object -First 1)) {{ try {{ (Get-Process -Id $connection.OwningProcess -ErrorAction Stop).ProcessName }} catch {{ 'pid ' + $connection.OwningProcess }} }} }}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+
+                if (process is not null && process.WaitForExit(3000) && process.ExitCode == 0)
+                {
+                    var owner = process.StandardOutput.ReadToEnd().Trim();
+                    return string.IsNullOrWhiteSpace(owner) ? null : owner;
+                }
+
+                return null;
+            }
+
+            using var ssProcess = Process.Start(new ProcessStartInfo
+            {
+                FileName = "bash",
+                Arguments = $"-lc \"ss -ltnp '( sport = :{port} )' 2>/dev/null || true\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+
+            if (ssProcess is not null && ssProcess.WaitForExit(3000))
+            {
+                var output = ssProcess.StandardOutput.ReadToEnd().Trim();
+                if (!string.IsNullOrWhiteSpace(output))
+                {
+                    return output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Last().Trim();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+}
+
+public sealed record WorkspacePortUsage(int Port, bool Available, string OwnerKind, string OwnerDisplay)
+{
+    public static WorkspacePortUsage Free(int port) => new(port, true, string.Empty, string.Empty);
+
+    public static WorkspacePortUsage Occupied(int port, string ownerKind, string ownerDisplay) => new(port, false, ownerKind, ownerDisplay);
 }

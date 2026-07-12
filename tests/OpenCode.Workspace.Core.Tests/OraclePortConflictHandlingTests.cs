@@ -89,11 +89,23 @@ public sealed class OraclePortConflictHandlingTests
 
             var firstEnv = await File.ReadAllTextAsync(first.Paths.EnvironmentFilePath);
             var secondEnv = await File.ReadAllTextAsync(second.Paths.EnvironmentFilePath);
+            var firstState = new WorkspaceRuntimeStateService().Read(first.Paths.RuntimeStatePath);
+            var secondState = new WorkspaceRuntimeStateService().Read(second.Paths.RuntimeStatePath);
 
-            Assert.Contains("ORACLE_HOST_PORT=1521", firstEnv);
-            Assert.Contains("ORACLE_ORDS_PORT=8181", firstEnv);
-            Assert.Contains("ORACLE_HOST_PORT=1522", secondEnv);
-            Assert.Contains("ORACLE_ORDS_PORT=8182", secondEnv);
+            Assert.NotNull(firstState);
+            Assert.NotNull(secondState);
+
+            var firstDbPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(firstDefinition, firstState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
+            var firstOrdsPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(firstDefinition, firstState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId);
+            var secondDbPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(secondDefinition, secondState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
+            var secondOrdsPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(secondDefinition, secondState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId);
+
+            Assert.NotEqual(firstDbPort, secondDbPort);
+            Assert.NotEqual(firstOrdsPort, secondOrdsPort);
+            Assert.Contains($"ORACLE_HOST_PORT={firstDbPort}", firstEnv);
+            Assert.Contains($"ORACLE_ORDS_PORT={firstOrdsPort}", firstEnv);
+            Assert.Contains($"ORACLE_HOST_PORT={secondDbPort}", secondEnv);
+            Assert.Contains($"ORACLE_ORDS_PORT={secondOrdsPort}", secondEnv);
 
             var secondCompose = await File.ReadAllTextAsync(second.Paths.ComposePath);
             Assert.Contains("\"${ORACLE_HOST_PORT}:1521\"", secondCompose);

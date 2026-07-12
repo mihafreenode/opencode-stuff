@@ -191,8 +191,13 @@ public sealed class OracleApexStaticValidationTests
         var apexCompose = File.ReadAllText(apexSnapshot.Paths.ComposePath);
         var apexLangCompose = File.ReadAllText(apexLangSnapshot.Paths.ComposePath);
         var apexEnv = File.ReadAllText(apexSnapshot.Paths.EnvironmentFilePath);
+        var apexState = new WorkspaceRuntimeStateService().Read(apexSnapshot.Paths.RuntimeStatePath);
         var plsqlSnapshot = CreateWorkspaceFromTemplate("oracle-plsql-demo", "oracle-plsql-compose");
         var plsqlCompose = File.ReadAllText(plsqlSnapshot.Paths.ComposePath);
+
+        Assert.NotNull(apexState);
+        var apexDbPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(apexSnapshot.Definition, apexState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
+        var apexOrdsPort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(apexSnapshot.Definition, apexState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId);
 
         Assert.Contains("oracle-demo:", apexCompose);
         Assert.Contains("oracle-ords:", apexCompose);
@@ -222,15 +227,16 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("ORACLE_ADMIN_USER: \"${ORACLE_ADMIN_USER}\"", apexLangCompose);
         Assert.Contains("/mounts/config/ords:/etc/ords/config", apexLangCompose, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("http://localhost:8080/ords/_/landing", apexLangCompose);
-        Assert.Contains("ORACLE_HOST_PORT=1521", apexEnv);
+        Assert.Contains($"ORACLE_HOST_PORT={apexDbPort}", apexEnv);
         Assert.Contains("ORACLE_HOST=oracle-demo", apexEnv);
         Assert.Contains("ORACLE_PORT=1521", apexEnv);
         Assert.Contains("ORACLE_SERVICE_NAME=FREEPDB1", apexEnv);
         Assert.Contains("ORACLE_ADMIN_USER=SYS", apexEnv);
-        Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", apexEnv);
+        Assert.Contains($"ORACLE_ORDS_PORT={apexOrdsPort}", apexEnv);
+        Assert.Contains($"ORACLE_ORDS_BASE_URL=http://localhost:{apexOrdsPort}/ords", apexEnv);
         Assert.Contains("ORACLE_ORDS_INTERNAL_BASE_URL=http://oracle-ords:8080/ords", apexEnv);
         Assert.Contains("ORACLE_ORDS_PUBLIC_USER=ORDS_PUBLIC_USER", apexEnv);
-        Assert.Contains("ORACLE_APEX_LOGIN_URL=http://localhost:8181/ords/apex", apexEnv);
+        Assert.Contains($"ORACLE_APEX_LOGIN_URL=http://localhost:{apexOrdsPort}/ords/apex", apexEnv);
         Assert.DoesNotContain("oracle-ords:", plsqlCompose);
         Assert.DoesNotContain("ORACLE_ORDS_PUBLIC_PASSWORD:", plsqlCompose);
 
