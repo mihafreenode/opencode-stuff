@@ -533,13 +533,19 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("oracle_print_directory_listing \"${oracle_sqlplus_stage}\" 'Extracted Oracle Instant Client directories'", script);
         Assert.Contains("oracle_print_directory_listing \"${oracle_sqlplus_root}\" 'Installed Oracle Instant Client directories'", script);
         Assert.Contains("oracle_client_home=$(oracle_resolve_client_home \"${oracle_sqlplus_root}\")", script);
+        Assert.Contains("cat > /usr/local/bin/opencode-oracle-client-home <<'EOF'", script);
+        Assert.Contains("oracle_current_link=\"${oracle_sqlplus_root}/current\"", script);
+        Assert.Contains("oracle_client_home=$(readlink -f \"${oracle_current_link}\")", script);
+        Assert.Contains("Oracle Instant Client libsqlplus.so was not found under %s", script);
+        Assert.Contains("Oracle Instant Client libclntsh.so was not found under %s", script);
         Assert.Contains("Located libsqlplus.so files", script);
         Assert.Contains("Discovered Oracle client home", script);
         Assert.Contains("Using libsqlplus.so: ${resolved}/libsqlplus.so", script);
         Assert.Contains("Multiple Oracle client homes were discovered under ${root}", script);
         Assert.Contains("current symlink -> $(readlink -f \"${oracle_sqlplus_root}/current\")", script);
-        Assert.Contains("if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then", script);
+        Assert.Contains("if ls \"${candidate_dir}\"/libclntsh.so* >/dev/null 2>&1; then", script);
         Assert.Contains("cat > /usr/local/bin/sqlplus <<'EOF'", script);
+        Assert.Contains("oracle_client_home=$(/usr/local/bin/opencode-oracle-client-home)", script);
         Assert.Contains("export LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"", script);
         Assert.Contains("exec \"${oracle_client_home}/sqlplus\" \"$@\"", script);
         Assert.Contains("oracle_sqlcl_extract=/tmp/sqlcl-extract", script);
@@ -547,6 +553,16 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("cat > /usr/local/bin/sql <<'EOF'", script);
         Assert.Contains("exec /opt/sqlcl/sqlcl/bin/sql \"$@\"", script);
         Assert.Contains("ln -sf /usr/local/bin/sql /usr/local/bin/sqlcl", script);
+        Assert.Contains("oracle_log_validation_context \"${oracle_client_home}\"", script);
+        Assert.Contains("[oracle] Validation client home: ${client_home}", script);
+        Assert.Contains("[oracle] Validation LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-<empty>}", script);
+        Assert.Contains("[oracle] readlink -f /opt/oracle/instantclient/current", script);
+        Assert.Contains("[oracle] ls -la /opt/oracle/instantclient/current", script);
+        Assert.Contains("[oracle] ls -la ${client_home}", script);
+        Assert.Contains("[oracle] ldd $(command -v sqlplus)", script);
+        Assert.Contains("[oracle] Running validation command: sqlplus -version", script);
+        Assert.Contains("[oracle] Running validation command: sql -version", script);
+        Assert.Contains("[oracle] Running validation command: sqlcl -version", script);
         Assert.Contains("oracle_validate_sqlplus_runtime \"${oracle_client_home}\"", script);
         Assert.Contains("ldconfig output does not list libsqlplus.so", script);
         Assert.Contains("sqlplus still has unresolved shared libraries", script);
@@ -562,6 +578,7 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("sqlplus -version", script);
         Assert.Contains("command -v sqlplus", script);
         Assert.Contains("java -version", script);
+        Assert.DoesNotContain("find \"${oracle_sqlplus_root}\" -maxdepth 2 -type f -name 'libsqlplus.so'", script);
         Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
     }
 
