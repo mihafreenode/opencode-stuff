@@ -202,8 +202,15 @@ public sealed class GeneratedArtifactsTests
             Services = new List<string> { "oracle-demo" },
         });
 
+        Assert.Contains("ORACLE_DEPLOYMENT_PROFILE=plsql", content);
+        Assert.Contains("ORACLE_HOST=oracle-demo", content);
+        Assert.Contains("ORACLE_PORT=1521", content);
+        Assert.Contains("ORACLE_SERVICE_NAME=FREEPDB1", content);
+        Assert.Contains("ORACLE_ADMIN_USER=SYS", content);
         Assert.Contains("ORACLE_PASSWORD=change-on-first-demo", content);
-        Assert.Contains("ORACLE_DEMO_SERVICE=FREEPDB1", content);
+        Assert.Contains("ORACLE_DEMO_USERNAME=demo_user", content);
+        Assert.Contains("ORACLE_DEMO_PASSWORD=demo_password", content);
+        Assert.Contains("ORACLE_DEMO_CONNECTION=demo_user/demo_password@//oracle-demo:1521/FREEPDB1", content);
         Assert.Contains("ORACLE_HOST_PORT=1521", content);
         Assert.Contains("ORACLE_ORDS_BASE_URL=http://localhost:8181/ords", content);
     }
@@ -223,8 +230,9 @@ public sealed class GeneratedArtifactsTests
         var files = new WorkspaceContentGenerator().Generate(resolved);
 
         Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
+        Assert.Contains("validate_required_ords_config", script, StringComparison.Ordinal);
         Assert.Contains("ords --config \"${config_dir}\" install --config-only", script, StringComparison.Ordinal);
-        Assert.Contains("--gateway-user APEX_PUBLIC_USER", script, StringComparison.Ordinal);
+        Assert.Contains("--gateway-user \"${ORACLE_APEX_PUBLIC_USER:-APEX_PUBLIC_USER}\"", script, StringComparison.Ordinal);
         Assert.Contains("exec ords --config \"${config_dir}\" serve --port 8080", script, StringComparison.Ordinal);
     }
 
@@ -337,6 +345,18 @@ public sealed class GeneratedArtifactsTests
 
         var script = new OracleWorkspaceProvisioningScriptGenerator().Generate(resolved);
 
+        Assert.Contains("oracle_required_config=(\"ORACLE_DEPLOYMENT_PROFILE\" \"ORACLE_HOST\" \"ORACLE_PORT\" \"ORACLE_SERVICE_NAME\" \"ORACLE_ADMIN_USER\" \"ORACLE_PASSWORD\" \"ORACLE_DEMO_USERNAME\" \"ORACLE_DEMO_PASSWORD\" \"ORACLE_ORDS_INTERNAL_BASE_URL\" \"ORACLE_ORDS_PUBLIC_USER\" \"ORACLE_ORDS_PUBLIC_PASSWORD\" \"ORACLE_APEX_PUBLIC_USER\" \"ORACLE_APEX_MEDIA_DIR\" \"ORACLE_APEX_MEDIA_PREFERRED_ZIP\")", script, StringComparison.Ordinal);
+        Assert.Contains("Missing configuration values: %s", script, StringComparison.Ordinal);
+        Assert.Contains("Active deployment profile", script, StringComparison.Ordinal);
+        Assert.Contains("Oracle host", script, StringComparison.Ordinal);
+        Assert.Contains("Oracle port", script, StringComparison.Ordinal);
+        Assert.Contains("Oracle service name", script, StringComparison.Ordinal);
+        Assert.Contains("Oracle administrative user", script, StringComparison.Ordinal);
+        Assert.Contains("oracle_connection=\"${ORACLE_DEMO_USERNAME}/${ORACLE_DEMO_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}\"", script, StringComparison.Ordinal);
+        Assert.Contains("oracle_sysdba_connection=\"${ORACLE_ADMIN_USER}/${ORACLE_PASSWORD}@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME} as sysdba\"", script, StringComparison.Ordinal);
+        Assert.Contains("ALTER SESSION SET CONTAINER = ${ORACLE_SERVICE_NAME};", script, StringComparison.Ordinal);
+        Assert.Contains("ALTER USER ${ORACLE_ORDS_PUBLIC_USER} IDENTIFIED BY \"${ORACLE_ORDS_PUBLIC_PASSWORD}\" ACCOUNT UNLOCK;", script, StringComparison.Ordinal);
+        Assert.Contains("oracle_ords_landing_url=\"${ORACLE_ORDS_INTERNAL_BASE_URL}/_/landing\"", script, StringComparison.Ordinal);
         Assert.Contains("Oracle REST Data Services is not installed in the database.", script, StringComparison.Ordinal);
         Assert.Contains("Oracle REST Data Services database user could not be synchronized.", script, StringComparison.Ordinal);
     }
@@ -602,21 +622,21 @@ public sealed class GeneratedArtifactsTests
             PostInstallCommands = Array.Empty<string>(),
         });
 
-        Assert.Contains("oracle_ords_url=http://oracle-ords:8080/ords", script);
-        Assert.Contains("oracle_ords_landing_url=http://oracle-ords:8080/ords/_/landing", script);
+        Assert.Contains("ORACLE_ORDS_INTERNAL_BASE_URL", script);
+        Assert.Contains("oracle_ords_landing_url=\"${ORACLE_ORDS_INTERNAL_BASE_URL}/_/landing\"", script);
         Assert.Contains("oracle_demo_user_setup_script=/tmp/oracle-demo-user-setup.sql", script);
         Assert.Contains("ensure_demo_user_ready()", script);
         Assert.Contains("apex_registry_status=$(printf '%s' \"${apex_registry}\" | awk -F'|' '{print $3}')", script);
         Assert.Contains("if [ -n \"${apex_registry}\" ] && [ \"${apex_registry_status}\" = 'VALID' ]", script);
         Assert.Contains("[oracle-apex] APEX already installed: ${apex_registry}", script);
-        Assert.Contains("ALTER USER demo_user IDENTIFIED BY \"demo_password\" ACCOUNT UNLOCK", script);
+        Assert.Contains("ALTER USER ${ORACLE_DEMO_USERNAME} IDENTIFIED BY \"${ORACLE_DEMO_PASSWORD}\" ACCOUNT UNLOCK", script);
         Assert.Contains("Oracle administrator password does not match the running database.", script);
         Assert.Contains("wait_for_ords_runtime()", script);
         Assert.Contains("ensure_ords_public_user_ready()", script);
-        Assert.Contains("SELECT COUNT(*) FROM dba_users WHERE username = 'ORDS_PUBLIC_USER';", script);
+        Assert.Contains("SELECT COUNT(*) FROM dba_users WHERE username = UPPER('${ORACLE_ORDS_PUBLIC_USER}');", script);
         Assert.Contains("SELECT COUNT(*) FROM dba_users WHERE username = 'ORDS_METADATA';", script);
         Assert.Contains("Oracle REST Data Services is not installed in the database.", script);
-        Assert.Contains("ALTER USER ords_public_user IDENTIFIED BY \"change-on-first-demo\" ACCOUNT UNLOCK;", script);
+        Assert.Contains("ALTER USER ${ORACLE_ORDS_PUBLIC_USER} IDENTIFIED BY \"${ORACLE_ORDS_PUBLIC_PASSWORD}\" ACCOUNT UNLOCK;", script);
         Assert.Contains("oracle_set_stage 'Installing APEX'", script);
         Assert.Contains("oracle_set_stage 'Configuring ORDS'", script);
         Assert.Contains("command -v sqlplus >/dev/null 2>&1", script);
@@ -675,7 +695,8 @@ public sealed class GeneratedArtifactsTests
 
         Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
         Assert.True(files.ContainsKey(Path.Combine("mounts", "config", "ords", "repair-ords-db.sh")));
-        Assert.Contains("ords_public_password=\"${ORACLE_PWD:-change-on-first-demo}\"", script, StringComparison.Ordinal);
+        Assert.Contains("ords_public_password=\"${ORACLE_ORDS_PUBLIC_PASSWORD}\"", script, StringComparison.Ordinal);
+        Assert.Contains("validate_required_ords_config", script, StringComparison.Ordinal);
         Assert.Contains("install --db-only", script, StringComparison.Ordinal);
         Assert.Contains("--proxy-user --password-stdin", script, StringComparison.Ordinal);
         Assert.Contains("config secret --password-stdin db.password", script, StringComparison.Ordinal);

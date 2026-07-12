@@ -22,22 +22,11 @@ public sealed class EnvironmentFileGenerator
 
         if (OracleWorkspaceFamily.IsOracleWorkspace(definition))
         {
-            var oraclePort = WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleDatabaseResourceId);
-            var ordsPort = OracleWorkspaceFamily.HasApex(definition)
-                ? WorkspaceRuntimeResourceCatalog.ResolveAllocatedPort(definition, runtimeState, WorkspaceRuntimeResourceCatalog.OracleOrdsResourceId)
-                : OracleWorkspaceSettings.From(definition).OrdsPort;
-            lines.AddRange(
-            [
-                "ORACLE_PASSWORD=change-on-first-demo",
-                "ORACLE_DEMO_USERNAME=demo_user",
-                "ORACLE_DEMO_PASSWORD=demo_password",
-                "ORACLE_DEMO_SERVICE=FREEPDB1",
-                "ORACLE_DEMO_CONNECTION=demo_user/demo_password@//oracle-demo:1521/FREEPDB1",
-                $"ORACLE_HOST_PORT={oraclePort}",
-                $"ORACLE_ORDS_PORT={ordsPort}",
-                $"ORACLE_ORDS_BASE_URL=http://localhost:{ordsPort}/ords",
-                $"ORACLE_APEX_LOGIN_URL=http://localhost:{ordsPort}/ords/apex",
-            ]);
+            var oracle = OracleRuntimeConfiguration.From(definition, runtimeState);
+            foreach (var pair in oracle.ToEnvironmentVariables().OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                lines.Add($"{pair.Key}={pair.Value}");
+            }
         }
 
         if (definition.Services.Contains("postgres", StringComparer.OrdinalIgnoreCase))

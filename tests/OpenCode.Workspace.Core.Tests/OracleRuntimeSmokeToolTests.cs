@@ -276,9 +276,9 @@ public sealed class OracleRuntimeSmokeToolTests
         {
             var paths = WorkspacePathBuilder.Build(workspaceRoot);
             Directory.CreateDirectory(Path.GetDirectoryName(paths.ComposePath)!);
-            File.WriteAllText(paths.ComposePath, "services:\n  oracle-ords:\n    environment:\n      ORACLE_PWD: ${ORACLE_PASSWORD}\n      DBHOST: oracle-demo\n      DBPORT: 1521\n      DBSERVICENAME: FREEPDB1\n");
+            File.WriteAllText(paths.ComposePath, "services:\n  oracle-ords:\n    environment:\n      ORACLE_ADMIN_USER: ${ORACLE_ADMIN_USER}\n      ORACLE_PASSWORD: ${ORACLE_PASSWORD}\n      ORACLE_HOST: ${ORACLE_HOST}\n      ORACLE_PORT: ${ORACLE_PORT}\n      ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME}\n      ORACLE_ORDS_PUBLIC_PASSWORD: ${ORACLE_ORDS_PUBLIC_PASSWORD}\n");
             File.WriteAllText(paths.WorkspaceYamlPath, "workspace:\n  name: smoke\n");
-            File.WriteAllText(paths.EnvironmentFilePath, "ORACLE_PASSWORD=change-on-first-demo\nORACLE_DEMO_PASSWORD=demo-password\nORACLE_ORDS_PORT=8181\n");
+            File.WriteAllText(paths.EnvironmentFilePath, "ORACLE_ADMIN_USER=SYS\nORACLE_PASSWORD=change-on-first-demo\nORACLE_DEMO_PASSWORD=demo-password\nORACLE_HOST=oracle-demo\nORACLE_PORT=1521\nORACLE_SERVICE_NAME=FREEPDB1\nORACLE_ORDS_PUBLIC_PASSWORD=change-on-first-demo\nORACLE_ORDS_PORT=8181\n");
 
             var method = typeof(OracleRuntimeSmokeCli).GetMethod("CaptureGeneratedArtifacts", BindingFlags.NonPublic | BindingFlags.Static);
             Assert.NotNull(method);
@@ -290,10 +290,11 @@ public sealed class OracleRuntimeSmokeToolTests
             Assert.Contains("ORACLE_PASSWORD=<redacted>", redactedEnv);
             Assert.Contains("ORACLE_DEMO_PASSWORD=<redacted>", redactedEnv);
             Assert.Contains("ORACLE_ORDS_PORT=8181", redactedEnv);
-            Assert.Contains("ORACLE_PWD: ${ORACLE_PASSWORD}", copiedCompose);
-            Assert.Contains("DBHOST: oracle-demo", copiedCompose);
-            Assert.Contains("DBPORT: 1521", copiedCompose);
-            Assert.Contains("DBSERVICENAME: FREEPDB1", copiedCompose);
+            Assert.Contains("ORACLE_ADMIN_USER: ${ORACLE_ADMIN_USER}", copiedCompose);
+            Assert.Contains("ORACLE_PASSWORD: ${ORACLE_PASSWORD}", copiedCompose);
+            Assert.Contains("ORACLE_HOST: ${ORACLE_HOST}", copiedCompose);
+            Assert.Contains("ORACLE_PORT: ${ORACLE_PORT}", copiedCompose);
+            Assert.Contains("ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME}", copiedCompose);
         }
         finally
         {

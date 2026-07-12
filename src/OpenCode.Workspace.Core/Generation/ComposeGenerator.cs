@@ -36,6 +36,11 @@ public sealed class ComposeGenerator
         builder.AppendLine("    tty: true");
         builder.AppendLine("    stdin_open: true");
         builder.AppendLine("    working_dir: /workspace");
+        if (OracleWorkspaceFamily.IsOracleWorkspace(workspace.Definition))
+        {
+            builder.AppendLine("    env_file:");
+            builder.AppendLine("      - .env");
+        }
         builder.AppendLine("    command:");
         builder.AppendLine("      - bash");
         builder.AppendLine("      - -lc");
@@ -67,6 +72,12 @@ public sealed class ComposeGenerator
                 {
                     builder.AppendLine($"      - {profile}");
                 }
+            }
+
+            if (OracleWorkspaceFamily.IsOracleWorkspace(workspace.Definition) && ServiceNeedsWorkspaceEnvironment(service))
+            {
+                builder.AppendLine("    env_file:");
+                builder.AppendLine("      - .env");
             }
 
             if (service.HostPorts.Count > 0)
@@ -228,6 +239,10 @@ public sealed class ComposeGenerator
             ? ["bash /etc/ords/config/init-ords-config.sh"]
             : Array.Empty<string>();
     }
+
+    private static bool ServiceNeedsWorkspaceEnvironment(ServiceManifest service)
+        => string.Equals(service.Id, OracleWorkspaceFamily.OracleDatabaseServiceId, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(service.Id, OracleWorkspaceFamily.OracleOrdsServiceId, StringComparison.OrdinalIgnoreCase);
 
     private static void AppendDependsOn(StringBuilder builder, IReadOnlyList<ServiceManifest> services, Func<ServiceManifest, string?> getCondition)
     {

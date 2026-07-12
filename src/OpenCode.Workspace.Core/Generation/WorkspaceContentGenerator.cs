@@ -1036,7 +1036,23 @@ config_dir=/etc/ords/config
 bootstrap_script="${config_dir}/init-ords-config.sh"
 settings_file="${config_dir}/global/settings.xml"
 pool_file="${config_dir}/databases/default/pool.xml"
-ords_public_password="${ORACLE_PWD:-change-on-first-demo}"
+validate_required_ords_config() {
+  missing=()
+  for name in ORACLE_ADMIN_USER ORACLE_PASSWORD ORACLE_HOST ORACLE_PORT ORACLE_SERVICE_NAME ORACLE_ORDS_PUBLIC_USER ORACLE_ORDS_PUBLIC_PASSWORD; do
+    if [ -z "${!name:-}" ]; then
+      missing+=("$name")
+    fi
+  done
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf '[oracle-ords] Missing required configuration: %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+validate_required_ords_config
+
+ords_public_password="${ORACLE_ORDS_PUBLIC_PASSWORD}"
 ords_log_dir="${config_dir}/logs"
 
 mkdir -p "${config_dir}"
@@ -1045,13 +1061,13 @@ mkdir -p "${ords_log_dir}"
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Initializing managed ORDS config in ${config_dir}." >&2
   rm -rf "${config_dir}/global" "${config_dir}/databases"
-  printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install --config-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user APEX_PUBLIC_USER --password-stdin
+  printf '%s\n' "${ORACLE_PASSWORD}" | ords --config "${config_dir}" install --config-only --admin-user "${ORACLE_ADMIN_USER}" --db-hostname "${ORACLE_HOST}" --db-port "${ORACLE_PORT}" --db-servicename "${ORACLE_SERVICE_NAME}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user "${ORACLE_APEX_PUBLIC_USER:-APEX_PUBLIC_USER}" --password-stdin
   ords --config "${config_dir}" config set standalone.http.port 8080
   ords --config "${config_dir}" config set standalone.context.path /ords
 fi
 
-cat <<EOF | ords --config "${config_dir}" install --db-only --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user APEX_PUBLIC_USER --proxy-user --password-stdin --log-folder "${ords_log_dir}"
-${ORACLE_PWD}
+cat <<EOF | ords --config "${config_dir}" install --db-only --admin-user "${ORACLE_ADMIN_USER}" --db-hostname "${ORACLE_HOST}" --db-port "${ORACLE_PORT}" --db-servicename "${ORACLE_SERVICE_NAME}" --feature-sdw true --feature-rest-enabled-sql true --gateway-mode proxied --gateway-user "${ORACLE_APEX_PUBLIC_USER:-APEX_PUBLIC_USER}" --proxy-user --password-stdin --log-folder "${ords_log_dir}"
+${ORACLE_PASSWORD}
 ${ords_public_password}
 EOF
 
@@ -1070,6 +1086,22 @@ exec ords --config "${config_dir}" serve --port 8080
     private static string OrdsDbRepairScript() => WithGeneratedScriptHeader("""
 set -eu
 
+validate_required_ords_config() {
+  missing=()
+  for name in ORACLE_ADMIN_USER ORACLE_PASSWORD ORACLE_HOST ORACLE_PORT ORACLE_SERVICE_NAME; do
+    if [ -z "${!name:-}" ]; then
+      missing+=("$name")
+    fi
+  done
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf '[oracle-ords] Missing required configuration: %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+validate_required_ords_config
+
 config_dir=/etc/ords/config
 settings_file="${config_dir}/global/settings.xml"
 pool_file="${config_dir}/databases/default/pool.xml"
@@ -1083,7 +1115,7 @@ fi
 
 mkdir -p "${ords_log_dir}"
 
-printf '%s\n' "${ORACLE_PWD}" | ords --config "${config_dir}" install repair --admin-user SYS --db-hostname "${DBHOST:-oracle-demo}" --db-port "${DBPORT:-1521}" --db-servicename "${DBSERVICENAME:-FREEPDB1}" --password-stdin --log-folder "${ords_log_dir}"
+printf '%s\n' "${ORACLE_PASSWORD}" | ords --config "${config_dir}" install repair --admin-user "${ORACLE_ADMIN_USER}" --db-hostname "${ORACLE_HOST}" --db-port "${ORACLE_PORT}" --db-servicename "${ORACLE_SERVICE_NAME}" --password-stdin --log-folder "${ords_log_dir}"
 echo "[oracle-ords] ORDS database repair completed." >&2
 """);
 
