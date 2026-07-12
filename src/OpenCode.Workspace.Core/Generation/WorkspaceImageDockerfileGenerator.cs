@@ -11,13 +11,20 @@ public sealed class WorkspaceImageDockerfileGenerator
         var builder = new StringBuilder();
         builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
             runtimeMetadata,
-            "Source inputs: workspace.yaml, catalog manifests, and generated workspace image tooling script.",
+            "Source inputs: workspace.yaml, catalog manifests, and generated workspace image tooling scripts.",
             "User edits are not preserved. Edit workspace.yaml or catalog manifests instead."));
         builder.AppendLine($"FROM {workspace.Definition.Workspace.Image}");
         builder.AppendLine("SHELL [\"/bin/bash\", \"-lc\"]");
+
+        foreach (var layerScript in imagePlan.LayerScripts)
+        {
+            var sourcePath = layerScript.RelativePath.Replace('\\', '/');
+            var targetPath = $"/tmp/{Path.GetFileName(layerScript.RelativePath)}";
+            builder.AppendLine($"COPY {sourcePath} {targetPath}");
+            builder.AppendLine($"RUN bash {targetPath} && rm -f {targetPath}");
+        }
+
         builder.AppendLine($"LABEL {WorkspaceImageBuildPlanner.ImageHashLabel}=\"{imagePlan.InputHash}\"");
-        builder.AppendLine($"COPY {imagePlan.ToolingScriptRelativePath.Replace('\\', '/')} /tmp/workspace-image-tooling.sh");
-        builder.AppendLine("RUN bash /tmp/workspace-image-tooling.sh && rm -f /tmp/workspace-image-tooling.sh");
         return builder.ToString();
     }
 }

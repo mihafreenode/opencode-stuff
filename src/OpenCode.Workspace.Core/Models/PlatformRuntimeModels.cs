@@ -84,6 +84,9 @@ public sealed class WorkspaceRuntimeStateRecord
     [YamlMember(Alias = "workspaceImageInputHash")]
     public string WorkspaceImageInputHash { get; init; } = string.Empty;
 
+    [YamlMember(Alias = "workspaceImageInputCategories")]
+    public Dictionary<string, string> WorkspaceImageInputCategories { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
     [YamlMember(Alias = "generatedArtifactsUtc")]
     public DateTimeOffset? GeneratedArtifactsUtc { get; init; }
 

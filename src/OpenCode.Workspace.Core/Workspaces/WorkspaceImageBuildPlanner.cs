@@ -5,35 +5,44 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public static class WorkspaceImageBuildPlanner
 {
-    private const string LayerSchemaVersion = "1";
+    private const string LayerSchemaVersion = "2";
     public const string DockerfileRelativePath = "mounts/config/workspace-image.Dockerfile";
     public const string ToolingScriptRelativePath = "mounts/config/workspace-image-tooling.sh";
     public const string ImageHashLabel = "opencode.workspace.image-input-hash";
 
     public static WorkspaceImageBuildPlan Create(ResolvedWorkspace workspace, GeneratedArtifactRuntimeMetadata? runtimeMetadata)
     {
+        _ = runtimeMetadata;
+        var layout = new WorkspaceImageToolingLayoutBuilder().Build(workspace);
+        var categoryHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [WorkspaceImageToolingLayoutBuilder.BaseImageCategory] = WorkspaceAppliedStateService.ComputeHash(
+                LayerSchemaVersion,
+                WorkspaceImageToolingLayoutBuilder.BaseImageCategory,
+                workspace.Definition.Workspace.Image),
+        };
+
+        foreach (var layerScript in layout.LayerScripts)
+        {
+            categoryHashes[layerScript.CategoryId] = WorkspaceAppliedStateService.ComputeHash(
+                LayerSchemaVersion,
+                layerScript.CategoryId,
+                layerScript.Content);
+        }
+
         var inputHash = WorkspaceAppliedStateService.ComputeHash(
             LayerSchemaVersion,
-            workspace.Definition.Workspace.Image,
-            workspace.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(System.Globalization.CultureInfo.InvariantCulture),
-            runtimeMetadata?.TargetPlatform ?? string.Empty,
-            string.Join("\n", workspace.AptPackages),
-            string.Join("\n", workspace.NpmPackages),
-            string.Join("\n", workspace.PipPackages),
-            string.Join("\n", workspace.PostInstallCommands),
-            workspace.Definition.Terminal.Prompt.Provider,
-            workspace.Definition.Terminal.InstallIfMissing.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            workspace.Definition.Terminal.Utilities.Zoxide.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            workspace.Definition.Terminal.Utilities.Fzf.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            OracleWorkspaceFamily.Detect(workspace.Definition).ToString());
+            string.Join("\n", WorkspaceImageToolingLayoutBuilder.GetOrderedCategories().Select(category => category + "\n" + categoryHashes.GetValueOrDefault(category, string.Empty))));
         var slug = WorkspacePathBuilder.Slugify(workspace.Definition.Workspace.Name);
         var imageTag = $"opencode-workspace-{slug}:{inputHash[..12].ToLowerInvariant()}";
         return new WorkspaceImageBuildPlan
         {
             ImageTag = imageTag,
             InputHash = inputHash,
+            InputCategoryHashes = categoryHashes,
             DockerfileRelativePath = DockerfileRelativePath,
             ToolingScriptRelativePath = ToolingScriptRelativePath,
+            LayerScripts = layout.LayerScripts,
         };
     }
 }

@@ -2,6 +2,7 @@ using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.Core.Catalog;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -54,9 +55,10 @@ public sealed class WorkspaceImageBuilderTests
     public void WorkspaceImage_RebuildsOnlyWhenImageInputsChange()
     {
         var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
-        var baseResolved = CreateResolvedWorkspace("demo", aptPackages: ["git"], npmPackages: ["playwright"]);
-        var sameResolved = CreateResolvedWorkspace("demo", aptPackages: ["git"], npmPackages: ["playwright"]);
-        var changedResolved = CreateResolvedWorkspace("demo", aptPackages: ["git", "pandoc"], npmPackages: ["playwright"]);
+        var resolver = CreateResolver();
+        var baseResolved = resolver.Resolve(CreateDefinition("demo"));
+        var sameResolved = resolver.Resolve(CreateDefinition("demo-copy"));
+        var changedResolved = resolver.Resolve(CreateDefinition("demo-docs", features: ["core", "document-processing"]));
 
         var basePlan = WorkspaceImageBuildPlanner.Create(baseResolved, metadata);
         var samePlan = WorkspaceImageBuildPlanner.Create(sameResolved, metadata);
@@ -66,26 +68,118 @@ public sealed class WorkspaceImageBuilderTests
         Assert.NotEqual(basePlan.InputHash, changedPlan.InputHash);
     }
 
-    private static WorkspaceDefinition CreateDefinition(string name, IReadOnlyList<string>? features = null, IReadOnlyList<string>? services = null)
+    [Fact]
+    public void EquivalentWorkspaces_GenerateIdenticalImageToolingAssets()
+    {
+        var resolver = CreateResolver();
+        var generator = new WorkspaceImageToolingScriptGenerator();
+        var left = resolver.Resolve(CreateDefinition("docs-a", features: ["core", "document-processing", "analytics-reporting"]));
+        var right = resolver.Resolve(CreateDefinition("docs-b", features: ["analytics-reporting", "document-processing", "core"]));
+
+        var leftLayout = generator.GenerateLayout(left);
+        var rightLayout = generator.GenerateLayout(right);
+
+        Assert.Equal(leftLayout.CombinedScript, rightLayout.CombinedScript);
+        Assert.Equal(leftLayout.LayerScripts.Select(static layer => (layer.CategoryId, layer.Content)), rightLayout.LayerScripts.Select(static layer => (layer.CategoryId, layer.Content)));
+    }
+
+    [Fact]
+    public void RegeneratingWithoutImageInputChanges_PreservesImageInputHash()
+    {
+        var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        var resolved = CreateResolver().Resolve(CreateDefinition("demo", features: ["core", "document-processing"]));
+
+        var firstPlan = WorkspaceImageBuildPlanner.Create(resolved, metadata);
+        var secondPlan = WorkspaceImageBuildPlanner.Create(resolved, metadata);
+
+        Assert.Equal(firstPlan.InputHash, secondPlan.InputHash);
+        Assert.Equal(OrderedCategoryHashes(firstPlan.InputCategoryHashes), OrderedCategoryHashes(secondPlan.InputCategoryHashes));
+    }
+
+    [Fact]
+    public void RuntimeMetadataAndGeneratedTimestamp_DoNotChangeImageInputHash()
+    {
+        var resolved = CreateResolver().Resolve(CreateDefinition("demo", features: ["core", "analytics-reporting"]));
+        var firstMetadata = new GeneratedArtifactRuntimeMetadata
+        {
+            HostOperatingSystem = "Windows",
+            HostArchitecture = "x64",
+            Runtime = "docker-desktop",
+            TargetPlatform = "linux/amd64",
+            Compatibility = "native",
+            GeneratedUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        };
+        var secondMetadata = new GeneratedArtifactRuntimeMetadata
+        {
+            HostOperatingSystem = "Linux",
+            HostArchitecture = "arm64",
+            Runtime = "docker",
+            TargetPlatform = "linux/arm64",
+            Compatibility = "fallback",
+            GeneratedUtc = new DateTimeOffset(2026, 7, 12, 12, 34, 56, TimeSpan.Zero),
+        };
+
+        var firstPlan = WorkspaceImageBuildPlanner.Create(resolved, firstMetadata);
+        var secondPlan = WorkspaceImageBuildPlanner.Create(resolved, secondMetadata);
+
+        Assert.Equal(firstPlan.InputHash, secondPlan.InputHash);
+        Assert.Equal(OrderedCategoryHashes(firstPlan.InputCategoryHashes), OrderedCategoryHashes(secondPlan.InputCategoryHashes));
+    }
+
+    [Fact]
+    public void ChangingNodeVersion_ChangesRelevantImageInputCategoryAndHash()
+    {
+        var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        var baseResolved = CreateResolver().Resolve(CreateDefinition("demo", runtimeNode: 22));
+        var changedResolved = CreateResolver().Resolve(CreateDefinition("demo", runtimeNode: 24));
+
+        var basePlan = WorkspaceImageBuildPlanner.Create(baseResolved, metadata);
+        var changedPlan = WorkspaceImageBuildPlanner.Create(changedResolved, metadata);
+
+        Assert.NotEqual(basePlan.InputHash, changedPlan.InputHash);
+        Assert.Equal(basePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.BaseOsCategory], changedPlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.BaseOsCategory]);
+        Assert.NotEqual(basePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.CommonToolingCategory], changedPlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.CommonToolingCategory]);
+    }
+
+    [Fact]
+    public void Dockerfile_EmitsHashLabelAfterExpensiveToolingInstructions()
+    {
+        var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        var resolved = CreateResolver().Resolve(CreateDefinition("oracle-demo", features: ["core", "oracle-demo"], services: ["oracle-demo"]));
+        var plan = WorkspaceImageBuildPlanner.Create(resolved, metadata);
+        var dockerfile = new WorkspaceImageDockerfileGenerator().Generate(resolved, plan, metadata);
+        var lines = dockerfile.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+
+        var labelIndex = Array.FindIndex(lines, line => line.StartsWith("LABEL opencode.workspace.image-input-hash=", StringComparison.Ordinal));
+        var lastRunIndex = Array.FindLastIndex(lines, line => line.StartsWith("RUN bash /tmp/workspace-image-tooling.", StringComparison.Ordinal));
+
+        Assert.True(lastRunIndex >= 0);
+        Assert.True(labelIndex > lastRunIndex);
+    }
+
+    [Fact]
+    public void OracleOnlyChanges_DoNotInvalidateUnrelatedBaseToolingInputs()
+    {
+        var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create((WorkspaceRuntimeStateRecord?)null);
+        var baseResolved = CreateResolver().Resolve(CreateDefinition("docs", features: ["core", "document-processing"]));
+        var oracleResolved = CreateResolver().Resolve(CreateDefinition("docs-oracle", features: ["core", "document-processing", "oracle-demo"], services: ["oracle-demo"]));
+
+        var basePlan = WorkspaceImageBuildPlanner.Create(baseResolved, metadata);
+        var oraclePlan = WorkspaceImageBuildPlanner.Create(oracleResolved, metadata);
+
+        Assert.Equal(basePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.BaseOsCategory], oraclePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.BaseOsCategory]);
+        Assert.Equal(basePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.CommonToolingCategory], oraclePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.CommonToolingCategory]);
+        Assert.Equal(basePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.OptionalToolingCategory], oraclePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.OptionalToolingCategory]);
+        Assert.NotEqual(basePlan.InputCategoryHashes.GetValueOrDefault(WorkspaceImageToolingLayoutBuilder.OracleToolingCategory, string.Empty), oraclePlan.InputCategoryHashes[WorkspaceImageToolingLayoutBuilder.OracleToolingCategory]);
+    }
+
+    private static WorkspaceDefinition CreateDefinition(string name, IReadOnlyList<string>? features = null, IReadOnlyList<string>? services = null, int? runtimeNode = null)
         => new()
         {
             Workspace = new WorkspaceMetadata { Name = name, Image = "ubuntu:24.04" },
+            Runtime = new WorkspaceRuntimeDefinition { Node = runtimeNode ?? WorkspaceRuntimeDefinition.DefaultNodeMajorVersion },
             Features = features?.ToList() ?? ["core"],
             Services = services?.ToList() ?? [],
-        };
-
-    private static ResolvedWorkspace CreateResolvedWorkspace(string name, IReadOnlyList<string>? aptPackages = null, IReadOnlyList<string>? npmPackages = null)
-        => new()
-        {
-            Definition = CreateDefinition(name),
-            Features = Array.Empty<FeatureManifest>(),
-            Capabilities = Array.Empty<CapabilityManifest>(),
-            KnowledgePacks = Array.Empty<KnowledgePackManifest>(),
-            Services = Array.Empty<ServiceManifest>(),
-            AptPackages = aptPackages ?? [],
-            NpmPackages = npmPackages ?? [],
-            PipPackages = Array.Empty<string>(),
-            PostInstallCommands = Array.Empty<string>(),
         };
 
     private static GeneratedWorkspaceArtifacts CreateArtifacts(string imageTag, string imageHash)
@@ -103,11 +197,21 @@ public sealed class WorkspaceImageBuilderTests
             TerminalDiagnosticsScript = string.Empty,
             WorkspaceImageTag = imageTag,
             WorkspaceImageInputHash = imageHash,
+            WorkspaceImageInputCategoryHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             WorkspaceDefinitionHash = string.Empty,
             DesiredStateHash = string.Empty,
             AdditionalFiles = new Dictionary<string, string>(),
             AdditionalBinaryFiles = new Dictionary<string, byte[]>(),
         };
+
+    private static WorkspaceResolver CreateResolver()
+    {
+        var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+        return new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+    }
+
+    private static IReadOnlyList<KeyValuePair<string, string>> OrderedCategoryHashes(IReadOnlyDictionary<string, string> hashes)
+        => hashes.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase).ToList();
 
     private sealed class RecordingContainerRuntime : IContainerRuntime
     {

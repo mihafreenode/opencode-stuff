@@ -29,6 +29,7 @@ public sealed class WorkspaceRuntimeResourceManager
         bool inspectHostAvailability = false,
         string workspaceImageTag = "",
         string workspaceImageInputHash = "",
+        IReadOnlyDictionary<string, string>? workspaceImageInputCategories = null,
         DateTimeOffset? generatedArtifactsUtc = null)
     {
         existingState ??= _runtimeStateService.Read(paths.RuntimeStatePath);
@@ -61,6 +62,9 @@ public sealed class WorkspaceRuntimeResourceManager
             LastSuccessfulProvision = lastSuccessfulProvision ?? existingState?.LastSuccessfulProvision,
             WorkspaceImageTag = string.IsNullOrWhiteSpace(workspaceImageTag) ? existingState?.WorkspaceImageTag ?? string.Empty : workspaceImageTag,
             WorkspaceImageInputHash = string.IsNullOrWhiteSpace(workspaceImageInputHash) ? existingState?.WorkspaceImageInputHash ?? string.Empty : workspaceImageInputHash,
+            WorkspaceImageInputCategories = workspaceImageInputCategories is null || workspaceImageInputCategories.Count == 0
+                ? existingState?.WorkspaceImageInputCategories ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(workspaceImageInputCategories, StringComparer.OrdinalIgnoreCase),
             GeneratedArtifactsUtc = generatedArtifactsUtc ?? existingState?.GeneratedArtifactsUtc,
             Resources = new WorkspaceManagedRuntimeResources
             {

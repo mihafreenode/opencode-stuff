@@ -52,6 +52,9 @@ public sealed class WorkspaceRuntimeStateService
                         LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
                         WorkspaceImageTag = model.WorkspaceImageTag ?? string.Empty,
                         WorkspaceImageInputHash = model.WorkspaceImageInputHash ?? string.Empty,
+                        WorkspaceImageInputCategories = model.WorkspaceImageInputCategories is null
+                            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                            : new Dictionary<string, string>(model.WorkspaceImageInputCategories, StringComparer.OrdinalIgnoreCase),
                         GeneratedArtifactsUtc = DateTimeOffset.TryParse(model.GeneratedArtifactsUtc, out var generatedAt) ? generatedAt : null,
                         Resources = model.Resources ?? new WorkspaceManagedRuntimeResources(),
                     },
@@ -85,6 +88,7 @@ public sealed class WorkspaceRuntimeStateService
             LastSuccessfulProvision = state.LastSuccessfulProvision?.ToString("O"),
             WorkspaceImageTag = state.WorkspaceImageTag,
             WorkspaceImageInputHash = state.WorkspaceImageInputHash,
+            WorkspaceImageInputCategories = state.WorkspaceImageInputCategories.Count == 0 ? null : new Dictionary<string, string>(state.WorkspaceImageInputCategories, StringComparer.OrdinalIgnoreCase),
             GeneratedArtifactsUtc = state.GeneratedArtifactsUtc?.ToString("O"),
             Resources = state.Resources,
         });
@@ -112,6 +116,7 @@ public sealed class WorkspaceRuntimeStateService
         public string? LastSuccessfulProvision { get; init; }
         public string? WorkspaceImageTag { get; init; }
         public string? WorkspaceImageInputHash { get; init; }
+        public Dictionary<string, string>? WorkspaceImageInputCategories { get; init; }
         public string? GeneratedArtifactsUtc { get; init; }
         public WorkspaceManagedRuntimeResources? Resources { get; init; }
     }

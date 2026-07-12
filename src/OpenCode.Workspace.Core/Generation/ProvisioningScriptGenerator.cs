@@ -11,8 +11,11 @@ namespace OpenCode.Workspace.Core.Generation;
 /// </summary>
 public sealed class ProvisioningScriptGenerator
 {
+    private readonly WorkspaceImageToolingLayoutBuilder _toolingLayoutBuilder = new();
+
     public string Generate(ResolvedWorkspace workspace, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
+        var toolingLayout = _toolingLayoutBuilder.Build(workspace);
         var builder = new StringBuilder();
         builder.AppendLine("#!/usr/bin/env bash");
         builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
@@ -42,6 +45,10 @@ public sealed class ProvisioningScriptGenerator
         builder.AppendLine("trap 'fail_stage \"Provisioning command failed.\" \"Last command: ${BASH_COMMAND}\" \"Inspect the stage log and retry reprovision.\"' ERR");
         builder.AppendLine("begin_stage 'Initializing Workspace'");
         builder.AppendLine("bash /opt/opencode-workspace/config/workspace-init.sh");
+        foreach (var command in toolingLayout.RuntimeInitializationCommands)
+        {
+            builder.AppendLine(command);
+        }
         builder.AppendLine("complete_stage");
         if (OracleWorkspaceFamily.IsOracleWorkspace(workspace.Definition))
         {

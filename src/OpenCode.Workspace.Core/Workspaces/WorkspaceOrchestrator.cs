@@ -1169,9 +1169,12 @@ public sealed class WorkspaceOrchestrator
         var previousCompose = File.Exists(paths.ComposePath)
             ? NormalizeGeneratedTextForLinuxInteroperability(File.ReadAllText(paths.ComposePath))
             : null;
+        var previousRuntimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
         var generatedArtifacts = WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: true);
         var composeWasUpdated = !string.Equals(previousCompose, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml), StringComparison.Ordinal);
+
+        LogWorkspaceImageInputChanges(log, previousRuntimeState, generatedArtifacts);
 
         if (composeWasUpdated)
         {
@@ -1181,6 +1184,29 @@ public sealed class WorkspaceOrchestrator
         }
 
         return new GeneratedFilesUpdateResult(generatedArtifacts, composeWasUpdated);
+    }
+
+    private static void LogWorkspaceImageInputChanges(Action<CommandLogEntry>? log, WorkspaceRuntimeStateRecord? previousRuntimeState, GeneratedWorkspaceArtifacts generatedArtifacts)
+    {
+        if (string.IsNullOrWhiteSpace(generatedArtifacts.WorkspaceImageInputHash)
+            || string.Equals(previousRuntimeState?.WorkspaceImageInputHash, generatedArtifacts.WorkspaceImageInputHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var previousCategories = previousRuntimeState?.WorkspaceImageInputCategories ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var changedCategories = WorkspaceImageToolingLayoutBuilder.GetOrderedCategories()
+            .Where(category => !string.Equals(previousCategories.GetValueOrDefault(category, string.Empty), generatedArtifacts.WorkspaceImageInputCategoryHashes.GetValueOrDefault(category, string.Empty), StringComparison.OrdinalIgnoreCase))
+            .Select(WorkspaceImageToolingLayoutBuilder.GetDisplayName)
+            .ToList();
+
+        if (changedCategories.Count == 0)
+        {
+            Log(log, "app", $"Workspace image tag updated: {generatedArtifacts.WorkspaceImageTag}.");
+            return;
+        }
+
+        Log(log, "app", $"Workspace image tag updated: {generatedArtifacts.WorkspaceImageTag} ({string.Join(", ", changedCategories)} changed).");
     }
 
     private static void EnsureGeneratedScriptPermissions(string fullPath)
@@ -1228,7 +1254,8 @@ public sealed class WorkspaceOrchestrator
         var composeYaml = _composeGenerator.Generate(resolved, paths, runtimeMetadata);
         var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata, runtimeStateRecord);
         var provisionScript = _provisioningScriptGenerator.Generate(resolved, runtimeMetadata);
-        var workspaceImageToolingScript = _workspaceImageToolingScriptGenerator.Generate(resolved);
+        var workspaceImageToolingLayout = _workspaceImageToolingScriptGenerator.GenerateLayout(resolved);
+        var workspaceImageToolingScript = workspaceImageToolingLayout.CombinedScript;
         var workspaceImageDockerfile = _workspaceImageDockerfileGenerator.Generate(resolved, imagePlan, runtimeMetadata);
         var workspaceInitScript = _workspaceInitializationScriptGenerator.Generate(resolved);
         var workspaceValidateScript = _workspaceInitializationScriptGenerator.GenerateValidation(resolved);
@@ -1246,6 +1273,10 @@ public sealed class WorkspaceOrchestrator
             [Path.Combine("mounts", "config", "workspace-init.sh")] = workspaceInitScript,
             [Path.Combine("mounts", "config", "workspace-validate.sh")] = workspaceValidateScript,
         };
+        foreach (var layerScript in imagePlan.LayerScripts)
+        {
+            additionalFiles[layerScript.RelativePath] = layerScript.Content;
+        }
         if (!string.IsNullOrWhiteSpace(oracleProvisionScript))
         {
             additionalFiles[Path.Combine("mounts", "config", "oracle-provision.sh")] = oracleProvisionScript;
@@ -1285,6 +1316,7 @@ public sealed class WorkspaceOrchestrator
             TerminalDiagnosticsScript = diagnosticsWrapper,
             WorkspaceImageTag = imagePlan.ImageTag,
             WorkspaceImageInputHash = imagePlan.InputHash,
+            WorkspaceImageInputCategoryHashes = imagePlan.InputCategoryHashes,
             WorkspaceDefinitionHash = workspaceDefinitionHash,
             DesiredStateHash = desiredStateHash,
             AdditionalFiles = additionalFiles,
@@ -1319,6 +1351,7 @@ public sealed class WorkspaceOrchestrator
             inspectHostAvailability: inspectHostAvailability,
             workspaceImageTag: imagePlan.ImageTag,
             workspaceImageInputHash: imagePlan.InputHash,
+            workspaceImageInputCategories: imagePlan.InputCategoryHashes,
             generatedArtifactsUtc: generatedArtifactsUtc);
     }
 
