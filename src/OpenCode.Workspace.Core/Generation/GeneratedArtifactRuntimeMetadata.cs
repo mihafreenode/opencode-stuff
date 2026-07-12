@@ -40,7 +40,6 @@ public static class GeneratedArtifactRuntimeMetadataBuilder
     {
         var hostOperatingSystem = FormatHostOperatingSystem(DetectOperatingSystem());
         var hostArchitecture = FormatHostArchitecture(DetectArchitecture());
-        var nativePlatform = MapNativeContainerPlatform(DetectArchitecture());
         var compatibilityMode = Enum.TryParse<RuntimeCompatibilityMode>(state?.CompatibilityMode, ignoreCase: true, out var parsedCompatibility)
             ? parsedCompatibility
             : (RuntimeCompatibilityMode?)null;
@@ -51,7 +50,7 @@ public static class GeneratedArtifactRuntimeMetadataBuilder
             HostArchitecture = hostArchitecture,
             Runtime = string.IsNullOrWhiteSpace(state?.ResolvedEngine) ? "unresolved" : state.ResolvedEngine,
             TargetPlatform = string.IsNullOrWhiteSpace(state?.ResolvedPlatform) ? "unresolved" : state.ResolvedPlatform,
-            Compatibility = FormatCompatibility(compatibilityMode, state?.ResolvedPlatform, nativePlatform),
+            Compatibility = FormatRecordedCompatibility(compatibilityMode),
             GeneratedUtc = generatedUtc ?? state?.GeneratedArtifactsUtc ?? state?.LastSuccessfulProvision ?? DateTimeOffset.UtcNow,
         };
     }
@@ -113,6 +112,16 @@ public static class GeneratedArtifactRuntimeMetadataBuilder
             _ => "unresolved",
         };
     }
+
+    private static string FormatRecordedCompatibility(RuntimeCompatibilityMode? compatibilityMode)
+        => compatibilityMode switch
+        {
+            RuntimeCompatibilityMode.Native => "native",
+            RuntimeCompatibilityMode.MultiArchitecture => "multi-architecture fallback",
+            RuntimeCompatibilityMode.Emulated => "fallback",
+            RuntimeCompatibilityMode.Unavailable => "unavailable",
+            _ => "unresolved",
+        };
 
     private static string FormatHostOperatingSystem(HostOperatingSystem operatingSystem)
         => operatingSystem switch

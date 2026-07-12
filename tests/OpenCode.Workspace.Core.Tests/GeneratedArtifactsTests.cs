@@ -480,7 +480,7 @@ public sealed class GeneratedArtifactsTests
     [Fact]
     public void ProvisioningGenerator_ForOracleWorkspace_UsesDynamicLibaioHelper()
     {
-        var script = new WorkspaceImageToolingScriptGenerator().Generate(new ResolvedWorkspace
+        var workspace = new ResolvedWorkspace
         {
             Definition = new WorkspaceDefinition
             {
@@ -500,9 +500,20 @@ public sealed class GeneratedArtifactsTests
             NpmPackages = Array.Empty<string>(),
             PipPackages = Array.Empty<string>(),
             PostInstallCommands = Array.Empty<string>(),
-        });
+        };
+        var generator = new WorkspaceImageToolingScriptGenerator();
+        var script = generator.Generate(workspace);
+        var oracleLayer = generator.GenerateLayout(workspace).LayerScripts.Single(layer => string.Equals(layer.CategoryId, WorkspaceImageToolingLayoutBuilder.OracleToolingCategory, StringComparison.OrdinalIgnoreCase)).Content;
 
         Assert.Contains("Detected Ubuntu version", script);
+        Assert.Contains("oracle_log_phase 'Installing Oracle runtime libraries'", script);
+        Assert.Contains("oracle_log_phase 'Installing Java'", script);
+        Assert.Contains("oracle_log_phase 'Downloading SQLcl'", script);
+        Assert.Contains("oracle_log_phase 'Extracting SQLcl'", script);
+        Assert.Contains("oracle_log_phase 'Configuring SQLcl'", script);
+        Assert.Contains("oracle_log_phase 'Configuring SQLPlus runtime libraries'", script);
+        Assert.Contains("oracle_log_phase 'Validating SQLcl'", script);
+        Assert.Contains("oracle_log_phase 'Validating SQLPlus'", script);
         Assert.Contains("Selected libaio package", script);
         Assert.Contains("if apt-cache policy libaio1 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
         Assert.Contains("elif apt-cache policy libaio1t64 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then", script);
@@ -518,7 +529,15 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("instantclient-sqlplus-linux.x64", script);
         Assert.Contains("/etc/ld.so.conf.d/oracle-instantclient.conf", script);
         Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", script);
-        Assert.Contains("oracle_client_home=$(find \"${oracle_sqlplus_root}/current\" -maxdepth 2 -type f -name 'libsqlplus.so'", script);
+        Assert.Contains("oracle_print_directory_listing()", script);
+        Assert.Contains("oracle_print_directory_listing \"${oracle_sqlplus_stage}\" 'Extracted Oracle Instant Client directories'", script);
+        Assert.Contains("oracle_print_directory_listing \"${oracle_sqlplus_root}\" 'Installed Oracle Instant Client directories'", script);
+        Assert.Contains("oracle_client_home=$(oracle_resolve_client_home \"${oracle_sqlplus_root}\")", script);
+        Assert.Contains("Located libsqlplus.so files", script);
+        Assert.Contains("Discovered Oracle client home", script);
+        Assert.Contains("Using libsqlplus.so: ${resolved}/libsqlplus.so", script);
+        Assert.Contains("Multiple Oracle client homes were discovered under ${root}", script);
+        Assert.Contains("current symlink -> $(readlink -f \"${oracle_sqlplus_root}/current\")", script);
         Assert.Contains("if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then", script);
         Assert.Contains("cat > /usr/local/bin/sqlplus <<'EOF'", script);
         Assert.Contains("export LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"", script);
@@ -528,10 +547,19 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("cat > /usr/local/bin/sql <<'EOF'", script);
         Assert.Contains("exec /opt/sqlcl/sqlcl/bin/sql \"$@\"", script);
         Assert.Contains("ln -sf /usr/local/bin/sql /usr/local/bin/sqlcl", script);
-        Assert.Contains("ldconfig -p | grep -F 'libsqlplus.so'", script);
-        Assert.Contains("if ldd \"${oracle_client_home}/sqlplus\" | grep -F 'not found' >/dev/null 2>&1; then", script);
+        Assert.Contains("oracle_validate_sqlplus_runtime \"${oracle_client_home}\"", script);
+        Assert.Contains("ldconfig output does not list libsqlplus.so", script);
+        Assert.Contains("sqlplus still has unresolved shared libraries", script);
+        Assert.Contains("SQLcl extraction did not produce", script);
+        Assert.Contains("oracle_require_file /opt/sqlcl/sqlcl/bin/sql 'SQLcl launcher'", script);
+        Assert.Contains("oracle_require_file /tmp/instantclient-sqlplus.zip 'Oracle Instant Client sqlplus archive'", script);
+        Assert.Contains("cp -a \"${oracle_sqlplus_stage}/.\" \"${oracle_sqlplus_root}/\"", script);
+        Assert.Contains("Searched for libsqlplus.so under ${root} but did not find any matches", script);
+        Assert.Contains("set -Eeuo pipefail", oracleLayer);
+        Assert.Contains("trap 'echo \"[oracle] ERROR: command failed on line ${LINENO}: ${BASH_COMMAND}\" >&2' ERR", oracleLayer);
         Assert.Contains("sql -version", script);
         Assert.Contains("sqlcl -version", script);
+        Assert.Contains("sqlplus -version", script);
         Assert.Contains("command -v sqlplus", script);
         Assert.Contains("java -version", script);
         Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
@@ -909,6 +937,22 @@ public sealed class GeneratedArtifactsTests
         }
 
         Assert.Contains("platform: linux/amd64", artifacts[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RuntimeMetadata_FromRecordedState_PreservesRecordedCompatibility()
+    {
+        var metadata = GeneratedArtifactRuntimeMetadataBuilder.Create(new WorkspaceRuntimeStateRecord
+        {
+            ResolvedEngine = "docker",
+            ResolvedPlatform = "linux/amd64",
+            CompatibilityMode = "Native",
+            GeneratedArtifactsUtc = new DateTimeOffset(2026, 06, 20, 12, 34, 56, TimeSpan.Zero),
+        });
+
+        Assert.Equal("docker", metadata.Runtime);
+        Assert.Equal("linux/amd64", metadata.TargetPlatform);
+        Assert.Equal("native", metadata.Compatibility);
     }
 
     private static string ReadHeader(string content)

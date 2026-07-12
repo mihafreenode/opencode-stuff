@@ -258,13 +258,22 @@ public sealed class WorkspaceImageToolingLayoutBuilder
 
         collector.ImageCommands.AddRange(
         [
+            "oracle_log_phase() { echo \"[oracle] PHASE: $1\"; }",
+            "oracle_fail() { echo \"[oracle] ERROR: $1\" >&2; exit 1; }",
+            "oracle_require_file() { local path=$1; local description=$2; if [ ! -f \"${path}\" ]; then oracle_fail \"Missing ${description}: ${path}\"; fi; }",
+            "oracle_require_dir() { local path=$1; local description=$2; if [ ! -d \"${path}\" ]; then oracle_fail \"Missing ${description}: ${path}\"; fi; }",
+            "oracle_print_directory_listing() { local root=$1; local description=$2; echo \"[oracle] ${description}:\" >&2; find \"${root}\" -maxdepth 3 -mindepth 1 \\( -type d -o -type l \\) -print | sort >&2 || true; }",
+            "oracle_resolve_client_home() { local root=$1; local libsqlplus_paths candidate_homes candidate_count resolved; libsqlplus_paths=$(find \"${root}\" -type f -name 'libsqlplus.so' -print | sort); if [ -z \"${libsqlplus_paths}\" ]; then echo \"[oracle] Searched for libsqlplus.so under ${root} but did not find any matches.\" >&2; oracle_print_directory_listing \"${root}\" 'Oracle Instant Client layout'; return 1; fi; echo \"[oracle] Located libsqlplus.so files:\" >&2; printf '%s\\n' \"${libsqlplus_paths}\" >&2; candidate_homes=$(printf '%s\\n' \"${libsqlplus_paths}\" | while read -r libsqlplus_path; do candidate_dir=$(dirname \"${libsqlplus_path}\"); if ls \"${candidate_dir}\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"${candidate_dir}\"; fi; done | sort -u); candidate_count=$(printf '%s\\n' \"${candidate_homes}\" | grep -c . || true); if [ \"${candidate_count}\" -eq 0 ]; then echo \"[oracle] Searched for libsqlplus.so under ${root} but did not find a usable Oracle client home.\" >&2; printf '%s\\n' \"${libsqlplus_paths}\" >&2; return 1; fi; if [ \"${candidate_count}\" -gt 1 ]; then echo \"[oracle] Multiple Oracle client homes were discovered under ${root}:\" >&2; printf '%s\\n' \"${candidate_homes}\" >&2; return 1; fi; resolved=$(printf '%s\\n' \"${candidate_homes}\" | head -n 1); echo \"[oracle] Discovered Oracle client home: ${resolved}\" >&2; echo \"[oracle] Using libsqlplus.so: ${resolved}/libsqlplus.so\" >&2; printf '%s\\n' \"${resolved}\"; }",
+            "oracle_validate_sqlplus_runtime() { local client_home=$1; local sqlplus_binary=\"${client_home}/sqlplus\"; oracle_require_file \"${sqlplus_binary}\" 'sqlplus binary'; oracle_require_file \"${client_home}/libsqlplus.so\" 'libsqlplus.so'; if ldd \"${sqlplus_binary}\" | grep -F 'not found' >/dev/null 2>&1; then echo \"[oracle] sqlplus shared library diagnostics:\" >&2; ldd \"${sqlplus_binary}\" >&2 || true; echo \"[oracle] LD_LIBRARY_PATH during validation: ${LD_LIBRARY_PATH:-<empty>}\" >&2; oracle_fail \"sqlplus still has unresolved shared libraries\"; fi; if ! ldconfig -p | grep -F 'libsqlplus.so' >/dev/null 2>&1; then echo \"[oracle] ldconfig output does not list libsqlplus.so.\" >&2; cat /etc/ld.so.conf.d/oracle-instantclient.conf >&2 || true; ldconfig -p >&2 || true; oracle_fail \"ldconfig did not register libsqlplus.so\"; fi; }",
             ". /etc/os-release && echo \"[oracle] Detected Ubuntu version: ${VERSION_ID:-unknown} (${ID:-unknown})\"",
+            "oracle_log_phase 'Installing Oracle runtime libraries'",
             "if apt-cache policy libaio1 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then oracle_libaio_pkg=libaio1; elif apt-cache policy libaio1t64 | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then oracle_libaio_pkg=libaio1t64; else echo \"[oracle] No compatible libaio package found for this Ubuntu image.\" >&2; exit 1; fi",
             "echo \"[oracle] Selected libaio package: ${oracle_libaio_pkg}\"",
             "apt-get install -y \"${oracle_libaio_pkg}\" libnsl2",
             "dpkg -L \"${oracle_libaio_pkg}\"",
             "if [ \"${oracle_libaio_pkg}\" = \"libaio1t64\" ] && [ -f /usr/lib/x86_64-linux-gnu/libaio.so.1t64 ] && [ ! -e /usr/lib/x86_64-linux-gnu/libaio.so.1 ]; then ln -sf /usr/lib/x86_64-linux-gnu/libaio.so.1t64 /usr/lib/x86_64-linux-gnu/libaio.so.1; fi",
             "ldconfig",
+            "oracle_log_phase 'Installing Java'",
             "if apt-cache policy openjdk-21-jre-headless | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then oracle_java_pkg=openjdk-21-jre-headless; elif apt-cache policy openjdk-17-jre-headless | grep -F \"Candidate:\" | grep -Fvq \"(none)\"; then oracle_java_pkg=openjdk-17-jre-headless; else echo \"[oracle] No compatible Java runtime package found for SQLcl.\" >&2; exit 1; fi",
             "echo \"[oracle] Selected Java package: ${oracle_java_pkg}\"",
             "apt-get install -y \"${oracle_java_pkg}\"",
@@ -273,43 +282,56 @@ public sealed class WorkspaceImageToolingLayoutBuilder
             "oracle_sqlplus_root=/opt/oracle/instantclient",
             "oracle_sqlplus_basic_url=https://download.oracle.com/otn_software/linux/instantclient/2390000/instantclient-basiclite-linux.x64-23.9.0.25.07.zip",
             "oracle_sqlplus_package_url=https://download.oracle.com/otn_software/linux/instantclient/2390000/instantclient-sqlplus-linux.x64-23.9.0.25.07.zip",
+            "oracle_log_phase 'Downloading SQLPlus runtime libraries'",
             "rm -rf \"${oracle_sqlplus_stage}\" && mkdir -p \"${oracle_sqlplus_stage}\"",
             "curl -fsSL \"${oracle_sqlplus_basic_url}\" -o /tmp/instantclient-basiclite.zip",
             "curl -fsSL \"${oracle_sqlplus_package_url}\" -o /tmp/instantclient-sqlplus.zip",
+            "oracle_require_file /tmp/instantclient-basiclite.zip 'Oracle Instant Client basic archive'",
+            "oracle_require_file /tmp/instantclient-sqlplus.zip 'Oracle Instant Client sqlplus archive'",
+            "oracle_log_phase 'Extracting SQLPlus runtime libraries'",
             "unzip -oq /tmp/instantclient-basiclite.zip -d \"${oracle_sqlplus_stage}\"",
             "unzip -oq /tmp/instantclient-sqlplus.zip -d \"${oracle_sqlplus_stage}\"",
-            "oracle_sqlplus_candidate=$(find \"${oracle_sqlplus_stage}\" -maxdepth 1 -mindepth 1 -type d -name 'instantclient_*' | head -n 1)",
-            "test -n \"${oracle_sqlplus_candidate}\"",
+            "if ! find \"${oracle_sqlplus_stage}\" -maxdepth 1 -mindepth 1 -type d -name 'instantclient_*' | grep -q .; then echo \"[oracle] Oracle Instant Client extraction did not produce an instantclient_* directory.\" >&2; find \"${oracle_sqlplus_stage}\" -maxdepth 3 -print >&2 || true; oracle_fail 'Oracle Instant Client extraction failed'; fi",
+            "oracle_print_directory_listing \"${oracle_sqlplus_stage}\" 'Extracted Oracle Instant Client directories'",
+            "oracle_log_phase 'Configuring SQLPlus runtime libraries'",
             "rm -rf \"${oracle_sqlplus_root}\" && mkdir -p \"${oracle_sqlplus_root}\"",
-            "cp -a \"${oracle_sqlplus_candidate}\" \"${oracle_sqlplus_root}/\"",
-            "ln -sfn \"${oracle_sqlplus_root}/$(basename \"${oracle_sqlplus_candidate}\")\" \"${oracle_sqlplus_root}/current\"",
-            "oracle_client_home=$(find \"${oracle_sqlplus_root}/current\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)",
-            "test -n \"${oracle_client_home}\"",
+            "cp -a \"${oracle_sqlplus_stage}/.\" \"${oracle_sqlplus_root}/\"",
+            "oracle_print_directory_listing \"${oracle_sqlplus_root}\" 'Installed Oracle Instant Client directories'",
+            "oracle_client_home=$(oracle_resolve_client_home \"${oracle_sqlplus_root}\")",
+            "ln -sfn \"${oracle_client_home}\" \"${oracle_sqlplus_root}/current\"",
+            "oracle_require_dir \"${oracle_sqlplus_root}/current\" 'Oracle Instant Client current symlink target'",
+            "echo \"[oracle] current symlink -> $(readlink -f \"${oracle_sqlplus_root}/current\")\"",
             "printf '%s\\n' \"${oracle_client_home}\" > /etc/ld.so.conf.d/oracle-instantclient.conf",
             "ldconfig",
             "export ORACLE_CLIENT_HOME=${oracle_client_home}",
+            "oracle_validate_sqlplus_runtime \"${oracle_client_home}\"",
             "cat > /usr/local/bin/sqlplus <<'EOF'\n#!/usr/bin/env bash\nset -euo pipefail\noracle_sqlplus_root=${ORACLE_SQLPLUS_ROOT:-/opt/oracle/instantclient/current}\noracle_client_home=$(find \"${oracle_sqlplus_root}\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)\nif [ -z \"${oracle_client_home}\" ]; then printf 'Oracle Instant Client shared libraries were not found under %s\\n' \"${oracle_sqlplus_root}\" >&2; exit 1; fi\nexport LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"\nexec \"${oracle_client_home}/sqlplus\" \"$@\"\nEOF",
             "chmod +x /usr/local/bin/sqlplus",
             "oracle_sqlcl_download=/tmp/sqlcl.zip",
             "oracle_sqlcl_extract=/tmp/sqlcl-extract",
+            "oracle_log_phase 'Downloading SQLcl'",
             "rm -rf \"${oracle_sqlcl_extract}\" /opt/sqlcl && mkdir -p \"${oracle_sqlcl_extract}\" /opt/sqlcl",
             "curl -fsSL https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip -o \"${oracle_sqlcl_download}\"",
+            "oracle_require_file \"${oracle_sqlcl_download}\" 'SQLcl archive'",
+            "oracle_log_phase 'Extracting SQLcl'",
             "unzip -oq \"${oracle_sqlcl_download}\" -d \"${oracle_sqlcl_extract}\"",
+            "if [ ! -d \"${oracle_sqlcl_extract}/sqlcl\" ]; then echo \"[oracle] SQLcl extraction did not produce ${oracle_sqlcl_extract}/sqlcl.\" >&2; find \"${oracle_sqlcl_extract}\" -maxdepth 3 -print >&2 || true; oracle_fail 'SQLcl extraction failed'; fi",
+            "oracle_log_phase 'Configuring SQLcl'",
             "cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/",
+            "oracle_require_file /opt/sqlcl/sqlcl/bin/sql 'SQLcl launcher'",
             "cat > /usr/local/bin/sql <<'EOF'\n#!/usr/bin/env bash\nset -euo pipefail\noracle_sqlplus_root=${ORACLE_SQLPLUS_ROOT:-/opt/oracle/instantclient/current}\noracle_client_home=$(find \"${oracle_sqlplus_root}\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)\nif [ -z \"${oracle_client_home}\" ]; then printf 'Oracle Instant Client shared libraries were not found under %s\\n' \"${oracle_sqlplus_root}\" >&2; exit 1; fi\nexport LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"\nexec /opt/sqlcl/sqlcl/bin/sql \"$@\"\nEOF",
             "chmod +x /usr/local/bin/sql",
             "ln -sf /usr/local/bin/sql /usr/local/bin/sqlcl",
-            "test -x \"${oracle_client_home}/sqlplus\"",
-            "test -f \"${oracle_client_home}/libsqlplus.so\"",
-            "ldconfig -p | grep -F 'libsqlplus.so'",
-            "if ldd \"${oracle_client_home}/sqlplus\" | grep -F 'not found' >/dev/null 2>&1; then ldd \"${oracle_client_home}/sqlplus\"; exit 1; fi",
-            "sqlplus -v",
+            "oracle_log_phase 'Validating SQLPlus'",
+            "oracle_validate_sqlplus_runtime \"${oracle_client_home}\"",
+            "sqlplus -version",
+            "oracle_log_phase 'Validating SQLcl'",
             "sql -version",
             "sqlcl -version",
         ]);
 
         collector.ValidationCommands.Add("command -v sqlplus");
-        collector.ValidationCommands.Add("sqlplus -v");
+        collector.ValidationCommands.Add("sqlplus -version");
         collector.ValidationCommands.Add("command -v sqlcl");
         collector.ValidationCommands.Add("sql -version");
         collector.ValidationCommands.Add("sqlcl -version");
@@ -324,7 +346,13 @@ public sealed class WorkspaceImageToolingLayoutBuilder
 
         var builder = new StringBuilder();
         builder.AppendLine("#!/usr/bin/env bash");
-        builder.AppendLine("set -euo pipefail");
+        builder.AppendLine(string.Equals(category, OracleToolingCategory, StringComparison.OrdinalIgnoreCase)
+            ? "set -Eeuo pipefail"
+            : "set -euo pipefail");
+        if (string.Equals(category, OracleToolingCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AppendLine("trap 'echo \"[oracle] ERROR: command failed on line ${LINENO}: ${BASH_COMMAND}\" >&2' ERR");
+        }
         builder.AppendLine("export DEBIAN_FRONTEND=noninteractive");
         builder.AppendLine($"echo \"[workspace-image] Installing {collector.DisplayName}.\"");
 
