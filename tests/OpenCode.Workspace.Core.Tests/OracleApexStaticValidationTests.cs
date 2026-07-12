@@ -310,33 +310,25 @@ public sealed class OracleApexStaticValidationTests
         var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
         var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
         var expander = new TemplateExpander();
-        var generator = new ProvisioningScriptGenerator();
+        var generator = new OracleWorkspaceProvisioningScriptGenerator();
 
         var plsqlScript = generator.Generate(resolver.Resolve(expander.Expand("plsql", provider.LoadTemplates().Single(item => item.Id == "oracle-plsql-demo"))));
         var apexScript = generator.Generate(resolver.Resolve(expander.Expand("apex", provider.LoadTemplates().Single(item => item.Id == "oracle-apex-demo"))));
 
-        Assert.DoesNotContain("Stage: Installing ORDS", plsqlScript);
-        Assert.DoesNotContain("Stage: Installing APEX", plsqlScript);
+        Assert.DoesNotContain("oracle_set_stage 'Installing APEX'", plsqlScript);
+        Assert.DoesNotContain("oracle_set_stage 'Configuring ORDS'", plsqlScript);
 
-        Assert.Contains("oracle_set_stage 'Validate environment'", apexScript);
-        Assert.Contains("oracle_set_stage 'Validate Oracle prerequisites'", apexScript);
-        Assert.Contains("oracle_set_stage 'Install APEX'", apexScript);
-        Assert.Contains("oracle_set_stage 'Configure ORDS'", apexScript);
-        Assert.Contains("oracle_set_stage 'Workspace configuration'", apexScript);
-        Assert.Contains("oracle_set_stage 'Final verification'", apexScript);
-        Assert.Contains("Stage: Ready", apexScript);
+        Assert.Contains("oracle_set_stage 'Provisioning Oracle'", apexScript);
+        Assert.Contains("oracle_set_stage 'Installing APEX'", apexScript);
+        Assert.Contains("oracle_set_stage 'Configuring ORDS'", apexScript);
+        Assert.Contains("oracle_set_stage 'Final Validation'", apexScript);
         Assert.Contains("Workspace provisioning stopped.", apexScript);
-        Assert.Contains("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", apexScript);
-        Assert.Contains("recompile_invalid_oracle_components()", apexScript);
-        Assert.Contains("ALTER SESSION SET CONTAINER = CDB$ROOT;", apexScript);
-        Assert.Contains("EXECUTE dbms_registry_sys.validate_components;", apexScript);
-        Assert.Contains("cat /tmp/oracle-utlrp.out >&2 || true", apexScript);
+        Assert.Contains("Oracle XML Database (XDB) is invalid.", apexScript);
         Assert.DoesNotContain("apex_http_status=$(curl -sS -o /tmp/apex-health-body.txt -w '%{http_code}' \"${oracle_apex_url}\" || true)", apexScript, StringComparison.Ordinal);
         Assert.DoesNotContain("Oracle REST Data Services landing is healthy, but the APEX runtime route is not available.", apexScript, StringComparison.Ordinal);
-        Assert.True(apexScript.IndexOf("recompile_invalid_oracle_components >/tmp/oracle-utlrp.out 2>&1 || true", StringComparison.Ordinal) < apexScript.IndexOf("oracle_fail \"Oracle XML Database (XDB) is invalid.\"", StringComparison.Ordinal));
-        Assert.True(apexScript.IndexOf("oracle_set_stage 'Install APEX'", StringComparison.Ordinal) > apexScript.IndexOf("validate_oracle_prerequisites", StringComparison.Ordinal));
-        Assert.Contains("oracle_fail \"SYSDBA connection to Oracle failed.\"", apexScript);
-        Assert.Contains("oracle_fail \"Required pluggable database FREEPDB1 is not open.\"", apexScript);
+        Assert.True(apexScript.IndexOf("oracle_set_stage 'Installing APEX'", StringComparison.Ordinal) > apexScript.IndexOf("oracle_set_stage 'Provisioning Oracle'", StringComparison.Ordinal));
+        Assert.Contains("Oracle administrator password does not match the running database.", apexScript);
+        Assert.Contains("Required pluggable database FREEPDB1 is not open.", apexScript);
         Assert.Contains(".local/oracle/downloads", apexScript);
         Assert.DoesNotContain("/ords/apex_admin", apexScript, StringComparison.Ordinal);
         Assert.DoesNotContain(") || true", apexScript, StringComparison.Ordinal);

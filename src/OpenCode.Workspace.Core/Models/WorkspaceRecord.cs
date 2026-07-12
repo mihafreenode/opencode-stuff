@@ -147,6 +147,8 @@ public sealed class WorkspaceAppliedState
 {
     public string DesiredStateHash { get; init; } = string.Empty;
     public string WorkspaceDefinitionHash { get; init; } = string.Empty;
+    public string WorkspaceImageTag { get; init; } = string.Empty;
+    public string WorkspaceImageInputHash { get; init; } = string.Empty;
     public DateTimeOffset AppliedUtc { get; init; }
     public string? AppVersion { get; init; }
 }

@@ -49,6 +49,8 @@ public sealed class WorkspaceAppliedStateService
         {
             DesiredStateHash = artifacts.DesiredStateHash,
             WorkspaceDefinitionHash = artifacts.WorkspaceDefinitionHash,
+            WorkspaceImageTag = artifacts.WorkspaceImageTag,
+            WorkspaceImageInputHash = artifacts.WorkspaceImageInputHash,
             AppliedUtc = DateTimeOffset.UtcNow,
             AppVersion = typeof(WorkspaceAppliedStateService).Assembly.GetName().Version?.ToString(),
         };

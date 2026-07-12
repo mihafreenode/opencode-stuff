@@ -76,7 +76,8 @@ public sealed class OraclePortConflictHandlingTests
                 ignorePolicyService,
                 new GitWorkspaceProvider(new ProcessRunner(), ignorePolicyService),
                 new DockerService(new ProcessRunner()),
-                new NoOpTerminalLauncher());
+                new NoOpTerminalLauncher(),
+                workspaceImageBuilder: new NoOpWorkspaceImageBuilder());
 
             var firstDefinition = CreateOracleApexLangDefinition("oracle-apexlang-a");
             var secondDefinition = CreateOracleApexLangDefinition("oracle-apexlang-b");
@@ -253,7 +254,8 @@ public sealed class OraclePortConflictHandlingTests
                 ignorePolicyService,
                 new GitWorkspaceProvider(new ProcessRunner(), ignorePolicyService),
                 new DockerService(runner),
-                new NoOpTerminalLauncher());
+                new NoOpTerminalLauncher(),
+                workspaceImageBuilder: new NoOpWorkspaceImageBuilder());
 
             var snapshot = await orchestrator.CreateWorkspaceAsync(root, definition, includeRuntimeInspection: false);
             var volumeMarkerPath = Path.Combine(snapshot.Paths.RootPath, "mounts", "user", "oracle-volume-marker.txt");
@@ -515,6 +517,12 @@ public sealed class OraclePortConflictHandlingTests
     private sealed class NoOpTerminalLauncher : ITerminalLauncher
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class NoOpWorkspaceImageBuilder : IWorkspaceImageBuilder
+    {
+        public Task EnsureImageAsync(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }
 }

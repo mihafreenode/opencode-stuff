@@ -14,6 +14,7 @@ public sealed class ComposeGenerator
     public string Generate(ResolvedWorkspace workspace, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null)
     {
         var slug = WorkspacePathBuilder.Slugify(workspace.Definition.Workspace.Name);
+        var imagePlan = WorkspaceImageBuildPlanner.Create(workspace, runtimeMetadata);
         var workspaceDependencies = workspace.Services
             .OrderBy(service => service.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -25,7 +26,10 @@ public sealed class ComposeGenerator
             "User edits to this file are not preserved. Edit workspace.yaml or catalog manifests instead."));
         builder.AppendLine("services:");
         builder.AppendLine("  workspace:");
-        builder.AppendLine($"    image: {workspace.Definition.Workspace.Image}");
+        builder.AppendLine($"    image: {imagePlan.ImageTag}");
+        builder.AppendLine("    build:");
+        builder.AppendLine($"      context: {WorkspacePathBuilder.ToDockerVolumePath(paths.RootPath)}");
+        builder.AppendLine($"      dockerfile: {WorkspaceImageBuildPlanner.DockerfileRelativePath.Replace('\\', '/')}");
         AppendPlatform(builder, runtimeMetadata);
         builder.AppendLine($"    container_name: {slug}-workspace");
         builder.AppendLine("    tty: true");

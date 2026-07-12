@@ -78,6 +78,12 @@ public sealed class WorkspaceRuntimeStateRecord
     [YamlMember(Alias = "lastSuccessfulProvision")]
     public DateTimeOffset? LastSuccessfulProvision { get; init; }
 
+    [YamlMember(Alias = "workspaceImageTag")]
+    public string WorkspaceImageTag { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "workspaceImageInputHash")]
+    public string WorkspaceImageInputHash { get; init; } = string.Empty;
+
     [YamlMember(Alias = "resources")]
     public WorkspaceManagedRuntimeResources Resources { get; init; } = new();
 }

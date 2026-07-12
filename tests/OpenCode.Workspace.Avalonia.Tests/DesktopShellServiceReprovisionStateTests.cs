@@ -208,7 +208,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Provision Failure"), includeRuntimeInspection: false);
             var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
+            var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
 
             Assert.Contains("Oracle APEX registry is not valid after installation.", exception.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("Opening terminal", exception.Message, StringComparison.Ordinal);
@@ -368,9 +368,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Open Failure"), includeRuntimeInspection: false);
             var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
+            var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
 
-            Assert.Contains("Workspace provisioning failed.", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("Workspace provisioning stopped.", exception.Message, StringComparison.Ordinal);
             var runtimeState = new WorkspaceRuntimeStateService().Read(created.Paths.RuntimeStatePath);
             Assert.NotNull(runtimeState);
             Assert.Null(runtimeState.LastSuccessfulProvision);
@@ -602,7 +602,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var created = await failingOrchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Odip Analiza"), includeRuntimeInspection: false);
 
             var failingService = new DesktopShellService(failingOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
-            await Assert.ThrowsAsync<InvalidOperationException>(() => failingService.ReprovisionWorkspaceAsync(created.Paths.RootPath));
+            await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => failingService.ReprovisionWorkspaceAsync(created.Paths.RootPath));
 
             var failedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
             Assert.False(failedRecord.LastOperationSucceeded);
@@ -759,7 +759,9 @@ public sealed class DesktopShellServiceReprovisionStateTests
             runtime,
             new FixedPlatformDetector(),
             runtimeResolver ?? new FixedRuntimeResolver(),
-            terminalLauncher ?? new NoOpTerminalLauncher());
+            terminalLauncher ?? new NoOpTerminalLauncher(),
+            workspaceImageBuilder: new NoOpWorkspaceImageBuilder(),
+            workspaceProvisioner: new LegacyWorkspaceProvisioner(runtime));
     }
 
     private static async Task<WorkspaceOpenFixture> CreateValidNewWorkspaceFixtureAsync(string tempRoot, string workspaceName)
@@ -995,6 +997,31 @@ public sealed class DesktopShellServiceReprovisionStateTests
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class NoOpWorkspaceImageBuilder : IWorkspaceImageBuilder
+    {
+        public Task EnsureImageAsync(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class LegacyWorkspaceProvisioner : IWorkspaceProvisioner
+    {
+        private readonly IContainerRuntime _runtime;
+
+        public LegacyWorkspaceProvisioner(IContainerRuntime runtime)
+        {
+            _runtime = runtime;
+        }
+
+        public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var result = await _runtime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                throw new InvalidOperationException(result.StandardError);
+            }
+        }
     }
 
     private sealed class FailingTerminalLauncher : ITerminalLauncher

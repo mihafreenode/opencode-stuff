@@ -599,8 +599,8 @@ analytics:
             var analysisPath = Path.Combine(snapshot.Paths.RootPath, "examples", "analytics", "analysis.py");
             File.WriteAllText(analysisPath, "# keep after failed provision\n");
 
-            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => orchestrator.ProvisionAsync(snapshot));
-            Assert.Contains("Workspace provisioning failed.", failure.Message);
+            var failure = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => orchestrator.ProvisionAsync(snapshot));
+            Assert.Contains("simulated interrupted provisioning", failure.Message);
 
             await orchestrator.ProvisionAsync(snapshot);
 
@@ -787,7 +787,9 @@ x-legacy:
             ignorePolicy,
             provider,
             dockerService,
-            new NoOpTerminalLauncher());
+            new NoOpTerminalLauncher(),
+            workspaceImageBuilder: new NoOpWorkspaceImageBuilder(),
+            workspaceProvisioner: new LegacyWorkspaceProvisioner(new DockerContainerRuntime(dockerService)));
     }
 
     private static string GetAppDataRoot(string root)
@@ -1022,5 +1024,30 @@ x-legacy:
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class NoOpWorkspaceImageBuilder : IWorkspaceImageBuilder
+    {
+        public Task EnsureImageAsync(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class LegacyWorkspaceProvisioner : IWorkspaceProvisioner
+    {
+        private readonly IContainerRuntime _runtime;
+
+        public LegacyWorkspaceProvisioner(IContainerRuntime runtime)
+        {
+            _runtime = runtime;
+        }
+
+        public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        {
+            var result = await _runtime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                throw new InvalidOperationException(result.StandardError);
+            }
+        }
     }
 }

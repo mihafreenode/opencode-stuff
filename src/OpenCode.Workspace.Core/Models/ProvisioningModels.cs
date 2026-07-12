@@ -30,8 +30,18 @@ public sealed class GeneratedWorkspaceArtifacts
     public required string ScreenConfig { get; init; }
     public required string AttachWrapperScript { get; init; }
     public required string TerminalDiagnosticsScript { get; init; }
+    public required string WorkspaceImageTag { get; init; }
+    public required string WorkspaceImageInputHash { get; init; }
     public required string WorkspaceDefinitionHash { get; init; }
     public required string DesiredStateHash { get; init; }
     public required IReadOnlyDictionary<string, string> AdditionalFiles { get; init; }
     public required IReadOnlyDictionary<string, byte[]> AdditionalBinaryFiles { get; init; }
+}
+
+public sealed class WorkspaceImageBuildPlan
+{
+    public required string ImageTag { get; init; }
+    public required string InputHash { get; init; }
+    public required string DockerfileRelativePath { get; init; }
+    public required string ToolingScriptRelativePath { get; init; }
 }

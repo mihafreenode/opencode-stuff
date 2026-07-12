@@ -26,7 +26,9 @@ public sealed class WorkspaceRuntimeResourceManager
         WorkspaceRuntimeStateRecord? existingState = null,
         ResolvedRuntimePlan? resolvedRuntimePlan = null,
         DateTimeOffset? lastSuccessfulProvision = null,
-        bool inspectHostAvailability = false)
+        bool inspectHostAvailability = false,
+        string workspaceImageTag = "",
+        string workspaceImageInputHash = "")
     {
         existingState ??= _runtimeStateService.Read(paths.RuntimeStatePath);
         var requirements = WorkspaceRuntimeResourceCatalog.BuildPortRequirements(definition);
@@ -56,6 +58,8 @@ public sealed class WorkspaceRuntimeResourceManager
             ResolvedPlatform = resolvedRuntimePlan?.TargetPlatform ?? existingState?.ResolvedPlatform ?? string.Empty,
             CompatibilityMode = resolvedRuntimePlan?.CompatibilityMode.ToString() ?? existingState?.CompatibilityMode ?? string.Empty,
             LastSuccessfulProvision = lastSuccessfulProvision ?? existingState?.LastSuccessfulProvision,
+            WorkspaceImageTag = string.IsNullOrWhiteSpace(workspaceImageTag) ? existingState?.WorkspaceImageTag ?? string.Empty : workspaceImageTag,
+            WorkspaceImageInputHash = string.IsNullOrWhiteSpace(workspaceImageInputHash) ? existingState?.WorkspaceImageInputHash ?? string.Empty : workspaceImageInputHash,
             Resources = new WorkspaceManagedRuntimeResources
             {
                 Identity = identity,

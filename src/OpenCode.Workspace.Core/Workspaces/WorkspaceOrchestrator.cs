@@ -30,6 +30,10 @@ public sealed class WorkspaceOrchestrator
     private readonly ComposeGenerator _composeGenerator;
     private readonly EnvironmentFileGenerator _environmentFileGenerator;
     private readonly ProvisioningScriptGenerator _provisioningScriptGenerator;
+    private readonly WorkspaceImageToolingScriptGenerator _workspaceImageToolingScriptGenerator;
+    private readonly WorkspaceImageDockerfileGenerator _workspaceImageDockerfileGenerator;
+    private readonly WorkspaceInitializationScriptGenerator _workspaceInitializationScriptGenerator;
+    private readonly OracleWorkspaceProvisioningScriptGenerator _oracleWorkspaceProvisioningScriptGenerator;
     private readonly TerminalArtifactsGenerator _terminalArtifactsGenerator;
     private readonly AttachArtifactsGenerator _attachArtifactsGenerator;
     private readonly WorkspaceContentGenerator _workspaceContentGenerator;
@@ -51,6 +55,8 @@ public sealed class WorkspaceOrchestrator
     private readonly ITerminalLauncher _terminalLauncher;
     private readonly KnowledgePackProvisioner _knowledgePackProvisioner;
     private readonly OracleApexAtlasBuilder _oracleApexAtlasBuilder;
+    private readonly IWorkspaceImageBuilder _workspaceImageBuilder;
+    private readonly IWorkspaceProvisioner _workspaceProvisioner;
     private readonly OpenCodeSessionService _openCodeSessionService = new();
     private readonly object _hostPlatformLock = new();
     private Task<HostPlatformInfo>? _cachedHostPlatformDetectionTask;
@@ -78,7 +84,9 @@ public sealed class WorkspaceOrchestrator
         IRuntimeResolver runtimeResolver,
         ITerminalLauncher terminalLauncher,
         IOracleMediaLocator? oracleMediaLocator = null,
-        KnowledgePackProvisioner? knowledgePackProvisioner = null)
+        KnowledgePackProvisioner? knowledgePackProvisioner = null,
+        IWorkspaceImageBuilder? workspaceImageBuilder = null,
+        IWorkspaceProvisioner? workspaceProvisioner = null)
     {
         _workspaceYamlService = workspaceYamlService;
         _workspaceDiscoveryService = workspaceDiscoveryService;
@@ -87,6 +95,10 @@ public sealed class WorkspaceOrchestrator
         _composeGenerator = composeGenerator;
         _environmentFileGenerator = environmentFileGenerator;
         _provisioningScriptGenerator = provisioningScriptGenerator;
+        _workspaceImageToolingScriptGenerator = new WorkspaceImageToolingScriptGenerator();
+        _workspaceImageDockerfileGenerator = new WorkspaceImageDockerfileGenerator();
+        _workspaceInitializationScriptGenerator = new WorkspaceInitializationScriptGenerator();
+        _oracleWorkspaceProvisioningScriptGenerator = new OracleWorkspaceProvisioningScriptGenerator();
         _terminalArtifactsGenerator = terminalArtifactsGenerator;
         _attachArtifactsGenerator = attachArtifactsGenerator;
         _workspaceContentGenerator = workspaceContentGenerator;
@@ -110,6 +122,8 @@ public sealed class WorkspaceOrchestrator
         _terminalLauncher = terminalLauncher;
         _knowledgePackProvisioner = knowledgePackProvisioner ?? new KnowledgePackProvisioner([new ApexlangAtlasKnowledgePackProvider(), new OracleApexDevelopersCompanionKnowledgePackProvider()]);
         _oracleApexAtlasBuilder = new OracleApexAtlasBuilder();
+        _workspaceImageBuilder = workspaceImageBuilder ?? new DockerWorkspaceImageBuilder(containerRuntime);
+        _workspaceProvisioner = workspaceProvisioner ?? new LayeredWorkspaceProvisioner(new ScriptWorkspaceInitializer(containerRuntime), new ScriptOracleWorkspaceProvisioner(containerRuntime));
     }
 
     public WorkspaceOrchestrator(
@@ -131,7 +145,9 @@ public sealed class WorkspaceOrchestrator
         IWorkspaceProvider workspaceProvider,
         DockerService dockerService,
         ITerminalLauncher terminalLauncher,
-        KnowledgePackProvisioner? knowledgePackProvisioner = null)
+        KnowledgePackProvisioner? knowledgePackProvisioner = null,
+        IWorkspaceImageBuilder? workspaceImageBuilder = null,
+        IWorkspaceProvisioner? workspaceProvisioner = null)
         : this(
             workspaceYamlService,
             workspaceDiscoveryService,
@@ -154,7 +170,9 @@ public sealed class WorkspaceOrchestrator
             new PlatformDetector(new ProcessRunner()),
             new RuntimeResolver(),
             terminalLauncher,
-            knowledgePackProvisioner: knowledgePackProvisioner)
+            knowledgePackProvisioner: knowledgePackProvisioner,
+            workspaceImageBuilder: workspaceImageBuilder,
+            workspaceProvisioner: workspaceProvisioner)
     {
     }
 
@@ -756,7 +774,8 @@ public sealed class WorkspaceOrchestrator
 
     public async Task StartAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
-        await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var generatedArtifacts = (await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken)).Artifacts;
+        await _workspaceImageBuilder.EnsureImageAsync(snapshot.Definition, snapshot.Paths, generatedArtifacts, log, cancellationToken);
         Log(log, "app", $"Starting workspace '{snapshot.Definition.Workspace.Name}'.");
         var result = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(result, "Workspace start failed.");
@@ -788,8 +807,9 @@ public sealed class WorkspaceOrchestrator
 
     public async Task ProvisionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
-        await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var generatedArtifacts = (await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken)).Artifacts;
         EnsureOracleMediaPrepared(snapshot, log);
+        await _workspaceImageBuilder.EnsureImageAsync(snapshot.Definition, snapshot.Paths, generatedArtifacts, log, cancellationToken);
         Log(log, "app", $"Preparing workspace '{snapshot.Definition.Workspace.Name}'.");
         var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before provisioning.");
@@ -806,7 +826,8 @@ public sealed class WorkspaceOrchestrator
     {
         Log(log, "app", $"Ensuring workspace '{snapshot.Definition.Workspace.Name}' is running before attach.");
         LogAttach(log, snapshot, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
-        await EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken);
+        var generatedArtifacts = (await EnsureManagedGeneratedFilesCurrentAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken)).Artifacts;
+        await _workspaceImageBuilder.EnsureImageAsync(snapshot.Definition, snapshot.Paths, generatedArtifacts, log, cancellationToken);
         var startResult = await _containerRuntime.StartAsync(snapshot.Paths, snapshot.Definition, log, cancellationToken, repairComposeAsync: token => EnsureManagedComposeCurrentAsync(snapshot.Paths, snapshot.Definition, log, token));
         EnsureSuccess(startResult, "Workspace start failed before attach.");
         await ValidateWorkspaceRunningAsync(snapshot, log, cancellationToken);
@@ -1195,16 +1216,32 @@ public sealed class WorkspaceOrchestrator
             runtimeStateRecord ??= runtimeState.State;
         }
         var workspaceYaml = _workspaceYamlService.Write(definition);
+        var imagePlan = WorkspaceImageBuildPlanner.Create(resolved, runtimeMetadata);
         var composeYaml = _composeGenerator.Generate(resolved, paths, runtimeMetadata);
         var environmentFile = _environmentFileGenerator.Generate(definition, runtimeMetadata, runtimeStateRecord);
         var provisionScript = _provisioningScriptGenerator.Generate(resolved, runtimeMetadata);
+        var workspaceImageToolingScript = _workspaceImageToolingScriptGenerator.Generate(resolved);
+        var workspaceImageDockerfile = _workspaceImageDockerfileGenerator.Generate(resolved, imagePlan, runtimeMetadata);
+        var workspaceInitScript = _workspaceInitializationScriptGenerator.Generate(resolved);
+        var workspaceValidateScript = _workspaceInitializationScriptGenerator.GenerateValidation(resolved);
+        var oracleProvisionScript = _oracleWorkspaceProvisioningScriptGenerator.Generate(resolved);
         var starshipConfig = _terminalArtifactsGenerator.GenerateStarshipConfig(definition, runtimeMetadata);
         var shellInitScript = _terminalArtifactsGenerator.GenerateShellInitScript(definition, runtimeMetadata);
         var opencodeWorkspaceShellScript = _terminalArtifactsGenerator.GenerateOpencodeWorkspaceShellScript(definition, runtimeMetadata);
         var screenConfig = _terminalArtifactsGenerator.GenerateScreenConfiguration(runtimeMetadata);
         var attachWrapper = _attachArtifactsGenerator.GenerateWindowsTerminalWrapper(definition, paths, runtimeMetadata);
         var diagnosticsWrapper = _attachArtifactsGenerator.GenerateTerminalDiagnosticsWrapper(definition, runtimeMetadata);
-        var additionalFiles = _workspaceContentGenerator.Generate(resolved, runtimeStateRecord);
+        var additionalFiles = new Dictionary<string, string>(_workspaceContentGenerator.Generate(resolved, runtimeStateRecord), StringComparer.OrdinalIgnoreCase)
+        {
+            [WorkspaceImageBuildPlanner.DockerfileRelativePath] = workspaceImageDockerfile,
+            [WorkspaceImageBuildPlanner.ToolingScriptRelativePath] = workspaceImageToolingScript,
+            [Path.Combine("mounts", "config", "workspace-init.sh")] = workspaceInitScript,
+            [Path.Combine("mounts", "config", "workspace-validate.sh")] = workspaceValidateScript,
+        };
+        if (!string.IsNullOrWhiteSpace(oracleProvisionScript))
+        {
+            additionalFiles[Path.Combine("mounts", "config", "oracle-provision.sh")] = oracleProvisionScript;
+        }
         var additionalBinaryFiles = _workspaceContentGenerator.GenerateBinaryFiles(resolved);
         var workspaceDefinitionHash = WorkspaceAppliedStateService.ComputeHash(workspaceYaml);
         var desiredStateHash = WorkspaceAppliedStateService.ComputeHash(
@@ -1218,6 +1255,11 @@ public sealed class WorkspaceOrchestrator
             screenConfig,
             attachWrapper,
             diagnosticsWrapper,
+            workspaceImageToolingScript,
+            workspaceImageDockerfile,
+            workspaceInitScript,
+            workspaceValidateScript,
+            oracleProvisionScript,
             string.Join("\n", additionalFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + item.Value)),
             string.Join("\n", additionalBinaryFiles.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase).Select(item => item.Key + "\n" + Convert.ToHexString(item.Value))));
 
@@ -1233,6 +1275,8 @@ public sealed class WorkspaceOrchestrator
             ScreenConfig = screenConfig,
             AttachWrapperScript = attachWrapper,
             TerminalDiagnosticsScript = diagnosticsWrapper,
+            WorkspaceImageTag = imagePlan.ImageTag,
+            WorkspaceImageInputHash = imagePlan.InputHash,
             WorkspaceDefinitionHash = workspaceDefinitionHash,
             DesiredStateHash = desiredStateHash,
             AdditionalFiles = additionalFiles,
@@ -1257,7 +1301,9 @@ public sealed class WorkspaceOrchestrator
     private WorkspaceRuntimeStateRecord ResolveRuntimeStateForGeneration(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata, bool inspectHostAvailability)
     {
         var existingState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
-        return _workspaceRuntimeResourceManager.ResolveState(definition, paths, existingState, inspectHostAvailability: inspectHostAvailability);
+        var resolved = _workspaceResolver.Resolve(definition);
+        var imagePlan = WorkspaceImageBuildPlanner.Create(resolved, runtimeMetadata);
+        return _workspaceRuntimeResourceManager.ResolveState(definition, paths, existingState, inspectHostAvailability: inspectHostAvailability, workspaceImageTag: imagePlan.ImageTag, workspaceImageInputHash: imagePlan.InputHash);
     }
 
     private static bool IsUpdateRequired(WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, WorkspaceAppliedState? appliedState)
@@ -1520,9 +1566,15 @@ public sealed class WorkspaceOrchestrator
     {
         EnsureOracleMediaPrepared(snapshot, log);
         await LogWorkspaceRuntimeDiagnosticsAsync(snapshot, log, cancellationToken);
-        Log(log, "app", "Running provisioning script inside the workspace container.");
-        var provisionResult = await _containerRuntime.RunProvisionScriptAsync(snapshot.Definition, snapshot.Paths, log, cancellationToken);
-        EnsureProvisionSuccess(provisionResult, snapshot);
+        Log(log, "app", "Running layered provisioning pipeline inside the workspace container.");
+        try
+        {
+            await _workspaceProvisioner.ProvisionAsync(snapshot, log, cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw CreateProvisioningFailureFromMessage(snapshot, exception.Message);
+        }
         await RepairAndValidateOracleOrdsGatewayAsync(snapshot, log, cancellationToken);
         await ValidateOpencodeUserExistsAsync(snapshot, log, cancellationToken);
         await EnsureOpencodeUserDirectoriesAsync(snapshot, log, cancellationToken);
@@ -2011,6 +2063,44 @@ public sealed class WorkspaceOrchestrator
         }
 
         EnsureSuccess(result, "Workspace provisioning failed.");
+    }
+
+    private static WorkspaceProvisioningException CreateProvisioningFailureFromMessage(WorkspaceSnapshot snapshot, string message)
+    {
+        var normalized = message.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n', StringSplitOptions.None);
+        var processResult = new ProcessResult
+        {
+            Command = "layered-provisioning",
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = normalized,
+            StandardOutputLines = Array.Empty<string>(),
+            StandardErrorLines = lines,
+            Duration = TimeSpan.Zero,
+        };
+
+        var healthRecord = TryBuildProvisioningHealthRecord(processResult, snapshot);
+        if (healthRecord is not null)
+        {
+            return new WorkspaceProvisioningException(healthRecord, normalized);
+        }
+
+        return new WorkspaceProvisioningException(new WorkspaceProvisioningHealthRecord
+        {
+            Succeeded = false,
+            Stage = "Provisioning",
+            Summary = "Workspace provisioning stopped.",
+            Reason = normalized.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "Workspace provisioning failed.",
+            Timestamp = DateTimeOffset.UtcNow,
+            Duration = TimeSpan.Zero,
+            RawLogReference = snapshot.Paths.ProvisionScriptPath,
+            WorkspaceRuntimeVersion = snapshot.Definition.Runtime.GetEffectiveNodeMajorVersion().ToString(CultureInfo.InvariantCulture),
+            Repairability = WorkspaceRepairability.ManualRepair.ToString(),
+            EstimatedEffort = "Medium",
+            EstimatedDuration = "5-10 minutes",
+            LastDiagnosticsTimestamp = DateTimeOffset.UtcNow,
+        }, normalized);
     }
 
     private void EnsureOracleMediaPrepared(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log)
