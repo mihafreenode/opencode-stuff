@@ -18,6 +18,7 @@ public sealed class ComposeGenerator
         var workspaceDependencies = workspace.Services
             .OrderBy(service => service.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        ValidateComposeModel(workspace, workspaceDependencies);
         var builder = new StringBuilder();
 
         builder.AppendLine(GeneratedArtifactRuntimeMetadataBuilder.BuildCommentHeader(
@@ -58,10 +59,11 @@ public sealed class ComposeGenerator
             builder.AppendLine($"    image: {service.Image}");
             AppendPlatform(builder, runtimeMetadata);
 
-            if (service.Profiles.Count > 0)
+            var serviceProfiles = WorkspaceComposeProfileResolver.GetServiceProfiles(workspace.Definition, service);
+            if (serviceProfiles.Count > 0)
             {
                 builder.AppendLine("    profiles:");
-                foreach (var profile in service.Profiles.OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+                foreach (var profile in serviceProfiles)
                 {
                     builder.AppendLine($"      - {profile}");
                 }
@@ -252,6 +254,50 @@ public sealed class ComposeGenerator
 
     private static string ResolveDependsOnCondition(string? condition)
         => string.IsNullOrWhiteSpace(condition) ? "service_started" : condition.Trim();
+
+    private static void ValidateComposeModel(ResolvedWorkspace workspace, IReadOnlyList<ServiceManifest> workspaceDependencies)
+    {
+        var servicesById = workspace.Services.ToDictionary(service => service.Id, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var dependency in workspaceDependencies)
+        {
+            if (!servicesById.ContainsKey(dependency.Id))
+            {
+                throw new InvalidOperationException($"Compose generation for '{workspace.Definition.Workspace.Name}' produced a workspace dependency on '{dependency.Id}' without defining that service.");
+            }
+        }
+
+        foreach (var service in workspace.Services)
+        {
+            foreach (var dependencyId in service.DependsOn)
+            {
+                if (!servicesById.ContainsKey(dependencyId))
+                {
+                    throw new InvalidOperationException($"Compose generation for '{workspace.Definition.Workspace.Name}' produced service '{service.Id}' with an undefined depends_on reference to '{dependencyId}'.");
+                }
+            }
+        }
+
+        var buildProfiles = WorkspaceComposeProfileResolver.GetWorkspaceImageBuildProfiles(workspace.Definition);
+        if (buildProfiles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var dependency in workspaceDependencies)
+        {
+            var dependencyProfiles = WorkspaceComposeProfileResolver.GetServiceProfiles(workspace.Definition, dependency);
+            if (dependencyProfiles.Count == 0)
+            {
+                continue;
+            }
+
+            if (!dependencyProfiles.Intersect(buildProfiles, StringComparer.OrdinalIgnoreCase).Any())
+            {
+                throw new InvalidOperationException($"Compose generation for '{workspace.Definition.Workspace.Name}' produced workspace dependency '{dependency.Id}' without an active build profile. The workspace image build profiles are [{string.Join(", ", buildProfiles)}].");
+            }
+        }
+    }
 
     private static void AppendPlatform(StringBuilder builder, GeneratedArtifactRuntimeMetadata? runtimeMetadata)
     {

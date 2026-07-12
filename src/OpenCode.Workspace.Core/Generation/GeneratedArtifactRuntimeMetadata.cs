@@ -52,9 +52,20 @@ public static class GeneratedArtifactRuntimeMetadataBuilder
             Runtime = string.IsNullOrWhiteSpace(state?.ResolvedEngine) ? "unresolved" : state.ResolvedEngine,
             TargetPlatform = string.IsNullOrWhiteSpace(state?.ResolvedPlatform) ? "unresolved" : state.ResolvedPlatform,
             Compatibility = FormatCompatibility(compatibilityMode, state?.ResolvedPlatform, nativePlatform),
-            GeneratedUtc = generatedUtc ?? state?.LastSuccessfulProvision ?? DateTimeOffset.UtcNow,
+            GeneratedUtc = generatedUtc ?? state?.GeneratedArtifactsUtc ?? state?.LastSuccessfulProvision ?? DateTimeOffset.UtcNow,
         };
     }
+
+    public static GeneratedArtifactRuntimeMetadata WithGeneratedUtc(GeneratedArtifactRuntimeMetadata metadata, DateTimeOffset generatedUtc)
+        => new()
+        {
+            HostOperatingSystem = metadata.HostOperatingSystem,
+            HostArchitecture = metadata.HostArchitecture,
+            Runtime = metadata.Runtime,
+            TargetPlatform = metadata.TargetPlatform,
+            Compatibility = metadata.Compatibility,
+            GeneratedUtc = generatedUtc,
+        };
 
     public static string BuildCommentHeader(GeneratedArtifactRuntimeMetadata? metadata, params string[] sourceLines)
     {

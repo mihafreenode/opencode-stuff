@@ -28,7 +28,8 @@ public sealed class WorkspaceRuntimeResourceManager
         DateTimeOffset? lastSuccessfulProvision = null,
         bool inspectHostAvailability = false,
         string workspaceImageTag = "",
-        string workspaceImageInputHash = "")
+        string workspaceImageInputHash = "",
+        DateTimeOffset? generatedArtifactsUtc = null)
     {
         existingState ??= _runtimeStateService.Read(paths.RuntimeStatePath);
         var requirements = WorkspaceRuntimeResourceCatalog.BuildPortRequirements(definition);
@@ -60,6 +61,7 @@ public sealed class WorkspaceRuntimeResourceManager
             LastSuccessfulProvision = lastSuccessfulProvision ?? existingState?.LastSuccessfulProvision,
             WorkspaceImageTag = string.IsNullOrWhiteSpace(workspaceImageTag) ? existingState?.WorkspaceImageTag ?? string.Empty : workspaceImageTag,
             WorkspaceImageInputHash = string.IsNullOrWhiteSpace(workspaceImageInputHash) ? existingState?.WorkspaceImageInputHash ?? string.Empty : workspaceImageInputHash,
+            GeneratedArtifactsUtc = generatedArtifactsUtc ?? existingState?.GeneratedArtifactsUtc,
             Resources = new WorkspaceManagedRuntimeResources
             {
                 Identity = identity,

@@ -226,7 +226,9 @@ public sealed class OracleApexStaticValidationTests
         var method = typeof(DockerService).GetMethod("GetComposeProfiles", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         var profiles = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(null, new object[] { apexSnapshot.Definition }));
-        Assert.Equal(["oracle-demo", "oracle-ords"], profiles);
+        Assert.Equal(["oracle-apex", "oracle-demo", "oracle-ords"], profiles);
+        Assert.Contains("      - oracle-apex", apexCompose);
+        Assert.Contains("      - oracle-apex", apexLangCompose);
     }
 
     [Fact]

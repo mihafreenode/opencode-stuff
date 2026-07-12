@@ -67,13 +67,5 @@ public sealed class DockerWorkspaceImageBuilder : IWorkspaceImageBuilder
     }
 
     private static IReadOnlyList<string> GetComposeProfiles(WorkspaceDefinition definition)
-    {
-        var profiles = new List<string>();
-        if (definition.Services.Contains("oracle-ords", StringComparer.OrdinalIgnoreCase))
-        {
-            profiles.Add("oracle-apex");
-        }
-
-        return profiles;
-    }
+        => WorkspaceComposeProfileResolver.GetWorkspaceImageBuildProfiles(definition);
 }

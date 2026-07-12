@@ -462,7 +462,8 @@ public sealed class WorkspaceOrchestrator
         WriteWorkspaceDefinition(paths, definition);
         Log(log, "app", "[create] Workspace definition written.");
         Log(log, "app", "[create] Writing generated workspace files.");
-        WriteManagedGeneratedFiles(paths, definition, inspectHostAvailability: false);
+        var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
+        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: false);
         Log(log, "app", "[create] Generated workspace files written.");
         Log(log, "app", "[create] Initializing workspace repository.");
         await _workspaceProvider.InitializeWorkspaceAsync(paths, definition, createInitialSavePoint: false, log, cancellationToken);
@@ -695,7 +696,8 @@ public sealed class WorkspaceOrchestrator
             WriteWorkspaceDefinition(paths, definition);
         }
 
-        WriteManagedGeneratedFiles(paths, definition, inspectHostAvailability: false);
+        var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
+        WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: false);
 
         var now = DateTimeOffset.UtcNow;
         _workspaceRepository.Save(new WorkspaceRecord
@@ -724,7 +726,8 @@ public sealed class WorkspaceOrchestrator
     public async Task RegenerateAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         WriteWorkspaceDefinition(snapshot.Paths, snapshot.Definition);
-        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, inspectHostAvailability: false);
+        var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(snapshot.Definition, snapshot.Paths, cancellationToken);
+        WriteManagedGeneratedFiles(snapshot.Paths, snapshot.Definition, runtimeMetadata, inspectHostAvailability: false);
         await RunKnowledgePackProvisioningAsync(snapshot.Definition, snapshot.Paths, explicitRegenerationRequested: true, cancellationToken: cancellationToken);
         await RunApexlangHelloWorldRegenerationAsync(snapshot, cancellationToken);
         _oracleApexAtlasBuilder.Rebuild(snapshot.Definition, snapshot.Paths, force: true);
@@ -1077,8 +1080,13 @@ public sealed class WorkspaceOrchestrator
 
     private GeneratedWorkspaceArtifacts WriteManagedGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null, bool inspectHostAvailability = false)
     {
-        var runtimeState = ResolveRuntimeStateForGeneration(definition, paths, runtimeMetadata, inspectHostAvailability);
-        var generatedArtifacts = GenerateArtifacts(definition, paths, runtimeMetadata, runtimeState);
+        var existingRuntimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
+        var generatedArtifactsUtc = existingRuntimeState?.GeneratedArtifactsUtc ?? DateTimeOffset.UtcNow;
+        var effectiveRuntimeMetadata = runtimeMetadata is null
+            ? GeneratedArtifactRuntimeMetadataBuilder.Create(existingRuntimeState, generatedArtifactsUtc)
+            : GeneratedArtifactRuntimeMetadataBuilder.WithGeneratedUtc(runtimeMetadata, generatedArtifactsUtc);
+        var runtimeState = ResolveRuntimeStateForGeneration(definition, paths, effectiveRuntimeMetadata, inspectHostAvailability, generatedArtifactsUtc);
+        var generatedArtifacts = GenerateArtifacts(definition, paths, effectiveRuntimeMetadata, runtimeState);
 
         File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
         File.WriteAllText(paths.EnvironmentFilePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.EnvironmentFile));
@@ -1159,11 +1167,11 @@ public sealed class WorkspaceOrchestrator
         cancellationToken.ThrowIfCancellationRequested();
 
         var previousCompose = File.Exists(paths.ComposePath)
-            ? File.ReadAllText(paths.ComposePath)
+            ? NormalizeGeneratedTextForLinuxInteroperability(File.ReadAllText(paths.ComposePath))
             : null;
         var runtimeMetadata = await ResolveRuntimeMetadataForGenerationAsync(definition, paths, cancellationToken);
         var generatedArtifacts = WriteManagedGeneratedFiles(paths, definition, runtimeMetadata, inspectHostAvailability: true);
-        var composeWasUpdated = !string.Equals(previousCompose, generatedArtifacts.ComposeYaml, StringComparison.Ordinal);
+        var composeWasUpdated = !string.Equals(previousCompose, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml), StringComparison.Ordinal);
 
         if (composeWasUpdated)
         {
@@ -1298,12 +1306,49 @@ public sealed class WorkspaceOrchestrator
             : GeneratedArtifactRuntimeMetadataBuilder.Create(resolvedRuntimePlan);
     }
 
-    private WorkspaceRuntimeStateRecord ResolveRuntimeStateForGeneration(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata, bool inspectHostAvailability)
+    private WorkspaceRuntimeStateRecord ResolveRuntimeStateForGeneration(WorkspaceDefinition definition, WorkspacePaths paths, GeneratedArtifactRuntimeMetadata? runtimeMetadata, bool inspectHostAvailability, DateTimeOffset? generatedArtifactsUtc = null)
     {
         var existingState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var resolved = _workspaceResolver.Resolve(definition);
         var imagePlan = WorkspaceImageBuildPlanner.Create(resolved, runtimeMetadata);
-        return _workspaceRuntimeResourceManager.ResolveState(definition, paths, existingState, inspectHostAvailability: inspectHostAvailability, workspaceImageTag: imagePlan.ImageTag, workspaceImageInputHash: imagePlan.InputHash);
+        return _workspaceRuntimeResourceManager.ResolveState(
+            definition,
+            paths,
+            existingState,
+            resolvedRuntimePlan: BuildResolvedRuntimePlanForGeneration(runtimeMetadata),
+            inspectHostAvailability: inspectHostAvailability,
+            workspaceImageTag: imagePlan.ImageTag,
+            workspaceImageInputHash: imagePlan.InputHash,
+            generatedArtifactsUtc: generatedArtifactsUtc);
+    }
+
+    private static ResolvedRuntimePlan? BuildResolvedRuntimePlanForGeneration(GeneratedArtifactRuntimeMetadata? runtimeMetadata)
+    {
+        if (runtimeMetadata is null
+            || string.IsNullOrWhiteSpace(runtimeMetadata.Runtime)
+            || string.Equals(runtimeMetadata.Runtime, "unresolved", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(runtimeMetadata.TargetPlatform)
+            || string.Equals(runtimeMetadata.TargetPlatform, "unresolved", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var compatibilityMode = runtimeMetadata.Compatibility switch
+        {
+            "native" => RuntimeCompatibilityMode.Native,
+            "multi-architecture fallback" => RuntimeCompatibilityMode.MultiArchitecture,
+            "fallback" => RuntimeCompatibilityMode.Emulated,
+            "unavailable" => RuntimeCompatibilityMode.Unavailable,
+            _ => RuntimeCompatibilityMode.Native,
+        };
+
+        return new ResolvedRuntimePlan
+        {
+            Runtime = runtimeMetadata.Runtime,
+            TargetPlatform = runtimeMetadata.TargetPlatform,
+            CompatibilityMode = compatibilityMode,
+            IsAvailable = true,
+        };
     }
 
     private static bool IsUpdateRequired(WorkspacePaths paths, GeneratedWorkspaceArtifacts artifacts, WorkspaceAppliedState? appliedState)
@@ -1915,7 +1960,7 @@ public sealed class WorkspaceOrchestrator
         var previousState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var hostPlatform = await GetCachedHostPlatformAsync(cancellationToken);
         var resolvedRuntimePlan = await _runtimeResolver.ResolveAsync(definition, hostPlatform, cancellationToken);
-        var runtimeState = _workspaceRuntimeResourceManager.ResolveState(definition, paths, resolvedRuntimePlan: resolvedRuntimePlan, lastSuccessfulProvision: DateTimeOffset.UtcNow, inspectHostAvailability: true);
+        var runtimeState = _workspaceRuntimeResourceManager.ResolveState(definition, paths, resolvedRuntimePlan: resolvedRuntimePlan, lastSuccessfulProvision: DateTimeOffset.UtcNow, inspectHostAvailability: true, generatedArtifactsUtc: previousState?.GeneratedArtifactsUtc ?? DateTimeOffset.UtcNow);
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
         RecordRuntimeResourceTimeline(paths.TimelinePath, previousState, runtimeState);
     }

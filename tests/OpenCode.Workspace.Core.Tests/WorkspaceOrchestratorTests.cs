@@ -692,6 +692,85 @@ public sealed class WorkspaceOrchestratorTests
         }
     }
 
+    [Theory]
+    [InlineData("oracle-plsql-demo", false)]
+    [InlineData("oracle-apex-demo", true)]
+    [InlineData("oracle-apexlang-demo", true)]
+    public async Task StartAsync_WhenComposeWasRegeneratedForOracleWorkspace_PreservesDefinedDependencies(string templateId, bool expectsOrds)
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var expander = new TemplateExpander();
+            var template = provider.LoadTemplates().Single(item => item.Id == templateId);
+            var definition = expander.Expand($"{templateId}-stale", template);
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithCurrentHostRuntime(tempRoot, resolver, new FakeWorkspaceProvider(), runtime);
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            File.WriteAllText(snapshot.Paths.ComposePath, "services:\n  workspace:\n    depends_on:\n      oracle-demo:\n        condition: service_healthy\n");
+
+            var logs = new List<CommandLogEntry>();
+            await orchestrator.StartAsync(snapshot, logs.Add);
+
+            var repairedCompose = File.ReadAllText(snapshot.Paths.ComposePath).Replace("\r\n", "\n", StringComparison.Ordinal);
+            Assert.Contains(logs, entry => entry.Message.Contains("Stale compose detected", StringComparison.Ordinal));
+            Assert.Contains("oracle-demo:", repairedCompose);
+            if (expectsOrds)
+            {
+                Assert.Contains("oracle-ords:", repairedCompose);
+                Assert.Contains("      - oracle-apex", repairedCompose);
+            }
+            else
+            {
+                Assert.DoesNotContain("oracle-ords:", repairedCompose);
+            }
+
+            AssertComposeDependsOnReferencesAreDefined(repairedCompose);
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("oracle-plsql-demo")]
+    [InlineData("oracle-apex-demo")]
+    [InlineData("oracle-apexlang-demo")]
+    public async Task CreateWorkspaceAsync_ForOracleTemplates_DoesNotImmediatelyMarkComposeAsStale(string templateId)
+    {
+        Assert.True(CanRunGit(), "Git is required for workspace persistence tests.");
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
+            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
+            var expander = new TemplateExpander();
+            var template = provider.LoadTemplates().Single(item => item.Id == templateId);
+            var definition = expander.Expand($"{templateId}-fresh", template);
+            var runtime = new StubContainerRuntime();
+            var orchestrator = CreateOrchestratorWithCurrentHostRuntime(tempRoot, resolver, new FakeWorkspaceProvider(), runtime);
+            var snapshot = await orchestrator.CreateWorkspaceAsync(tempRoot, definition, includeRuntimeInspection: false);
+
+            var logs = new List<CommandLogEntry>();
+            await orchestrator.StartAsync(snapshot, logs.Add);
+            var reloaded = await orchestrator.LoadSnapshotAsync(tempRoot, includeRuntimeInspection: false);
+
+            Assert.False(reloaded.UpdateRequired);
+            Assert.DoesNotContain(logs, entry => entry.Message.Contains("Stale compose detected", StringComparison.Ordinal));
+        }
+        finally
+        {
+            DeleteTempRoot(tempRoot);
+        }
+    }
+
     [Fact]
     public async Task ProvisionAsync_WhenOrdsLandingStartsAfterRetries_WaitsUntilReady()
     {
@@ -1901,6 +1980,33 @@ public sealed class WorkspaceOrchestratorTests
             workspaceImageBuilder: workspaceImageBuilder ?? new NoOpWorkspaceImageBuilder());
     }
 
+    private static WorkspaceOrchestrator CreateOrchestratorWithCurrentHostRuntime(string tempRoot, WorkspaceResolver resolver, IWorkspaceProvider provider, IContainerRuntime containerRuntime)
+    {
+        return new WorkspaceOrchestrator(
+            new WorkspaceYamlService(),
+            new WorkspaceDiscoveryService(),
+            new WorkspaceRepository(GetAppDataRoot(tempRoot)),
+            resolver,
+            new ComposeGenerator(),
+            new EnvironmentFileGenerator(),
+            new ProvisioningScriptGenerator(),
+            new TerminalArtifactsGenerator(),
+            new AttachArtifactsGenerator(),
+            new WorkspaceContentGenerator(),
+            new WorkspaceAppliedStateService(),
+            new WorkspaceCheckpointService(),
+            new WorkspaceTimelineService(),
+            new WorkspaceSafetyService(),
+            new WorkspaceIgnorePolicyService(),
+            new WorkspaceRuntimeStateService(),
+            provider,
+            containerRuntime,
+            new CurrentHostPlatformDetector(),
+            new CurrentHostRuntimeResolver(),
+            new NoOpTerminalLauncher(),
+            workspaceImageBuilder: new NoOpWorkspaceImageBuilder());
+    }
+
     private static string CreateTempRoot() => Path.Combine(Path.GetTempPath(), $"opencode-workspace-manager-{Guid.NewGuid():N}");
 
     private static void DeleteTempRoot(string tempRoot)
@@ -2283,6 +2389,58 @@ public sealed class WorkspaceOrchestratorTests
         }
     }
 
+    private sealed class CurrentHostPlatformDetector : IPlatformDetector
+    {
+        public Task<HostPlatformInfo> DetectAsync(CancellationToken cancellationToken = default)
+        {
+            var operatingSystem = OperatingSystem.IsWindows()
+                ? HostOperatingSystem.Windows
+                : OperatingSystem.IsMacOS()
+                    ? HostOperatingSystem.MacOS
+                    : OperatingSystem.IsLinux()
+                        ? HostOperatingSystem.Linux
+                        : HostOperatingSystem.Unknown;
+            var architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture switch
+            {
+                System.Runtime.InteropServices.Architecture.X64 => HostArchitecture.X64,
+                System.Runtime.InteropServices.Architecture.Arm64 => HostArchitecture.Arm64,
+                _ => HostArchitecture.Unknown,
+            };
+            var nativePlatform = architecture == HostArchitecture.Arm64 ? "linux/arm64" : "linux/amd64";
+
+            return Task.FromResult(new HostPlatformInfo
+            {
+                OperatingSystem = operatingSystem,
+                Architecture = architecture,
+                HostDescription = operatingSystem.ToString(),
+                NativeContainerPlatform = nativePlatform,
+                Docker = new ContainerRuntimeAvailability
+                {
+                    EngineId = "docker",
+                    CliAvailable = true,
+                    EngineReachable = true,
+                    BuildxAvailable = true,
+                    SupportedPlatforms = [nativePlatform],
+                },
+            });
+        }
+    }
+
+    private sealed class CurrentHostRuntimeResolver : IRuntimeResolver
+    {
+        public Task<ResolvedRuntimePlan> ResolveAsync(WorkspaceDefinition definition, HostPlatformInfo hostPlatform, CancellationToken cancellationToken = default)
+            => Task.FromResult(new ResolvedRuntimePlan
+            {
+                Runtime = "docker",
+                TargetPlatform = hostPlatform.NativeContainerPlatform,
+                CompatibilityMode = RuntimeCompatibilityMode.Native,
+                SupportLevel = SupportLevel.NativeTested,
+                IsAvailable = true,
+                DiagnosticExplanation = "Current host runtime plan.",
+                HostPlatform = hostPlatform,
+            });
+    }
+
     private sealed class UnavailableRuntimeResolver : IRuntimeResolver
     {
         public Task<ResolvedRuntimePlan> ResolveAsync(WorkspaceDefinition definition, HostPlatformInfo hostPlatform, CancellationToken cancellationToken = default)
@@ -2510,6 +2668,62 @@ public sealed class WorkspaceOrchestratorTests
             => ExportOpenCodeSessionAsyncFactory is not null
                 ? ExportOpenCodeSessionAsyncFactory(sessionId, cancellationToken)
                 : Task.FromResult(Success("docker exec opencode session export"));
+    }
+
+    private static void AssertComposeDependsOnReferencesAreDefined(string compose)
+    {
+        var definedServices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referencedDependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? currentService = null;
+        var inDependsOn = false;
+
+        foreach (var rawLine in compose.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = rawLine.TrimEnd();
+            if (line.StartsWith("  ", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal) && line.EndsWith(":", StringComparison.Ordinal))
+            {
+                currentService = line.Trim().TrimEnd(':');
+                definedServices.Add(currentService);
+                inDependsOn = false;
+                continue;
+            }
+
+            if (currentService is null)
+            {
+                continue;
+            }
+
+            if (line.Trim() == "depends_on:")
+            {
+                inDependsOn = true;
+                continue;
+            }
+
+            if (!inDependsOn)
+            {
+                continue;
+            }
+
+            if (!rawLine.StartsWith("      ", StringComparison.Ordinal))
+            {
+                inDependsOn = false;
+                continue;
+            }
+
+            if (rawLine.StartsWith("        ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var dependency = line.Trim().TrimStart('-').Trim().TrimEnd(':');
+            if (!string.IsNullOrWhiteSpace(dependency))
+            {
+                referencedDependencies.Add(dependency);
+            }
+        }
+
+        Assert.NotEmpty(referencedDependencies);
+        Assert.All(referencedDependencies, dependency => Assert.Contains(dependency, definedServices));
     }
 
     private sealed class FailingKnowledgePackProvider : IKnowledgePackProvider

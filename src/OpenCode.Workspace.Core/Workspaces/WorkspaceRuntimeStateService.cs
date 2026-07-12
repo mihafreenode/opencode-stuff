@@ -50,6 +50,9 @@ public sealed class WorkspaceRuntimeStateService
                         ResolvedPlatform = model.ResolvedPlatform ?? string.Empty,
                         CompatibilityMode = model.CompatibilityMode ?? string.Empty,
                         LastSuccessfulProvision = DateTimeOffset.TryParse(model.LastSuccessfulProvision, out var provisionedAt) ? provisionedAt : null,
+                        WorkspaceImageTag = model.WorkspaceImageTag ?? string.Empty,
+                        WorkspaceImageInputHash = model.WorkspaceImageInputHash ?? string.Empty,
+                        GeneratedArtifactsUtc = DateTimeOffset.TryParse(model.GeneratedArtifactsUtc, out var generatedAt) ? generatedAt : null,
                         Resources = model.Resources ?? new WorkspaceManagedRuntimeResources(),
                     },
             };
@@ -80,6 +83,9 @@ public sealed class WorkspaceRuntimeStateService
             ResolvedPlatform = state.ResolvedPlatform,
             CompatibilityMode = state.CompatibilityMode,
             LastSuccessfulProvision = state.LastSuccessfulProvision?.ToString("O"),
+            WorkspaceImageTag = state.WorkspaceImageTag,
+            WorkspaceImageInputHash = state.WorkspaceImageInputHash,
+            GeneratedArtifactsUtc = state.GeneratedArtifactsUtc?.ToString("O"),
             Resources = state.Resources,
         });
         File.WriteAllText(path, content.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -93,6 +99,7 @@ public sealed class WorkspaceRuntimeStateService
             ResolvedPlatform = plan.TargetPlatform,
             CompatibilityMode = plan.CompatibilityMode.ToString(),
             LastSuccessfulProvision = lastSuccessfulProvision,
+            GeneratedArtifactsUtc = lastSuccessfulProvision,
             Resources = resources ?? new WorkspaceManagedRuntimeResources(),
         };
     }
@@ -103,6 +110,9 @@ public sealed class WorkspaceRuntimeStateService
         public string? ResolvedPlatform { get; init; }
         public string? CompatibilityMode { get; init; }
         public string? LastSuccessfulProvision { get; init; }
+        public string? WorkspaceImageTag { get; init; }
+        public string? WorkspaceImageInputHash { get; init; }
+        public string? GeneratedArtifactsUtc { get; init; }
         public WorkspaceManagedRuntimeResources? Resources { get; init; }
     }
 }

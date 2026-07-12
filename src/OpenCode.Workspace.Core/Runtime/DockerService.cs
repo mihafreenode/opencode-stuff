@@ -692,10 +692,7 @@ public sealed class DockerService
     }
 
     private static IReadOnlyList<string> GetComposeProfiles(WorkspaceDefinition definition)
-        => definition.Services
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(service => service, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        => WorkspaceComposeProfileResolver.GetRuntimeProfiles(definition);
 
     private async Task<ProcessResult?> DetectOraclePortConflictAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
