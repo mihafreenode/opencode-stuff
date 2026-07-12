@@ -518,11 +518,21 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("instantclient-sqlplus-linux.x64", script);
         Assert.Contains("/etc/ld.so.conf.d/oracle-instantclient.conf", script);
         Assert.Contains("export ORACLE_CLIENT_HOME=${oracle_client_home}", script);
+        Assert.Contains("oracle_client_home=$(find \"${oracle_sqlplus_root}/current\" -maxdepth 2 -type f -name 'libsqlplus.so'", script);
+        Assert.Contains("if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then", script);
+        Assert.Contains("cat > /usr/local/bin/sqlplus <<'EOF'", script);
+        Assert.Contains("export LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"", script);
+        Assert.Contains("exec \"${oracle_client_home}/sqlplus\" \"$@\"", script);
         Assert.Contains("oracle_sqlcl_extract=/tmp/sqlcl-extract", script);
         Assert.Contains("cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/", script);
-        Assert.Contains("sql -v", script);
-        Assert.Contains("ln -sf /opt/sqlcl/sqlcl/bin/sql /usr/local/bin/sqlcl", script);
-        Assert.Contains("sqlcl -v", script);
+        Assert.Contains("cat > /usr/local/bin/sql <<'EOF'", script);
+        Assert.Contains("exec /opt/sqlcl/sqlcl/bin/sql \"$@\"", script);
+        Assert.Contains("ln -sf /usr/local/bin/sql /usr/local/bin/sqlcl", script);
+        Assert.Contains("ldconfig -p | grep -F 'libsqlplus.so'", script);
+        Assert.Contains("if ldd \"${oracle_client_home}/sqlplus\" | grep -F 'not found' >/dev/null 2>&1; then", script);
+        Assert.Contains("sql -version", script);
+        Assert.Contains("sqlcl -version", script);
+        Assert.Contains("command -v sqlplus", script);
         Assert.Contains("java -version", script);
         Assert.DoesNotContain("apt-get install -y curl rlwrap unzip libaio1", script);
     }

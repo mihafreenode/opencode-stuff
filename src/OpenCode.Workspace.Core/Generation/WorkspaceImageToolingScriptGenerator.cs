@@ -57,19 +57,45 @@ public sealed class WorkspaceImageToolingScriptGenerator
             builder.AppendLine("rm -rf \"${oracle_sqlplus_root}\" && mkdir -p \"${oracle_sqlplus_root}\"");
             builder.AppendLine("cp -a \"${oracle_sqlplus_candidate}\" \"${oracle_sqlplus_root}/\"");
             builder.AppendLine("ln -sfn \"${oracle_sqlplus_root}/$(basename \"${oracle_sqlplus_candidate}\")\" \"${oracle_sqlplus_root}/current\"");
-            builder.AppendLine("ln -sf \"${oracle_sqlplus_root}/current/sqlplus\" /usr/local/bin/sqlplus");
-            builder.AppendLine("oracle_client_home=$(find \"${oracle_sqlplus_root}/current\" -maxdepth 1 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | head -n 1)");
-            builder.AppendLine("if [ -n \"${oracle_client_home}\" ]; then printf '%s\\n' \"${oracle_client_home}\" > /etc/ld.so.conf.d/oracle-instantclient.conf; ldconfig; export ORACLE_CLIENT_HOME=${oracle_client_home}; fi");
+            builder.AppendLine("oracle_client_home=$(find \"${oracle_sqlplus_root}/current\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)");
+            builder.AppendLine("test -n \"${oracle_client_home}\"");
+            builder.AppendLine("printf '%s\\n' \"${oracle_client_home}\" > /etc/ld.so.conf.d/oracle-instantclient.conf");
+            builder.AppendLine("ldconfig");
+            builder.AppendLine("export ORACLE_CLIENT_HOME=${oracle_client_home}");
+            builder.AppendLine("cat > /usr/local/bin/sqlplus <<'EOF'");
+            builder.AppendLine("#!/usr/bin/env bash");
+            builder.AppendLine("set -euo pipefail");
+            builder.AppendLine("oracle_sqlplus_root=${ORACLE_SQLPLUS_ROOT:-/opt/oracle/instantclient/current}");
+            builder.AppendLine("oracle_client_home=$(find \"${oracle_sqlplus_root}\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)");
+            builder.AppendLine("if [ -z \"${oracle_client_home}\" ]; then printf 'Oracle Instant Client shared libraries were not found under %s\\n' \"${oracle_sqlplus_root}\" >&2; exit 1; fi");
+            builder.AppendLine("export LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"");
+            builder.AppendLine("exec \"${oracle_client_home}/sqlplus\" \"$@\"");
+            builder.AppendLine("EOF");
+            builder.AppendLine("chmod +x /usr/local/bin/sqlplus");
             builder.AppendLine("oracle_sqlcl_download=/tmp/sqlcl.zip");
             builder.AppendLine("oracle_sqlcl_extract=/tmp/sqlcl-extract");
             builder.AppendLine("rm -rf \"${oracle_sqlcl_extract}\" /opt/sqlcl && mkdir -p \"${oracle_sqlcl_extract}\" /opt/sqlcl");
             builder.AppendLine("curl -fsSL https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip -o \"${oracle_sqlcl_download}\"");
             builder.AppendLine("unzip -oq \"${oracle_sqlcl_download}\" -d \"${oracle_sqlcl_extract}\"");
             builder.AppendLine("cp -a \"${oracle_sqlcl_extract}/.\" /opt/sqlcl/");
-            builder.AppendLine("ln -sf /opt/sqlcl/sqlcl/bin/sql /usr/local/bin/sql");
-            builder.AppendLine("ln -sf /opt/sqlcl/sqlcl/bin/sql /usr/local/bin/sqlcl");
+            builder.AppendLine("cat > /usr/local/bin/sql <<'EOF'");
+            builder.AppendLine("#!/usr/bin/env bash");
+            builder.AppendLine("set -euo pipefail");
+            builder.AppendLine("oracle_sqlplus_root=${ORACLE_SQLPLUS_ROOT:-/opt/oracle/instantclient/current}");
+            builder.AppendLine("oracle_client_home=$(find \"${oracle_sqlplus_root}\" -maxdepth 2 -type f -name 'libsqlplus.so' -printf '%h\\n' 2>/dev/null | while read -r dir; do if ls \"$dir\"/libclntsh.so* >/dev/null 2>&1; then printf '%s\\n' \"$dir\"; break; fi; done)");
+            builder.AppendLine("if [ -z \"${oracle_client_home}\" ]; then printf 'Oracle Instant Client shared libraries were not found under %s\\n' \"${oracle_sqlplus_root}\" >&2; exit 1; fi");
+            builder.AppendLine("export LD_LIBRARY_PATH=\"${oracle_client_home}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}\"");
+            builder.AppendLine("exec /opt/sqlcl/sqlcl/bin/sql \"$@\"");
+            builder.AppendLine("EOF");
+            builder.AppendLine("chmod +x /usr/local/bin/sql");
+            builder.AppendLine("ln -sf /usr/local/bin/sql /usr/local/bin/sqlcl");
+            builder.AppendLine("test -x \"${oracle_client_home}/sqlplus\"");
+            builder.AppendLine("test -f \"${oracle_client_home}/libsqlplus.so\"");
+            builder.AppendLine("ldconfig -p | grep -F 'libsqlplus.so'");
+            builder.AppendLine("if ldd \"${oracle_client_home}/sqlplus\" | grep -F 'not found' >/dev/null 2>&1; then ldd \"${oracle_client_home}/sqlplus\"; exit 1; fi");
             builder.AppendLine("sqlplus -v");
-            builder.AppendLine("sqlcl -v");
+            builder.AppendLine("sql -version");
+            builder.AppendLine("sqlcl -version");
         }
 
         builder.AppendLine("npm install -g opencode-ai");
@@ -112,9 +138,11 @@ public sealed class WorkspaceImageToolingScriptGenerator
         builder.AppendLine("opencode --version");
         if (isOracleWorkspace)
         {
+            builder.AppendLine("command -v sqlplus");
+            builder.AppendLine("sqlplus -v");
             builder.AppendLine("command -v sqlcl");
-            builder.AppendLine("sql -v");
-            builder.AppendLine("sqlcl -v");
+            builder.AppendLine("sql -version");
+            builder.AppendLine("sqlcl -version");
         }
 
         return builder.ToString();

@@ -781,7 +781,7 @@ public sealed class WorkspaceOrchestratorTests
         {
             var originalTimeout = GetOrdsRestartReadinessTimeout();
             var originalDelay = GetOrdsRestartReadinessRetryDelay();
-            SetOrdsRestartReadinessTimeout(TimeSpan.FromMilliseconds(50));
+            SetOrdsRestartReadinessTimeout(TimeSpan.FromMilliseconds(250));
             SetOrdsRestartReadinessRetryDelay(TimeSpan.FromMilliseconds(1));
 
             var provider = new BuiltInCatalogProvider(TestPaths.CatalogRoot);
