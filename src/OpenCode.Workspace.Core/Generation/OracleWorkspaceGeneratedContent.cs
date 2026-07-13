@@ -2249,6 +2249,8 @@ sys_connection="sys/${sys_password}@//oracle-demo:1521/FREEPDB1 as sysdba"
 testschema_connection="testschema/${testschema_password}@//oracle-demo:1521/FREEPDB1"
 enabled=${ORACLE_APEXLANG_HELLO_WORLD_ENABLED:-true}
 
+""" + OracleSqlExecutionScriptSupport.BuildShellLibrary() + """
+
 fail() {
   printf '[oracle-apexlang] ERROR: %s\n' "$1" >&2
   exit 1
@@ -2375,7 +2377,7 @@ SQL
 "$sqlcl_script" -version >/dev/null 2>&1 || fail 'SQLcl missing or broken. Run scripts/sqlcl.sh -version for details.'
 printf '[oracle-apexlang] SQLcl verified.\n'
 
-apex_registry=$("$sqlcl_script" -S "$sys_connection" @"$apex_registry_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+apex_registry=$(oracle_sql_run_file 'Creating Sample Application' sqlcl "$sys_connection" script 'apex-registry.sql' "$apex_registry_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
 [ -n "$apex_registry" ] || fail 'APEX not installed or dba_registry query returned no APEX row.'
 case "$apex_registry" in
   APEX\|Oracle\ APEX\|26.1.*\|VALID) ;;
@@ -2383,14 +2385,14 @@ case "$apex_registry" in
 esac
 printf '[oracle-apexlang] APEX registry verified: %s\n' "$apex_registry"
 
-"$sqlcl_script" -S "$sys_connection" @"$testschema_sql" >/dev/null || fail 'TESTSCHEMA missing and could not be created or unlocked.'
+oracle_sql_run_file 'Creating Sample Application' sqlcl "$sys_connection" plsql-block 'testschema-ready.sql' "$testschema_sql" >/dev/null || fail 'TESTSCHEMA missing and could not be created or unlocked.'
 
-"$sqlcl_script" -S "$sys_connection" @"$workspace_sql" >/dev/null || fail 'TEST workspace missing and could not be created or mapped to TESTSCHEMA.'
-workspace_mapping=$("$sqlcl_script" -S "$sys_connection" @"$verify_workspace_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+oracle_sql_run_file 'Creating Sample Application' sqlcl "$sys_connection" plsql-block 'test-workspace.sql' "$workspace_sql" >/dev/null || fail 'TEST workspace missing and could not be created or mapped to TESTSCHEMA.'
+workspace_mapping=$(oracle_sql_run_file 'Creating Sample Application' sqlcl "$sys_connection" script 'verify-workspace.sql' "$verify_workspace_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
 [ "$workspace_mapping" = 'TEST|TESTSCHEMA' ] || fail 'TEST workspace missing after setup verification.'
 
 mkdir -p "$workspace_root/exports/apexlang"
-"$sqlcl_script" -S /nolog @"$generate_sql" >/dev/null || fail 'Hello APEXlang package generation failed.'
+oracle_sql_run_file 'Creating Sample Application' sqlcl /nolog sqlcl-command-script 'sql/hello-apexlang/generate-hello-apexlang.sql' "$generate_sql" >/dev/null || fail 'Hello APEXlang package generation failed.'
 printf '[oracle-apexlang] Hello APEXlang package generated.\n'
 
 [ -f "$home_page_apx" ] || fail 'Generated Home page APEXlang file is missing.'
@@ -2402,16 +2404,16 @@ text = text.replace('title: &APP_TITLE.', 'title: Hello from APEXlang', 1)
 path.write_text(text, encoding='utf-8', newline='\n')
 PY
 
-"$sqlcl_script" -S "$testschema_connection" @"$validate_sql" >/dev/null || fail 'Hello APEXlang package validation failed.'
+oracle_sql_run_file 'Creating Sample Application' sqlcl "$testschema_connection" sqlcl-command-script 'sql/hello-apexlang/validate-hello-apexlang.sql' "$validate_sql" >/dev/null || fail 'Hello APEXlang package validation failed.'
 printf '[oracle-apexlang] Hello APEXlang package validated.\n'
 
-"$sqlcl_script" -S "$testschema_connection" @"$import_sql" >/dev/null || fail 'Hello APEXlang import failed.'
+oracle_sql_run_file 'Creating Sample Application' sqlcl "$testschema_connection" sqlcl-command-script 'sql/hello-apexlang/import-hello-apexlang.sql' "$import_sql" >/dev/null || fail 'Hello APEXlang import failed.'
 printf '[oracle-apexlang] Hello APEXlang application imported.\n'
 
-"$sqlcl_script" -S "$testschema_connection" @"$export_sql" >/dev/null || fail 'Hello APEXlang export failed.'
+oracle_sql_run_file 'Creating Sample Application' sqlcl "$testschema_connection" sqlcl-command-script 'sql/hello-apexlang/export-hello-apexlang.sql' "$export_sql" >/dev/null || fail 'Hello APEXlang export failed.'
 printf '[oracle-apexlang] Hello APEXlang package exported.\n'
 
-final_app=$("$sqlcl_script" -S "$sys_connection" @"$verify_app_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
+final_app=$(oracle_sql_run_file 'Creating Sample Application' sqlcl "$sys_connection" script 'verify-app.sql' "$verify_app_sql" | tr -d '\r' | sed '/^$/d' | tail -n 1 | xargs || true)
 [ "$final_app" = 'Hello APEXlang|Home|Home|Hello from APEXlang' ] || fail 'Hello APEXlang verification query returned an unexpected result.'
 printf '[oracle-apexlang] Hello APEXlang application verified: %s\n' "$final_app"
 """;
