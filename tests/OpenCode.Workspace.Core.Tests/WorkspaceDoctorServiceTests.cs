@@ -440,7 +440,8 @@ public sealed class WorkspaceDoctorServiceTests
             new WorkspaceDiscoveryService(),
             new WorkspaceYamlService(),
             new WorkspaceRuntimeStateService(),
-            arm64ExecutionProbe ?? (_ => Task.FromResult(Success("docker run", "aarch64"))));
+            arm64ExecutionProbe ?? (_ => Task.FromResult(Success("docker run", "aarch64"))),
+            _ => Task.FromResult(new RuntimeResourceInventory()));
 
     private static HostPlatformInfo CreateReadyHostPlatform()
         => new()

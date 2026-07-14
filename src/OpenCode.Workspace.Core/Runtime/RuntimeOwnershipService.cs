@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Runtime;
 
@@ -75,6 +76,7 @@ public sealed class RuntimeOwnershipService
             Project = options.Project,
             RunId = options.RunId,
             WorkspaceRoot = options.WorkspaceRoot,
+            ComposePath = options.ComposePath,
         };
         var resources = (await DiscoverOwnedResourcesAsync(filter, cancellationToken)).ToArray();
         var actions = new List<string>();
@@ -288,7 +290,8 @@ public sealed class RuntimeOwnershipService
                 (string.IsNullOrWhiteSpace(query.OwnerKind) || string.Equals(item.OwnerKind, query.OwnerKind, StringComparison.OrdinalIgnoreCase))
                 && (string.IsNullOrWhiteSpace(query.RunId) || string.Equals(item.RunId, query.RunId, StringComparison.OrdinalIgnoreCase))
                 && (string.IsNullOrWhiteSpace(query.Project) || string.Equals(item.Project, query.Project, StringComparison.OrdinalIgnoreCase))
-                && (string.IsNullOrWhiteSpace(query.WorkspaceRoot) || string.Equals(item.WorkspaceRoot, query.WorkspaceRoot, StringComparison.OrdinalIgnoreCase)))
+                && (string.IsNullOrWhiteSpace(query.WorkspaceRoot) || FileSystemPathComparer.AreEquivalent(item.WorkspaceRoot, query.WorkspaceRoot))
+                && (string.IsNullOrWhiteSpace(query.ComposePath) || FileSystemPathComparer.AreEquivalent(item.ComposePath, query.ComposePath)))
             .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

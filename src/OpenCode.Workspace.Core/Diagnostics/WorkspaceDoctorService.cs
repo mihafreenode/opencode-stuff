@@ -14,6 +14,7 @@ public sealed class WorkspaceDoctorService
     private readonly WorkspaceYamlService _workspaceYamlService;
     private readonly WorkspaceRuntimeStateService _workspaceRuntimeStateService;
     private readonly Func<CancellationToken, Task<ProcessResult>> _arm64ExecutionProbe;
+    private readonly Func<CancellationToken, Task<RuntimeResourceInventory>> _runtimeInventoryProvider;
 
     public WorkspaceDoctorService(
         IPlatformDetector platformDetector,
@@ -27,7 +28,8 @@ public sealed class WorkspaceDoctorService
             workspaceDiscoveryService,
             workspaceYamlService,
             workspaceRuntimeStateService,
-            cancellationToken => RunArm64ExecutionProbeAsync(new ProcessRunner(), cancellationToken))
+            cancellationToken => RunArm64ExecutionProbeAsync(new ProcessRunner(), cancellationToken),
+            cancellationToken => new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(cancellationToken: cancellationToken))
     {
     }
 
@@ -37,7 +39,8 @@ public sealed class WorkspaceDoctorService
         WorkspaceDiscoveryService workspaceDiscoveryService,
         WorkspaceYamlService workspaceYamlService,
         WorkspaceRuntimeStateService workspaceRuntimeStateService,
-        Func<CancellationToken, Task<ProcessResult>> arm64ExecutionProbe)
+        Func<CancellationToken, Task<ProcessResult>> arm64ExecutionProbe,
+        Func<CancellationToken, Task<RuntimeResourceInventory>> runtimeInventoryProvider)
     {
         _platformDetector = platformDetector;
         _runtimeResolver = runtimeResolver;
@@ -45,6 +48,7 @@ public sealed class WorkspaceDoctorService
         _workspaceYamlService = workspaceYamlService;
         _workspaceRuntimeStateService = workspaceRuntimeStateService;
         _arm64ExecutionProbe = arm64ExecutionProbe;
+        _runtimeInventoryProvider = runtimeInventoryProvider;
     }
 
     public async Task<WorkspaceDoctorResult> DiagnoseAsync(string workspacePath, CancellationToken cancellationToken = default)
@@ -135,7 +139,7 @@ public sealed class WorkspaceDoctorService
         RuntimeResourceInventory? runtimeInventory = null;
         try
         {
-            runtimeInventory = await new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(cancellationToken: cancellationToken);
+            runtimeInventory = await _runtimeInventoryProvider(cancellationToken);
         }
         catch
         {

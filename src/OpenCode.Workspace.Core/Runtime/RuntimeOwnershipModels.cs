@@ -39,6 +39,7 @@ public sealed class RuntimeOwnershipQuery
     public string? OwnerKind { get; init; }
     public string? RunId { get; init; }
     public string? WorkspaceRoot { get; init; }
+    public string? ComposePath { get; init; }
     public string? Project { get; init; }
 }
 
@@ -49,6 +50,7 @@ public sealed class RuntimeCleanupOptions
     public string? OwnerKind { get; init; }
     public string? RunId { get; init; }
     public string? WorkspaceRoot { get; init; }
+    public string? ComposePath { get; init; }
     public string? Project { get; init; }
 }
 

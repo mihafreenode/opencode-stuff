@@ -2,6 +2,7 @@ using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
 using System.Text.Json;
+using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -52,6 +53,60 @@ public sealed class RuntimeOwnershipServiceTests
 
         Assert.True(result.Succeeded);
         Assert.All(result.Resources, item => Assert.Equal("run-1", item.RunId));
+    }
+
+    [Fact]
+    public async Task BuildInventoryAsync_FiltersByNormalizedWorkspaceRoot()
+    {
+        var runtime = new FakeContainerRuntime(
+            "/private/var/folders/demo/workspace/",
+            "/private/var/folders/demo/workspace/compose.yaml",
+            DateTimeOffset.UtcNow.ToString("O"));
+        var service = new RuntimeOwnershipService(runtime);
+
+        var inventory = await service.BuildInventoryAsync(new RuntimeOwnershipQuery
+        {
+            OwnerKind = "smoke",
+            WorkspaceRoot = "/var/folders/demo/current/../workspace",
+        });
+
+        Assert.Equal(3, inventory.Resources.Count);
+    }
+
+    [Fact]
+    public async Task BuildInventoryAsync_FiltersByNormalizedComposePath()
+    {
+        var runtime = new FakeContainerRuntime(
+            "/private/var/folders/demo/workspace",
+            "/private/var/folders/demo/workspace/compose/../compose.yaml",
+            DateTimeOffset.UtcNow.ToString("O"));
+        var service = new RuntimeOwnershipService(runtime);
+
+        var inventory = await service.BuildInventoryAsync(new RuntimeOwnershipQuery
+        {
+            OwnerKind = "smoke",
+            ComposePath = "/var/folders/demo/workspace/compose.yaml",
+        });
+
+        Assert.Equal(3, inventory.Resources.Count);
+    }
+
+    [Fact]
+    public async Task BuildInventoryAsync_DistinguishesDifferentWorkspaceRoots()
+    {
+        var runtime = new FakeContainerRuntime(
+            "/var/folders/demo/workspace-a",
+            "/var/folders/demo/workspace-a/compose.yaml",
+            DateTimeOffset.UtcNow.ToString("O"));
+        var service = new RuntimeOwnershipService(runtime);
+
+        var inventory = await service.BuildInventoryAsync(new RuntimeOwnershipQuery
+        {
+            OwnerKind = "smoke",
+            WorkspaceRoot = "/var/folders/demo/workspace-b",
+        });
+
+        Assert.Empty(inventory.Resources);
     }
 
     [Fact]
