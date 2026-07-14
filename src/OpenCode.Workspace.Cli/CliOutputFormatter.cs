@@ -39,6 +39,16 @@ public static class CliOutputFormatter
         lines.Add($"  workspace.yaml: {FormatWorkspaceConfigStatus(result)}");
         lines.Add($"  Local runtime state: {FormatRuntimeStateStatus(result.RuntimeStateStatus)}");
         lines.Add($"  Local runtime state path: {FormatPath(result.WorkspaceRootPath, result.RuntimeStatePath)}");
+        if (result.RuntimeInventory is not null)
+        {
+            lines.Add($"  Active owned runtimes: {result.RuntimeInventory.Resources.Count}");
+            lines.Add($"  Orphaned resources: {result.RuntimeInventory.Orphans.Count}");
+            lines.Add($"  Stale runtimes: {result.RuntimeInventory.StaleRuntimes.Count}");
+            lines.Add($"  Duplicate run ids: {result.RuntimeInventory.DuplicateRunIds.Count}");
+            lines.Add($"  Missing labels: {result.RuntimeInventory.MissingRequiredLabels.Count}");
+            lines.Add($"  Missing compose files: {result.RuntimeInventory.MissingComposeFiles.Count}");
+            lines.Add($"  Missing workspace directories: {result.RuntimeInventory.MissingWorkspaceDirectories.Count}");
+        }
         lines.Add(string.Empty);
         lines.Add("Resolution:");
         lines.Add($"  Runtime: {result.ResolvedRuntimePlan?.Runtime ?? "unresolved"}");
@@ -101,6 +111,8 @@ public static class CliOutputFormatter
             "  opencode doctor",
             "  opencode doctor --workspace <path>",
             "  opencode debug-workspace-discovery",
+            "  opencode runtime list --format json",
+            "  opencode runtime doctor --owner smoke",
             "  opencode smoke cleanup --dry-run",
             "  opencode smoke cleanup --all",
             "  opencode smoke cleanup --run-id <run-id>",
@@ -148,6 +160,33 @@ public static class CliOutputFormatter
             lines.Add(string.Empty);
             lines.Add("Errors:");
             lines.AddRange(result.Errors.Select(item => $"  {item}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string FormatRuntimeInventory(RuntimeResourceInventory inventory, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Runtime Inventory",
+            string.Empty,
+            $"Resources: {inventory.Resources.Count}",
+            $"Projects: {inventory.Projects.Count}",
+            $"Orphans: {inventory.Orphans.Count}",
+            $"Stale runtimes: {inventory.StaleRuntimes.Count}",
+            $"Duplicate run ids: {inventory.DuplicateRunIds.Count}",
+            $"Missing labels: {inventory.MissingRequiredLabels.Count}",
+        };
+
+        foreach (var resource in inventory.Resources.Take(20))
+        {
+            lines.Add($"  {resource.Type}: {resource.Name} owner={resource.OwnerKind} run_id={resource.RunId} project={resource.Project} status={resource.Status}");
         }
 
         return string.Join(Environment.NewLine, lines);

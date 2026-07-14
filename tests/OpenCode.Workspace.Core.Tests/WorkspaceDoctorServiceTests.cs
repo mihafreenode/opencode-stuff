@@ -351,6 +351,7 @@ public sealed class WorkspaceDoctorServiceTests
             Assert.Equal(WorkspaceConfigurationStatus.Found, result.WorkspaceConfigurationStatus);
             Assert.Equal(WorkspaceRuntimeStateReadStatus.Loaded, result.RuntimeStateStatus);
             Assert.NotNull(result.RuntimeState);
+            Assert.NotNull(result.RuntimeInventory);
         }
         finally
         {

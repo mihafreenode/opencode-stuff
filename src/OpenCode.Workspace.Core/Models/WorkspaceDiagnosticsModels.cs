@@ -1,5 +1,7 @@
 namespace OpenCode.Workspace.Core.Models;
 
+using OpenCode.Workspace.Core.Runtime;
+
 public enum WorkspaceConfigurationStatus
 {
     NotFound,
@@ -43,6 +45,7 @@ public sealed class WorkspaceDoctorResult
     public bool CanRun { get; init; }
     public required string Recommendation { get; init; }
     public OracleApexDoctorResult? OracleApex { get; init; }
+    public RuntimeResourceInventory? RuntimeInventory { get; init; }
 }
 
 public sealed class PlatformValidationRequest

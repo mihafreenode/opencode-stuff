@@ -132,6 +132,15 @@ public sealed class WorkspaceDoctorService
             recommendation = BuildDockerRecommendation(hostPlatform, recommendation);
         }
 
+        RuntimeResourceInventory? runtimeInventory = null;
+        try
+        {
+            runtimeInventory = await new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(cancellationToken: cancellationToken);
+        }
+        catch
+        {
+        }
+
         return new WorkspaceDoctorResult
         {
             WorkspaceRootPath = location.WorkspaceRootPath,
@@ -147,6 +156,7 @@ public sealed class WorkspaceDoctorService
             ResolvedRuntimePlan = resolvedRuntimePlan,
             CanRun = canRun,
             Recommendation = recommendation,
+            RuntimeInventory = runtimeInventory,
         };
     }
 

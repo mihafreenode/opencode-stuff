@@ -310,4 +310,39 @@ public sealed class CliApplicationTests
         Assert.Contains("OpenCode Smoke Cleanup", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("compose-down:oracle-smoke", output.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task RuntimeList_Json_UsesInventoryModel()
+    {
+        var output = new StringWriter();
+        var app = new CliApplication(
+            output,
+            new StringWriter(),
+            (_, _) => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException(),
+            _ => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException(),
+            (_, _) => Task.FromResult(new RuntimeResourceInventory
+            {
+                Resources =
+                [
+                    new RuntimeOwnedResource
+                    {
+                        ResourceId = "container-1",
+                        Name = "runtime-container",
+                        Type = RuntimeResourceType.Container,
+                        OwnerKind = "smoke",
+                        RunId = "run-1",
+                        Project = "runtime-project",
+                        Template = "oracle-apexlang-demo",
+                    },
+                ],
+            }));
+
+        var exitCode = await app.RunAsync(["runtime", "list", "--format", "json", "--owner", "smoke"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("runtime-container", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("run-1", output.ToString(), StringComparison.Ordinal);
+    }
 }

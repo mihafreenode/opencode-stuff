@@ -1,5 +1,6 @@
 using OpenCode.Workspace.Cli;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
 
 namespace OpenCode.Workspace.Cli.Tests;
 
@@ -268,5 +269,35 @@ public sealed class CliOutputFormatterTests
 
         Assert.Contains("ARM64 execution support: unavailable", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ARM64 detail: Buildx does not advertise linux/arm64.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatDoctor_IncludesRuntimeInventoryCounts()
+    {
+        var text = CliOutputFormatter.FormatDoctor(new WorkspaceDoctorResult
+        {
+            WorkspaceRootPath = "/workspace",
+            RuntimeStatePath = "/workspace/.opencode/local/runtime-state.yaml",
+            HostPlatform = new HostPlatformInfo { OperatingSystem = HostOperatingSystem.Linux, Architecture = HostArchitecture.X64, Docker = new ContainerRuntimeAvailability() },
+            WorkspaceConfigurationStatus = WorkspaceConfigurationStatus.Found,
+            RuntimeStateStatus = WorkspaceRuntimeStateReadStatus.Loaded,
+            Arm64ExecutionSupportStatus = Arm64ExecutionSupportStatus.Unknown,
+            CanRun = true,
+            Recommendation = "OK",
+            RuntimeInventory = new RuntimeResourceInventory
+            {
+                Resources = [new RuntimeOwnedResource { ResourceId = "1", Name = "r1", Type = RuntimeResourceType.Container }],
+                Orphans = [new RuntimeInventoryIssue { Kind = "orphan", Message = "orphan" }],
+                StaleRuntimes = [new RuntimeInventoryIssue { Kind = "stale", Message = "stale" }],
+                DuplicateRunIds = [new RuntimeInventoryIssue { Kind = "duplicate", Message = "dup" }],
+                MissingRequiredLabels = [new RuntimeInventoryIssue { Kind = "missing", Message = "missing" }],
+                MissingComposeFiles = [new RuntimeInventoryIssue { Kind = "compose", Message = "compose" }],
+                MissingWorkspaceDirectories = [new RuntimeInventoryIssue { Kind = "workspace", Message = "workspace" }],
+            },
+        });
+
+        Assert.Contains("Active owned runtimes: 1", text, StringComparison.Ordinal);
+        Assert.Contains("Orphaned resources: 1", text, StringComparison.Ordinal);
+        Assert.Contains("Missing compose files: 1", text, StringComparison.Ordinal);
     }
 }

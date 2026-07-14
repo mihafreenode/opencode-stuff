@@ -69,7 +69,7 @@ public static class OracleRuntimeSmokeCli
             var options = Parse(args);
             var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
             var processRunner = new ProcessRunner();
-            var ownershipService = new SmokeRuntimeOwnershipService(processRunner);
+            var ownershipService = new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(processRunner)));
             var runId = $"{CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow)}-{Guid.NewGuid():N}";
             var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
             Directory.CreateDirectory(artifactsRoot);
@@ -242,7 +242,7 @@ public static class OracleRuntimeSmokeCli
             {
                 try
                 {
-                    var cleanup = await new SmokeRuntimeOwnershipService(new ProcessRunner()).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
+                    var cleanup = await new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
                     await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanup.Actions.Concat(cleanup.Errors)), CancellationToken.None);
                 }
                 catch
