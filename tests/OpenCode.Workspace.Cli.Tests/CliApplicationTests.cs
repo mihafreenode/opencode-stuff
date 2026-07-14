@@ -301,6 +301,9 @@ public sealed class CliApplicationTests
             {
                 Succeeded = true,
                 DryRun = true,
+                ComposeDownAttempted = true,
+                ComposeDownSucceeded = true,
+                VerificationSucceeded = true,
                 Actions = ["compose-down:oracle-smoke"],
             }),
             (_, _) => throw new NotSupportedException(),
@@ -310,6 +313,7 @@ public sealed class CliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.Contains("OpenCode Smoke Cleanup", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Compose down attempted: True", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("compose-down:oracle-smoke", output.ToString(), StringComparison.Ordinal);
     }
 

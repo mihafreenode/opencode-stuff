@@ -103,6 +103,10 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains("query_xdb_dbms_registry_status_in_container", script, StringComparison.Ordinal);
         Assert.Contains("query_xdb_functional_probe_in_container", script, StringComparison.Ordinal);
         Assert.Contains("query_pdb_plugin_violations", script, StringComparison.Ordinal);
+        Assert.Contains("ensure_apex_xdb_registry_valid", script, StringComparison.Ordinal);
+        Assert.Contains("Oracle APEX prerequisite validation failed.", script, StringComparison.Ordinal);
+        Assert.Contains("oracle_apex_recommended_database_image='gvenzl/oracle-free:23'", script, StringComparison.Ordinal);
+        Assert.Contains("Use Oracle image ${oracle_apex_recommended_database_image} for APEX workspaces", script, StringComparison.Ordinal);
         Assert.Contains("XDB was initially INVALID but became VALID while Oracle initialization completed.", script, StringComparison.Ordinal);
         Assert.Contains("query-script", script, StringComparison.Ordinal);
         Assert.Contains("PROMPT __OPENCODE_RESULT_BEGIN__", script, StringComparison.Ordinal);
@@ -162,8 +166,23 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_STATE=new", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_RESET_ALLOWED=true", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_SCOPE=managed-workspace-exclusive", StringComparison.Ordinal));
-        Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_DATABASE_IMAGE=gvenzl/oracle-free:23-slim-faststart", StringComparison.Ordinal));
+        Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_DATABASE_IMAGE=gvenzl/oracle-free:23", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "/opt/opencode-workspace/config/oracle-provision.sh", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ScriptOracleWorkspaceProvisioner_UsesConfiguredOracleDatabaseImage()
+    {
+        var runtime = new RecordingContainerRuntime
+        {
+            ProvisionResults = [SuccessResult()],
+        };
+        var provisioner = new ScriptOracleWorkspaceProvisioner(runtime);
+        var snapshot = CreateSnapshot(databaseImage: "gvenzl/oracle-free:23-slim-faststart");
+
+        await provisioner.ProvisionAsync(snapshot);
+
+        Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_DATABASE_IMAGE=gvenzl/oracle-free:23-slim-faststart", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -265,7 +284,7 @@ public sealed class OracleSqlExecutionScriptSupportTests
 
     private const string XdbReasonLine = "Reason: Oracle XML Database (XDB) is invalid.";
 
-    private static WorkspaceSnapshot CreateSnapshot()
+    private static WorkspaceSnapshot CreateSnapshot(string? databaseImage = null)
     {
         var root = Path.Combine(Path.GetTempPath(), $"xdb-provisioner-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -283,6 +302,7 @@ public sealed class OracleSqlExecutionScriptSupportTests
             {
                 Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo", Image = "ubuntu:24.04" },
                 Services = ["oracle-demo", "oracle-ords"],
+                Oracle = new OracleWorkspacePreferences { DatabaseImage = databaseImage },
             },
             Paths = WorkspacePathBuilder.Build(root),
             ConfigurationPath = "workspace.yaml",

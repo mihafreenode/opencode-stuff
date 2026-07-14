@@ -207,6 +207,7 @@ Terminal preferences describe the recommended shell experience for the workspace
 Oracle runtime settings stay under `oracle`, while durable Oracle APEX synchronization identity lives under `oracle.apex`.
 
 - keep ports such as `hostPort` and `ordsPort` under `oracle`
+- keep optional Oracle image selection under `oracle.databaseImage`
 - keep APEX application identity under `oracle.apex`
 - do not store passwords, secrets, timestamps, hashes, or runtime drift state in `workspace.yaml`
 
@@ -214,6 +215,7 @@ Example:
 
 ```yaml
 oracle:
+  databaseImage: gvenzl/oracle-free:23
   hostPort: 1521
   ordsPort: 8181
   apex:
@@ -229,6 +231,22 @@ oracle:
 ```
 
 Operational synchronization state is stored separately in repository-owned metadata under `.opencode/apex/sync.yaml`.
+
+`oracle.databaseImage` is optional.
+
+- if omitted, OpenCode uses `gvenzl/oracle-free:23` for Oracle templates
+- if specified, the exact image reference is preserved in YAML and used for compose generation, provisioning, and runtime diagnostics
+- do not set it to an empty string; remove the field instead if you want the default image
+- changing the database image requires a fresh Oracle runtime volume or a Reset Runtime action so the new image initializes a clean database
+
+Example override:
+
+```yaml
+oracle:
+  databaseImage: gvenzl/oracle-free:23
+  hostPort: 1521
+  ordsPort: 8181
+```
 
 ### `agent`
 

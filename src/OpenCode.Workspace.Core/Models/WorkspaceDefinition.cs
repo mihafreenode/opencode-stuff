@@ -168,6 +168,9 @@ public sealed class AgentPreferences
 
 public sealed class OracleWorkspacePreferences
 {
+    [YamlMember(Alias = "databaseImage")]
+    public string? DatabaseImage { get; init; }
+
     [YamlMember(Alias = "hostPort")]
     public int? HostPort { get; init; }
 

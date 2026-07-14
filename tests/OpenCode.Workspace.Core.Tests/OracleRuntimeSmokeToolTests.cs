@@ -64,6 +64,7 @@ public sealed class OracleRuntimeSmokeToolTests
             "EnvironmentFailure",
             "ProductFailure",
             "OracleRuntimeFailure",
+            "ApexPrerequisiteFailure",
             "RuntimeResourceExhaustion",
         ],
             Enum.GetNames<SmokeFailureClassification>());
@@ -78,6 +79,17 @@ public sealed class OracleRuntimeSmokeToolTests
         var classification = (SmokeFailureClassification)method!.Invoke(null, [new InvalidOperationException("Cannot allocate memory while starting ORDS")])!;
 
         Assert.Equal(SmokeFailureClassification.RuntimeResourceExhaustion, classification);
+    }
+
+    [Fact]
+    public void ClassifyFailure_RecognizesApexPrerequisiteFailure()
+    {
+        var method = typeof(OracleRuntimeSmokeCli).GetMethod("ClassifyFailure", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var classification = (SmokeFailureClassification)method!.Invoke(null, [new InvalidOperationException("Oracle APEX prerequisite validation failed. XDB remained INVALID for the selected image.")])!;
+
+        Assert.Equal(SmokeFailureClassification.ApexPrerequisiteFailure, classification);
     }
 
     [Fact]

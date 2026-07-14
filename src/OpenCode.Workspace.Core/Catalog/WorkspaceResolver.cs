@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Catalog;
 
@@ -116,7 +117,7 @@ public sealed class WorkspaceResolver
 
             if (selectedServices.All(existing => !string.Equals(existing.Id, service.Id, StringComparison.OrdinalIgnoreCase)))
             {
-                selectedServices.Add(service);
+                selectedServices.Add(ApplyWorkspaceServiceOverrides(definition, service));
             }
         }
 
@@ -131,6 +132,38 @@ public sealed class WorkspaceResolver
             NpmPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Npm).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
             PipPackages = selectedFeatures.SelectMany(feature => feature.Dependencies.Pip).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(packageName => packageName, StringComparer.OrdinalIgnoreCase).ToList(),
             PostInstallCommands = selectedFeatures.SelectMany(feature => feature.PostInstall).Distinct(StringComparer.Ordinal).ToList(),
+        };
+    }
+
+    private static ServiceManifest ApplyWorkspaceServiceOverrides(WorkspaceDefinition definition, ServiceManifest service)
+    {
+        if (!string.Equals(service.Id, OracleWorkspaceFamily.OracleDatabaseServiceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return service;
+        }
+
+        var resolvedImage = OracleDatabaseImageCatalog.ResolveDatabaseImage(definition);
+        if (string.Equals(service.Image, resolvedImage, StringComparison.OrdinalIgnoreCase))
+        {
+            return service;
+        }
+
+        return new ServiceManifest
+        {
+            Id = service.Id,
+            DisplayName = service.DisplayName,
+            Description = service.Description,
+            Image = resolvedImage,
+            HostPorts = service.HostPorts.ToList(),
+            Environment = new Dictionary<string, string>(service.Environment, StringComparer.Ordinal),
+            Profiles = service.Profiles.ToList(),
+            Restart = service.Restart,
+            Healthcheck = service.Healthcheck,
+            Volumes = service.Volumes.ToList(),
+            EntryPoint = service.EntryPoint.ToList(),
+            Command = service.Command.ToList(),
+            DependsOn = service.DependsOn.ToList(),
+            WorkspaceDependsOnCondition = service.WorkspaceDependsOnCondition,
         };
     }
 }

@@ -23,9 +23,7 @@ internal static class WorkspaceComposeProfileResolver
     }
 
     public static IReadOnlyList<string> GetWorkspaceImageBuildProfiles(WorkspaceDefinition definition)
-        => OracleWorkspaceFamily.HasApex(definition)
-            ? ["oracle-apex"]
-            : Array.Empty<string>();
+        => GetRuntimeProfiles(definition);
 
     public static IReadOnlyList<string> GetServiceProfiles(WorkspaceDefinition definition, ServiceManifest service)
     {

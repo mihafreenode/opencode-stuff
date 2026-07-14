@@ -133,8 +133,13 @@ public static class CliOutputFormatter
             {
                 result.Succeeded,
                 result.DryRun,
+                result.ComposeDownAttempted,
+                result.ComposeDownSucceeded,
+                result.FallbackRemovalRequired,
+                result.VerificationSucceeded,
                 Resources = result.Resources,
                 Actions = result.Actions,
+                Warnings = result.Warnings,
                 Errors = result.Errors,
                 SuspectedLegacyProjects = result.SuspectedLegacyProjects,
             }, new JsonSerializerOptions { WriteIndented = true });
@@ -146,6 +151,10 @@ public static class CliOutputFormatter
             string.Empty,
             $"Result: {(result.Succeeded ? "success" : "failure")}",
             $"Dry run: {result.DryRun}",
+            $"Compose down attempted: {result.ComposeDownAttempted}",
+            $"Compose down succeeded: {result.ComposeDownSucceeded}",
+            $"Fallback removal required: {result.FallbackRemovalRequired}",
+            $"Verification succeeded: {result.VerificationSucceeded}",
             $"Resources discovered: {result.Resources.Count}",
         };
 
@@ -161,6 +170,13 @@ public static class CliOutputFormatter
             lines.Add(string.Empty);
             lines.Add("Errors:");
             lines.AddRange(result.Errors.Select(item => $"  {item}"));
+        }
+
+        if (result.Warnings.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Warnings:");
+            lines.AddRange(result.Warnings.Select(item => $"  {item}"));
         }
 
         return string.Join(Environment.NewLine, lines);

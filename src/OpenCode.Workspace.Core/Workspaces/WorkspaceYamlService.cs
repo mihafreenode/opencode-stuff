@@ -156,6 +156,7 @@ public sealed class WorkspaceYamlService
             },
             Oracle = new OracleWorkspacePreferences
             {
+                DatabaseImage = definition.Oracle.DatabaseImage is null ? null : OracleDatabaseImageCatalog.ResolveDatabaseImage(definition),
                 HostPort = definition.Oracle.HostPort is > 0 ? definition.Oracle.HostPort.Value : null,
                 OrdsPort = definition.Oracle.OrdsPort is > 0 ? definition.Oracle.OrdsPort.Value : null,
                 Apex = NormalizeOracleApexPreferences(definition.Oracle.Apex),

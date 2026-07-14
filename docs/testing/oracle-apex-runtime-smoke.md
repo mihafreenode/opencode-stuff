@@ -16,6 +16,12 @@ Current APEX smoke requires:
 - Oracle Database with APEX installed
 - ORDS configured for APEX
 
+Default APEX-capable smoke now uses `gvenzl/oracle-free:23`.
+
+`gvenzl/oracle-free:23-slim-faststart` is not the default for APEX smoke because fresh volumes can report `XDB` as registry `INVALID` while functional probes still succeed. Oracle APEX 26.1.0 `apxprereq.sql` rejects that state and refuses installation.
+
+If you override `oracle.databaseImage` for an APEX template, reset the runtime so the database volume is recreated for the selected image.
+
 ## Runtime Validation Host Selection
 
 When validating runtime behavior from WSL, first check whether Docker is reachable from the current shell.
@@ -97,6 +103,8 @@ The smoke runner classifies failures separately as:
 - Environment Failure
 - Product Failure
 - Oracle Runtime Failure
+- Apex Prerequisite Failure
+- Runtime Resource Exhaustion
 
 ## What It Validates
 

@@ -87,6 +87,7 @@ public sealed class WorkspaceYamlServiceTests
             Assert.True(roundTripped.Terminal.Utilities.Zoxide);
             Assert.Equal(1522, roundTripped.Oracle.HostPort);
             Assert.Equal(8182, roundTripped.Oracle.OrdsPort);
+            Assert.Null(roundTripped.Oracle.DatabaseImage);
             Assert.Equal("dev", roundTripped.Oracle.Apex.DefaultEnvironment);
             Assert.True(roundTripped.Oracle.Apex.Environments.ContainsKey("dev"));
             Assert.Equal(100, roundTripped.Oracle.Apex.Environments["dev"].ApplicationId);
@@ -139,6 +140,40 @@ terminal:
 
             Assert.Equal(22, definition.Runtime.Node);
             Assert.Equal(22, definition.Runtime.GetEffectiveNodeMajorVersion());
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public void WriteAndRead_PreservesOracleDatabaseImageOverride()
+    {
+        var service = new WorkspaceYamlService();
+        var definition = new WorkspaceDefinition
+        {
+            Workspace = new WorkspaceMetadata { Name = "oracle-image-override" },
+            Oracle = new OracleWorkspacePreferences
+            {
+                DatabaseImage = "gvenzl/oracle-free:23-slim-faststart",
+                HostPort = 1522,
+                OrdsPort = 8182,
+            },
+        };
+
+        var yaml = service.Write(definition);
+        var filePath = Path.GetTempFileName();
+
+        try
+        {
+            File.WriteAllText(filePath, yaml);
+            var roundTripped = service.Read(filePath);
+
+            Assert.Contains("databaseImage: gvenzl/oracle-free:23-slim-faststart", yaml, StringComparison.Ordinal);
+            Assert.Equal("gvenzl/oracle-free:23-slim-faststart", roundTripped.Oracle.DatabaseImage);
+            Assert.Equal(1522, roundTripped.Oracle.HostPort);
+            Assert.Equal(8182, roundTripped.Oracle.OrdsPort);
         }
         finally
         {

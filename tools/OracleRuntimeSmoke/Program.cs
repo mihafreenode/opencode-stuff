@@ -17,6 +17,7 @@ public enum SmokeFailureClassification
     EnvironmentFailure,
     ProductFailure,
     OracleRuntimeFailure,
+    ApexPrerequisiteFailure,
     RuntimeResourceExhaustion,
 }
 
@@ -74,6 +75,7 @@ public static class OracleRuntimeSmokeCli
             var containerRuntime = new DockerContainerRuntime(new DockerService(processRunner));
             var ownershipService = new SmokeRuntimeOwnershipService(containerRuntime);
             runtimeOwnershipService = new RuntimeOwnershipService(containerRuntime);
+            var inventoryService = runtimeOwnershipService;
             var runId = $"{CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow)}-{Guid.NewGuid():N}";
             var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
             Directory.CreateDirectory(artifactsRoot);
@@ -115,7 +117,7 @@ public static class OracleRuntimeSmokeCli
                 throw new InvalidOperationException("Runtime resource exhaustion: stale smoke-owned Docker resources could not be cleaned before starting a new Oracle smoke run.");
             }
 
-            var inventoryBefore = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
+            var inventoryBefore = await inventoryService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
             await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "before", inventoryBefore, CancellationToken.None);
 
             var preflight = await ownershipService.CapturePreflightAsync(CancellationToken.None);
@@ -183,7 +185,7 @@ public static class OracleRuntimeSmokeCli
 
             File.WriteAllText(Path.Combine(artifactsRoot, "provisioning.log"), provisioningLog.ToString());
             await CaptureRuntimeArtifactsAsync(snapshot.Paths, definition, artifactsRoot);
-            var activeInventory = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
+            var activeInventory = await inventoryService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
             await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "active", activeInventory, CancellationToken.None);
 
             summary = summary with { Result = "Live smoke completed", FailureClassification = null };
@@ -194,16 +196,33 @@ public static class OracleRuntimeSmokeCli
         {
             OrdsFailureDiagnostic? ordsDiagnostic = null;
             ApexFailureDiagnostic? apexDiagnostic = null;
-            if (summary is not null && snapshot is not null && definition is not null)
+            WorkspaceSnapshot? failureSnapshot = null;
+            WorkspaceDefinition? failureDefinition = null;
+            SmokeRunSummary? failureSummary = null;
+            if (summary is { } currentSummary && snapshot is { } currentSnapshot && definition is { } currentDefinition)
             {
-                ordsDiagnostic = await CaptureOrdsFailureDiagnosticsAsync(snapshot.Paths, definition, summary.ArtifactsRoot);
-                apexDiagnostic = await CaptureApexFailureDiagnosticsAsync(snapshot.Paths.RootPath, definition, summary.ArtifactsRoot);
-                var activeInventory = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = summary.RunId }, CancellationToken.None);
-                await WriteRuntimeInventoryArtifactsAsync(summary.ArtifactsRoot, "active", activeInventory, CancellationToken.None);
+                failureSnapshot = currentSnapshot;
+                failureDefinition = currentDefinition;
+                failureSummary = currentSummary;
+                ordsDiagnostic = await CaptureOrdsFailureDiagnosticsAsync(currentSnapshot.Paths, currentDefinition, currentSummary.ArtifactsRoot);
+                apexDiagnostic = await CaptureApexFailureDiagnosticsAsync(currentSnapshot.Paths.RootPath, currentDefinition, currentSummary.ArtifactsRoot);
+                var currentRunId = currentSummary.RunId;
+                if (currentRunId is not null && !string.IsNullOrWhiteSpace(currentRunId))
+                {
+                    var runId = currentRunId.Trim();
+                    var currentOwnershipService = runtimeOwnershipService;
+                    if (currentOwnershipService is null)
+                    {
+                        throw new InvalidOperationException("Validation tooling failure: runtime ownership service was not initialized before failure diagnostics.");
+                    }
+
+                    var activeInventory = await currentOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
+                    await WriteRuntimeInventoryArtifactsAsync(currentSummary.ArtifactsRoot, "active", activeInventory, CancellationToken.None);
+                }
             }
 
-            var oracleSettings = definition is null ? null : OracleWorkspaceSettings.From(definition);
-            var httpProbe = oracleSettings is not null && OracleWorkspaceFamily.HasApex(definition!)
+            var oracleSettings = failureDefinition is null ? null : OracleWorkspaceSettings.From(failureDefinition);
+            var httpProbe = oracleSettings is not null && failureDefinition is not null && OracleWorkspaceFamily.HasApex(failureDefinition)
                 ? await ProbeOracleHostEndpointsAsync(oracleSettings)
                 : null;
 
@@ -950,6 +969,12 @@ public static class OracleRuntimeSmokeCli
             || message.Contains("APEX login route not reachable", StringComparison.OrdinalIgnoreCase))
         {
             return SmokeFailureClassification.OracleRuntimeFailure;
+        }
+
+        if (message.Contains("Oracle APEX prerequisite validation failed", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Oracle APEX installation requires the Oracle XML Database database component", StringComparison.OrdinalIgnoreCase))
+        {
+            return SmokeFailureClassification.ApexPrerequisiteFailure;
         }
 
         if (message.Contains("docker", StringComparison.OrdinalIgnoreCase)

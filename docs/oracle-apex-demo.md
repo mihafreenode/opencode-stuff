@@ -8,6 +8,38 @@ Oracle APEX media is user-provided. The repository does not redistribute Oracle 
 
 Place the official Oracle APEX ZIP under `.local/oracle/downloads/apex/` as `apex.zip` or an official filename such as `apex_24.2_en.zip`, then run `Prepare Workspace`.
 
+## Oracle Image Compatibility
+
+The default Oracle image for APEX-capable templates is:
+
+- `gvenzl/oracle-free:23`
+
+This is the default because fresh volumes created from `gvenzl/oracle-free:23-slim-faststart` expose `XDB` in the registry as `INVALID` even when `XMLType` and `DBMS_XDB` work. Oracle APEX 26.1.0 still rejects that database in `apxprereq.sql`, so the faststart image is not the generated default for APEX workspaces.
+
+PL/SQL-only workspaces may have different compatibility requirements because they do not run the APEX installer prerequisite gate.
+
+You can override the database image in `workspace.yaml`:
+
+```yaml
+oracle:
+  databaseImage: gvenzl/oracle-free:23
+```
+
+After changing `oracle.databaseImage`, reset the runtime so Oracle creates a fresh data volume for the new image.
+
+The supported setup does not rely on directly calling `DBMS_REGISTRY.VALID('XDB')`.
+
+## ORDS Runtime Layout
+
+The generated ORDS setup separates immutable workspace content from mutable runtime state.
+
+- generated ORDS scripts are bind-mounted read-only from the workspace to `/opt/opencode-workspace/ords`
+- mutable ORDS config, logs, and runtime state live in a named Docker volume mounted at `/etc/ords/config`
+- the ORDS container runs as non-root `oracle`
+- observed effective UID/GID: `54321:54321`
+
+Do not bind-mount a host-owned directory over `/etc/ords/config` in the generated setup. Replacing that image-owned writable directory with a host path can make ORDS unable to create its log and config state.
+
 ## What This Demo Is For
 
 This workspace focuses on the traditional Oracle APEX Builder workflow.

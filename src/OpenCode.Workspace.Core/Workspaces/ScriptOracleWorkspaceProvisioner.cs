@@ -5,7 +5,6 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class ScriptOracleWorkspaceProvisioner : IOracleWorkspaceProvisioner
 {
-    private const string OracleDemoImage = "gvenzl/oracle-free:23-slim-faststart";
     private const string XdbInvalidReason = "Reason: Oracle XML Database (XDB) is invalid.";
     private readonly IContainerRuntime _containerRuntime;
 
@@ -69,7 +68,7 @@ public sealed class ScriptOracleWorkspaceProvisioner : IOracleWorkspaceProvision
             "-e",
             "OPENCODE_ORACLE_VOLUME_SCOPE=managed-workspace-exclusive",
             "-e",
-            $"OPENCODE_ORACLE_DATABASE_IMAGE={OracleDemoImage}",
+            $"OPENCODE_ORACLE_DATABASE_IMAGE={OracleDatabaseImageCatalog.ResolveDatabaseImage(snapshot.Definition)}",
             _containerRuntime.GetWorkspaceContainerName(snapshot.Definition),
             "bash",
             "/opt/opencode-workspace/config/oracle-provision.sh",

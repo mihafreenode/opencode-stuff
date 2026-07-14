@@ -3,7 +3,7 @@
 id: oracle-demo
 displayName: Oracle Free Demo Database
 description: Oracle Database Free service for fully local PL/SQL onboarding and demonstration.
-image: gvenzl/oracle-free:23-slim-faststart
+image: gvenzl/oracle-free:23
 profiles:
   - oracle-demo
 hostPorts:
