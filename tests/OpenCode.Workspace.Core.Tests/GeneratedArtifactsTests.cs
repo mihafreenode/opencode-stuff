@@ -2,6 +2,7 @@ using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
 
@@ -190,6 +191,110 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("    depends_on:", compose);
         Assert.Contains("      oracle-demo:", compose);
         Assert.Contains("        condition: service_healthy", compose);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForWindowsBindMountServiceVolume_DoesNotDeclareDriveLetterAsNamedVolume()
+    {
+        var generator = new ComposeGenerator();
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "windows-bind-demo",
+                    Image = "ubuntu:24.04",
+                },
+                Features = new List<string> { "core" },
+                Services = new List<string> { "files" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services =
+            [
+                new ServiceManifest
+                {
+                    Id = "files",
+                    Image = "ubuntu:24.04",
+                    Volumes = new List<string> { "C:/workspace/cache:/cache" },
+                },
+            ],
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var compose = generator.Generate(resolved, WorkspacePathBuilder.Build(Path.Combine(Path.GetTempPath(), "windows-bind-demo")));
+
+        Assert.DoesNotContain("\nvolumes:\n  C:\n", compose, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComposeGenerator_ForWindowsWorkspacePaths_DoesNotTreatDriveLetterAsNamedVolume()
+    {
+        var generator = new ComposeGenerator();
+        var resolved = new ResolvedWorkspace
+        {
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata
+                {
+                    Name = "windows-paths-demo",
+                    Image = "ubuntu:24.04",
+                },
+                Features = new List<string> { "core" },
+            },
+            Features = Array.Empty<FeatureManifest>(),
+            Capabilities = Array.Empty<CapabilityManifest>(),
+            Services = Array.Empty<ServiceManifest>(),
+            AptPackages = Array.Empty<string>(),
+            NpmPackages = Array.Empty<string>(),
+            PipPackages = Array.Empty<string>(),
+            PostInstallCommands = Array.Empty<string>(),
+        };
+
+        var paths = new WorkspacePaths
+        {
+            RootPath = "C:/workspaces/windows-paths-demo",
+            GitIgnorePath = "C:/workspaces/windows-paths-demo/.gitignore",
+            OpencodePath = "C:/workspaces/windows-paths-demo/.opencode",
+            OpencodeLocalPath = "C:/workspaces/windows-paths-demo/.opencode/local",
+            WorkspaceYamlRelativePath = "workspace.yaml",
+            WorkspaceYamlPath = "C:/workspaces/windows-paths-demo/workspace.yaml",
+            ComposePath = "C:/workspaces/windows-paths-demo/compose.yaml",
+            EnvironmentFilePath = "C:/workspaces/windows-paths-demo/.env",
+            MountsRootPath = "C:/workspaces/windows-paths-demo/mounts",
+            InboxPath = "C:/workspaces/windows-paths-demo/mounts/inbox",
+            WorkspacePath = "C:/workspaces/windows-paths-demo",
+            UserPath = "C:/workspaces/windows-paths-demo/mounts/user",
+            HomePath = "C:/workspaces/windows-paths-demo/mounts/home",
+            ConfigPath = "C:/workspaces/windows-paths-demo/mounts/config",
+            ProvisionScriptPath = "C:/workspaces/windows-paths-demo/mounts/config/provision.sh",
+            StarshipConfigPath = "C:/workspaces/windows-paths-demo/mounts/config/starship.toml",
+            ShellInitScriptPath = "C:/workspaces/windows-paths-demo/mounts/config/opencode-shell-init.sh",
+            OpencodeWorkspaceShellPath = "C:/workspaces/windows-paths-demo/mounts/config/opencode-workspace-shell.sh",
+            ScreenConfigPath = "C:/workspaces/windows-paths-demo/mounts/config/screenrc",
+            AttachWrapperScriptPath = "C:/workspaces/windows-paths-demo/attach-workspace.ps1",
+            AttachDiagnosticsLogPath = "C:/workspaces/windows-paths-demo/attach-diagnostics.log",
+            TerminalDiagnosticsScriptPath = "C:/workspaces/windows-paths-demo/terminal-diagnostics.ps1",
+            RuntimeStatePath = "C:/workspaces/windows-paths-demo/.opencode/local/runtime-state.yaml",
+            AppliedStatePath = "C:/workspaces/windows-paths-demo/mounts/config/applied-state.yaml",
+            HistoryPath = "C:/workspaces/windows-paths-demo/history",
+            CheckpointsPath = "C:/workspaces/windows-paths-demo/history/checkpoints",
+            CheckpointIndexPath = "C:/workspaces/windows-paths-demo/history/checkpoints/index.yaml",
+            TimelinePath = "C:/workspaces/windows-paths-demo/history/timeline.yaml",
+            RuntimesPath = "C:/workspaces/windows-paths-demo/runtimes",
+            DefaultRuntimePath = "C:/workspaces/windows-paths-demo/runtimes/default.yaml",
+            ArtifactsPath = "C:/workspaces/windows-paths-demo/artifacts",
+            ArtifactRunsPath = "C:/workspaces/windows-paths-demo/artifacts/runs",
+            ArtifactIndexPath = "C:/workspaces/windows-paths-demo/artifacts/index.json",
+        };
+
+        var compose = generator.Generate(resolved, paths);
+
+        Assert.Contains("      - C:/workspaces/windows-paths-demo:/workspace", compose, StringComparison.Ordinal);
     }
 
     [Fact]

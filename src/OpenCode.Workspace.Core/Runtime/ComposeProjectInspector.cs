@@ -220,7 +220,7 @@ internal static class ComposeProjectInspector
                 continue;
             }
 
-            var source = scalar.Value.Split(':', 2)[0].Trim();
+            var source = ComposeVolumeReferenceParser.GetSource(scalar.Value).Trim();
             if (IsNamedVolumeReference(source))
             {
                 references.Add(source);

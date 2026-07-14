@@ -175,7 +175,7 @@ public sealed class ComposeGenerator
         }
 
         var namedVolumes = workspace.Services.SelectMany(service => ResolveServiceVolumes(service, paths))
-            .Select(volume => volume.Split(':', 2)[0])
+            .Select(ComposeVolumeReferenceParser.GetSource)
             .Where(volume => !volume.Contains('/') && !volume.Contains('\\'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(volume => volume, StringComparer.OrdinalIgnoreCase)
