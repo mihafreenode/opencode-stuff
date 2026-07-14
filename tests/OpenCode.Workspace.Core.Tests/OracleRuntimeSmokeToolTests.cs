@@ -61,8 +61,20 @@ public sealed class OracleRuntimeSmokeToolTests
             "EnvironmentFailure",
             "ProductFailure",
             "OracleRuntimeFailure",
+            "RuntimeResourceExhaustion",
         ],
             Enum.GetNames<SmokeFailureClassification>());
+    }
+
+    [Fact]
+    public void ClassifyFailure_RecognizesRuntimeResourceExhaustion()
+    {
+        var method = typeof(OracleRuntimeSmokeCli).GetMethod("ClassifyFailure", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var classification = (SmokeFailureClassification)method!.Invoke(null, [new InvalidOperationException("Cannot allocate memory while starting ORDS")])!;
+
+        Assert.Equal(SmokeFailureClassification.RuntimeResourceExhaustion, classification);
     }
 
     [Fact]

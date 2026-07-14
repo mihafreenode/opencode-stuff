@@ -227,6 +227,7 @@ public sealed class WorkspaceImageBuilderTests
             => _images[imageTag] = imageHash;
 
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
+        public string GetServiceContainerName(WorkspaceDefinition definition, string serviceName) => DockerService.GetServiceContainerName(definition, serviceName);
 
         public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => [];
 
@@ -253,6 +254,7 @@ public sealed class WorkspaceImageBuilderTests
         public Task<ProcessResult> NormalizeWorkspaceFilePermissionsAsync(string workspaceRootPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RunCommandInServiceContainerAsync(WorkspaceDefinition definition, string serviceName, IEnumerable<string> commandArguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
         public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         {

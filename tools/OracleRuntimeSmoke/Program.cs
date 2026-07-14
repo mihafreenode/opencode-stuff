@@ -17,6 +17,7 @@ public enum SmokeFailureClassification
     EnvironmentFailure,
     ProductFailure,
     OracleRuntimeFailure,
+    RuntimeResourceExhaustion,
 }
 
 public enum SmokeValidationHost
@@ -67,8 +68,13 @@ public static class OracleRuntimeSmokeCli
         {
             var options = Parse(args);
             var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
+            var processRunner = new ProcessRunner();
+            var ownershipService = new SmokeRuntimeOwnershipService(processRunner);
+            var runId = $"{CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow)}-{Guid.NewGuid():N}";
             var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
             Directory.CreateDirectory(artifactsRoot);
+
+            using var oracleLock = AcquireOracleSmokeLock();
 
             var wslDocker = ProbeDocker("wsl-current", "docker", "version");
             var windowsDocker = ProbeDockerFromWindows();
@@ -76,6 +82,7 @@ public static class OracleRuntimeSmokeCli
 
             summary = new SmokeRunSummary(options.TemplateId, artifactsRoot)
             {
+                RunId = runId,
                 WorkspaceRoot = options.WorkspaceRoot,
                 SelectedHost = selectedHost.ToString().ToLowerInvariant(),
                 WslDockerSuccess = wslDocker.Success,
@@ -96,6 +103,23 @@ public static class OracleRuntimeSmokeCli
             var workspaceRoot = options.WorkspaceRoot ?? Path.Combine(Path.GetTempPath(), $"oracle-runtime-smoke-{WorkspacePathBuilder.Slugify(options.TemplateId)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}");
             summary = summary with { WorkspaceRoot = workspaceRoot };
             WriteSummary(artifactsRoot, summary);
+
+            var preflightCleanup = await ownershipService.CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "text"), CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "smoke-preflight-cleanup.txt"), string.Join(Environment.NewLine, preflightCleanup.Actions.Concat(preflightCleanup.Errors)), CancellationToken.None);
+            if (!preflightCleanup.Succeeded)
+            {
+                throw new InvalidOperationException("Runtime resource exhaustion: stale smoke-owned Docker resources could not be cleaned before starting a new Oracle smoke run.");
+            }
+
+            var preflight = await ownershipService.CapturePreflightAsync(CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "host-memory.txt"), preflight.HostMemorySummary);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-memory.txt"), preflight.DockerMemorySummary);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-disk-usage.txt"), preflight.DockerDiskUsageSummary);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-stats.txt"), preflight.DockerStatsSummary);
+            if (preflight.ActiveSmokeResources.Count > 0)
+            {
+                throw new InvalidOperationException("Runtime resource exhaustion: smoke-owned Docker resources are still active after cleanup verification.");
+            }
 
             var provider = new BuiltInCatalogProvider(Path.Combine(repositoryRoot, "catalog"));
             var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
@@ -123,6 +147,7 @@ public static class OracleRuntimeSmokeCli
 
             Console.WriteLine($"[stage] Creating workspace for template '{options.TemplateId}'.");
             snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition, Log);
+            ApplySmokeOwnershipLabels(snapshot.Paths.ComposePath, definition, runId, workspaceRoot);
             CaptureGeneratedArtifacts(snapshot.Paths, artifactsRoot);
 
             if (options.DryRun)
@@ -210,6 +235,20 @@ public static class OracleRuntimeSmokeCli
             }
 
             return 1;
+        }
+        finally
+        {
+            if (summary is not null)
+            {
+                try
+                {
+                    var cleanup = await new SmokeRuntimeOwnershipService(new ProcessRunner()).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
+                    await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanup.Actions.Concat(cleanup.Errors)), CancellationToken.None);
+                }
+                catch
+                {
+                }
+            }
         }
     }
 
@@ -848,6 +887,16 @@ public static class OracleRuntimeSmokeCli
     {
         var message = exception.ToString();
 
+        if (message.Contains("Cannot allocate memory", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("OutOfMemoryError", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unable to create native thread", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("cannot fork", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("no space left on device", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Runtime resource exhaustion", StringComparison.OrdinalIgnoreCase))
+        {
+            return SmokeFailureClassification.RuntimeResourceExhaustion;
+        }
+
         if (message.Contains("Validation tooling failure", StringComparison.OrdinalIgnoreCase)
             || exception is ArgumentException)
         {
@@ -893,6 +942,7 @@ public static class OracleRuntimeSmokeCli
         var lines = new[]
         {
             $"template={summary.TemplateId}",
+            $"run_id={summary.RunId}",
             $"artifacts_root={summary.ArtifactsRoot}",
             $"workspace_root={summary.WorkspaceRoot}",
             $"selected_host={summary.SelectedHost}",
@@ -942,6 +992,93 @@ public static class OracleRuntimeSmokeCli
                 : $"'{argument.Replace("'", "'\\''")}'"
             : argument;
 
+    private static IDisposable AcquireOracleSmokeLock()
+    {
+        var lockPath = Path.Combine(Path.GetTempPath(), "opencode-oracle-smoke.lock");
+        try
+        {
+            var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return new SmokeLockHandle(stream);
+        }
+        catch (IOException exception)
+        {
+            throw new InvalidOperationException("Runtime resource exhaustion: another Oracle smoke run already owns the host-wide smoke lock.", exception);
+        }
+    }
+
+    private static void ApplySmokeOwnershipLabels(string composePath, WorkspaceDefinition definition, string runId, string workspaceRoot)
+    {
+        var project = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
+        var labels = new[]
+        {
+            $"{SmokeRuntimeOwnershipLabels.Owner}: {SmokeRuntimeOwnershipLabels.OwnerValue}",
+            $"{SmokeRuntimeOwnershipLabels.RunId}: {runId}",
+            $"{SmokeRuntimeOwnershipLabels.Template}: {OracleWorkspaceFamily.Detect(definition).ToString().ToLowerInvariant()}",
+            $"{SmokeRuntimeOwnershipLabels.CreatedBy}: {SmokeRuntimeOwnershipLabels.CreatedByValue}",
+            $"{SmokeRuntimeOwnershipLabels.Project}: {project}",
+            $"{SmokeRuntimeOwnershipLabels.WorkspaceRoot}: {workspaceRoot.Replace("\\", "/", StringComparison.Ordinal)}",
+            $"{SmokeRuntimeOwnershipLabels.ComposePath}: {composePath.Replace("\\", "/", StringComparison.Ordinal)}",
+        };
+
+        var lines = File.ReadAllLines(composePath).ToList();
+        InsertLabels(lines, "services:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
+        InsertLabels(lines, "networks:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
+        InsertLabels(lines, "volumes:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
+        File.WriteAllLines(composePath, lines);
+    }
+
+    private static void InsertLabels(List<string> lines, string sectionHeader, int childIndent, IReadOnlyList<string> labels, Func<string, bool> sectionMatcher)
+    {
+        var sectionIndex = lines.FindIndex(line => string.Equals(line.Trim(), sectionHeader.Trim(), StringComparison.Ordinal));
+        if (sectionIndex < 0)
+        {
+            return;
+        }
+
+        for (var index = sectionIndex + 1; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            if (!line.StartsWith(new string(' ', childIndent), StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!sectionMatcher(line))
+            {
+                continue;
+            }
+
+            if (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("labels:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var indent = line[..line.IndexOf(line.TrimStart(), StringComparison.Ordinal)] + "  ";
+            lines.Insert(index + 1, indent + "labels:");
+            for (var labelIndex = 0; labelIndex < labels.Count; labelIndex++)
+            {
+                lines.Insert(index + 2 + labelIndex, indent + "  " + labels[labelIndex]);
+            }
+
+            index += labels.Count + 1;
+        }
+    }
+
+    private sealed class SmokeLockHandle : IDisposable
+    {
+        private readonly FileStream _stream;
+
+        public SmokeLockHandle(FileStream stream)
+        {
+            _stream = stream;
+        }
+
+        public void Dispose()
+        {
+            _stream.Dispose();
+        }
+    }
+
     private sealed class NoOpTerminalLauncher : ITerminalLauncher
     {
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
@@ -951,6 +1088,7 @@ public static class OracleRuntimeSmokeCli
 
 public sealed record SmokeRunSummary(string TemplateId, string ArtifactsRoot)
 {
+    public string? RunId { get; init; }
     public string? WorkspaceRoot { get; init; }
     public string? SelectedHost { get; init; }
     public bool WslDockerSuccess { get; init; }

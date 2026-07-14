@@ -20,6 +20,8 @@ public sealed class DockerContainerRuntime : IContainerRuntime
 
     public string GetWorkspaceContainerName(WorkspaceDefinition definition) => DockerService.GetWorkspaceContainerName(definition);
 
+    public string GetServiceContainerName(WorkspaceDefinition definition, string serviceName) => DockerService.GetServiceContainerName(definition, serviceName);
+
     public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => DockerService.CreatePermissionRepairArguments(workspaceRootPath);
 
     public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null)
@@ -87,6 +89,9 @@ public sealed class DockerContainerRuntime : IContainerRuntime
 
     public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.RunSimpleDockerCommandAsync(arguments, log, cancellationToken);
+
+    public Task<ProcessResult> RunCommandInServiceContainerAsync(WorkspaceDefinition definition, string serviceName, IEnumerable<string> commandArguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+        => _dockerService.RunCommandInServiceContainerAsync(definition, serviceName, commandArguments, log, cancellationToken);
 
     public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         => _dockerService.ListOpenCodeSessionsAsync(definition, log, cancellationToken);

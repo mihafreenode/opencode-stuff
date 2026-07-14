@@ -1,5 +1,7 @@
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
+using System.Text.Json;
 
 namespace OpenCode.Workspace.Cli;
 
@@ -99,12 +101,56 @@ public static class CliOutputFormatter
             "  opencode doctor",
             "  opencode doctor --workspace <path>",
             "  opencode debug-workspace-discovery",
+            "  opencode smoke cleanup --dry-run",
+            "  opencode smoke cleanup --all",
+            "  opencode smoke cleanup --run-id <run-id>",
+            "  opencode smoke cleanup --format json",
             "  opencode validate-platform --target linux/amd64",
             "  opencode validate-platform --target linux/arm64",
             "  opencode validate-platform --workspace <path> --target linux/arm64",
             "  opencode validate-platform --target linux/arm64 --output report.md",
             "  opencode --help",
         });
+    }
+
+    public static string FormatSmokeCleanup(SmokeCleanupResult result, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                result.Succeeded,
+                result.DryRun,
+                Resources = result.Resources,
+                Actions = result.Actions,
+                Errors = result.Errors,
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Smoke Cleanup",
+            string.Empty,
+            $"Result: {(result.Succeeded ? "success" : "failure")}",
+            $"Dry run: {result.DryRun}",
+            $"Resources discovered: {result.Resources.Count}",
+        };
+
+        if (result.Actions.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Actions:");
+            lines.AddRange(result.Actions.Select(item => $"  {item}"));
+        }
+
+        if (result.Errors.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Errors:");
+            lines.AddRange(result.Errors.Select(item => $"  {item}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     public static string FormatWorkspaceDiscovery(WorkspaceLoadReport report)

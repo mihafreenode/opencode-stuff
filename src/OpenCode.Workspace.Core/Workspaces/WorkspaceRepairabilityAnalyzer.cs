@@ -60,8 +60,17 @@ public static class WorkspaceRepairabilityAnalyzer
             }
 
             if (reason.Contains("XDB is invalid", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("(XDB) is invalid", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("SYSDBA connection", StringComparison.OrdinalIgnoreCase)
+                || reason.Contains("(XDB) is invalid", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(health.RecommendedAction, "Reset Runtime.", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Create(WorkspaceRepairability.CleanupRepair, "HIGH", evidence, "Reset Runtime.", "Medium", "4-6 minutes");
+                }
+
+                return Create(WorkspaceRepairability.ManualRepair, "HIGH", evidence, string.IsNullOrWhiteSpace(health.RecommendedAction) ? "Troubleshoot Workspace." : health.RecommendedAction, "Medium", "5-10 minutes");
+            }
+
+            if (reason.Contains("SYSDBA connection", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("pluggable database", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("not open for writes", StringComparison.OrdinalIgnoreCase)
                 || reason.Contains("ORDS) did not become reachable", StringComparison.OrdinalIgnoreCase)

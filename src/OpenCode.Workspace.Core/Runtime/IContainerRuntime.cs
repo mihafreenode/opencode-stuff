@@ -9,6 +9,8 @@ public interface IContainerRuntime
 
     string GetWorkspaceContainerName(WorkspaceDefinition definition);
 
+    string GetServiceContainerName(WorkspaceDefinition definition, string serviceName);
+
     IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath);
 
     Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null);
@@ -54,6 +56,8 @@ public interface IContainerRuntime
     Task<ProcessResult> NormalizeWorkspaceFilePermissionsAsync(string workspaceRootPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default);
 
     Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default);
+
+    Task<ProcessResult> RunCommandInServiceContainerAsync(WorkspaceDefinition definition, string serviceName, IEnumerable<string> commandArguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default);
 
     Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default);
 

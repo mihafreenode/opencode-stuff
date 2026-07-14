@@ -641,8 +641,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("oracle_set_stage 'Configuring ORDS'", script);
         Assert.Contains("command -v sqlplus >/dev/null 2>&1", script);
         Assert.Contains("command -v sqlcl >/dev/null 2>&1", script);
-        Assert.Contains("SELECT status FROM dba_registry WHERE comp_id = 'XDB';", script);
+        Assert.Contains("SELECT comp_id || '|' || comp_name || '|' || version || '|' || status || '|' || modified FROM dba_registry WHERE comp_id = 'XDB';", script);
+        Assert.DoesNotContain("TO_CHAR(modified", script, StringComparison.Ordinal);
         Assert.Contains("Oracle XML Database (XDB) is invalid.", script);
+        Assert.Contains("PROMPT __OPENCODE_RESULT_BEGIN__", script);
     }
 
     [Fact]

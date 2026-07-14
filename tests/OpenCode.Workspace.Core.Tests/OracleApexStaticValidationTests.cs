@@ -348,7 +348,8 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(apexScript.IndexOf("oracle_set_stage 'Installing APEX'", StringComparison.Ordinal) > apexScript.IndexOf("oracle_set_stage 'Provisioning Oracle'", StringComparison.Ordinal));
         Assert.Contains("Oracle administrator password does not match the running database.", apexScript);
         Assert.Contains("Required pluggable database is not open.", apexScript);
-        Assert.Contains("${ORACLE_SERVICE_NAME} open_mode=${pdb_open_mode:-missing}", apexScript);
+        Assert.Contains("wait_for_pdb_read_write", apexScript);
+        Assert.Contains("wait_for_xdb_ready || fail_for_invalid_xdb", apexScript);
         Assert.Contains("ORACLE_APEX_MEDIA_DIR", apexScript);
         Assert.DoesNotContain("/ords/apex_admin", apexScript, StringComparison.Ordinal);
         Assert.DoesNotContain(") || true", apexScript, StringComparison.Ordinal);

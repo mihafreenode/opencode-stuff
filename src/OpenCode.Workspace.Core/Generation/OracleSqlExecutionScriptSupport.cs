@@ -4,6 +4,9 @@ namespace OpenCode.Workspace.Core.Generation;
 
 public static class OracleSqlExecutionScriptSupport
 {
+    public const string ResultBeginMarker = "__OPENCODE_RESULT_BEGIN__";
+    public const string ResultEndMarker = "__OPENCODE_RESULT_END__";
+
     public static string NormalizeScriptText(string content)
         => NormalizeLineEndings(content);
 
@@ -85,6 +88,15 @@ oracle_sql_sanitize_output() {
   sed -E 's#([A-Za-z0-9_]+)/[^[:space:]@]+@//[^[:space:]]+#\1/[redacted]@//[redacted]#g; s#(IDENTIFIED BY )"[^"]+"#\1"[redacted]"#g' "$input_file"
 }
 
+oracle_sql_extract_result() {
+  local input_file=$1
+  awk '
+    $0 == "__OPENCODE_RESULT_BEGIN__" { capture=1; next }
+    $0 == "__OPENCODE_RESULT_END__" { capture=0; exit }
+    capture { print }
+  ' "$input_file"
+}
+
 oracle_sql_write_wrapper() {
   local mode=$1
   local normalized_file=$2
@@ -100,14 +112,20 @@ SET PAGESIZE 0
 SET FEEDBACK OFF
 SET HEADING OFF
 SET VERIFY OFF
+SET ECHO OFF
 SET TRIMSPOOL ON
 SQL
+      printf 'PROMPT __OPENCODE_RESULT_BEGIN__\n' >>"$wrapper_file"
       cat "$normalized_file" >>"$wrapper_file"
       printf ';\n' >>"$wrapper_file"
+      printf 'PROMPT __OPENCODE_RESULT_END__\n' >>"$wrapper_file"
       ;;
     plsql-block)
       cat "$normalized_file" >>"$wrapper_file"
       printf '\n' >>"$wrapper_file"
+      ;;
+    query-script)
+      cat "$normalized_file" >>"$wrapper_file"
       ;;
     script|sqlcl-command-script)
       printf '@%s\n' "$normalized_file" >>"$wrapper_file"
@@ -168,10 +186,14 @@ oracle_sql_run_file() {
     exit_code=$?
   fi
 
-  cat "$output_file"
   if [ "$exit_code" -ne 0 ]; then
+    cat "$output_file"
     preview=$(oracle_sql_preview_file "$normalized_file")
     oracle_sql_report_failure "$phase" "$client" "$mode" "$source_id" "$preview" "$exit_code" "$output_file"
+  elif [ "$mode" = 'single-sql-statement' ] || [ "$mode" = 'query-script' ]; then
+    oracle_sql_extract_result "$output_file"
+  else
+    cat "$output_file"
   fi
 
   rm -rf "$work_dir"

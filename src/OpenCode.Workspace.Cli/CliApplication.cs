@@ -15,6 +15,7 @@ public sealed class CliApplication
     private readonly Func<string, CancellationToken, Task<WorkspaceDoctorResult>> _doctorRunner;
     private readonly Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>> _platformValidationRunner;
     private readonly Func<CancellationToken, Task<WorkspaceLoadReport>> _workspaceDiscoveryRunner;
+    private readonly Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>> _smokeCleanupRunner;
 
     public CliApplication(TextWriter output, TextWriter error)
         : this(output, error, null, null)
@@ -26,13 +27,15 @@ public sealed class CliApplication
         TextWriter error,
         Func<string, CancellationToken, Task<WorkspaceDoctorResult>>? doctorRunner,
         Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>>? platformValidationRunner,
-        Func<CancellationToken, Task<WorkspaceLoadReport>>? workspaceDiscoveryRunner = null)
+        Func<CancellationToken, Task<WorkspaceLoadReport>>? workspaceDiscoveryRunner = null,
+        Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>>? smokeCleanupRunner = null)
     {
         _output = output;
         _error = error;
         _doctorRunner = doctorRunner ?? RunDoctorAsync;
         _platformValidationRunner = platformValidationRunner ?? RunPlatformValidationAsync;
         _workspaceDiscoveryRunner = workspaceDiscoveryRunner ?? RunWorkspaceDiscoveryAsync;
+        _smokeCleanupRunner = smokeCleanupRunner ?? RunSmokeCleanupAsync;
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
@@ -50,6 +53,7 @@ public sealed class CliApplication
                 "doctor" => await RunDoctorCommandAsync(args[1..], cancellationToken),
                 "validate-platform" => await RunValidatePlatformCommandAsync(args[1..], cancellationToken),
                 "debug-workspace-discovery" => await RunWorkspaceDiscoveryCommandAsync(cancellationToken),
+                "smoke" => await RunSmokeCommandAsync(args[1..], cancellationToken),
                 _ => await FailWithHelpAsync($"Unknown command '{args[0]}'."),
             };
         }
@@ -101,6 +105,24 @@ public sealed class CliApplication
         return 0;
     }
 
+    private async Task<int> RunSmokeCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        if (args.Length == 0 || !string.Equals(args[0], "cleanup", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Missing or unsupported smoke subcommand. Use 'smoke cleanup'.");
+        }
+
+        var options = new SmokeCleanupOptions(
+            DryRun: args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase),
+            IncludeAll: args.Contains("--all", StringComparer.OrdinalIgnoreCase) || ParseOptionValue(args, "--run-id") is null,
+            RunId: ParseOptionValue(args, "--run-id"),
+            OutputFormat: ParseOptionValue(args, "--format") ?? "text");
+
+        var result = await _smokeCleanupRunner(options, cancellationToken);
+        await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeCleanup(result, options.OutputFormat));
+        return result.Succeeded ? 0 : 1;
+    }
+
     private async Task<int> FailWithHelpAsync(string message)
     {
         await _error.WriteLineAsync(message);
@@ -127,7 +149,11 @@ public sealed class CliApplication
                 if (argument.StartsWith("--", StringComparison.Ordinal)
                     && !string.Equals(argument, "--workspace", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--target", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(argument, "--output", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(argument, "--output", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--run-id", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--format", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--dry-run", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--all", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ArgumentException($"Unknown option '{argument}'.");
                 }
@@ -246,6 +272,9 @@ public sealed class CliApplication
         var result = await service.LoadWorkspaceItemsAsync(includeRuntimeInspection: true, progress: null, cancellationToken);
         return result.Report;
     }
+
+    private static Task<SmokeCleanupResult> RunSmokeCleanupAsync(SmokeCleanupOptions options, CancellationToken cancellationToken)
+        => new SmokeRuntimeOwnershipService(new ProcessRunner()).CleanupAsync(options, cancellationToken);
 
     internal static string? ResolveCatalogRoot(string workspacePath)
     {

@@ -830,6 +830,7 @@ application customer-orders-demo (
 
         public string RuntimeId => "docker";
         public string GetWorkspaceContainerName(WorkspaceDefinition definition) => "workspace";
+        public string GetServiceContainerName(WorkspaceDefinition definition, string serviceName) => DockerService.GetServiceContainerName(definition, serviceName);
         public IReadOnlyList<string> CreatePermissionRepairArguments(string workspaceRootPath) => [];
         public Task<ProcessResult> StartAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
         public Task<ProcessResult> ValidateAsync(WorkspacePaths paths, WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default, Func<CancellationToken, Task<bool>>? repairComposeAsync = null) => throw new NotImplementedException();
@@ -855,6 +856,7 @@ application customer-orders-demo (
         public Task<ProcessResult> NormalizeWorkspaceFilePermissionsAsync(string workspaceRootPath, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<ProcessResult> ExportOpenCodeSessionAsync(WorkspaceDefinition definition, string sessionId, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<ProcessResult> RunCommandInServiceContainerAsync(WorkspaceDefinition definition, string serviceName, IEnumerable<string> commandArguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
         public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         {

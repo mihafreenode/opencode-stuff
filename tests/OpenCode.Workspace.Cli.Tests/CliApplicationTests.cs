@@ -2,6 +2,7 @@ using System.Text;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Cli;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
 
 namespace OpenCode.Workspace.Cli.Tests;
 
@@ -284,5 +285,29 @@ public sealed class CliApplicationTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public async Task SmokeCleanup_DryRun_PrintsCleanupReport()
+    {
+        var output = new StringWriter();
+        var app = new CliApplication(
+            output,
+            new StringWriter(),
+            (_, _) => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException(),
+            _ => throw new NotSupportedException(),
+            (_, _) => Task.FromResult(new SmokeCleanupResult
+            {
+                Succeeded = true,
+                DryRun = true,
+                Actions = ["compose-down:oracle-smoke"],
+            }));
+
+        var exitCode = await app.RunAsync(["smoke", "cleanup", "--dry-run"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("OpenCode Smoke Cleanup", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("compose-down:oracle-smoke", output.ToString(), StringComparison.Ordinal);
     }
 }

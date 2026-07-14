@@ -142,6 +142,14 @@ public sealed class DockerService
             : RunDockerCommandAsync(argumentList, null, log, cancellationToken);
     }
 
+    public Task<ProcessResult> RunCommandInServiceContainerAsync(WorkspaceDefinition definition, string serviceName, IEnumerable<string> commandArguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
+    {
+        var containerName = GetServiceContainerName(definition, serviceName);
+        var arguments = new List<string> { "exec", containerName };
+        arguments.AddRange(commandArguments);
+        return RunDockerCommandAsync(arguments, null, log, cancellationToken, timeout: TimeSpan.FromMinutes(10));
+    }
+
     public Task<ProcessResult> ListOpenCodeSessionsAsync(WorkspaceDefinition definition, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
     {
         var containerName = GetWorkspaceContainerName(definition);
