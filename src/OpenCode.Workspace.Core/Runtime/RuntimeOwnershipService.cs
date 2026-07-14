@@ -78,31 +78,68 @@ public sealed class RuntimeOwnershipService
         };
         var resources = (await DiscoverOwnedResourcesAsync(filter, cancellationToken)).ToArray();
         var actions = new List<string>();
+        var warnings = new List<string>();
         var errors = new List<string>();
+        var composeDownAttempted = false;
+        var composeDownSucceeded = true;
+        var fallbackRemovalRequired = false;
 
         foreach (var project in resources.Where(item => !string.IsNullOrWhiteSpace(item.Project)).GroupBy(item => item.Project, StringComparer.OrdinalIgnoreCase))
         {
             var composePath = project.Select(item => item.ComposePath).FirstOrDefault(path => !string.IsNullOrWhiteSpace(path));
-            var workspaceRoot = project.Select(item => item.WorkspaceRoot).FirstOrDefault(path => !string.IsNullOrWhiteSpace(path));
             if (string.IsNullOrWhiteSpace(composePath) || !File.Exists(composePath))
             {
                 continue;
             }
 
+            var templateId = project.Select(item => item.Template).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            var requiredOracleService = IsOracleTemplate(templateId) ? "oracle-demo" : null;
+            var inspection = ComposeProjectInspector.InspectFile(composePath, requiredOracleService);
+            if (!inspection.IsValid)
+            {
+                foreach (var inspectionError in inspection.Errors)
+                {
+                    warnings.Add($"compose-validation:{project.Key}:{inspectionError}");
+                }
+
+                composeDownSucceeded = false;
+                fallbackRemovalRequired = true;
+                continue;
+            }
+
             actions.Add($"compose-down:{project.Key}");
+            composeDownAttempted = true;
             if (options.DryRun)
             {
                 continue;
             }
 
-            var result = await _containerRuntime.RunSimpleDockerCommandAsync(["compose", "--project-name", project.Key, "--file", composePath, "down", "-v", "--remove-orphans"], cancellationToken: cancellationToken);
+            var arguments = new List<string> { "compose", "--project-name", project.Key, "--file", composePath };
+            foreach (var profile in inspection.Profiles)
+            {
+                arguments.Add("--profile");
+                arguments.Add(profile);
+            }
+
+            arguments.AddRange(["down", "-v", "--remove-orphans"]);
+            var result = await _containerRuntime.RunSimpleDockerCommandAsync(arguments, cancellationToken: cancellationToken);
             if (!result.IsSuccess)
             {
-                errors.Add($"compose-down:{project.Key}:{result.StandardError}");
+                warnings.Add($"compose-down:{project.Key}:{result.StandardError}");
+                composeDownSucceeded = false;
+                fallbackRemovalRequired = true;
             }
         }
 
-        foreach (var resource in resources)
+        var resourcesToRemove = options.DryRun
+            ? resources
+            : (await DiscoverOwnedResourcesAsync(filter, cancellationToken)).ToArray();
+        if (resourcesToRemove.Length > 0)
+        {
+            fallbackRemovalRequired = true;
+        }
+
+        foreach (var resource in resourcesToRemove)
         {
             actions.Add($"remove:{resource.Type}:{resource.Name}");
             if (options.DryRun)
@@ -117,9 +154,11 @@ public sealed class RuntimeOwnershipService
             }
         }
 
+        var verificationSucceeded = true;
         if (!options.DryRun)
         {
             var verificationErrors = await VerifyCleanupAsync(filter, cancellationToken);
+            verificationSucceeded = verificationErrors.Count == 0;
             errors.AddRange(verificationErrors);
         }
 
@@ -127,12 +166,21 @@ public sealed class RuntimeOwnershipService
         {
             Succeeded = errors.Count == 0,
             DryRun = options.DryRun,
+            ComposeDownAttempted = composeDownAttempted,
+            ComposeDownSucceeded = composeDownSucceeded,
+            FallbackRemovalRequired = fallbackRemovalRequired,
+            VerificationSucceeded = options.DryRun || verificationSucceeded,
             Filter = filter,
             Resources = resources,
             Actions = actions,
+            Warnings = warnings,
             Errors = errors,
         };
     }
+
+    private static bool IsOracleTemplate(string? templateId)
+        => !string.IsNullOrWhiteSpace(templateId)
+           && templateId.StartsWith("oracle-", StringComparison.OrdinalIgnoreCase);
 
     public async Task<IReadOnlyList<string>> VerifyCleanupAsync(RuntimeOwnershipQuery? query = null, CancellationToken cancellationToken = default)
     {
@@ -370,8 +418,13 @@ public sealed class SmokeRuntimeOwnershipService
         {
             Succeeded = result.Succeeded,
             DryRun = result.DryRun,
+            ComposeDownAttempted = result.ComposeDownAttempted,
+            ComposeDownSucceeded = result.ComposeDownSucceeded,
+            FallbackRemovalRequired = result.FallbackRemovalRequired,
+            VerificationSucceeded = result.VerificationSucceeded,
             Resources = result.Resources,
             Actions = result.Actions,
+            Warnings = result.Warnings,
             Errors = result.Errors,
             SuspectedLegacyProjects = await DiscoverLegacyProjectsAsync(cancellationToken),
         };

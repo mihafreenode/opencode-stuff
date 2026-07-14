@@ -1033,9 +1033,47 @@ Agents should not claim a tool exists merely because documentation mentions it.
 set -eu
 
 config_dir=/etc/ords/config
-bootstrap_script="${config_dir}/init-ords-config.sh"
 settings_file="${config_dir}/global/settings.xml"
 pool_file="${config_dir}/databases/default/pool.xml"
+ords_log_dir="${config_dir}/logs"
+
+log_ords_identity() {
+  local uid gid user_name
+  uid=$(id -u)
+  gid=$(id -g)
+  user_name=$(whoami 2>/dev/null || printf 'unknown')
+  printf '[ords] Effective user: uid=%s gid=%s user=%s\n' "${uid}" "${gid}" "${user_name}" >&2
+}
+
+log_ords_path_state() {
+  for path in /etc/ords "${config_dir}" "${ords_log_dir}" /opt/opencode-workspace/ords; do
+    if [ -e "${path}" ]; then
+      stat -c '[ords] Path state: %u:%g %a %n' "${path}" >&2 || true
+    else
+      printf '[ords] Path state: missing %s\n' "${path}" >&2
+    fi
+  done
+}
+
+ensure_ords_writable_layout() {
+  mkdir -p "${config_dir}"
+  mkdir -p "${ords_log_dir}"
+
+  if [ ! -w "${config_dir}" ]; then
+    printf '[ords] Config directory is not writable: %s\n' "${config_dir}" >&2
+    log_ords_path_state
+    exit 1
+  fi
+
+  if [ ! -w "${ords_log_dir}" ]; then
+    printf '[ords] Logs directory is not writable: %s\n' "${ords_log_dir}" >&2
+    log_ords_path_state
+    exit 1
+  fi
+
+  printf '[ords] Logs directory writable: yes\n' >&2
+}
+
 validate_required_ords_config() {
   missing=()
   for name in ORACLE_ADMIN_USER ORACLE_PASSWORD ORACLE_HOST ORACLE_PORT ORACLE_SERVICE_NAME ORACLE_ORDS_PUBLIC_USER ORACLE_ORDS_PUBLIC_PASSWORD; do
@@ -1051,12 +1089,11 @@ validate_required_ords_config() {
 }
 
 validate_required_ords_config
+log_ords_identity
+log_ords_path_state
 
 ords_public_password="${ORACLE_ORDS_PUBLIC_PASSWORD}"
-ords_log_dir="${config_dir}/logs"
-
-mkdir -p "${config_dir}"
-mkdir -p "${ords_log_dir}"
+ensure_ords_writable_layout
 
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Initializing managed ORDS config in ${config_dir}." >&2
@@ -1107,6 +1144,18 @@ settings_file="${config_dir}/global/settings.xml"
 pool_file="${config_dir}/databases/default/pool.xml"
 ords_log_dir="${config_dir}/logs"
 
+uid=$(id -u)
+gid=$(id -g)
+user_name=$(whoami 2>/dev/null || printf 'unknown')
+printf '[ords] Effective user: uid=%s gid=%s user=%s\n' "${uid}" "${gid}" "${user_name}" >&2
+for path in /etc/ords "${config_dir}" "${ords_log_dir}" /opt/opencode-workspace/ords; do
+  if [ -e "${path}" ]; then
+    stat -c '[ords] Path state: %u:%g %a %n' "${path}" >&2 || true
+  else
+    printf '[ords] Path state: missing %s\n' "${path}" >&2
+  fi
+done
+
 if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
   echo "[oracle-ords] Managed ORDS config files are missing. Cannot repair ORDS database metadata." >&2
   echo "[oracle-ords] Expected files: ${settings_file}, ${pool_file}" >&2
@@ -1114,6 +1163,11 @@ if [ ! -f "${settings_file}" ] || [ ! -f "${pool_file}" ]; then
 fi
 
 mkdir -p "${ords_log_dir}"
+
+if [ ! -w "${ords_log_dir}" ]; then
+  echo "[ords] Logs directory is not writable for ORDS repair." >&2
+  exit 1
+fi
 
 printf '%s\n' "${ORACLE_PASSWORD}" | ords --config "${config_dir}" install repair --admin-user "${ORACLE_ADMIN_USER}" --db-hostname "${ORACLE_HOST}" --db-port "${ORACLE_PORT}" --db-servicename "${ORACLE_SERVICE_NAME}" --password-stdin --log-folder "${ords_log_dir}"
 echo "[oracle-ords] ORDS database repair completed." >&2

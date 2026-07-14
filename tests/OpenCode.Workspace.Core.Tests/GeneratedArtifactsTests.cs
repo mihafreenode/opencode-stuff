@@ -231,9 +231,15 @@ public sealed class GeneratedArtifactsTests
 
         Assert.True(files.TryGetValue(Path.Combine("mounts", "config", "ords", "init-ords-config.sh"), out var script));
         Assert.Contains("validate_required_ords_config", script, StringComparison.Ordinal);
+        Assert.Contains("[ords] Effective user: uid=", script, StringComparison.Ordinal);
+        Assert.Contains("[ords] Path state:", script, StringComparison.Ordinal);
+        Assert.Contains("[ords] Logs directory writable: yes", script, StringComparison.Ordinal);
         Assert.Contains("ords --config \"${config_dir}\" install --config-only", script, StringComparison.Ordinal);
         Assert.Contains("--gateway-user \"${ORACLE_APEX_PUBLIC_USER:-APEX_PUBLIC_USER}\"", script, StringComparison.Ordinal);
         Assert.Contains("exec ords --config \"${config_dir}\" serve --port 8080", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("chmod -R 777", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("echo \"${ORACLE_PASSWORD}\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("echo \"${ords_public_password}\"", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -703,8 +709,10 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("--proxy-user --password-stdin", script, StringComparison.Ordinal);
         Assert.Contains("config secret --password-stdin db.password", script, StringComparison.Ordinal);
         Assert.Contains("printf '%s\\n' \"${ords_public_password}\"", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("chmod -R 777", script, StringComparison.Ordinal);
 
         var repairScript = files[Path.Combine("mounts", "config", "ords", "repair-ords-db.sh")];
+        Assert.Contains("[ords] Effective user: uid=", repairScript, StringComparison.Ordinal);
         Assert.Contains("install repair", repairScript, StringComparison.Ordinal);
         Assert.DoesNotContain("install --db-only", repairScript, StringComparison.Ordinal);
         Assert.DoesNotContain("--proxy-user", repairScript, StringComparison.Ordinal);

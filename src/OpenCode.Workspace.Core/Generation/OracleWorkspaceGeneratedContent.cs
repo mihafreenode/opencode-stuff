@@ -2359,18 +2359,21 @@ SET FEEDBACK OFF
 SET PAGESIZE 0
 SET VERIFY OFF
 SET TRIMSPOOL ON
-SELECT application_name || '|' || page_name || '|' || region_name || '|' || title
+SELECT a.application_name || '|' || p.page_name || '|' || r.region_name || '|' || r.title
 FROM apex_applications a
 JOIN apex_application_pages p
   ON p.application_id = a.application_id
- AND p.workspace = a.workspace
+  AND p.workspace = a.workspace
 JOIN apex_application_page_regions r
   ON r.application_id = p.application_id
- AND r.page_id = p.page_id
- AND r.workspace = p.workspace
+  AND r.page_id = p.page_id
+  AND r.workspace = p.workspace
 WHERE a.workspace = 'TEST'
   AND a.application_id = 101
-  AND p.page_id = 1;
+  AND p.page_id = 1
+  AND p.page_name = 'Home'
+  AND r.region_name = 'Home'
+  AND r.title = 'Hello from APEXlang';
 EXIT
 SQL
 

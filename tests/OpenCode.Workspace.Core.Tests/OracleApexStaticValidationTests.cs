@@ -154,6 +154,11 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("title: Hello from APEXlang", helloWorldScript, StringComparison.Ordinal);
         Assert.Contains("p_primary_schema => 'TESTSCHEMA'", helloWorldScript, StringComparison.Ordinal);
         Assert.DoesNotContain("SqlCli.class", helloWorldScript, StringComparison.Ordinal);
+        Assert.Contains("SELECT a.application_name || '|' || p.page_name || '|' || r.region_name || '|' || r.title", helloWorldScript, StringComparison.Ordinal);
+        Assert.Contains("AND p.page_name = 'Home'", helloWorldScript, StringComparison.Ordinal);
+        Assert.Contains("AND r.region_name = 'Home'", helloWorldScript, StringComparison.Ordinal);
+        Assert.Contains("AND r.title = 'Hello from APEXlang'", helloWorldScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("SELECT application_name || '|' || page_name || '|' || region_name || '|' || title", helloWorldScript, StringComparison.Ordinal);
 
         var generateSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "generate-hello-apexlang.sql"));
         var importSql = File.ReadAllText(Path.Combine(snapshot.Paths.RootPath, "sql", "hello-apexlang", "import-hello-apexlang.sql"));
@@ -212,11 +217,12 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("ORACLE_SERVICE_NAME: \"${ORACLE_SERVICE_NAME}\"", apexCompose);
         Assert.Contains("ORACLE_ORDS_PUBLIC_USER: \"${ORACLE_ORDS_PUBLIC_USER}\"", apexCompose);
         Assert.Contains("ORACLE_ORDS_PUBLIC_PASSWORD: \"${ORACLE_ORDS_PUBLIC_PASSWORD}\"", apexCompose);
-        Assert.Contains("/mounts/config/ords:/etc/ords/config", apexCompose, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("oracle-ords-config:/etc/ords/config", apexCompose, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/mounts/config/ords:/opt/opencode-workspace/ords:ro", apexCompose, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("entrypoint:", apexCompose);
         Assert.Contains("- \"bash\"", apexCompose);
         Assert.Contains("- \"-lc\"", apexCompose);
-        Assert.Contains("- \"bash /etc/ords/config/init-ords-config.sh\"", apexCompose);
+        Assert.Contains("- \"bash /opt/opencode-workspace/ords/init-ords-config.sh\"", apexCompose);
         Assert.Contains("http://localhost:8080/ords/_/landing", apexCompose);
         Assert.DoesNotContain("DBHOST:", apexCompose);
         Assert.DoesNotContain("DBPORT:", apexCompose);
@@ -225,7 +231,8 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("oracle-demo:", apexLangCompose);
         Assert.Contains("oracle-ords:", apexLangCompose);
         Assert.Contains("ORACLE_ADMIN_USER: \"${ORACLE_ADMIN_USER}\"", apexLangCompose);
-        Assert.Contains("/mounts/config/ords:/etc/ords/config", apexLangCompose, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("oracle-ords-config:/etc/ords/config", apexLangCompose, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/mounts/config/ords:/opt/opencode-workspace/ords:ro", apexLangCompose, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("http://localhost:8080/ords/_/landing", apexLangCompose);
         Assert.Contains($"ORACLE_HOST_PORT={apexDbPort}", apexEnv);
         Assert.Contains("ORACLE_HOST=oracle-demo", apexEnv);
@@ -317,10 +324,14 @@ public sealed class OracleApexStaticValidationTests
         Assert.True(File.Exists(bootstrapScriptPath));
 
         var bootstrapScript = File.ReadAllText(bootstrapScriptPath);
+        Assert.Contains("config_dir=/etc/ords/config", bootstrapScript, StringComparison.Ordinal);
+        Assert.Contains("[ords] Effective user: uid=", bootstrapScript, StringComparison.Ordinal);
         Assert.Contains("ords --config \"${config_dir}\" install --config-only", bootstrapScript, StringComparison.Ordinal);
         Assert.Contains("--gateway-user \"${ORACLE_APEX_PUBLIC_USER:-APEX_PUBLIC_USER}\"", bootstrapScript, StringComparison.Ordinal);
         Assert.Contains("global/settings.xml", bootstrapScript, StringComparison.Ordinal);
         Assert.Contains("databases/default/pool.xml", bootstrapScript, StringComparison.Ordinal);
+        Assert.Contains("exec ords --config \"${config_dir}\" serve --port 8080", bootstrapScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("chmod -R 777", bootstrapScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -349,7 +360,7 @@ public sealed class OracleApexStaticValidationTests
         Assert.Contains("Oracle administrator password does not match the running database.", apexScript);
         Assert.Contains("Required pluggable database is not open.", apexScript);
         Assert.Contains("wait_for_pdb_read_write", apexScript);
-        Assert.Contains("wait_for_xdb_ready || fail_for_invalid_xdb", apexScript);
+        Assert.Contains("wait_for_xdb_ready || oracle_allow_invalid_xdb_if_functional", apexScript);
         Assert.Contains("ORACLE_APEX_MEDIA_DIR", apexScript);
         Assert.DoesNotContain("/ords/apex_admin", apexScript, StringComparison.Ordinal);
         Assert.DoesNotContain(") || true", apexScript, StringComparison.Ordinal);

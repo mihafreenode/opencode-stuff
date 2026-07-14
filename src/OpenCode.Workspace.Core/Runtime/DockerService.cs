@@ -77,7 +77,7 @@ public sealed class DockerService
     {
         var containerName = GetServiceContainerName(definition, "oracle-ords");
         return RunDockerCommandAsync(
-            new[] { "exec", containerName, "bash", "/etc/ords/config/repair-ords-db.sh" },
+            new[] { "exec", containerName, "bash", "/opt/opencode-workspace/ords/repair-ords-db.sh" },
             paths.RootPath,
             log,
             cancellationToken,

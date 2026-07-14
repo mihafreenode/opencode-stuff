@@ -1,5 +1,6 @@
 using System.Text;
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Generation;
@@ -189,7 +190,17 @@ public sealed class ComposeGenerator
             }
         }
 
-        return builder.ToString();
+        var compose = builder.ToString();
+        var requiredService = workspace.Definition.Services.Contains(OracleWorkspaceFamily.OracleDatabaseServiceId, StringComparer.OrdinalIgnoreCase)
+            ? OracleWorkspaceFamily.OracleDatabaseServiceId
+            : null;
+        var inspection = ComposeProjectInspector.Inspect(compose, requiredService);
+        if (!inspection.IsValid)
+        {
+            throw new InvalidOperationException($"Compose generation for '{workspace.Definition.Workspace.Name}' produced an invalid compose project: {string.Join(" ", inspection.Errors)}");
+        }
+
+        return compose;
     }
 
     private static string ResolveVolumeBinding(string volume, WorkspacePaths paths)
@@ -203,17 +214,7 @@ public sealed class ComposeGenerator
 
     private static IReadOnlyList<string> ResolveServiceVolumes(ServiceManifest service, WorkspacePaths paths)
     {
-        var volumes = service.Volumes.Select(volume => ResolveVolumeBinding(volume, paths)).ToList();
-        if (string.Equals(service.Id, "oracle-ords", StringComparison.OrdinalIgnoreCase))
-        {
-            var managedConfigMount = $"{WorkspacePathBuilder.ToDockerVolumePath(Path.Combine(paths.ConfigPath, "ords"))}:/etc/ords/config";
-            if (!volumes.Contains(managedConfigMount, StringComparer.OrdinalIgnoreCase))
-            {
-                volumes.Add(managedConfigMount);
-            }
-        }
-
-        return volumes;
+        return service.Volumes.Select(volume => ResolveVolumeBinding(volume, paths)).ToList();
     }
 
     private static IReadOnlyList<string> ResolveEntryPoint(ServiceManifest service)
@@ -236,7 +237,7 @@ public sealed class ComposeGenerator
         }
 
         return string.Equals(service.Id, "oracle-ords", StringComparison.OrdinalIgnoreCase)
-            ? ["bash /etc/ords/config/init-ords-config.sh"]
+            ? ["bash /opt/opencode-workspace/ords/init-ords-config.sh"]
             : Array.Empty<string>();
     }
 

@@ -9,12 +9,13 @@ profiles:
 hostPorts:
   - ${ORACLE_ORDS_PORT}:8080
 volumes:
-  - ${WORKSPACE_CONFIG_DOCKER_PATH}/ords:/etc/ords/config
+  - oracle-ords-config:/etc/ords/config
+  - ${WORKSPACE_CONFIG_DOCKER_PATH}/ords:/opt/opencode-workspace/ords:ro
 entrypoint:
   - bash
   - -lc
 command:
-  - bash /etc/ords/config/init-ords-config.sh
+  - bash /opt/opencode-workspace/ords/init-ords-config.sh
 environment:
   ORACLE_ADMIN_USER: ${ORACLE_ADMIN_USER}
   ORACLE_PASSWORD: ${ORACLE_PASSWORD}

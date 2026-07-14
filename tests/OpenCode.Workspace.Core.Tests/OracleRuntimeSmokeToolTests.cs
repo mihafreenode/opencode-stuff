@@ -384,6 +384,7 @@ public sealed class OracleRuntimeSmokeToolTests
             method!.Invoke(null, [composePath, definition, "oracle-apexlang-demo", "run-123", "C:/workspaces/oracle-live"]);
 
             var content = File.ReadAllText(composePath).Replace("\r\n", "\n", StringComparison.Ordinal);
+            Assert.Contains("  workspace:", content, StringComparison.Ordinal);
             Assert.Contains("io.opencode.workspace.template: \"oracle-apexlang-demo\"", content, StringComparison.Ordinal);
             Assert.Contains("io.opencode.workspace.run-id: \"run-123\"", content, StringComparison.Ordinal);
             Assert.Contains("networks:\n  default:\n    labels:", content, StringComparison.Ordinal);

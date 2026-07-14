@@ -36,6 +36,12 @@ public sealed class ScriptOracleWorkspaceProvisioner : IOracleWorkspaceProvision
             throw new InvalidOperationException($"Oracle workspace provisioning failed.{Environment.NewLine}{result.StandardError}{Environment.NewLine}{result.StandardOutput}".Trim());
         }
 
+        var evidence = ExtractEvidence(result);
+        if (!OracleXdbReadinessEvidenceClassifier.ShouldTreatAsFailure(evidence))
+        {
+            throw new InvalidOperationException($"Oracle workspace provisioning failed.{Environment.NewLine}{result.StandardError}{Environment.NewLine}{result.StandardOutput}".Trim());
+        }
+
         var repairResult = await RunServerSideXdbRepairAsync(snapshot, log, cancellationToken);
         if (!repairResult.IsSuccess)
         {
@@ -72,6 +78,19 @@ public sealed class ScriptOracleWorkspaceProvisioner : IOracleWorkspaceProvision
     private static bool ContainsXdbInvalidFailure(ProcessResult result)
         => result.StandardError.Contains(XdbInvalidReason, StringComparison.Ordinal)
             || result.StandardOutput.Contains(XdbInvalidReason, StringComparison.Ordinal);
+
+    private static string ExtractEvidence(ProcessResult result)
+    {
+        foreach (var line in result.StandardErrorLines.Concat(result.StandardOutputLines))
+        {
+            if (line.StartsWith("Evidence:", StringComparison.OrdinalIgnoreCase))
+            {
+                return line["Evidence:".Length..].Trim();
+            }
+        }
+
+        return string.Empty;
+    }
 
     private async Task<ProcessResult> RunServerSideXdbRepairAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {

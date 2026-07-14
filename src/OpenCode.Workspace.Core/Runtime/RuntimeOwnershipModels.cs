@@ -108,9 +108,14 @@ public sealed class RuntimeCleanupResult
 {
     public bool Succeeded { get; init; }
     public bool DryRun { get; init; }
+    public bool ComposeDownAttempted { get; init; }
+    public bool ComposeDownSucceeded { get; init; }
+    public bool FallbackRemovalRequired { get; init; }
+    public bool VerificationSucceeded { get; init; }
     public RuntimeOwnershipQuery Filter { get; init; } = new();
     public IReadOnlyList<RuntimeOwnedResource> Resources { get; init; } = Array.Empty<RuntimeOwnedResource>();
     public IReadOnlyList<string> Actions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
 }
 
@@ -129,8 +134,13 @@ public sealed class SmokeCleanupResult
 {
     public bool Succeeded { get; init; }
     public bool DryRun { get; init; }
+    public bool ComposeDownAttempted { get; init; }
+    public bool ComposeDownSucceeded { get; init; }
+    public bool FallbackRemovalRequired { get; init; }
+    public bool VerificationSucceeded { get; init; }
     public IReadOnlyList<RuntimeOwnedResource> Resources { get; init; } = Array.Empty<RuntimeOwnedResource>();
     public IReadOnlyList<string> Actions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<LegacyRuntimeProject> SuspectedLegacyProjects { get; init; } = Array.Empty<LegacyRuntimeProject>();
 }

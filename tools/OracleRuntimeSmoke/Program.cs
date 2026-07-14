@@ -254,9 +254,30 @@ public static class OracleRuntimeSmokeCli
                 try
                 {
                     var cleanup = await new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
-                    await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanup.Actions.Concat(cleanup.Errors)), CancellationToken.None);
+                    var cleanupLines = new List<string>
+                    {
+                        $"compose_down_attempted={cleanup.ComposeDownAttempted}",
+                        $"compose_down_succeeded={cleanup.ComposeDownSucceeded}",
+                        $"fallback_removal_required={cleanup.FallbackRemovalRequired}",
+                        $"verification_succeeded={cleanup.VerificationSucceeded}",
+                        $"cleanup_succeeded={cleanup.Succeeded}",
+                    };
+                    cleanupLines.AddRange(cleanup.Actions);
+                    cleanupLines.AddRange(cleanup.Warnings.Select(item => "warning:" + item));
+                    cleanupLines.AddRange(cleanup.Errors.Select(item => "error:" + item));
+                    await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanupLines), CancellationToken.None);
                     var inventoryAfter = await new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
                     await WriteRuntimeInventoryArtifactsAsync(summary.ArtifactsRoot, "after", inventoryAfter, CancellationToken.None);
+                    summary = summary with
+                    {
+                        CleanupComposeDownAttempted = cleanup.ComposeDownAttempted,
+                        CleanupComposeDownSucceeded = cleanup.ComposeDownSucceeded,
+                        CleanupFallbackRemovalRequired = cleanup.FallbackRemovalRequired,
+                        CleanupVerificationSucceeded = cleanup.VerificationSucceeded,
+                        CleanupWarningCount = cleanup.Warnings.Count,
+                        CleanupErrorCount = cleanup.Errors.Count,
+                    };
+                    WriteSummary(summary.ArtifactsRoot, summary);
                 }
                 catch
                 {
@@ -1195,6 +1216,12 @@ public sealed record SmokeRunSummary(string TemplateId, string ArtifactsRoot)
     public string? ApexRegistryStatus { get; init; }
     public bool? ApexSchemasPresent { get; init; }
     public string? ApexInstallationState { get; init; }
+    public bool? CleanupComposeDownAttempted { get; init; }
+    public bool? CleanupComposeDownSucceeded { get; init; }
+    public bool? CleanupFallbackRemovalRequired { get; init; }
+    public bool? CleanupVerificationSucceeded { get; init; }
+    public int? CleanupWarningCount { get; init; }
+    public int? CleanupErrorCount { get; init; }
     public string? Result { get; init; }
 }
 

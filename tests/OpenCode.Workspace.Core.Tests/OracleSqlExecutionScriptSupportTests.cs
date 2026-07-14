@@ -98,15 +98,20 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains("query_xdb_registry_in_container", script, StringComparison.Ordinal);
         Assert.Contains("query_xdb_invalid_objects_in_container", script, StringComparison.Ordinal);
         Assert.Contains("query_xdb_errors_in_container", script, StringComparison.Ordinal);
+        Assert.Contains("query_cdb_xdb_registry", script, StringComparison.Ordinal);
+        Assert.Contains("query_xdb_sqlpatch", script, StringComparison.Ordinal);
+        Assert.Contains("query_xdb_dbms_registry_status_in_container", script, StringComparison.Ordinal);
+        Assert.Contains("query_xdb_functional_probe_in_container", script, StringComparison.Ordinal);
         Assert.Contains("query_pdb_plugin_violations", script, StringComparison.Ordinal);
         Assert.Contains("XDB was initially INVALID but became VALID while Oracle initialization completed.", script, StringComparison.Ordinal);
         Assert.Contains("query-script", script, StringComparison.Ordinal);
         Assert.Contains("PROMPT __OPENCODE_RESULT_BEGIN__", script, StringComparison.Ordinal);
-        Assert.Contains("wait_for_xdb_ready || fail_for_invalid_xdb", script, StringComparison.Ordinal);
+        Assert.Contains("wait_for_xdb_ready || oracle_allow_invalid_xdb_if_functional", script, StringComparison.Ordinal);
+        Assert.Contains("registry remained INVALID but XMLType/DBMS_XDB probes succeeded in root and pdb; continuing.", script, StringComparison.Ordinal);
         Assert.Contains("volume_state=${oracle_volume_state}", script, StringComparison.Ordinal);
         Assert.Contains("pdb_plug_in_violations=${violations:-none}", script, StringComparison.Ordinal);
         Assert.Contains("Investigate the Oracle XDB compilation errors or restore a known-good backup.", script, StringComparison.Ordinal);
-        Assert.True(script.IndexOf("wait_for_xdb_ready || fail_for_invalid_xdb", StringComparison.Ordinal) < script.IndexOf("oracle_set_stage 'Installing APEX'", StringComparison.Ordinal));
+        Assert.True(script.IndexOf("wait_for_xdb_ready || oracle_allow_invalid_xdb_if_functional", StringComparison.Ordinal) < script.IndexOf("oracle_set_stage 'Installing APEX'", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -237,6 +242,25 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains("invalid_object_count=2", exception.Message, StringComparison.Ordinal);
         Assert.Contains("PLS-00302", exception.Message, StringComparison.Ordinal);
         Assert.Contains("Recommended action: Reset Runtime.", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ScriptOracleWorkspaceProvisioner_InvalidRegistryWithSuccessfulFunctionalProbes_DoesNotRunRepair()
+    {
+        var runtime = new RecordingContainerRuntime
+        {
+            ProvisionResults =
+            [
+                FailureResult($"Workspace provisioning stopped.{Environment.NewLine}Stage: Provisioning Oracle{Environment.NewLine}{XdbReasonLine}{Environment.NewLine}Evidence: root_registry=XDB|Oracle XML Database|23.0.0.0.0|INVALID|2026-07-14; pdb_registry=XDB|Oracle XML Database|23.0.0.0.0|INVALID|2026-07-14; invalid_object_count=0; dba_errors=none; pdb_plug_in_violations=none; root_functional_probe=XMLTYPE=ok|HTTPPORT=0; pdb_functional_probe=XMLTYPE=ok|HTTPPORT=0{Environment.NewLine}Recommended action: Investigate the Oracle XDB compilation errors or restore a known-good backup.{Environment.NewLine}Confidence: high"),
+            ],
+        };
+        var provisioner = new ScriptOracleWorkspaceProvisioner(runtime);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => provisioner.ProvisionAsync(CreateSnapshot()));
+
+        Assert.Equal(1, runtime.WorkspaceProvisionCallCount);
+        Assert.Equal(0, runtime.ServiceCommandCallCount);
+        Assert.Contains("root_functional_probe=XMLTYPE=ok|HTTPPORT=0", exception.Message, StringComparison.Ordinal);
     }
 
     private const string XdbReasonLine = "Reason: Oracle XML Database (XDB) is invalid.";
