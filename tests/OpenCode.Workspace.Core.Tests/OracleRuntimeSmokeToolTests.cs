@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Text.Json;
+using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Tests;
@@ -274,6 +277,125 @@ public sealed class OracleRuntimeSmokeToolTests
 
         Assert.Contains("Windows host validation as authoritative", troubleshootingDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("official Oracle APEX ZIP placed under `.local/oracle/downloads/apex/`", smokeDoc);
+    }
+
+    [Fact]
+    public async Task WriteRuntimeInventoryArtifacts_WritesJsonAndText()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"runtime-inventory-artifacts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(artifactsRoot);
+
+        try
+        {
+            var inventory = new RuntimeResourceInventory
+            {
+                Resources =
+                [
+                    new RuntimeOwnedResource
+                    {
+                        ResourceId = "container-1",
+                        Name = "runtime-container",
+                        Type = RuntimeResourceType.Container,
+                        OwnerKind = "smoke",
+                        RunId = "abc123",
+                        Project = "oracle-smoke",
+                        WorkspaceRoot = "/workspace",
+                        ComposePath = "/workspace/compose.yaml",
+                        CreatedAt = DateTimeOffset.UtcNow.ToString("O"),
+                        Status = "running",
+                    },
+                ],
+                Projects =
+                [
+                    new RuntimeProjectInventory
+                    {
+                        Project = "oracle-smoke",
+                        OwnerKind = "smoke",
+                        RunId = "abc123",
+                        Resources =
+                        [
+                            new RuntimeOwnedResource
+                            {
+                                ResourceId = "container-1",
+                                Name = "runtime-container",
+                                Type = RuntimeResourceType.Container,
+                            },
+                        ],
+                    },
+                ],
+            };
+
+            var method = typeof(OracleRuntimeSmokeCli).GetMethod("WriteRuntimeInventoryArtifactsAsync", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            var task = (Task)method!.Invoke(null, [artifactsRoot, "before", inventory, CancellationToken.None])!;
+            await task;
+
+            var jsonPath = Path.Combine(artifactsRoot, "runtime-inventory-before.json");
+            var textPath = Path.Combine(artifactsRoot, "runtime-inventory-before.txt");
+            Assert.True(File.Exists(jsonPath));
+            Assert.True(File.Exists(textPath));
+            Assert.Contains("oracle-smoke", File.ReadAllText(textPath), StringComparison.Ordinal);
+
+            var roundTrip = JsonSerializer.Deserialize<RuntimeResourceInventory>(File.ReadAllText(jsonPath));
+            Assert.NotNull(roundTrip);
+            Assert.Single(roundTrip!.Resources);
+            Assert.Equal("runtime-container", roundTrip.Resources[0].Name);
+        }
+        finally
+        {
+            if (Directory.Exists(artifactsRoot))
+            {
+                Directory.Delete(artifactsRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void SmokeToolSource_DoesNotUseDockerCliFormatInventoryParsing()
+    {
+        var source = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "tools", "OracleRuntimeSmoke", "Program.cs"));
+
+        Assert.DoesNotContain("docker ps --format", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("docker network ls --format", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("docker volume ls --format", source, StringComparison.Ordinal);
+        Assert.Contains("BuildInventoryAsync", source, StringComparison.Ordinal);
+        Assert.Contains("WriteRuntimeInventoryArtifactsAsync", source, StringComparison.Ordinal);
+        Assert.Contains("runtime-inventory-", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ApplySmokeOwnershipLabels_PreservesTemplateIdAndIsoTimestamp()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"smoke-labels-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var composePath = Path.Combine(root, "compose.yaml");
+        File.WriteAllText(composePath, "services:\n  workspace:\n    image: ubuntu:24.04\nvolumes:\n  oracle-demo-data:\n");
+
+        try
+        {
+            var definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Name = "oracle-apexlang-demo-runtime-smoke-20260714-120000", Image = "ubuntu:24.04" },
+                Services = ["oracle-demo", "oracle-ords"],
+            };
+
+            var method = typeof(OracleRuntimeSmokeCli).GetMethod("ApplySmokeOwnershipLabels", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            method!.Invoke(null, [composePath, definition, "oracle-apexlang-demo", "run-123", "C:/workspaces/oracle-live"]);
+
+            var content = File.ReadAllText(composePath).Replace("\r\n", "\n", StringComparison.Ordinal);
+            Assert.Contains("io.opencode.workspace.template: \"oracle-apexlang-demo\"", content, StringComparison.Ordinal);
+            Assert.Contains("io.opencode.workspace.run-id: \"run-123\"", content, StringComparison.Ordinal);
+            Assert.Contains("networks:\n  default:\n    labels:", content, StringComparison.Ordinal);
+            Assert.Matches(@"io\.opencode\.workspace\.created-at: ""[0-9T:.+\-]+""", content);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 
     [Fact]

@@ -136,6 +136,7 @@ public static class CliOutputFormatter
                 Resources = result.Resources,
                 Actions = result.Actions,
                 Errors = result.Errors,
+                SuspectedLegacyProjects = result.SuspectedLegacyProjects,
             }, new JsonSerializerOptions { WriteIndented = true });
         }
 
@@ -160,6 +161,30 @@ public static class CliOutputFormatter
             lines.Add(string.Empty);
             lines.Add("Errors:");
             lines.AddRange(result.Errors.Select(item => $"  {item}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string FormatLegacySmokeCleanup(LegacyCleanupResult result, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Legacy Smoke Cleanup",
+            string.Empty,
+            $"Result: {(result.Succeeded ? "success" : "failure")}",
+            $"Dry run: {result.DryRun}",
+            $"Projects discovered: {result.Projects.Count}",
+        };
+
+        foreach (var project in result.Projects)
+        {
+            lines.Add($"  {project.Project}: eligible={project.EligibleForCleanup} reason={project.Reason}");
         }
 
         return string.Join(Environment.NewLine, lines);

@@ -16,6 +16,7 @@ public sealed class CliApplication
     private readonly Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>> _platformValidationRunner;
     private readonly Func<CancellationToken, Task<WorkspaceLoadReport>> _workspaceDiscoveryRunner;
     private readonly Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>> _smokeCleanupRunner;
+    private readonly Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>> _legacySmokeCleanupRunner;
     private readonly Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>> _runtimeInventoryRunner;
 
     public CliApplication(TextWriter output, TextWriter error)
@@ -30,6 +31,7 @@ public sealed class CliApplication
         Func<PlatformValidationRequest, CancellationToken, Task<PlatformValidationReport>>? platformValidationRunner,
         Func<CancellationToken, Task<WorkspaceLoadReport>>? workspaceDiscoveryRunner = null,
         Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>>? smokeCleanupRunner = null,
+        Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>>? legacySmokeCleanupRunner = null,
         Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>>? runtimeInventoryRunner = null)
     {
         _output = output;
@@ -38,6 +40,7 @@ public sealed class CliApplication
         _platformValidationRunner = platformValidationRunner ?? RunPlatformValidationAsync;
         _workspaceDiscoveryRunner = workspaceDiscoveryRunner ?? RunWorkspaceDiscoveryAsync;
         _smokeCleanupRunner = smokeCleanupRunner ?? RunSmokeCleanupAsync;
+        _legacySmokeCleanupRunner = legacySmokeCleanupRunner ?? RunLegacySmokeCleanupAsync;
         _runtimeInventoryRunner = runtimeInventoryRunner ?? RunRuntimeInventoryAsync;
     }
 
@@ -122,6 +125,18 @@ public sealed class CliApplication
             RunId: ParseOptionValue(args, "--run-id"),
             OutputFormat: ParseOptionValue(args, "--format") ?? "text");
 
+        if (args.Contains("--legacy", StringComparer.OrdinalIgnoreCase))
+        {
+            var outputFormat = ParseOptionValue(args, "--format") ?? "text";
+            var legacyResult = await _legacySmokeCleanupRunner(new LegacyCleanupOptions
+            {
+                DryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase),
+                OutputFormat = outputFormat,
+            }, cancellationToken);
+            await _output.WriteLineAsync(CliOutputFormatter.FormatLegacySmokeCleanup(legacyResult, outputFormat));
+            return legacyResult.Succeeded ? 0 : 1;
+        }
+
         var result = await _smokeCleanupRunner(options, cancellationToken);
         await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeCleanup(result, options.OutputFormat));
         return result.Succeeded ? 0 : 1;
@@ -179,7 +194,8 @@ public sealed class CliApplication
                     && !string.Equals(argument, "--dry-run", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--all", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--owner", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(argument, "--project", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(argument, "--project", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--legacy", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ArgumentException($"Unknown option '{argument}'.");
                 }
@@ -301,6 +317,9 @@ public sealed class CliApplication
 
     private static Task<SmokeCleanupResult> RunSmokeCleanupAsync(SmokeCleanupOptions options, CancellationToken cancellationToken)
         => new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(options, cancellationToken);
+
+    private static Task<LegacyCleanupResult> RunLegacySmokeCleanupAsync(LegacyCleanupOptions options, CancellationToken cancellationToken)
+        => new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupLegacyAsync(options, cancellationToken);
 
     private static Task<RuntimeResourceInventory> RunRuntimeInventoryAsync(RuntimeOwnershipQuery query, CancellationToken cancellationToken)
         => new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(query, cancellationToken);

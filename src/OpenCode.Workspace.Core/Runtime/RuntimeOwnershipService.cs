@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Runtime;
 
@@ -343,9 +344,12 @@ public sealed class RuntimeOwnershipService
 public sealed class SmokeRuntimeOwnershipService
 {
     private readonly RuntimeOwnershipService _inner;
+    private readonly IContainerRuntime _containerRuntime;
+    private static readonly string[] LegacySmokeProjectPrefixes = ["oracle-plsql-demo-runtime-smoke-", "oracle-apex-demo-runtime-smoke-", "oracle-apexlang-demo-runtime-smoke-", "demo-apexlang", "demo-apex", "demo-plsql"];
 
     public SmokeRuntimeOwnershipService(IContainerRuntime containerRuntime)
     {
+        _containerRuntime = containerRuntime;
         _inner = new RuntimeOwnershipService(containerRuntime);
     }
 
@@ -369,6 +373,7 @@ public sealed class SmokeRuntimeOwnershipService
             Resources = result.Resources,
             Actions = result.Actions,
             Errors = result.Errors,
+            SuspectedLegacyProjects = await DiscoverLegacyProjectsAsync(cancellationToken),
         };
     }
 
@@ -384,4 +389,118 @@ public sealed class SmokeRuntimeOwnershipService
             ActiveSmokeResources = result.ActiveOwnedResources,
         };
     }
+
+    public async Task<IReadOnlyList<LegacyRuntimeProject>> DiscoverLegacyProjectsAsync(CancellationToken cancellationToken = default)
+    {
+        var containers = await ListComposeResourcesAsync(["ps", "-a", "--format", "{{.Names}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"io.opencode.workspace.owner\"}}|{{.Label \"com.docker.compose.service\"}}"], cancellationToken);
+        var networks = await ListComposeResourcesAsync(["network", "ls", "--format", "{{.Name}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"io.opencode.workspace.owner\"}}"], cancellationToken);
+        var volumes = await ListComposeResourcesAsync(["volume", "ls", "--format", "{{.Name}}|{{.Label \"com.docker.compose.project\"}}|{{.Label \"io.opencode.workspace.owner\"}}"], cancellationToken);
+
+        return containers.Where(item => string.IsNullOrWhiteSpace(item.Owner) && IsLegacyProjectName(item.Project))
+            .GroupBy(item => item.Project, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var project = group.Key;
+                var containerNames = group.Select(item => item.Name).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToArray();
+                var services = group.Select(item => item.Service).Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var projectNetworks = networks.Where(item => string.Equals(item.Project, project, StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(item.Owner)).Select(item => item.Name).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToArray();
+                var projectVolumes = volumes.Where(item => string.Equals(item.Project, project, StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(item.Owner)).Select(item => item.Name).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToArray();
+                var eligible = services.Contains("oracle-demo", StringComparer.OrdinalIgnoreCase)
+                    && services.Contains("oracle-ords", StringComparer.OrdinalIgnoreCase)
+                    && (services.Contains("workspace", StringComparer.OrdinalIgnoreCase) || containerNames.Any(name => name.EndsWith("-workspace", StringComparison.OrdinalIgnoreCase)));
+
+                return new LegacyRuntimeProject
+                {
+                    Project = project,
+                    ContainerNames = containerNames,
+                    NetworkNames = projectNetworks,
+                    VolumeNames = projectVolumes,
+                    EligibleForCleanup = eligible,
+                    Reason = eligible
+                        ? "Compose project matches the legacy Oracle smoke container/service pattern and has no ownership labels."
+                        : "Compose project looks like a legacy Oracle smoke runtime but did not meet the strict cleanup safety criteria.",
+                };
+            })
+            .OrderBy(item => item.Project, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<LegacyCleanupResult> CleanupLegacyAsync(LegacyCleanupOptions options, CancellationToken cancellationToken = default)
+    {
+        var projects = (await DiscoverLegacyProjectsAsync(cancellationToken)).Where(item => item.EligibleForCleanup).ToArray();
+        var actions = new List<string>();
+        var errors = new List<string>();
+
+        foreach (var project in projects)
+        {
+            actions.Add($"remove-legacy-project:{project.Project}");
+            if (options.DryRun)
+            {
+                continue;
+            }
+
+            foreach (var container in project.ContainerNames)
+            {
+                var result = await _innerCleanup(["rm", "-f", container], cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    errors.Add($"legacy-container:{container}:{result.StandardError}");
+                }
+            }
+
+            foreach (var network in project.NetworkNames)
+            {
+                var result = await _innerCleanup(["network", "rm", network], cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    errors.Add($"legacy-network:{network}:{result.StandardError}");
+                }
+            }
+
+            foreach (var volume in project.VolumeNames)
+            {
+                var result = await _innerCleanup(["volume", "rm", volume], cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    errors.Add($"legacy-volume:{volume}:{result.StandardError}");
+                }
+            }
+        }
+
+        return new LegacyCleanupResult
+        {
+            Succeeded = errors.Count == 0,
+            DryRun = options.DryRun,
+            Projects = projects,
+            Actions = actions,
+            Errors = errors,
+        };
+    }
+
+    private async Task<IReadOnlyList<(string Name, string Project, string Owner, string Service)>> ListComposeResourcesAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    {
+        var result = await _innerCleanup(args, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return Array.Empty<(string Name, string Project, string Owner, string Service)>();
+        }
+
+        return result.StandardOutputLines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Split('|'))
+            .Where(parts => parts.Length >= 3)
+            .Select(parts => (
+                Name: parts[0].Trim(),
+                Project: parts[1].Trim(),
+                Owner: parts[2].Trim(),
+                Service: parts.Length > 3 ? parts[3].Trim() : string.Empty))
+            .ToArray();
+    }
+
+    private static bool IsLegacyProjectName(string project)
+        => !string.IsNullOrWhiteSpace(project)
+            && LegacySmokeProjectPrefixes.Any(prefix => project.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    private Task<ProcessResult> _innerCleanup(IReadOnlyList<string> args, CancellationToken cancellationToken)
+        => _containerRuntime.RunSimpleDockerCommandAsync(args, cancellationToken: cancellationToken);
 }

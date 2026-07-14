@@ -1080,6 +1080,7 @@ public sealed class WorkspaceOrchestrator
 
     private GeneratedWorkspaceArtifacts WriteManagedGeneratedFiles(WorkspacePaths paths, WorkspaceDefinition definition, GeneratedArtifactRuntimeMetadata? runtimeMetadata = null, bool inspectHostAvailability = false)
     {
+        var existingCompose = File.Exists(paths.ComposePath) ? File.ReadAllText(paths.ComposePath) : null;
         var existingRuntimeState = _workspaceRuntimeStateService.Read(paths.RuntimeStatePath);
         var generatedArtifactsUtc = existingRuntimeState?.GeneratedArtifactsUtc ?? DateTimeOffset.UtcNow;
         var effectiveRuntimeMetadata = runtimeMetadata is null
@@ -1088,7 +1089,8 @@ public sealed class WorkspaceOrchestrator
         var runtimeState = ResolveRuntimeStateForGeneration(definition, paths, effectiveRuntimeMetadata, inspectHostAvailability, generatedArtifactsUtc);
         var generatedArtifacts = GenerateArtifacts(definition, paths, effectiveRuntimeMetadata, runtimeState);
 
-        File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.ComposeYaml));
+        var composeYaml = PreserveRuntimeOwnershipLabels(existingCompose, generatedArtifacts.ComposeYaml);
+        File.WriteAllText(paths.ComposePath, NormalizeGeneratedTextForLinuxInteroperability(composeYaml));
         File.WriteAllText(paths.EnvironmentFilePath, NormalizeGeneratedTextForLinuxInteroperability(generatedArtifacts.EnvironmentFile));
         File.WriteAllText(paths.StarshipConfigPath, generatedArtifacts.StarshipConfig.Replace("\r\n", "\n", StringComparison.Ordinal));
         File.WriteAllText(paths.ShellInitScriptPath, generatedArtifacts.ShellInitScript.Replace("\r\n", "\n", StringComparison.Ordinal));
@@ -1151,6 +1153,89 @@ public sealed class WorkspaceOrchestrator
         _workspaceRuntimeStateService.Write(paths.RuntimeStatePath, runtimeState);
         _workspaceAppliedStateService.Write(paths.AppliedStatePath, _workspaceAppliedStateService.CreateState(generatedArtifacts));
         return generatedArtifacts;
+    }
+
+    private static string PreserveRuntimeOwnershipLabels(string? existingCompose, string generatedCompose)
+    {
+        if (string.IsNullOrWhiteSpace(existingCompose) || !existingCompose.Contains(RuntimeOwnershipLabels.Owner, StringComparison.Ordinal))
+        {
+            return generatedCompose;
+        }
+
+        var labels = ExtractRuntimeOwnershipLabels(existingCompose);
+        if (labels.Count == 0)
+        {
+            return generatedCompose;
+        }
+
+        var lines = generatedCompose.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n').ToList();
+        InsertRuntimeOwnershipLabels(lines, "services:", labels, ensureDefaultChild: false);
+        InsertRuntimeOwnershipLabels(lines, "networks:", labels, ensureDefaultChild: true);
+        InsertRuntimeOwnershipLabels(lines, "volumes:", labels, ensureDefaultChild: false);
+        return string.Join("\n", lines);
+    }
+
+    private static List<string> ExtractRuntimeOwnershipLabels(string composeText)
+        => composeText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith(RuntimeOwnershipLabels.Owner, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.RunId, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.Template, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.CreatedBy, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.Project, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.WorkspaceRoot, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.ComposePath, StringComparison.Ordinal)
+                || line.StartsWith(RuntimeOwnershipLabels.CreatedAt, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    private static void InsertRuntimeOwnershipLabels(List<string> lines, string sectionHeader, IReadOnlyList<string> labels, bool ensureDefaultChild)
+    {
+        var sectionIndex = lines.FindIndex(line => string.Equals(line, sectionHeader, StringComparison.Ordinal));
+        if (sectionIndex < 0)
+        {
+            if (!ensureDefaultChild)
+            {
+                return;
+            }
+
+            lines.Add(sectionHeader);
+            lines.Add("  default:");
+            sectionIndex = lines.Count - 2;
+        }
+
+        if (ensureDefaultChild && !lines.Skip(sectionIndex + 1).TakeWhile(line => line.StartsWith("  ", StringComparison.Ordinal)).Any(line => string.Equals(line, "  default:", StringComparison.Ordinal)))
+        {
+            lines.Insert(sectionIndex + 1, "  default:");
+        }
+
+        for (var index = sectionIndex + 1; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            if (!line.StartsWith("  ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!line.StartsWith("  ", StringComparison.Ordinal) || !line.EndsWith(":", StringComparison.Ordinal) || line.StartsWith("    ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("labels:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var indent = "    ";
+            lines.Insert(index + 1, indent + "labels:");
+            for (var labelIndex = 0; labelIndex < labels.Count; labelIndex++)
+            {
+                lines.Insert(index + 2 + labelIndex, indent + "  " + labels[labelIndex]);
+            }
+
+            index += labels.Count + 1;
+        }
     }
 
     private static string NormalizeGeneratedTextForLinuxInteroperability(string content)

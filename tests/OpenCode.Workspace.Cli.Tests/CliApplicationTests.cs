@@ -302,7 +302,9 @@ public sealed class CliApplicationTests
                 Succeeded = true,
                 DryRun = true,
                 Actions = ["compose-down:oracle-smoke"],
-            }));
+            }),
+            (_, _) => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException());
 
         var exitCode = await app.RunAsync(["smoke", "cleanup", "--dry-run"]);
 
@@ -321,6 +323,7 @@ public sealed class CliApplicationTests
             (_, _) => throw new NotSupportedException(),
             (_, _) => throw new NotSupportedException(),
             _ => throw new NotSupportedException(),
+            (_, _) => throw new NotSupportedException(),
             (_, _) => throw new NotSupportedException(),
             (_, _) => Task.FromResult(new RuntimeResourceInventory
             {

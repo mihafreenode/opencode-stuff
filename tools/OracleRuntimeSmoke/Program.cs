@@ -39,6 +39,7 @@ public sealed record DockerProbeResult(string Label, bool Success, string Output
 
 public static class OracleRuntimeSmokeCli
 {
+    private const string SmokeOwnerKind = "smoke";
     private static readonly string[] SupportedTemplateIds =
     [
         OracleWorkspaceFamily.OraclePlSqlTemplateId,
@@ -63,13 +64,16 @@ public static class OracleRuntimeSmokeCli
         SmokeRunSummary? summary = null;
         WorkspaceSnapshot? snapshot = null;
         WorkspaceDefinition? definition = null;
+        RuntimeOwnershipService? runtimeOwnershipService = null;
 
         try
         {
             var options = Parse(args);
             var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
             var processRunner = new ProcessRunner();
-            var ownershipService = new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(processRunner)));
+            var containerRuntime = new DockerContainerRuntime(new DockerService(processRunner));
+            var ownershipService = new SmokeRuntimeOwnershipService(containerRuntime);
+            runtimeOwnershipService = new RuntimeOwnershipService(containerRuntime);
             var runId = $"{CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow)}-{Guid.NewGuid():N}";
             var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
             Directory.CreateDirectory(artifactsRoot);
@@ -111,6 +115,9 @@ public static class OracleRuntimeSmokeCli
                 throw new InvalidOperationException("Runtime resource exhaustion: stale smoke-owned Docker resources could not be cleaned before starting a new Oracle smoke run.");
             }
 
+            var inventoryBefore = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
+            await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "before", inventoryBefore, CancellationToken.None);
+
             var preflight = await ownershipService.CapturePreflightAsync(CancellationToken.None);
             await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "host-memory.txt"), preflight.HostMemorySummary);
             await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-memory.txt"), preflight.DockerMemorySummary);
@@ -147,7 +154,7 @@ public static class OracleRuntimeSmokeCli
 
             Console.WriteLine($"[stage] Creating workspace for template '{options.TemplateId}'.");
             snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition, Log);
-            ApplySmokeOwnershipLabels(snapshot.Paths.ComposePath, definition, runId, workspaceRoot);
+            ApplySmokeOwnershipLabels(snapshot.Paths.ComposePath, definition, options.TemplateId, runId, workspaceRoot);
             CaptureGeneratedArtifacts(snapshot.Paths, artifactsRoot);
 
             if (options.DryRun)
@@ -176,6 +183,8 @@ public static class OracleRuntimeSmokeCli
 
             File.WriteAllText(Path.Combine(artifactsRoot, "provisioning.log"), provisioningLog.ToString());
             await CaptureRuntimeArtifactsAsync(snapshot.Paths, definition, artifactsRoot);
+            var activeInventory = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
+            await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "active", activeInventory, CancellationToken.None);
 
             summary = summary with { Result = "Live smoke completed", FailureClassification = null };
             WriteSummary(artifactsRoot, summary);
@@ -189,6 +198,8 @@ public static class OracleRuntimeSmokeCli
             {
                 ordsDiagnostic = await CaptureOrdsFailureDiagnosticsAsync(snapshot.Paths, definition, summary.ArtifactsRoot);
                 apexDiagnostic = await CaptureApexFailureDiagnosticsAsync(snapshot.Paths.RootPath, definition, summary.ArtifactsRoot);
+                var activeInventory = await runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = summary.RunId }, CancellationToken.None);
+                await WriteRuntimeInventoryArtifactsAsync(summary.ArtifactsRoot, "active", activeInventory, CancellationToken.None);
             }
 
             var oracleSettings = definition is null ? null : OracleWorkspaceSettings.From(definition);
@@ -244,6 +255,8 @@ public static class OracleRuntimeSmokeCli
                 {
                     var cleanup = await new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
                     await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanup.Actions.Concat(cleanup.Errors)), CancellationToken.None);
+                    var inventoryAfter = await new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
+                    await WriteRuntimeInventoryArtifactsAsync(summary.ArtifactsRoot, "after", inventoryAfter, CancellationToken.None);
                 }
                 catch
                 {
@@ -992,6 +1005,62 @@ public static class OracleRuntimeSmokeCli
                 : $"'{argument.Replace("'", "'\\''")}'"
             : argument;
 
+    private static async Task WriteRuntimeInventoryArtifactsAsync(string artifactsRoot, string suffix, RuntimeResourceInventory inventory, CancellationToken cancellationToken)
+    {
+        var jsonPath = Path.Combine(artifactsRoot, $"runtime-inventory-{suffix}.json");
+        var textPath = Path.Combine(artifactsRoot, $"runtime-inventory-{suffix}.txt");
+        await File.WriteAllTextAsync(jsonPath, JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+        await File.WriteAllTextAsync(textPath, FormatRuntimeInventorySummary(inventory), cancellationToken);
+    }
+
+    private static string FormatRuntimeInventorySummary(RuntimeResourceInventory inventory)
+    {
+        var containers = inventory.Resources.Count(item => item.Type == RuntimeResourceType.Container);
+        var networks = inventory.Resources.Count(item => item.Type == RuntimeResourceType.Network);
+        var volumes = inventory.Resources.Count(item => item.Type == RuntimeResourceType.Volume);
+        var lines = new List<string>
+        {
+            "Runtime Inventory",
+            "-----------------",
+            $"Containers: {containers}",
+            $"Networks: {networks}",
+            $"Volumes: {volumes}",
+            $"Projects: {inventory.Projects.Count}",
+            string.Empty,
+            "Owned resources:",
+        };
+
+        if (inventory.Projects.Count == 0)
+        {
+            lines.Add("- none");
+        }
+        else
+        {
+            foreach (var project in inventory.Projects)
+            {
+                lines.Add($"- {project.OwnerKind} run {project.RunId}");
+                lines.Add($"  project {project.Project}");
+                lines.Add($"  containers: {project.Resources.Count(item => item.Type == RuntimeResourceType.Container)}");
+                lines.Add($"  volumes: {project.Resources.Count(item => item.Type == RuntimeResourceType.Volume)}");
+                lines.Add($"  networks: {project.Resources.Count(item => item.Type == RuntimeResourceType.Network)}");
+            }
+        }
+
+        var warnings = inventory.Orphans.Concat(inventory.StaleRuntimes).Concat(inventory.DuplicateRunIds).Concat(inventory.MissingRequiredLabels).Concat(inventory.MissingComposeFiles).Concat(inventory.MissingWorkspaceDirectories).ToArray();
+        lines.Add(string.Empty);
+        lines.Add("Warnings:");
+        if (warnings.Length == 0)
+        {
+            lines.Add("- none");
+        }
+        else
+        {
+            lines.AddRange(warnings.Select(item => $"- {item.Message}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     private static IDisposable AcquireOracleSmokeLock()
     {
         var lockPath = Path.Combine(Path.GetTempPath(), "opencode-oracle-smoke.lock");
@@ -1006,44 +1075,57 @@ public static class OracleRuntimeSmokeCli
         }
     }
 
-    private static void ApplySmokeOwnershipLabels(string composePath, WorkspaceDefinition definition, string runId, string workspaceRoot)
+    private static void ApplySmokeOwnershipLabels(string composePath, WorkspaceDefinition definition, string templateId, string runId, string workspaceRoot)
     {
         var project = WorkspacePathBuilder.Slugify(definition.Workspace.Name);
         var labels = new[]
         {
-            $"{SmokeRuntimeOwnershipLabels.Owner}: {SmokeRuntimeOwnershipLabels.OwnerValue}",
-            $"{SmokeRuntimeOwnershipLabels.RunId}: {runId}",
-            $"{SmokeRuntimeOwnershipLabels.Template}: {OracleWorkspaceFamily.Detect(definition).ToString().ToLowerInvariant()}",
-            $"{SmokeRuntimeOwnershipLabels.CreatedBy}: {SmokeRuntimeOwnershipLabels.CreatedByValue}",
-            $"{SmokeRuntimeOwnershipLabels.Project}: {project}",
-            $"{SmokeRuntimeOwnershipLabels.WorkspaceRoot}: {workspaceRoot.Replace("\\", "/", StringComparison.Ordinal)}",
-            $"{SmokeRuntimeOwnershipLabels.ComposePath}: {composePath.Replace("\\", "/", StringComparison.Ordinal)}",
+            $"{RuntimeOwnershipLabels.Owner}: \"{SmokeOwnerKind}\"",
+            $"{RuntimeOwnershipLabels.RunId}: \"{runId}\"",
+            $"{RuntimeOwnershipLabels.Template}: \"{templateId}\"",
+            $"{RuntimeOwnershipLabels.CreatedBy}: \"{RuntimeOwnershipLabels.CreatedByValue}\"",
+            $"{RuntimeOwnershipLabels.Project}: \"{project}\"",
+            $"{RuntimeOwnershipLabels.WorkspaceRoot}: \"{workspaceRoot.Replace("\\", "/", StringComparison.Ordinal)}\"",
+            $"{RuntimeOwnershipLabels.ComposePath}: \"{composePath.Replace("\\", "/", StringComparison.Ordinal)}\"",
+            $"{RuntimeOwnershipLabels.CreatedAt}: \"{DateTimeOffset.UtcNow:O}\"",
         };
 
         var lines = File.ReadAllLines(composePath).ToList();
-        InsertLabels(lines, "services:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
-        InsertLabels(lines, "networks:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
-        InsertLabels(lines, "volumes:", 2, labels, sectionMatcher: line => line.StartsWith("  ") && line.EndsWith(":", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal));
+        InsertLabels(lines, "services:", labels, ensureDefaultChild: false);
+        InsertLabels(lines, "networks:", labels, ensureDefaultChild: true);
+        InsertLabels(lines, "volumes:", labels, ensureDefaultChild: false);
         File.WriteAllLines(composePath, lines);
     }
 
-    private static void InsertLabels(List<string> lines, string sectionHeader, int childIndent, IReadOnlyList<string> labels, Func<string, bool> sectionMatcher)
+    private static void InsertLabels(List<string> lines, string sectionHeader, IReadOnlyList<string> labels, bool ensureDefaultChild)
     {
-        var sectionIndex = lines.FindIndex(line => string.Equals(line.Trim(), sectionHeader.Trim(), StringComparison.Ordinal));
+        var sectionIndex = lines.FindIndex(line => string.Equals(line, sectionHeader, StringComparison.Ordinal));
         if (sectionIndex < 0)
         {
-            return;
+            if (!ensureDefaultChild)
+            {
+                return;
+            }
+
+            lines.Add(sectionHeader);
+            lines.Add("  default:");
+            sectionIndex = lines.Count - 2;
+        }
+
+        if (ensureDefaultChild && !lines.Skip(sectionIndex + 1).TakeWhile(line => line.StartsWith("  ", StringComparison.Ordinal)).Any(line => string.Equals(line, "  default:", StringComparison.Ordinal)))
+        {
+            lines.Insert(sectionIndex + 1, "  default:");
         }
 
         for (var index = sectionIndex + 1; index < lines.Count; index++)
         {
             var line = lines[index];
-            if (!line.StartsWith(new string(' ', childIndent), StringComparison.Ordinal))
+            if (!line.StartsWith("  ", StringComparison.Ordinal))
             {
                 break;
             }
 
-            if (!sectionMatcher(line))
+            if (!line.EndsWith(":", StringComparison.Ordinal) || line.StartsWith("    ", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -1053,11 +1135,10 @@ public static class OracleRuntimeSmokeCli
                 continue;
             }
 
-            var indent = line[..line.IndexOf(line.TrimStart(), StringComparison.Ordinal)] + "  ";
-            lines.Insert(index + 1, indent + "labels:");
+            lines.Insert(index + 1, "    labels:");
             for (var labelIndex = 0; labelIndex < labels.Count; labelIndex++)
             {
-                lines.Insert(index + 2 + labelIndex, indent + "  " + labels[labelIndex]);
+                lines.Insert(index + 2 + labelIndex, "      " + labels[labelIndex]);
             }
 
             index += labels.Count + 1;

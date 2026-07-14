@@ -132,6 +132,7 @@ public sealed class SmokeCleanupResult
     public IReadOnlyList<RuntimeOwnedResource> Resources { get; init; } = Array.Empty<RuntimeOwnedResource>();
     public IReadOnlyList<string> Actions { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<LegacyRuntimeProject> SuspectedLegacyProjects { get; init; } = Array.Empty<LegacyRuntimeProject>();
 }
 
 public sealed class SmokeResourcePreflight
@@ -141,4 +142,29 @@ public sealed class SmokeResourcePreflight
     public string DockerDiskUsageSummary { get; init; } = string.Empty;
     public string DockerStatsSummary { get; init; } = string.Empty;
     public IReadOnlyList<RuntimeOwnedResource> ActiveSmokeResources { get; init; } = Array.Empty<RuntimeOwnedResource>();
+}
+
+public sealed class LegacyRuntimeProject
+{
+    public string Project { get; init; } = string.Empty;
+    public IReadOnlyList<string> ContainerNames { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> NetworkNames { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> VolumeNames { get; init; } = Array.Empty<string>();
+    public bool EligibleForCleanup { get; init; }
+    public string Reason { get; init; } = string.Empty;
+}
+
+public sealed class LegacyCleanupOptions
+{
+    public bool DryRun { get; init; }
+    public string OutputFormat { get; init; } = "text";
+}
+
+public sealed class LegacyCleanupResult
+{
+    public bool Succeeded { get; init; }
+    public bool DryRun { get; init; }
+    public IReadOnlyList<LegacyRuntimeProject> Projects { get; init; } = Array.Empty<LegacyRuntimeProject>();
+    public IReadOnlyList<string> Actions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
 }
