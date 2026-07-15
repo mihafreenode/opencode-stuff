@@ -32,6 +32,34 @@ public sealed class WorkspaceSmokeApplicationService
         });
     }
 
+    public Task<IReadOnlyList<WorkspaceSmokeDefinition>> SelectDefinitionsAsync(WorkspaceSmokeDefinitionSelectionRequest request, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var definitions = DiscoverDefinitions();
+        if (request.All)
+        {
+            return Task.FromResult<IReadOnlyList<WorkspaceSmokeDefinition>>(definitions
+                .OrderBy(item => item.TemplateId, StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Family))
+        {
+            var selected = definitions
+                .Where(item => string.Equals(item.Family, request.Family, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.TemplateId, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (selected.Length == 0)
+            {
+                throw new WorkspaceSmokeSelectionException($"Unknown smoke family '{request.Family}'.");
+            }
+
+            return Task.FromResult<IReadOnlyList<WorkspaceSmokeDefinition>>(selected);
+        }
+
+        return Task.FromResult(ResolveDefinitions(definitions, request.TemplateIds));
+    }
+
     public async Task<WorkspaceSmokeResult> RunAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken = default)
     {
         var definition = ResolveDefinition(request.TemplateId);

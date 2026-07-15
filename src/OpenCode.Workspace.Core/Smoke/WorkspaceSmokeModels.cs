@@ -84,6 +84,13 @@ public sealed class WorkspaceSmokeDefinitionQuery
     public string? Family { get; init; }
 }
 
+public sealed class WorkspaceSmokeDefinitionSelectionRequest
+{
+    public IReadOnlyList<string> TemplateIds { get; init; } = Array.Empty<string>();
+    public string? Family { get; init; }
+    public bool All { get; init; }
+}
+
 public sealed class WorkspaceSmokeDefinitionCatalogResult
 {
     public string SchemaVersion { get; init; } = WorkspaceSmokeContract.SchemaVersion;
