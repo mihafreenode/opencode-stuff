@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Mcp;
+using System.Threading;
 using System.Text.Json;
 using Xunit;
 
@@ -60,10 +61,10 @@ public sealed class McpToolAdapterTests
         };
         var operations = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
 
-        var result = await OpenCodeWorkspaceMcpTools.RunSmokeMatrix(fake, operations, null, "lightweight", false, "00:10:00");
-        var payload = ReadEnvelope<McpOperationModel>(result);
+        var result = await OpenCodeWorkspaceMcpTools.RunSmokeMatrix(null, "lightweight", false, "00:10:00", fake, operations);
+        var payload = JsonSerializer.Deserialize<McpOperationModel>(result.StructuredContent!.Value.GetRawText())!;
 
-        Assert.Equal("run_smoke_matrix", payload.Data.Kind);
+        Assert.Equal("run_smoke_matrix", payload.Kind);
         Assert.Single(operations.List());
     }
 
@@ -80,7 +81,7 @@ public sealed class McpToolAdapterTests
             },
         };
 
-        await OpenCodeWorkspaceMcpTools.ListRuntimeResources(fake, "smoke", "run-1", "proj", "/tmp/ws");
+        await OpenCodeWorkspaceMcpTools.ListRuntimeResources("smoke", "run-1", "proj", "/tmp/ws", fake);
 
         Assert.NotNull(captured);
         Assert.Equal("smoke", captured!.OwnerKind);
@@ -102,7 +103,7 @@ public sealed class McpToolAdapterTests
             },
         };
 
-        await OpenCodeWorkspaceMcpTools.CleanupSmokeResources(true, true, fake, "run-1");
+        await OpenCodeWorkspaceMcpTools.CleanupSmokeResources(true, true, "run-1", fake);
 
         Assert.NotNull(captured);
         Assert.True(captured!.DryRun);
@@ -114,7 +115,7 @@ public sealed class McpToolAdapterTests
     public void OperationStore_SupportsCancellation()
     {
         var store = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
-        var operation = store.Start("run_smoke", string.Empty, "running", async token =>
+        var operation = store.Start("run_smoke", string.Empty, "running", async (_, token) =>
         {
             await Task.Delay(TimeSpan.FromSeconds(30), token);
             return new RuntimeResourceInventory();
@@ -136,6 +137,49 @@ public sealed class McpToolAdapterTests
         }
     }
 
+    [Fact]
+    public async Task OperationStore_RemovesExpiredCompletedOperations_ButKeepsActiveOnes()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var options = new OpenCodeWorkspaceMcpOptions
+        {
+            Operations = new OpenCodeWorkspaceMcpOperationOptions { Retention = TimeSpan.FromMinutes(5), CleanupTimeout = TimeSpan.FromSeconds(5) },
+        };
+        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance, clock);
+        var completed = store.Start("run_smoke", string.Empty, "done", (_, _) => Task.FromResult<object>(new RuntimeResourceInventory()));
+        await Task.Delay(100);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var active = store.Start("run_smoke", string.Empty, "active", async (_, token) =>
+        {
+            await gate.Task.WaitAsync(token);
+            return new RuntimeResourceInventory();
+        });
+
+        clock.Advance(TimeSpan.FromHours(2));
+        store.TrimExpired();
+
+        Assert.DoesNotContain(store.List(), item => item.OperationId == completed.OperationId);
+        Assert.Contains(store.List(), item => item.OperationId == active.OperationId);
+        gate.SetCanceled();
+    }
+
+    [Fact]
+    public async Task OperationStore_StopAsync_CancelsActiveOperations()
+    {
+        var store = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
+        var operation = store.Start("run_smoke", string.Empty, "active", async (_, token) =>
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5), token);
+            return new RuntimeResourceInventory();
+        });
+
+        await store.StopAsync(CancellationToken.None);
+        var stopped = store.Get(operation.OperationId);
+
+        Assert.True(stopped.CancellationRequested);
+        Assert.Equal(McpOperationStatus.Cancelled, stopped.Status);
+    }
+
     private static McpToolEnvelope<T> ReadEnvelope<T>(CallToolResult result)
     {
         if (result.StructuredContent is null)
@@ -155,6 +199,21 @@ public sealed class McpToolAdapterTests
             WorkingDirectory = TestPaths.RepositoryRoot,
         });
 
+}
+
+internal sealed class FakeClock : ISystemClock
+{
+    public FakeClock(DateTimeOffset utcNow)
+    {
+        UtcNow = utcNow;
+    }
+
+    public DateTimeOffset UtcNow { get; private set; }
+
+    public void Advance(TimeSpan duration)
+    {
+        UtcNow += duration;
+    }
 }
 
 internal sealed class FakeMcpService : IOpenCodeWorkspaceMcpService

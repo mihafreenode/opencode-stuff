@@ -71,6 +71,7 @@ public sealed class WorkspaceSmokeApplicationService
             KeepWorkspace = request.KeepWorkspace,
             KeepRuntimeOnFailure = request.KeepRuntimeOnFailure,
             Timeout = request.Timeout,
+            Progress = request.Progress,
         }, cancellationToken);
     }
 
@@ -89,6 +90,7 @@ public sealed class WorkspaceSmokeApplicationService
             KeepRuntimeOnFailure = request.KeepRuntimeOnFailure,
             RunTimeoutOverride = request.RunTimeoutOverride,
             MatrixTimeout = request.MatrixTimeout,
+            Progress = request.Progress,
         }, cancellationToken);
     }
 

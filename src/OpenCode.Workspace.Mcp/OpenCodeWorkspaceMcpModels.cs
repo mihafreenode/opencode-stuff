@@ -8,6 +8,11 @@ namespace OpenCode.Workspace.Mcp;
 public static class OpenCodeWorkspaceMcpContract
 {
     public const string ContractVersion = "1";
+
+    public static readonly JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+    };
 }
 
 public sealed class OpenCodeWorkspaceMcpOptions
@@ -143,13 +148,16 @@ public enum McpOperationStatus
 
 public sealed class McpOperationModel
 {
+    public string ContractVersion { get; init; } = OpenCodeWorkspaceMcpContract.ContractVersion;
     public string OperationId { get; init; } = string.Empty;
+    public string OperationResourceUri { get; init; } = string.Empty;
     public string Kind { get; init; } = string.Empty;
     public McpOperationStatus Status { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
     public DateTimeOffset? StartedUtc { get; init; }
     public DateTimeOffset? CompletedUtc { get; init; }
     public string CurrentPhase { get; init; } = string.Empty;
+    public IReadOnlyList<string> PhaseHistory { get; init; } = Array.Empty<string>();
     public string ProgressMessage { get; init; } = string.Empty;
     public string WorkspaceId { get; init; } = string.Empty;
     public string SmokeRunId { get; init; } = string.Empty;

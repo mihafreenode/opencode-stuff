@@ -40,7 +40,11 @@ public sealed class OpenCodeWorkspaceMcpTools
 
     [McpServerTool(Name = "provision_workspace"), Description("Start a long-running local workspace provisioning operation.")]
     public static CallToolResult ProvisionWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service, McpOperationStore operations)
-        => McpResults.Success(operations.Start("provision_workspace", workspaceId, "Provisioning workspace.", async cancellationToken => await service.ProvisionWorkspaceAsync(workspaceId, null, cancellationToken)), "Provision operation started.");
+        => McpResults.OperationStarted(operations.Start("provision_workspace", workspaceId, "Provisioning workspace.", async (reporter, cancellationToken) =>
+        {
+            reporter.MarkStarted("preparing", "Preparing workspace provisioning.");
+            return await service.ProvisionWorkspaceAsync(workspaceId, message => reporter.ReportProgress("provisioning", message), cancellationToken);
+        }), "Provision operation started.");
 
     [McpServerTool(Name = "validate_workspace"), Description("Validate a local workspace and return readiness and health details.")]
     public static async Task<CallToolResult> ValidateWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service)
@@ -57,25 +61,36 @@ public sealed class OpenCodeWorkspaceMcpTools
     [McpServerTool(Name = "run_smoke"), Description("Start a long-running local smoke run.")]
     public static async Task<CallToolResult> RunSmoke(
         [Description("Stable template id")] string templateId,
-        IOpenCodeWorkspaceMcpService service,
-        McpOperationStore operations,
         [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
-        [Description("Optional artifact root")] string? artifactsRoot = null)
+        [Description("Optional artifact root")] string? artifactsRoot = null,
+        IOpenCodeWorkspaceMcpService service = null!,
+        McpOperationStore operations = null!)
     {
         await service.GetWorkspaceTemplateAsync(templateId);
         var request = new WorkspaceSmokeSingleRunRequest { TemplateId = templateId, Timeout = ParseTimeout(timeout), ArtifactsRoot = artifactsRoot ?? string.Empty };
-        var operation = operations.Start("run_smoke", string.Empty, $"Running smoke for {templateId}.", token => service.RunSmokeAsync(request, token).ContinueWith<object>(task => task.Result, token));
-        return McpResults.Success(operation, "Smoke operation started.");
+        var operation = operations.Start("run_smoke", string.Empty, $"Running smoke for {templateId}.", async (reporter, token) =>
+        {
+            reporter.MarkStarted("queued", $"Queued smoke run for '{templateId}'.");
+            request = new WorkspaceSmokeSingleRunRequest
+            {
+                TemplateId = request.TemplateId,
+                ArtifactsRoot = request.ArtifactsRoot,
+                Timeout = request.Timeout,
+                Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+            };
+            return await service.RunSmokeAsync(request, token);
+        });
+        return McpResults.OperationStarted(operation, "Smoke operation started.");
     }
 
     [McpServerTool(Name = "run_smoke_matrix"), Description("Start a long-running local smoke matrix run.")]
     public static async Task<CallToolResult> RunSmokeMatrix(
-        IOpenCodeWorkspaceMcpService service,
-        McpOperationStore operations,
         [Description("Optional template ids")] string[]? templateIds = null,
         [Description("Optional smoke family")] string? family = null,
         [Description("Select all smoke definitions")] bool all = false,
-        [Description("Optional timeout as hh:mm:ss")] string? timeout = null)
+        [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
+        IOpenCodeWorkspaceMcpService service = null!,
+        McpOperationStore operations = null!)
     {
         var selected = await service.SelectSmokeDefinitionsAsync(new WorkspaceSmokeDefinitionSelectionRequest
         {
@@ -84,8 +99,18 @@ public sealed class OpenCodeWorkspaceMcpTools
             All = all,
         });
         var request = new WorkspaceSmokeMatrixRunRequest { TemplateIds = selected.Select(item => item.TemplateId).ToArray(), MatrixTimeout = ParseTimeout(timeout) };
-        var operation = operations.Start("run_smoke_matrix", string.Empty, "Running smoke matrix.", token => service.RunSmokeMatrixAsync(request, token).ContinueWith<object>(task => task.Result, token));
-        return McpResults.Success(operation, "Smoke matrix operation started.");
+        var operation = operations.Start("run_smoke_matrix", string.Empty, "Running smoke matrix.", async (reporter, token) =>
+        {
+            reporter.MarkStarted("queued", "Queued smoke matrix.");
+            request = new WorkspaceSmokeMatrixRunRequest
+            {
+                TemplateIds = request.TemplateIds,
+                MatrixTimeout = request.MatrixTimeout,
+                Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+            };
+            return await service.RunSmokeMatrixAsync(request, token);
+        });
+        return McpResults.OperationStarted(operation, "Smoke matrix operation started.");
     }
 
     [McpServerTool(Name = "list_smoke_resources"), Description("List owned smoke runtime resources.")]
@@ -96,30 +121,30 @@ public sealed class OpenCodeWorkspaceMcpTools
     public static async Task<CallToolResult> CleanupSmokeResources(
         [Description("Run in dry-run mode")] bool dryRun,
         [Description("Include all smoke resources")] bool includeAll,
-        IOpenCodeWorkspaceMcpService service,
-        [Description("Optional smoke run id filter")] string? runId = null)
+        [Description("Optional smoke run id filter")] string? runId = null,
+        IOpenCodeWorkspaceMcpService service = null!)
         => await ExecuteAsync(() => service.CleanupSmokeResourcesAsync(new SmokeCleanupOptions(dryRun, includeAll, runId, "json")));
 
     [McpServerTool(Name = "list_runtime_resources"), Description("List local runtime resources using OpenCode ownership labels.")]
     public static async Task<CallToolResult> ListRuntimeResources(
-        IOpenCodeWorkspaceMcpService service,
         string? owner = null,
         string? runId = null,
         string? project = null,
-        string? workspaceRoot = null)
+        string? workspaceRoot = null,
+        IOpenCodeWorkspaceMcpService service = null!)
         => McpResults.Success(await service.ListRuntimeResourcesAsync(new RuntimeOwnershipQuery { OwnerKind = owner, RunId = runId, Project = project, WorkspaceRoot = workspaceRoot }), "Listed runtime resources.");
 
     [McpServerTool(Name = "run_runtime_doctor"), Description("Run the local runtime ownership doctor view.")]
     public static async Task<CallToolResult> RunRuntimeDoctor(
-        IOpenCodeWorkspaceMcpService service,
         string? owner = null,
         string? runId = null,
         string? project = null,
-        string? workspaceRoot = null)
+        string? workspaceRoot = null,
+        IOpenCodeWorkspaceMcpService service = null!)
         => McpResults.Success(await service.RunRuntimeDoctorAsync(new RuntimeOwnershipQuery { OwnerKind = owner, RunId = runId, Project = project, WorkspaceRoot = workspaceRoot }), "Ran runtime doctor.");
 
     [McpServerTool(Name = "list_workspace_artifacts"), Description("List files under a workspace artifacts root.")]
-    public static async Task<CallToolResult> ListWorkspaceArtifacts(string workspaceId, IOpenCodeWorkspaceMcpService service, string? relativePath = null, bool recursive = false)
+    public static async Task<CallToolResult> ListWorkspaceArtifacts(string workspaceId, string? relativePath = null, bool recursive = false, IOpenCodeWorkspaceMcpService service = null!)
         => McpResults.Success(await service.ListWorkspaceArtifactsAsync(workspaceId, relativePath, recursive), "Listed workspace artifacts.");
 
     [McpServerTool(Name = "get_workspace_artifact"), Description("Read a workspace artifact when it is text-sized, or return metadata for larger artifacts.")]
@@ -127,7 +152,7 @@ public sealed class OpenCodeWorkspaceMcpTools
         => await ExecuteAsync(() => service.GetWorkspaceArtifactAsync(workspaceId, relativePath));
 
     [McpServerTool(Name = "list_smoke_artifacts"), Description("List files under a smoke artifact directory.")]
-    public static async Task<CallToolResult> ListSmokeArtifacts(string runId, IOpenCodeWorkspaceMcpService service, string? relativePath = null, bool recursive = false)
+    public static async Task<CallToolResult> ListSmokeArtifacts(string runId, string? relativePath = null, bool recursive = false, IOpenCodeWorkspaceMcpService service = null!)
         => McpResults.Success(await service.ListSmokeArtifactsAsync(runId, relativePath, recursive), "Listed smoke artifacts.");
 
     [McpServerTool(Name = "get_smoke_artifact"), Description("Read a smoke artifact when it is text-sized, or return metadata for larger artifacts.")]
@@ -135,20 +160,20 @@ public sealed class OpenCodeWorkspaceMcpTools
         => await ExecuteAsync(() => service.GetSmokeArtifactAsync(runId, relativePath));
 
     [McpServerTool(Name = "process_excel_artifact"), Description("Process a local XLSX artifact and emit an output workbook with an OpenCode Result worksheet.")]
-    public static async Task<CallToolResult> ProcessExcelArtifact(string sourcePath, IOpenCodeWorkspaceMcpService service, string? destinationWorkspaceId = null, string? processingTemplateId = null, string? outputLogicalName = null)
+    public static async Task<CallToolResult> ProcessExcelArtifact(string sourcePath, string? destinationWorkspaceId = null, string? processingTemplateId = null, string? outputLogicalName = null, IOpenCodeWorkspaceMcpService service = null!)
         => await ExecuteAsync(() => service.ProcessExcelArtifactAsync(sourcePath, destinationWorkspaceId, processingTemplateId, outputLogicalName));
 
     [McpServerTool(Name = "get_operation"), Description("Get a long-running local MCP operation.")]
-    public static CallToolResult GetOperation(string operationId, McpOperationStore operations)
-        => McpResults.Success(operations.Get(operationId), "Loaded operation.");
+    public static Task<CallToolResult> GetOperation(string operationId, McpOperationStore operations)
+        => ExecuteAsync(() => Task.FromResult(operations.Get(operationId)));
 
     [McpServerTool(Name = "list_operations"), Description("List in-memory MCP operations for this local process.")]
-    public static CallToolResult ListOperations(McpOperationStore operations)
-        => McpResults.Success(operations.List(), "Listed operations.");
+    public static Task<CallToolResult> ListOperations(McpOperationStore operations)
+        => ExecuteAsync(() => Task.FromResult(operations.List()));
 
     [McpServerTool(Name = "cancel_operation"), Description("Request cancellation for an in-memory MCP operation.")]
-    public static CallToolResult CancelOperation(string operationId, McpOperationStore operations)
-        => McpResults.Success(operations.Cancel(operationId), "Cancellation requested.");
+    public static Task<CallToolResult> CancelOperation(string operationId, McpOperationStore operations)
+        => ExecuteAsync(() => Task.FromResult(operations.Cancel(operationId)));
 
     private static async Task<CallToolResult> ExecuteAsync<T>(Func<Task<T>> operation)
     {
@@ -168,6 +193,15 @@ public sealed class OpenCodeWorkspaceMcpTools
 
 internal static class McpResults
 {
+    public static CallToolResult OperationStarted(McpOperationModel operation, string message)
+    {
+        return new CallToolResult
+        {
+            StructuredContent = JsonSerializer.SerializeToElement(operation),
+            Content = [new TextContentBlock { Text = message }],
+        };
+    }
+
     public static CallToolResult Success<T>(T data, string message)
     {
         var correlationId = Guid.NewGuid().ToString("n");
@@ -182,7 +216,16 @@ internal static class McpResults
     public static CallToolResult Error(Exception exception)
     {
         var correlationId = Guid.NewGuid().ToString("n");
-        var envelope = new McpErrorEnvelope
+        var envelope = exception is OpenCodeWorkspaceMcpException mcpException
+            ? new McpErrorEnvelope
+            {
+                CorrelationId = correlationId,
+                Code = mcpException.Code,
+                Message = mcpException.Message,
+                Recommendation = mcpException.Recommendation,
+                FailureClassification = mcpException.FailureClassification,
+            }
+            : new McpErrorEnvelope
         {
             CorrelationId = correlationId,
             Code = MapErrorCode(exception),
@@ -192,9 +235,8 @@ internal static class McpResults
         };
         return new CallToolResult
         {
-            IsError = true,
             StructuredContent = JsonSerializer.SerializeToElement(envelope),
-            Content = [new TextContentBlock { Text = exception.Message }],
+            Content = [new TextContentBlock { Text = JsonSerializer.Serialize(envelope, OpenCodeWorkspaceMcpContract.JsonOptions) }],
         };
     }
 
@@ -202,10 +244,13 @@ internal static class McpResults
         => exception.Message switch
         {
             var message when message.Contains("Unknown template", StringComparison.OrdinalIgnoreCase) => "unknown_template",
+            var message when message.Contains("Unknown smoke family", StringComparison.OrdinalIgnoreCase) => "invalid_smoke_selection",
             var message when message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase) => "unsupported_template",
             var message when message.Contains("Workspace '", StringComparison.OrdinalIgnoreCase) && message.Contains("was not found", StringComparison.OrdinalIgnoreCase) => "workspace_not_found",
             var message when message.Contains("Operation '", StringComparison.OrdinalIgnoreCase) && message.Contains("was not found", StringComparison.OrdinalIgnoreCase) => "operation_not_found",
+            var message when message.Contains("already complete", StringComparison.OrdinalIgnoreCase) => "operation_not_cancellable",
             var message when message.Contains("Artifact was not found", StringComparison.OrdinalIgnoreCase) => "artifact_not_found",
+            var message when message.Contains("Artifact resource was not found", StringComparison.OrdinalIgnoreCase) => "invalid_artifact_resource_id",
             var message when message.Contains("outside the allowed root", StringComparison.OrdinalIgnoreCase) => "artifact_outside_allowed_root",
             var message when message.Contains("Invalid workbook", StringComparison.OrdinalIgnoreCase) => "invalid_workbook",
             _ => "invalid_request",

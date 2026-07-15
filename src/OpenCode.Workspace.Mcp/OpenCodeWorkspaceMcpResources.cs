@@ -11,7 +11,7 @@ public sealed class OpenCodeWorkspaceMcpResources
     [McpServerResource(UriTemplate = "opencode://server/health", Name = "Server Health", MimeType = "application/json")]
     [Description("Read local MCP server health and binding information.")]
     public static string GetServerHealth(IOpenCodeWorkspaceMcpService service)
-        => JsonSerializer.Serialize(service.GetServerHealth(), new JsonSerializerOptions { WriteIndented = true });
+        => JsonSerializer.Serialize(service.GetServerHealth(), OpenCodeWorkspaceMcpContract.JsonOptions);
 
     [McpServerResource(UriTemplate = "opencode://templates/{templateId}", Name = "Workspace Template", MimeType = "application/json")]
     [Description("Read a resolved workspace template definition.")]
@@ -20,7 +20,7 @@ public sealed class OpenCodeWorkspaceMcpResources
         {
             Uri = $"opencode://templates/{templateId}",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(await service.GetWorkspaceTemplateAsync(templateId), new JsonSerializerOptions { WriteIndented = true }),
+            Text = JsonSerializer.Serialize(await service.GetWorkspaceTemplateAsync(templateId), OpenCodeWorkspaceMcpContract.JsonOptions),
         };
 
     [McpServerResource(UriTemplate = "opencode://workspaces/{workspaceId}", Name = "Workspace Snapshot", MimeType = "application/json")]
@@ -30,7 +30,7 @@ public sealed class OpenCodeWorkspaceMcpResources
         {
             Uri = $"opencode://workspaces/{workspaceId}",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(await service.GetWorkspaceAsync(workspaceId), new JsonSerializerOptions { WriteIndented = true }),
+            Text = JsonSerializer.Serialize(await service.GetWorkspaceAsync(workspaceId), OpenCodeWorkspaceMcpContract.JsonOptions),
         };
 
     [McpServerResource(UriTemplate = "opencode://operations/{operationId}", Name = "Operation", MimeType = "application/json")]
@@ -40,7 +40,7 @@ public sealed class OpenCodeWorkspaceMcpResources
         {
             Uri = $"opencode://operations/{operationId}",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(operations.Get(operationId), new JsonSerializerOptions { WriteIndented = true }),
+            Text = JsonSerializer.Serialize(operations.Get(operationId), OpenCodeWorkspaceMcpContract.JsonOptions),
         };
 
     [McpServerResource(UriTemplate = "opencode://smoke/{runId}/summary", Name = "Smoke Summary", MimeType = "application/json")]
@@ -66,7 +66,7 @@ public sealed class OpenCodeWorkspaceMcpResources
         {
             Uri = "opencode://runtime/inventory",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(await service.ListRuntimeResourcesAsync(new OpenCode.Workspace.Core.Runtime.RuntimeOwnershipQuery()), new JsonSerializerOptions { WriteIndented = true }),
+            Text = JsonSerializer.Serialize(await service.ListRuntimeResourcesAsync(new OpenCode.Workspace.Core.Runtime.RuntimeOwnershipQuery()), OpenCodeWorkspaceMcpContract.JsonOptions),
         };
 
     [McpServerResource(UriTemplate = "opencode://artifacts/{artifactId}", Name = "Artifact", MimeType = "application/octet-stream")]

@@ -141,7 +141,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         cancellationToken.ThrowIfCancellationRequested();
         var template = _catalogProvider.LoadTemplates().SingleOrDefault(item => string.Equals(item.Id, templateId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Unknown template '{templateId}'.");
+            ?? throw new OpenCodeWorkspaceMcpException("unknown_template", $"Unknown template '{templateId}'.", "Use list_workspace_templates to discover stable template ids.");
         var smoke = WorkspaceSmokeCatalog.BuildDefinition(template);
         var resolved = _workspaceResolver.Resolve(_templateExpander.Expand(template.DisplayName, template));
         return Task.FromResult(new WorkspaceTemplateDetailModel
@@ -183,7 +183,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     public async Task<WorkspaceRecordModel> CreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default)
     {
         var template = _catalogProvider.LoadTemplates().SingleOrDefault(item => string.Equals(item.Id, templateId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Unknown template '{templateId}'.");
+            ?? throw new OpenCodeWorkspaceMcpException("unknown_template", $"Unknown template '{templateId}'.", "Use list_workspace_templates to discover stable template ids.");
         var workspaceRoot = Path.Combine(Path.GetFullPath(destinationRoot), workspaceName.Trim());
         var definition = BuildWorkspaceDefinition(workspaceName, template);
         var snapshot = await _workspaceOrchestrator.CreateWorkspaceAsync(workspaceRoot, definition, cancellationToken: cancellationToken, includeRuntimeInspection: true);
@@ -246,6 +246,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             Timeout = request.Timeout,
             DryRun = request.DryRun,
             WorkspaceRoot = request.WorkspaceRoot,
+            Progress = request.Progress,
         }, cancellationToken);
     }
 
@@ -261,6 +262,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             KeepWorkspace = request.KeepWorkspace,
             MatrixTimeout = request.MatrixTimeout,
             RunTimeoutOverride = request.RunTimeoutOverride,
+            Progress = request.Progress,
         }, cancellationToken);
     }
 
@@ -299,19 +301,29 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
 
     public Task<ArtifactReadModel> ReadArtifactByResourceUriAsync(string resourceUri, CancellationToken cancellationToken = default)
     {
-        var encoded = new Uri(resourceUri).Segments.LastOrDefault()?.Trim('/');
-        if (string.IsNullOrWhiteSpace(encoded))
+        ArtifactResourceDescriptor descriptor;
+        try
         {
-            throw new InvalidOperationException("Artifact resource was not found.");
+            var encoded = new Uri(resourceUri).Segments.LastOrDefault()?.Trim('/');
+            if (string.IsNullOrWhiteSpace(encoded))
+            {
+                throw new FormatException();
+            }
+
+            descriptor = JsonSerializer.Deserialize<ArtifactResourceDescriptor>(Encoding.UTF8.GetString(Base64UrlDecode(encoded)))
+                ?? throw new FormatException();
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or UriFormatException or ArgumentException)
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_artifact_resource_id", "Artifact resource was not found.", "Use artifact resource URIs returned by the MCP host.");
         }
 
-        var descriptor = JsonSerializer.Deserialize<ArtifactResourceDescriptor>(Encoding.UTF8.GetString(Base64UrlDecode(encoded)))
-            ?? throw new InvalidOperationException("Artifact resource was not found.");
         return descriptor.Kind switch
         {
             "workspace" => GetWorkspaceArtifactAsync(descriptor.OwnerId, descriptor.RelativePath, cancellationToken),
             "smoke" => GetSmokeArtifactAsync(descriptor.OwnerId, descriptor.RelativePath, cancellationToken),
-            _ => throw new InvalidOperationException("Artifact resource was not found."),
+            "smokeRoot" => ReadArtifactAsync(_smokeArtifactsRoot, descriptor.RelativePath, cancellationToken),
+            _ => throw new OpenCodeWorkspaceMcpException("invalid_artifact_resource_id", "Artifact resource was not found.", "Use artifact resource URIs returned by the MCP host."),
         };
     }
 
@@ -323,7 +335,11 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             ?? throw new InvalidOperationException("Artifact resource was not found.");
         var root = descriptor.Kind == "workspace"
             ? ResolveWorkspaceSnapshot(descriptor.OwnerId).Paths.ArtifactsPath
-            : ResolveSmokeArtifactDirectory(descriptor.OwnerId);
+            : descriptor.Kind == "smoke"
+                ? ResolveSmokeArtifactDirectory(descriptor.OwnerId)
+                : descriptor.Kind == "smokeRoot"
+                    ? _smokeArtifactsRoot
+                    : throw new OpenCodeWorkspaceMcpException("invalid_artifact_resource_id", "Artifact resource was not found.", "Use artifact resource URIs returned by the MCP host.");
         var bytes = await File.ReadAllBytesAsync(ResolveFile(root, descriptor.RelativePath), cancellationToken);
         return new ArtifactResourceReadModel { Artifact = artifact, Bytes = bytes };
     }
@@ -332,13 +348,13 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         if (string.IsNullOrWhiteSpace(destinationWorkspaceId) && string.IsNullOrWhiteSpace(processingTemplateId))
         {
-            throw new InvalidOperationException("Provide either a destination workspace id or a processing template id.");
+            throw new OpenCodeWorkspaceMcpException("invalid_request", "Provide either a destination workspace id or a processing template id.");
         }
 
         var validatedSource = ValidateAllowedPath(sourcePath);
         if (!File.Exists(validatedSource) || !string.Equals(Path.GetExtension(validatedSource), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Invalid workbook. Provide an existing .xlsx file under an allowed root.");
+            throw new OpenCodeWorkspaceMcpException("invalid_workbook", "Invalid workbook. Provide an existing .xlsx file under an allowed root.", "Use a valid .xlsx artifact under a workspace or smoke artifact root.");
         }
 
         using (SpreadsheetDocument.Open(validatedSource, false))
@@ -380,7 +396,9 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         return new ExcelProcessResultModel
         {
             OutputPath = outputPath,
-            ResourceUri = CreateArtifactResourceUri(!string.IsNullOrWhiteSpace(destinationWorkspaceId) ? "workspace" : "smoke", destinationWorkspaceId ?? processingTemplateId!, Path.GetRelativePath(destinationRoot, outputPath)),
+            ResourceUri = !string.IsNullOrWhiteSpace(destinationWorkspaceId)
+                ? CreateArtifactResourceUri("workspace", destinationWorkspaceId!, Path.GetRelativePath(destinationRoot, outputPath))
+                : CreateArtifactResourceUri("smokeRoot", "smoke", Path.GetRelativePath(_smokeArtifactsRoot, outputPath)),
             OutputChecksumSha256 = outputChecksum,
             SourceChecksumSha256 = sourceChecksum,
             ProcessedUtc = DateTimeOffset.UtcNow,
@@ -445,7 +463,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             }
         }
 
-        throw new InvalidOperationException($"Workspace '{workspaceId}' was not found.");
+        throw new OpenCodeWorkspaceMcpException("workspace_not_found", $"Workspace '{workspaceId}' was not found.", "Refresh the local workspace list and retry.");
     }
 
     private WorkspaceSnapshot ResolveWorkspaceSnapshot(string workspaceId)
@@ -549,14 +567,14 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         if (!Directory.Exists(_smokeArtifactsRoot))
         {
-            throw new InvalidOperationException($"Smoke run '{runId}' was not found.");
+            throw new OpenCodeWorkspaceMcpException("artifact_not_found", $"Smoke run '{runId}' was not found.", "List smoke artifacts or inspect the completed operation result first.");
         }
 
         var match = Directory.EnumerateDirectories(_smokeArtifactsRoot, "*", SearchOption.AllDirectories)
             .FirstOrDefault(path => string.Equals(Path.GetFileName(path), runId, StringComparison.OrdinalIgnoreCase));
         if (match is null)
         {
-            throw new InvalidOperationException($"Smoke run '{runId}' was not found.");
+            throw new OpenCodeWorkspaceMcpException("artifact_not_found", $"Smoke run '{runId}' was not found.", "List smoke artifacts or inspect the completed operation result first.");
         }
 
         return match;
@@ -572,7 +590,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         var candidate = Path.GetFullPath(Path.Combine(root, relativePath));
         if (!candidate.StartsWith(Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Artifact path is outside the allowed root.");
+            throw new OpenCodeWorkspaceMcpException("artifact_outside_allowed_root", "Artifact path is outside the allowed root.", "Use workspace or smoke artifact paths only.");
         }
 
         return candidate;
@@ -583,7 +601,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         var file = ResolveSubdirectory(root, relativePath);
         if (!File.Exists(file))
         {
-            throw new InvalidOperationException("Artifact was not found.");
+            throw new OpenCodeWorkspaceMcpException("artifact_not_found", "Artifact was not found.", "List artifacts first and retry with a valid relative path.");
         }
 
         return file;
@@ -599,7 +617,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             .ToArray();
         if (!allowedRoots.Any(root => fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("Artifact path is outside the allowed root.");
+            throw new OpenCodeWorkspaceMcpException("artifact_outside_allowed_root", "Artifact path is outside the allowed root.", "Use workspace or smoke artifact paths only.");
         }
 
         return fullPath;

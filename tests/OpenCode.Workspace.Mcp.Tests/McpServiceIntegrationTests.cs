@@ -30,7 +30,7 @@ public sealed class McpServiceIntegrationTests : IDisposable
         var workbookPath = Path.Combine(created.Snapshot.Paths.ArtifactsPath, "input.xlsx");
         CreateWorkbook(workbookPath);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetWorkspaceArtifactAsync(created.WorkspaceId, "../outside.txt"));
+        await Assert.ThrowsAsync<OpenCodeWorkspaceMcpException>(() => service.GetWorkspaceArtifactAsync(created.WorkspaceId, "../outside.txt"));
 
         var artifact = await service.GetWorkspaceArtifactAsync(created.WorkspaceId, "notes.txt");
         Assert.True(artifact.IsTextInline);

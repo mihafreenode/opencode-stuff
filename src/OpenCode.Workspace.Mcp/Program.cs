@@ -17,6 +17,7 @@ public static class Program
         var options = new OpenCodeWorkspaceMcpOptions();
         builder.Configuration.GetSection("mcp").Bind(options);
         builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton<ISystemClock, SystemClock>();
         builder.Services.AddSingleton<IOpenCodeWorkspaceMcpService, OpenCodeWorkspaceMcpService>();
         builder.Services.AddSingleton<McpOperationStore>();
         builder.Services

@@ -67,6 +67,16 @@ public sealed class WorkspaceSmokeRunner
         var skipReason = string.Empty;
         var runTimeout = options.Timeout ?? WorkspaceSmokeTimeouts.Resolve(definition.TimeoutClass);
 
+        void Report(string phaseName, string message)
+            => options.Progress?.Report(new WorkspaceSmokeProgressUpdate
+            {
+                RunId = runId,
+                MatrixRunId = matrixRunId,
+                TemplateId = definition.TemplateId,
+                Phase = phaseName,
+                Message = message,
+            });
+
         try
         {
             if (!definition.Supported)
@@ -83,6 +93,7 @@ public sealed class WorkspaceSmokeRunner
             }
 
             phase = WorkspaceSmokePhase.Preflight;
+            Report("preflightCleanup", "Cleaning stale smoke resources before the run starts.");
             inventoryBefore = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cancellationToken);
             await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(artifactDirectory, "before", inventoryBefore, cancellationToken);
 
@@ -94,6 +105,7 @@ public sealed class WorkspaceSmokeRunner
             }
 
             phase = WorkspaceSmokePhase.Creation;
+            Report("creatingWorkspace", "Creating the temporary smoke workspace.");
             var expanded = _templateExpander.Expand($"{definition.TemplateId}-runtime-smoke-{CreateRunDirectoryName(startedUtc)}", definition.Template);
             var provisioningLog = new StringBuilder();
             void Log(CommandLogEntry entry)
@@ -115,6 +127,7 @@ public sealed class WorkspaceSmokeRunner
             }
 
             phase = WorkspaceSmokePhase.Provisioning;
+            Report("provisioning", "Provisioning workspace runtime and services.");
             await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
                 token => workspaceService.ProvisionAsync(snapshot, Log, token),
                 runTimeout,
@@ -128,6 +141,7 @@ public sealed class WorkspaceSmokeRunner
             await CaptureDockerArtifactsAsync(snapshot.Paths, expanded, dockerArtifactDirectory, cancellationToken);
 
             phase = WorkspaceSmokePhase.Validation;
+            Report("validating", "Running smoke validators.");
             var context = new WorkspaceSmokeContext
             {
                 MatrixRunId = matrixRunId,
@@ -143,6 +157,7 @@ public sealed class WorkspaceSmokeRunner
             };
             foreach (var validator in _validatorProvider.ResolveValidators(definition))
             {
+                Report("validating", $"Running validator '{validator.ValidatorId}'.");
                 var validatorResult = await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
                     token => validator.ValidateAsync(context, token),
                     runTimeout,
@@ -163,10 +178,12 @@ public sealed class WorkspaceSmokeRunner
             }
 
             phase = WorkspaceSmokePhase.Completed;
+            Report("completed", failures.Length == 0 ? "Smoke run completed successfully." : "Smoke run completed with validation failures.");
             status = failures.Length == 0 ? WorkspaceSmokeStatus.Passed : WorkspaceSmokeStatus.Failed;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            Report("cleaningUp", "Smoke run was cancelled. Cleaning up owned resources.");
             status = WorkspaceSmokeStatus.Cancelled;
             failureClassification = WorkspaceSmokeFailureClassification.Cancelled;
             failureMessage = "Smoke run was cancelled.";
@@ -187,6 +204,7 @@ public sealed class WorkspaceSmokeRunner
             try
             {
                 phase = WorkspaceSmokePhase.Cleanup;
+                Report("cleaningUp", "Cleaning up smoke-owned runtime resources.");
                 var shouldRetainRuntime = options.KeepRuntimeOnFailure && !string.IsNullOrWhiteSpace(failureMessage);
                 using var cleanupSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
                 if (!shouldRetainRuntime)
@@ -210,6 +228,7 @@ public sealed class WorkspaceSmokeRunner
                 }
 
                 await File.WriteAllTextAsync(Path.Combine(cleanupArtifactDirectory, "run-cleanup.json"), System.Text.Json.JsonSerializer.Serialize(cleanupResult, WorkspaceSmokeContract.JsonOptions), cleanupSource.Token);
+                Report("verifyingCleanup", "Verifying smoke resource cleanup.");
                 inventoryAfter = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cleanupSource.Token);
                 await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(artifactDirectory, "after", inventoryAfter, cleanupSource.Token);
             }
@@ -260,6 +279,7 @@ Finalize:
         }
 
         var finalPhase = status == WorkspaceSmokeStatus.Passed ? WorkspaceSmokePhase.Completed : phase;
+        Report(status == WorkspaceSmokeStatus.Cancelled ? "completed" : finalPhase.ToString().ToLowerInvariant(), status == WorkspaceSmokeStatus.Cancelled ? "Smoke run finished in cancelled state." : "Smoke run finished.");
         var summaryJsonPath = Path.Combine(artifactDirectory, "summary.json");
         var summaryTextPath = Path.Combine(artifactDirectory, "summary.txt");
         var result = new WorkspaceSmokeResult
@@ -353,6 +373,15 @@ public sealed class WorkspaceSmokeMatrixRunner
         CancellationTokenSource? matrixTimeoutSource = null;
         CancellationTokenSource? linkedSource = null;
 
+        void Report(string phaseName, string message, string templateId = "")
+            => options.Progress?.Report(new WorkspaceSmokeProgressUpdate
+            {
+                MatrixRunId = matrixRunId,
+                TemplateId = templateId,
+                Phase = phaseName,
+                Message = message,
+            });
+
         if (options.MatrixTimeout is not null)
         {
             matrixTimeoutSource = new CancellationTokenSource(options.MatrixTimeout.Value);
@@ -367,6 +396,7 @@ public sealed class WorkspaceSmokeMatrixRunner
                 lockHandle = _lockService.AcquireOracleExclusiveLock();
             }
 
+            Report("preflightCleanup", "Cleaning stale smoke resources before the matrix starts.");
             var preflight = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "json"), cancellationToken);
             await File.WriteAllTextAsync(Path.Combine(hostBeforeDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(preflight, WorkspaceSmokeContract.JsonOptions), executionToken);
             if (!preflight.Succeeded || !preflight.VerificationSucceeded)
@@ -383,6 +413,7 @@ public sealed class WorkspaceSmokeMatrixRunner
 
             foreach (var definition in OrderDefinitions(definitions))
             {
+                Report("preparing", $"Starting smoke run for '{definition.TemplateId}'.", definition.TemplateId);
                 var result = await _runner.RunAsync(definition, new WorkspaceSmokeRunnerOptions
                 {
                     MatrixRunId = matrixRunId,
@@ -391,6 +422,7 @@ public sealed class WorkspaceSmokeMatrixRunner
                     KeepRuntimeOnFailure = options.KeepRuntimeOnFailure,
                     KeepWorkspace = options.KeepWorkspace,
                     Timeout = options.RunTimeoutOverride,
+                    Progress = options.Progress,
                 }, executionToken);
                 results.Add(result);
 
@@ -425,6 +457,7 @@ public sealed class WorkspaceSmokeMatrixRunner
             try
             {
                 using var cleanupSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
+                Report("cleaningUp", "Cleaning up matrix-owned smoke resources.");
                 finalCleanup = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "json"), cleanupSource.Token);
                 finalInventory = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cleanupSource.Token);
                 await File.WriteAllTextAsync(Path.Combine(hostAfterDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(finalCleanup, WorkspaceSmokeContract.JsonOptions), cleanupSource.Token);
@@ -471,6 +504,7 @@ public sealed class WorkspaceSmokeMatrixRunner
 
         var summaryJsonPath = Path.Combine(artifactDirectory, "matrix-summary.json");
         var summaryTextPath = Path.Combine(artifactDirectory, "matrix-summary.txt");
+        Report("completed", status == WorkspaceSmokeStatus.Cancelled ? "Smoke matrix finished in cancelled state." : "Smoke matrix finished.");
         var matrixResult = new WorkspaceSmokeMatrixResult
         {
             MatrixRunId = matrixRunId,

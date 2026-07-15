@@ -198,6 +198,7 @@ public sealed class WorkspaceSmokeRunnerOptions
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
     public TimeSpan? Timeout { get; init; }
+    public IProgress<WorkspaceSmokeProgressUpdate>? Progress { get; init; }
 }
 
 public sealed class WorkspaceSmokeMatrixRunnerOptions
@@ -208,6 +209,7 @@ public sealed class WorkspaceSmokeMatrixRunnerOptions
     public bool KeepRuntimeOnFailure { get; init; }
     public TimeSpan? RunTimeoutOverride { get; init; }
     public TimeSpan? MatrixTimeout { get; init; }
+    public IProgress<WorkspaceSmokeProgressUpdate>? Progress { get; init; }
 }
 
 public sealed class WorkspaceSmokeSingleRunRequest
@@ -219,6 +221,7 @@ public sealed class WorkspaceSmokeSingleRunRequest
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
     public TimeSpan? Timeout { get; init; }
+    public IProgress<WorkspaceSmokeProgressUpdate>? Progress { get; init; }
 }
 
 public sealed class WorkspaceSmokeMatrixRunRequest
@@ -230,6 +233,17 @@ public sealed class WorkspaceSmokeMatrixRunRequest
     public bool KeepRuntimeOnFailure { get; init; }
     public TimeSpan? RunTimeoutOverride { get; init; }
     public TimeSpan? MatrixTimeout { get; init; }
+    public IProgress<WorkspaceSmokeProgressUpdate>? Progress { get; init; }
+}
+
+public sealed class WorkspaceSmokeProgressUpdate
+{
+    public string RunId { get; init; } = string.Empty;
+    public string MatrixRunId { get; init; } = string.Empty;
+    public string TemplateId { get; init; } = string.Empty;
+    public string Phase { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public DateTimeOffset TimestampUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
 public static class WorkspaceSmokeContract

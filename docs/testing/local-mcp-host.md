@@ -109,13 +109,16 @@ Excel workflow:
 
 Long-running operation fields:
 
+- `contractVersion`
 - `operationId`
+- `operationResourceUri`
 - `kind`
 - `status`
 - `createdUtc`
 - `startedUtc`
 - `completedUtc`
 - `currentPhase`
+- `phaseHistory`
 - `progressMessage`
 - `workspaceId`
 - `smokeRunId`
@@ -128,6 +131,17 @@ Long-running operation fields:
 - `cancellationRequested`
 
 Operations are in-memory only.
+
+Observed smoke phases from protocol validation:
+
+- `queued`
+- `preflightCleanup`
+- `creatingWorkspace`
+- `provisioning`
+- `validating`
+- `cleaningUp`
+- `verifyingCleanup`
+- `completed`
 
 ## Cancellation
 
@@ -156,6 +170,27 @@ Operations are in-memory only.
 5. returns output metadata, checksums, resource URI, and diagnostics
 
 This is a deterministic local workflow proof only.
+
+## Proven Flow
+
+1. start the host with `dotnet run --project src/OpenCode.Workspace.Mcp`
+2. connect an MCP client over stdio and call `list_workspace_templates`
+3. start a lightweight smoke run with `run_smoke` for `empty-workspace`
+4. poll `get_operation` until the operation reaches a terminal state
+5. read `opencode://smoke/<run-id>/summary`
+6. list smoke artifacts with `list_smoke_artifacts`
+7. start another smoke run and cancel it with `cancel_operation`
+8. confirm `list_smoke_resources` and `run_runtime_doctor` return no smoke findings afterward
+9. process an `.xlsx` file with `process_excel_artifact`
+10. read the returned workbook through its validated artifact resource URI
+
+Notes:
+
+- operations are in-memory only
+- restarting the MCP host loses operation records
+- smoke and workspace artifacts remain on disk
+- abandoned smoke runtimes remain recoverable through the existing preflight cleanup path
+- stdio stdout must never contain logs or banners
 
 ## Configuration
 
