@@ -13,13 +13,7 @@ public static class Program
         var builder = Host.CreateApplicationBuilder(args);
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
-
-        var options = new OpenCodeWorkspaceMcpOptions();
-        builder.Configuration.GetSection("mcp").Bind(options);
-        builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<ISystemClock, SystemClock>();
-        builder.Services.AddSingleton<IOpenCodeWorkspaceMcpService, OpenCodeWorkspaceMcpService>();
-        builder.Services.AddSingleton<McpOperationStore>();
+        builder.Services.AddOpenCodeWorkspaceLocalServices(builder.Configuration);
         builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()

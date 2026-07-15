@@ -18,6 +18,9 @@ public static class OpenCodeWorkspaceMcpContract
 public sealed class OpenCodeWorkspaceMcpOptions
 {
     public string Transport { get; init; } = "stdio";
+    public string CatalogRoot { get; init; } = string.Empty;
+    public string WorkspaceStateRoot { get; init; } = string.Empty;
+    public string SmokeArtifactsRoot { get; init; } = string.Empty;
     public OpenCodeWorkspaceMcpHttpOptions Http { get; init; } = new();
     public OpenCodeWorkspaceMcpOperationOptions Operations { get; init; } = new();
     public OpenCodeWorkspaceMcpArtifactOptions Artifacts { get; init; } = new();

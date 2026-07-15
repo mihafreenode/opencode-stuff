@@ -74,11 +74,17 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         _options = options;
         _logger = logger;
-        _catalogRoot = catalogRoot ?? ResolveCatalogRoot(Environment.CurrentDirectory)
+        _catalogRoot = catalogRoot
+            ?? NormalizeOptionalPath(options.CatalogRoot)
+            ?? ResolveCatalogRoot(Environment.CurrentDirectory)
             ?? ResolveCatalogRoot(AppContext.BaseDirectory)
             ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
-        _workspaceStateRoot = workspaceStateRoot ?? WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
-        _smokeArtifactsRoot = smokeArtifactsRoot ?? Path.Combine(Environment.CurrentDirectory, "artifacts", "template-smoke");
+        _workspaceStateRoot = workspaceStateRoot
+            ?? NormalizeOptionalPath(options.WorkspaceStateRoot)
+            ?? WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
+        _smokeArtifactsRoot = smokeArtifactsRoot
+            ?? NormalizeOptionalPath(options.SmokeArtifactsRoot)
+            ?? Path.Combine(Environment.CurrentDirectory, "artifacts", "template-smoke");
         Directory.CreateDirectory(_workspaceStateRoot);
         Directory.CreateDirectory(_smokeArtifactsRoot);
 
@@ -168,7 +174,43 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         foreach (var record in records)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            results.Add(await GetWorkspaceInternalAsync(record, cancellationToken));
+            try
+            {
+                results.Add(await GetWorkspaceInternalAsync(record, cancellationToken));
+            }
+            catch (Exception exception)
+            {
+                results.Add(new WorkspaceRecordModel
+                {
+                    WorkspaceId = record.Name,
+                    Name = record.Name,
+                    WorkspaceRoot = record.RootPath,
+                    Template = record.Name,
+                    Status = WorkspaceHealthStatus.Unavailable.ToString(),
+                    Readiness = WorkspaceReadinessStatus.Unavailable.ToString(),
+                    RuntimeState = WorkspaceRuntimeState.Unknown.ToString(),
+                    Warnings = [exception.Message],
+                    Snapshot = new WorkspaceSnapshot
+                    {
+                        Record = record,
+                        Definition = new WorkspaceDefinition { Workspace = new WorkspaceMetadata { Id = WorkspacePathBuilder.Slugify(record.Name), Name = record.Name, Image = "ubuntu:24.04" } },
+                        Paths = WorkspacePathBuilder.Build(record.RootPath, record.ConfigurationPath),
+                        ConfigurationPath = record.ConfigurationPath,
+                        RuntimeState = WorkspaceRuntimeState.Unknown,
+                        Safety = new WorkspaceSafetySnapshot
+                        {
+                            OverallStatus = WorkspaceSafetyLevel.NeedsReview,
+                            Headline = "Workspace snapshot could not be loaded.",
+                            Message = exception.Message,
+                            LocalRecovery = new WorkspaceLocalRecoverySnapshot(),
+                            Backup = new WorkspaceBackupSnapshot(),
+                            IgnorePolicy = new WorkspaceIgnorePolicyReview(),
+                            AdvancedGit = new WorkspaceAdvancedGitSnapshot(),
+                        },
+                        Session = new WorkspaceSessionSnapshot(),
+                    },
+                });
+            }
         }
 
         return results.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -683,6 +725,9 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
 
         return null;
     }
+
+    private static string? NormalizeOptionalPath(string? path)
+        => string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
 
     private static Row RowOf(string name, string value)
         => new(

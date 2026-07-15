@@ -4,6 +4,7 @@
     <Project Path="src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj" />
     <Project Path="src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj" />
     <Project Path="src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj" />
+    <Project Path="src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj" />
     <Project Path="src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform/OpenCode.Workspace.Platform.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.Linux/OpenCode.Workspace.Platform.Linux.csproj" />
@@ -13,6 +14,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Cli.Tests/OpenCode.Workspace.Cli.Tests.csproj" />
+    <Project Path="tests/OpenCode.Workspace.Api.IntegrationTests/OpenCode.Workspace.Api.IntegrationTests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.Linux.Tests/OpenCode.Workspace.Platform.Linux.Tests.csproj" />

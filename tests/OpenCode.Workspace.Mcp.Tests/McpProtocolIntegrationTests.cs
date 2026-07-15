@@ -12,28 +12,38 @@ namespace OpenCode.Workspace.Mcp.Tests;
 
 public sealed class McpProtocolIntegrationTests : IAsyncLifetime
 {
-    private readonly string _excelRoot = Path.Combine(TestPaths.RepositoryRoot, "artifacts", "template-smoke", "mcp-protocol");
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode-mcp-protocol", Guid.NewGuid().ToString("n"));
+    private string _excelRoot = string.Empty;
+    private string _workspaceStateRoot = string.Empty;
+    private string _smokeArtifactsRoot = string.Empty;
 
     public Task InitializeAsync()
     {
+        _workspaceStateRoot = Path.Combine(_root, "state");
+        _smokeArtifactsRoot = Path.Combine(_root, "artifacts", "template-smoke");
+        _excelRoot = Path.Combine(_smokeArtifactsRoot, "excel");
         Directory.CreateDirectory(_excelRoot);
+        Directory.CreateDirectory(_workspaceStateRoot);
+        Directory.CreateDirectory(_smokeArtifactsRoot);
         return Task.CompletedTask;
     }
 
     public Task DisposeAsync()
     {
-        if (Directory.Exists(_excelRoot))
+        if (Directory.Exists(_root))
         {
-            Directory.Delete(_excelRoot, recursive: true);
+            Directory.Delete(_root, recursive: true);
         }
 
         return Task.CompletedTask;
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "FastIntegration")]
     public async Task ProtocolDiscovery_ExposesStableToolsAndSchemas()
     {
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
         var tools = await harness.Client.ListToolsAsync();
         var names = tools.Select(item => item.Name).OrderBy(item => item, StringComparer.Ordinal).ToArray();
 
@@ -78,9 +88,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "LiveDockerIntegration")]
     public async Task ProtocolSmokeRun_CompletesAndExposesResourcesAndArtifacts()
     {
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
 
         var start = await harness.Client.CallToolAsync("run_smoke", new Dictionary<string, object?>
         {
@@ -133,9 +145,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "LiveDockerIntegration")]
     public async Task ProtocolSmokeCancellation_CleansUpAndLeavesNoSmokeResources()
     {
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
 
         var start = await harness.Client.CallToolAsync("run_smoke", new Dictionary<string, object?>
         {
@@ -175,13 +189,15 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "FastIntegration")]
     public async Task ProtocolExcelRoundTrip_ProcessesWorkbookAndReturnsArtifactResource()
     {
         var sourcePath = Path.Combine(_excelRoot, "source.xlsx");
         CreateWorkbook(sourcePath);
         var sourceChecksumBefore = ComputeSha256(sourcePath);
 
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
         CallToolResult result;
         try
         {
@@ -215,9 +231,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "FastIntegration")]
     public async Task ProtocolErrors_AreStable_And_DoNotCrashServer()
     {
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
 
         var unknownTemplate = await harness.Client.CallToolAsync("get_workspace_template", new Dictionary<string, object?> { ["templateId"] = "does-not-exist" });
         var unknownTemplateError = ReadError(unknownTemplate);
@@ -238,9 +256,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "FastIntegration")]
     public async Task ProtocolWorkspaceAndTemplateResources_AreReadable()
     {
-        await using var harness = await McpProtocolHarness.StartAsync();
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
         var templateResource = await harness.Client.ReadResourceAsync("opencode://templates/empty-workspace");
         Assert.Contains("empty-workspace", GetTextResource(templateResource), StringComparison.Ordinal);
 
@@ -252,6 +272,34 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             var workspaceResource = await harness.Client.ReadResourceAsync($"opencode://workspaces/{workspace.WorkspaceId}");
             Assert.Contains(workspace.WorkspaceId, GetTextResource(workspaceResource), StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "FastIntegration")]
+    public async Task ProtocolWorkspaceLifecycle_Creates_Validates_Stops_And_Removes_Runtime()
+    {
+        var workspaceParent = Path.Combine(_root, "workspaces");
+        Directory.CreateDirectory(workspaceParent);
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
+
+        var create = await harness.Client.CallToolAsync("create_workspace", new Dictionary<string, object?>
+        {
+            ["templateId"] = "empty-workspace",
+            ["workspaceName"] = "mcp-api-parity",
+            ["destinationRoot"] = workspaceParent,
+        });
+        var created = ReadEnvelope<WorkspaceRecordModel>(create).Data;
+        Assert.True(Directory.Exists(created.WorkspaceRoot));
+
+        var validate = await harness.Client.CallToolAsync("validate_workspace", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
+        Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(validate).Data.WorkspaceId);
+
+        var stop = await harness.Client.CallToolAsync("stop_workspace", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
+        Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(stop).Data.WorkspaceId);
+
+        var remove = await harness.Client.CallToolAsync("remove_workspace_runtime", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
+        Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(remove).Data.WorkspaceId);
     }
 
     private static McpToolEnvelope<T> ReadEnvelope<T>(CallToolResult result)
@@ -301,7 +349,7 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
     public McpClient Client { get; }
     public IReadOnlyList<string> StandardErrorLines => _stderr;
 
-    public static async Task<McpProtocolHarness> StartAsync()
+    public static async Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot)
     {
         var stderr = new List<string>();
         var transport = new StdioClientTransport(new StdioClientTransportOptions
@@ -310,6 +358,12 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
             Command = "dotnet",
             Arguments = [Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "bin", "Debug", "net10.0", "OpenCode.Workspace.Mcp.dll")],
             WorkingDirectory = TestPaths.RepositoryRoot,
+            EnvironmentVariables = new Dictionary<string, string?>
+            {
+                ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
+                ["mcp__workspaceStateRoot"] = workspaceStateRoot,
+                ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
+            },
             StandardErrorLines = line =>
             {
                 lock (stderr)

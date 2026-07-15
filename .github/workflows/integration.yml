@@ -1,0 +1,240 @@
+---
+name: Integration
+
+"on":
+  workflow_dispatch:
+    inputs:
+      run_non_oracle:
+        type: boolean
+        default: true
+      run_oracle:
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "catalog/**"
+      - "tools/**"
+      - ".github/workflows/**"
+      - "Directory.Packages.props"
+      - "*.sln"
+      - "*.slnx"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "catalog/**"
+      - "tools/**"
+      - ".github/workflows/**"
+      - "Directory.Packages.props"
+      - "*.sln"
+      - "*.slnx"
+
+jobs:
+  fast-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DOTNET_NOLOGO: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.204
+
+      - name: Restore
+        run: dotnet restore OpenCode.Workspace.slnx
+
+      - name: Build release solution
+        run: dotnet build OpenCode.Workspace.slnx -c Release --no-restore
+
+      - name: Core tests
+        run: dotnet test tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj -c Release --no-build --logger "trx;LogFileName=core.trx" --results-directory artifacts/ci/test-results/core
+
+      - name: CLI tests
+        run: dotnet test tests/OpenCode.Workspace.Cli.Tests/OpenCode.Workspace.Cli.Tests.csproj -c Release --no-build --logger "trx;LogFileName=cli.trx" --results-directory artifacts/ci/test-results/cli
+
+      - name: Avalonia tests
+        run: dotnet test tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj -c Release --no-build --logger "trx;LogFileName=avalonia.trx" --results-directory artifacts/ci/test-results/avalonia
+
+      - name: MCP tests
+        run: dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj -c Release --no-build --logger "trx;LogFileName=mcp.trx" --results-directory artifacts/ci/test-results/mcp
+
+      - name: API fast integration tests
+        run: dotnet test tests/OpenCode.Workspace.Api.IntegrationTests/OpenCode.Workspace.Api.IntegrationTests.csproj -c Release --no-build --filter "Category=FastIntegration" --logger "trx;LogFileName=api-fast.trx" --results-directory artifacts/ci/test-results/api-fast
+
+      - name: Upload fast test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-validation-artifacts
+          path: artifacts/ci/test-results
+          retention-days: 14
+
+  lightweight-live-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: fast-validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.204
+
+      - name: Restore
+        run: dotnet restore OpenCode.Workspace.slnx
+
+      - name: Build release solution
+        run: dotnet build OpenCode.Workspace.slnx -c Release --no-restore
+
+      - name: Preflight cleanup
+        run: |
+          mkdir -p artifacts/ci/live/preflight
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/live/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/live/preflight/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime doctor --owner smoke --format json > artifacts/ci/live/preflight/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/live/preflight/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/live/preflight/runtime-doctor.json
+
+      - name: API live integration tests
+        run: dotnet test tests/OpenCode.Workspace.Api.IntegrationTests/OpenCode.Workspace.Api.IntegrationTests.csproj -c Release --no-build --filter "Category=LiveDockerIntegration" --logger "trx;LogFileName=api-live.trx" --results-directory artifacts/ci/live/api
+
+      - name: MCP live integration tests
+        run: dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj -c Release --no-build --filter "Category=LiveDockerIntegration" --logger "trx;LogFileName=mcp-live.trx" --results-directory artifacts/ci/live/mcp
+
+      - name: Final cleanup
+        if: always()
+        run: |
+          mkdir -p artifacts/ci/live/final
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/live/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/live/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime doctor --owner smoke --format json > artifacts/ci/live/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --dry-run --all --format json > artifacts/ci/live/final/cleanup-dry-run.json
+          grep -q '"resources": \[\]' artifacts/ci/live/final/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/live/final/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/live/final/cleanup-dry-run.json
+
+      - name: Upload live integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lightweight-live-artifacts
+          path: artifacts/ci/live
+          retention-days: 14
+
+  non-oracle-smoke-matrix:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: fast-validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.204
+
+      - name: Restore
+        run: dotnet restore OpenCode.Workspace.slnx
+
+      - name: Build release solution
+        run: dotnet build OpenCode.Workspace.slnx -c Release --no-restore
+
+      - name: Preflight cleanup
+        run: |
+          mkdir -p artifacts/ci/non-oracle/preflight
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/preflight/runtime-list.json
+          grep -q '"resources": \[\]' artifacts/ci/non-oracle/preflight/runtime-list.json
+
+      - name: Lightweight family
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run --family lightweight --format json > artifacts/ci/non-oracle/lightweight.json
+
+      - name: PostgreSQL family
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run --family postgresql --format json > artifacts/ci/non-oracle/postgresql.json
+
+      - name: Analytics family
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run --family analytics --format json > artifacts/ci/non-oracle/analytics.json
+
+      - name: Document processing family
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run --family document-processing --format json > artifacts/ci/non-oracle/document-processing.json
+
+      - name: Final cleanup
+        if: always()
+        run: |
+          mkdir -p artifacts/ci/non-oracle/final
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime doctor --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --dry-run --all --format json > artifacts/ci/non-oracle/final/cleanup-dry-run.json
+          grep -q '"resources": \[\]' artifacts/ci/non-oracle/final/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/non-oracle/final/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/non-oracle/final/cleanup-dry-run.json
+
+      - name: Upload non-oracle artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: non-oracle-smoke-artifacts
+          path: artifacts/ci/non-oracle
+          retention-days: 14
+
+  oracle-smoke-matrix:
+    if: (github.event_name == 'workflow_dispatch' && inputs.run_oracle) || startsWith(github.ref, 'refs/tags/')
+    runs-on:
+      - self-hosted
+      - oracle
+    timeout-minutes: 240
+    needs: fast-validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.204
+
+      - name: Restore
+        run: dotnet restore OpenCode.Workspace.slnx
+
+      - name: Build release solution
+        run: dotnet build OpenCode.Workspace.slnx -c Release --no-restore
+
+      - name: Preflight cleanup
+        run: |
+          mkdir -p artifacts/ci/oracle/preflight
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/oracle/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/oracle/preflight/runtime-list.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle/preflight/runtime-list.json
+
+      - name: Oracle PL/SQL smoke
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run oracle-plsql-demo --format json > artifacts/ci/oracle/oracle-plsql-demo.json
+
+      - name: Oracle APEX smoke
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run oracle-apex-demo --format json > artifacts/ci/oracle/oracle-apex-demo.json
+
+      - name: Oracle APEXlang smoke
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke run oracle-apexlang-demo --format json > artifacts/ci/oracle/oracle-apexlang-demo.json
+
+      - name: Final cleanup
+        if: always()
+        run: |
+          mkdir -p artifacts/ci/oracle/final
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --all --format json > artifacts/ci/oracle/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime list --owner smoke --format json > artifacts/ci/oracle/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll runtime doctor --owner smoke --format json > artifacts/ci/oracle/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll smoke cleanup --dry-run --all --format json > artifacts/ci/oracle/final/cleanup-dry-run.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle/final/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/oracle/final/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle/final/cleanup-dry-run.json
+
+      - name: Upload oracle artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oracle-smoke-artifacts
+          path: artifacts/ci/oracle
+          retention-days: 14
