@@ -249,6 +249,33 @@ public sealed class TemplateManifest
 
     [YamlMember(Alias = "mcp")]
     public List<string> Mcp { get; init; } = new();
+
+    [YamlMember(Alias = "smoke")]
+    public TemplateSmokeManifest? Smoke { get; init; }
+}
+
+public sealed class TemplateSmokeManifest
+{
+    [YamlMember(Alias = "supported")]
+    public bool? Supported { get; init; }
+
+    [YamlMember(Alias = "unsupportedReason")]
+    public string? UnsupportedReason { get; init; }
+
+    [YamlMember(Alias = "family")]
+    public string Family { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "resourceClass")]
+    public string ResourceClass { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "timeoutClass")]
+    public string TimeoutClass { get; init; } = string.Empty;
+
+    [YamlMember(Alias = "expectedServices")]
+    public List<string> ExpectedServices { get; init; } = new();
+
+    [YamlMember(Alias = "validators")]
+    public List<string> Validators { get; init; } = new();
 }
 
 public sealed class McpManifest

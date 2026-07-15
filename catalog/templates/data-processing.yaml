@@ -8,3 +8,12 @@ features:
 services:
   - postgres
   - pgadmin
+smoke:
+  supported: true
+  family: postgresql
+  resourceClass: database
+  timeoutClass: long
+  expectedServices:
+    - workspace
+    - postgres
+    - pgadmin

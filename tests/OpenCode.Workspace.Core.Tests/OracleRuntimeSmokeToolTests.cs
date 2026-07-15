@@ -370,9 +370,19 @@ public sealed class OracleRuntimeSmokeToolTests
         Assert.DoesNotContain("docker ps --format", source, StringComparison.Ordinal);
         Assert.DoesNotContain("docker network ls --format", source, StringComparison.Ordinal);
         Assert.DoesNotContain("docker volume ls --format", source, StringComparison.Ordinal);
-        Assert.Contains("BuildInventoryAsync", source, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceSmokeApplicationService", source, StringComparison.Ordinal);
         Assert.Contains("WriteRuntimeInventoryArtifactsAsync", source, StringComparison.Ordinal);
         Assert.Contains("runtime-inventory-", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SmokeToolSource_UsesGenericSmokeApplicationService()
+    {
+        var source = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "tools", "OracleRuntimeSmoke", "Program.cs"));
+
+        Assert.Contains("new WorkspaceSmokeApplicationService", source, StringComparison.Ordinal);
+        Assert.Contains("service.RunAsync(new WorkspaceSmokeSingleRunRequest", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("orchestrator.ProvisionAsync", source, StringComparison.Ordinal);
     }
 
     [Fact]

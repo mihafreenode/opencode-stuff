@@ -7,6 +7,7 @@ using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Core.Workspaces;
 
 return await OracleRuntimeSmokeCli.RunAsync(args);
@@ -62,248 +63,150 @@ public static class OracleRuntimeSmokeCli
 
     public static async Task<int> RunAsync(string[] args)
     {
-        SmokeRunSummary? summary = null;
-        WorkspaceSnapshot? snapshot = null;
-        WorkspaceDefinition? definition = null;
-        RuntimeOwnershipService? runtimeOwnershipService = null;
+        var options = Parse(args);
+        var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
+        var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
+        Directory.CreateDirectory(artifactsRoot);
 
-        try
+        var wslDocker = ProbeDocker("wsl-current", "docker", "version");
+        var windowsDocker = ProbeDockerFromWindows();
+        var selectedHost = SelectHost(options, wslDocker, windowsDocker);
+        File.WriteAllText(Path.Combine(artifactsRoot, "docker-wsl-current.txt"), wslDocker.Output);
+        File.WriteAllText(Path.Combine(artifactsRoot, "docker-windows.txt"), windowsDocker.Output);
+
+        if (!options.DryRun && selectedHost == SmokeValidationHost.Windows && !OperatingSystem.IsWindows())
         {
-            var options = Parse(args);
-            var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
-            var processRunner = new ProcessRunner();
-            var containerRuntime = new DockerContainerRuntime(new DockerService(processRunner));
-            var ownershipService = new SmokeRuntimeOwnershipService(containerRuntime);
-            runtimeOwnershipService = new RuntimeOwnershipService(containerRuntime);
-            var inventoryService = runtimeOwnershipService;
-            var runId = $"{CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow)}-{Guid.NewGuid():N}";
-            var artifactsRoot = options.ArtifactsRoot ?? Path.Combine(repositoryRoot, "artifacts", "oracle-runtime-smoke", CreateArtifactRunDirectoryName(DateTimeOffset.UtcNow));
-            Directory.CreateDirectory(artifactsRoot);
-
-            using var oracleLock = AcquireOracleSmokeLock();
-
-            var wslDocker = ProbeDocker("wsl-current", "docker", "version");
-            var windowsDocker = ProbeDockerFromWindows();
-            var selectedHost = SelectHost(options, wslDocker, windowsDocker);
-
-            summary = new SmokeRunSummary(options.TemplateId, artifactsRoot)
-            {
-                RunId = runId,
-                WorkspaceRoot = options.WorkspaceRoot,
-                SelectedHost = selectedHost.ToString().ToLowerInvariant(),
-                WslDockerSuccess = wslDocker.Success,
-                WindowsDockerSuccess = windowsDocker.Success,
-                SelectionReason = DescribeHostSelection(options, selectedHost, wslDocker, windowsDocker),
-                DryRun = options.DryRun,
-            };
-
-            File.WriteAllText(Path.Combine(artifactsRoot, "docker-wsl-current.txt"), wslDocker.Output);
-            File.WriteAllText(Path.Combine(artifactsRoot, "docker-windows.txt"), windowsDocker.Output);
-            WriteSummary(artifactsRoot, summary);
-
-            if (!options.DryRun && selectedHost == SmokeValidationHost.Windows && !OperatingSystem.IsWindows())
-            {
-                return await DelegateToWindowsAsync(repositoryRoot, options, artifactsRoot);
-            }
-
-            var workspaceRoot = options.WorkspaceRoot ?? Path.Combine(Path.GetTempPath(), $"oracle-runtime-smoke-{WorkspacePathBuilder.Slugify(options.TemplateId)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}");
-            summary = summary with { WorkspaceRoot = workspaceRoot };
-            WriteSummary(artifactsRoot, summary);
-
-            var preflightCleanup = await ownershipService.CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "text"), CancellationToken.None);
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "smoke-preflight-cleanup.txt"), string.Join(Environment.NewLine, preflightCleanup.Actions.Concat(preflightCleanup.Errors)), CancellationToken.None);
-            if (!preflightCleanup.Succeeded)
-            {
-                throw new InvalidOperationException("Runtime resource exhaustion: stale smoke-owned Docker resources could not be cleaned before starting a new Oracle smoke run.");
-            }
-
-            var inventoryBefore = await inventoryService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
-            await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "before", inventoryBefore, CancellationToken.None);
-
-            var preflight = await ownershipService.CapturePreflightAsync(CancellationToken.None);
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "host-memory.txt"), preflight.HostMemorySummary);
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-memory.txt"), preflight.DockerMemorySummary);
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-disk-usage.txt"), preflight.DockerDiskUsageSummary);
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "docker-stats.txt"), preflight.DockerStatsSummary);
-            if (preflight.ActiveSmokeResources.Count > 0)
-            {
-                throw new InvalidOperationException("Runtime resource exhaustion: smoke-owned Docker resources are still active after cleanup verification.");
-            }
-
-            var provider = new BuiltInCatalogProvider(Path.Combine(repositoryRoot, "catalog"));
-            var resolver = new WorkspaceResolver(provider.LoadFeatures(), provider.LoadServices(), provider.LoadCapabilities(), provider.LoadKnowledgePacks());
-            var template = provider.LoadTemplates().Single(item => string.Equals(item.Id, options.TemplateId, StringComparison.OrdinalIgnoreCase));
-            definition = new TemplateExpander().Expand($"{options.TemplateId}-runtime-smoke-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}", template);
-            var orchestrator = CreateOrchestrator(workspaceRoot, resolver);
-            var oracleSettings = OracleWorkspaceSettings.From(definition);
-
-            summary = summary with
-            {
-                OrdsHostPort = oracleSettings.OrdsPort,
-                OrdsContainerPort = OracleWorkspaceSettings.ContainerOrdsPort,
-                OrdsBaseUrlTested = oracleSettings.OrdsBaseUrl,
-                ApexUrlTested = oracleSettings.ApexLoginUrl,
-            };
-            WriteSummary(artifactsRoot, summary);
-
-            var provisioningLog = new StringBuilder();
-            void Log(CommandLogEntry entry)
-            {
-                var line = $"[{entry.Source}] {entry.Message}";
-                Console.WriteLine(line);
-                provisioningLog.AppendLine(line);
-            }
-
-            Console.WriteLine($"[stage] Creating workspace for template '{options.TemplateId}'.");
-            snapshot = orchestrator.CreateWorkspace(workspaceRoot, definition, Log);
-            ApplySmokeOwnershipLabels(snapshot.Paths.ComposePath, definition, options.TemplateId, runId, workspaceRoot);
-            CaptureGeneratedArtifacts(snapshot.Paths, artifactsRoot);
-
-            if (options.DryRun)
-            {
-                summary = summary with { Result = "Dry run completed", FailureClassification = null };
-                WriteSummary(artifactsRoot, summary);
-                return 0;
-            }
-
-            Console.WriteLine("[stage] Provisioning workspace runtime.");
-            var started = DateTimeOffset.UtcNow;
-            await orchestrator.ProvisionAsync(snapshot, Log);
-            var elapsed = DateTimeOffset.UtcNow - started;
-            var httpProbe = OracleWorkspaceFamily.HasApex(definition)
-                ? await ProbeOracleHostEndpointsAsync(oracleSettings)
-                : null;
-            summary = summary with { ElapsedSeconds = Math.Round(elapsed.TotalSeconds, 1) };
-            if (httpProbe is not null)
-            {
-                summary = summary with
-                {
-                    OrdsHttpStatusCode = httpProbe.OrdsStatusCode,
-                    ApexHttpStatusCode = httpProbe.ApexStatusCode,
-                };
-            }
-
-            File.WriteAllText(Path.Combine(artifactsRoot, "provisioning.log"), provisioningLog.ToString());
-            await CaptureRuntimeArtifactsAsync(snapshot.Paths, definition, artifactsRoot);
-            var activeInventory = await inventoryService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
-            await WriteRuntimeInventoryArtifactsAsync(artifactsRoot, "active", activeInventory, CancellationToken.None);
-
-            summary = summary with { Result = "Live smoke completed", FailureClassification = null };
-            WriteSummary(artifactsRoot, summary);
-            return 0;
+            return await DelegateToWindowsAsync(repositoryRoot, options, artifactsRoot);
         }
-        catch (Exception exception)
+
+        var catalogRoot = Path.Combine(repositoryRoot, "catalog");
+        var provider = new BuiltInCatalogProvider(catalogRoot);
+        var template = provider.LoadTemplates().Single(item => string.Equals(item.Id, options.TemplateId, StringComparison.OrdinalIgnoreCase));
+        var definition = new TemplateExpander().Expand($"{options.TemplateId}-runtime-smoke-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}", template);
+        var oracleSettings = OracleWorkspaceSettings.From(definition);
+        var service = new WorkspaceSmokeApplicationService(
+            catalogRoot,
+            Path.Combine(Path.GetTempPath(), "opencode-workspace-smoke-state"),
+            new DockerContainerRuntime(new DockerService(new ProcessRunner())));
+        var result = await service.RunAsync(new WorkspaceSmokeSingleRunRequest
         {
-            OrdsFailureDiagnostic? ordsDiagnostic = null;
-            ApexFailureDiagnostic? apexDiagnostic = null;
-            WorkspaceSnapshot? failureSnapshot = null;
-            WorkspaceDefinition? failureDefinition = null;
-            SmokeRunSummary? failureSummary = null;
-            if (summary is { } currentSummary && snapshot is { } currentSnapshot && definition is { } currentDefinition)
-            {
-                failureSnapshot = currentSnapshot;
-                failureDefinition = currentDefinition;
-                failureSummary = currentSummary;
-                ordsDiagnostic = await CaptureOrdsFailureDiagnosticsAsync(currentSnapshot.Paths, currentDefinition, currentSummary.ArtifactsRoot);
-                apexDiagnostic = await CaptureApexFailureDiagnosticsAsync(currentSnapshot.Paths.RootPath, currentDefinition, currentSummary.ArtifactsRoot);
-                var currentRunId = currentSummary.RunId;
-                if (currentRunId is not null && !string.IsNullOrWhiteSpace(currentRunId))
-                {
-                    var runId = currentRunId.Trim();
-                    var currentOwnershipService = runtimeOwnershipService;
-                    if (currentOwnershipService is null)
-                    {
-                        throw new InvalidOperationException("Validation tooling failure: runtime ownership service was not initialized before failure diagnostics.");
-                    }
+            TemplateId = options.TemplateId,
+            ArtifactsRoot = artifactsRoot,
+            WorkspaceRoot = options.WorkspaceRoot,
+            DryRun = options.DryRun,
+        });
 
-                    var activeInventory = await currentOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind, RunId = runId }, CancellationToken.None);
-                    await WriteRuntimeInventoryArtifactsAsync(currentSummary.ArtifactsRoot, "active", activeInventory, CancellationToken.None);
-                }
-            }
+        CopyCompatibilityArtifacts(result.ArtifactDirectory, artifactsRoot);
+        var summary = BuildCompatibilitySummary(options, artifactsRoot, selectedHost, wslDocker, windowsDocker, oracleSettings, result);
+        WriteSummary(artifactsRoot, summary);
 
-            var oracleSettings = failureDefinition is null ? null : OracleWorkspaceSettings.From(failureDefinition);
-            var httpProbe = oracleSettings is not null && failureDefinition is not null && OracleWorkspaceFamily.HasApex(failureDefinition)
-                ? await ProbeOracleHostEndpointsAsync(oracleSettings)
-                : null;
-
-            var classification = ClassifyFailure(exception);
-            Console.Error.WriteLine($"[{classification}] {exception.Message}");
-            Console.Error.WriteLine(exception);
-
-            if (ordsDiagnostic is not null)
-            {
-                Console.Error.WriteLine($"[ords] classification={ordsDiagnostic.FailureClassification}");
-                Console.Error.WriteLine($"[ords] restart_count={ordsDiagnostic.RestartCount} exit_code={ordsDiagnostic.ExitCode}");
-                if (!string.IsNullOrWhiteSpace(ordsDiagnostic.LastLogLine))
-                {
-                    Console.Error.WriteLine($"[ords] last_log_line={ordsDiagnostic.LastLogLine}");
-                }
-            }
-
-            if (summary is not null)
-            {
-                summary = summary with
-                {
-                    Result = exception.Message,
-                    FailureClassification = classification.ToString(),
-                    OrdsFailureClassification = ordsDiagnostic?.FailureClassification,
-                    OrdsRestartCount = ordsDiagnostic?.RestartCount,
-                    OrdsExitCode = ordsDiagnostic?.ExitCode,
-                    OrdsLastLogLine = ordsDiagnostic?.LastLogLine,
-                    OrdsHttpStatusCode = httpProbe?.OrdsStatusCode,
-                    ApexHttpStatusCode = httpProbe?.ApexStatusCode,
-                    ApexMediaFound = apexDiagnostic?.MediaFound,
-                    ApexMediaPath = apexDiagnostic?.MediaPath,
-                    ApexInstalled = apexDiagnostic?.Installed,
-                    ApexVersion = apexDiagnostic?.Version,
-                    ApexRegistryStatus = apexDiagnostic?.RegistryStatus,
-                    ApexSchemasPresent = apexDiagnostic?.SchemasPresent,
-                    ApexInstallationState = apexDiagnostic?.InstallationState,
-                };
-                WriteSummary(summary.ArtifactsRoot, summary);
-                File.WriteAllText(Path.Combine(summary.ArtifactsRoot, "failure.txt"), exception.ToString());
-            }
-
-            return 1;
+        if (result.Status != WorkspaceSmokeStatus.Passed)
+        {
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "failure.txt"), result.FailureMessage, CancellationToken.None);
         }
-        finally
+
+        await WriteCompatibilityCleanupArtifactsAsync(artifactsRoot, result, CancellationToken.None);
+        Console.WriteLine($"[compat] template={result.TemplateId} status={result.Status} run_id={result.RunId}");
+        Console.WriteLine($"[compat] artifacts={artifactsRoot}");
+        return result.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+    }
+
+    private static void CopyCompatibilityArtifacts(string sourceDirectory, string destinationDirectory)
+    {
+        foreach (var filePath in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
         {
-            if (summary is not null)
+            var relativePath = Path.GetRelativePath(sourceDirectory, filePath);
+            var destinationPath = Path.Combine(destinationDirectory, relativePath);
+            var directory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrWhiteSpace(directory))
             {
-                try
-                {
-                    var cleanup = await new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(new SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: summary.RunId, OutputFormat: "text"), CancellationToken.None);
-                    var cleanupLines = new List<string>
-                    {
-                        $"compose_down_attempted={cleanup.ComposeDownAttempted}",
-                        $"compose_down_succeeded={cleanup.ComposeDownSucceeded}",
-                        $"fallback_removal_required={cleanup.FallbackRemovalRequired}",
-                        $"verification_succeeded={cleanup.VerificationSucceeded}",
-                        $"cleanup_succeeded={cleanup.Succeeded}",
-                    };
-                    cleanupLines.AddRange(cleanup.Actions);
-                    cleanupLines.AddRange(cleanup.Warnings.Select(item => "warning:" + item));
-                    cleanupLines.AddRange(cleanup.Errors.Select(item => "error:" + item));
-                    await File.WriteAllTextAsync(Path.Combine(summary.ArtifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanupLines), CancellationToken.None);
-                    var inventoryAfter = await new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = SmokeOwnerKind }, CancellationToken.None);
-                    await WriteRuntimeInventoryArtifactsAsync(summary.ArtifactsRoot, "after", inventoryAfter, CancellationToken.None);
-                    summary = summary with
-                    {
-                        CleanupComposeDownAttempted = cleanup.ComposeDownAttempted,
-                        CleanupComposeDownSucceeded = cleanup.ComposeDownSucceeded,
-                        CleanupFallbackRemovalRequired = cleanup.FallbackRemovalRequired,
-                        CleanupVerificationSucceeded = cleanup.VerificationSucceeded,
-                        CleanupWarningCount = cleanup.Warnings.Count,
-                        CleanupErrorCount = cleanup.Errors.Count,
-                    };
-                    WriteSummary(summary.ArtifactsRoot, summary);
-                }
-                catch
-                {
-                }
+                Directory.CreateDirectory(directory);
             }
+
+            File.Copy(filePath, destinationPath, overwrite: true);
         }
     }
+
+    private static SmokeRunSummary BuildCompatibilitySummary(
+        SmokeOptions options,
+        string artifactsRoot,
+        SmokeValidationHost selectedHost,
+        DockerProbeResult wslDocker,
+        DockerProbeResult windowsDocker,
+        OracleWorkspaceSettings oracleSettings,
+        WorkspaceSmokeResult result)
+    {
+        var oracleValidator = result.Validators.FirstOrDefault(item => string.Equals(item.ValidatorId, "oracle-apex-runtime", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.ValidatorId, "oracle-apexlang-runtime", StringComparison.OrdinalIgnoreCase));
+        return new SmokeRunSummary(options.TemplateId, artifactsRoot)
+        {
+            RunId = result.RunId,
+            WorkspaceRoot = result.WorkspacePath,
+            SelectedHost = selectedHost.ToString().ToLowerInvariant(),
+            WslDockerSuccess = wslDocker.Success,
+            WindowsDockerSuccess = windowsDocker.Success,
+            SelectionReason = DescribeHostSelection(options, selectedHost, wslDocker, windowsDocker),
+            DryRun = options.DryRun,
+            ElapsedSeconds = Math.Round(result.Duration.TotalSeconds, 1),
+            FailureClassification = result.FailureClassification == WorkspaceSmokeFailureClassification.None ? null : MapFailureClassification(result.FailureClassification).ToString(),
+            OrdsHostPort = oracleSettings.OrdsPort,
+            OrdsContainerPort = OracleWorkspaceSettings.ContainerOrdsPort,
+            OrdsBaseUrlTested = oracleSettings.OrdsBaseUrl,
+            ApexUrlTested = oracleSettings.ApexLoginUrl,
+            OrdsHttpStatusCode = ParseNullableInt(oracleValidator?.Data.GetValueOrDefault("ords_landing_status_code")),
+            ApexHttpStatusCode = ParseNullableInt(oracleValidator?.Data.GetValueOrDefault("apex_http_status_code")),
+            ApexInstalled = ParseNullableBool(oracleValidator?.Data.GetValueOrDefault("apex_installed")),
+            ApexVersion = oracleValidator?.Data.GetValueOrDefault("apex_version"),
+            ApexRegistryStatus = oracleValidator?.Data.GetValueOrDefault("apex_registry_status"),
+            ApexSchemasPresent = ParseNullableBool(oracleValidator?.Data.GetValueOrDefault("apex_schemas_present")),
+            ApexInstallationState = oracleValidator?.Data.GetValueOrDefault("apex_installation_state"),
+            CleanupComposeDownAttempted = result.CleanupResult?.ComposeDownAttempted,
+            CleanupComposeDownSucceeded = result.CleanupResult?.ComposeDownSucceeded,
+            CleanupFallbackRemovalRequired = result.CleanupResult?.FallbackRemovalRequired,
+            CleanupVerificationSucceeded = result.CleanupResult?.VerificationSucceeded,
+            CleanupWarningCount = result.CleanupResult?.Warnings.Count,
+            CleanupErrorCount = result.CleanupResult?.Errors.Count,
+            Result = options.DryRun ? "Dry run completed" : result.Status == WorkspaceSmokeStatus.Passed ? "Live smoke completed" : result.FailureMessage,
+        };
+    }
+
+    private static async Task WriteCompatibilityCleanupArtifactsAsync(string artifactsRoot, WorkspaceSmokeResult result, CancellationToken cancellationToken)
+    {
+        if (result.CleanupResult is null)
+        {
+            return;
+        }
+
+        var cleanupLines = new List<string>
+        {
+            $"compose_down_attempted={result.CleanupResult.ComposeDownAttempted}",
+            $"compose_down_succeeded={result.CleanupResult.ComposeDownSucceeded}",
+            $"fallback_removal_required={result.CleanupResult.FallbackRemovalRequired}",
+            $"verification_succeeded={result.CleanupResult.VerificationSucceeded}",
+            $"cleanup_succeeded={result.CleanupResult.Succeeded}",
+        };
+        cleanupLines.AddRange(result.CleanupResult.Actions);
+        cleanupLines.AddRange(result.CleanupResult.Warnings.Select(item => "warning:" + item));
+        cleanupLines.AddRange(result.CleanupResult.Errors.Select(item => "error:" + item));
+        await File.WriteAllTextAsync(Path.Combine(artifactsRoot, "smoke-final-cleanup.txt"), string.Join(Environment.NewLine, cleanupLines), cancellationToken);
+    }
+
+    private static SmokeFailureClassification MapFailureClassification(WorkspaceSmokeFailureClassification classification)
+        => classification switch
+        {
+            WorkspaceSmokeFailureClassification.ValidationToolingFailure => SmokeFailureClassification.ValidationToolingFailure,
+            WorkspaceSmokeFailureClassification.EnvironmentFailure => SmokeFailureClassification.EnvironmentFailure,
+            WorkspaceSmokeFailureClassification.RuntimeResourceExhaustion => SmokeFailureClassification.RuntimeResourceExhaustion,
+            WorkspaceSmokeFailureClassification.ApexPrerequisiteFailure => SmokeFailureClassification.ApexPrerequisiteFailure,
+            WorkspaceSmokeFailureClassification.OracleRuntimeFailure => SmokeFailureClassification.OracleRuntimeFailure,
+            _ => SmokeFailureClassification.ProductFailure,
+        };
+
+    private static int? ParseNullableInt(string? value)
+        => int.TryParse(value, out var parsed) ? parsed : null;
+
+    private static bool? ParseNullableBool(string? value)
+        => bool.TryParse(value, out var parsed) ? parsed : null;
 
     public static SmokeOptions Parse(string[] args)
     {

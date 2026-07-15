@@ -361,16 +361,31 @@ public sealed class WorkspaceImageToolingLayoutBuilder
             builder.AppendLine("trap 'echo \"[oracle] ERROR: command failed on line ${LINENO}: ${BASH_COMMAND}\" >&2' ERR");
         }
         builder.AppendLine("export DEBIAN_FRONTEND=noninteractive");
+        builder.AppendLine("cat > /etc/apt/apt.conf.d/99opencode-image-build <<'EOF'");
+        builder.AppendLine("Acquire::Retries \"5\";");
+        builder.AppendLine("Acquire::http::Timeout \"30\";");
+        builder.AppendLine("Acquire::https::Timeout \"30\";");
+        builder.AppendLine("Dpkg::Use-Pty \"0\";");
+        builder.AppendLine("EOF");
+        builder.AppendLine("opencode_apt_update() { apt-get update; }");
+        builder.AppendLine("opencode_apt_install() { apt-get install -y \"$@\"; }");
+        builder.AppendLine("opencode_apt_install_optional() { apt-get install -y --no-install-recommends \"$@\"; }");
+        builder.AppendLine("opencode_ensure_dir_owned_if_user_exists() { local target_dir=$1; mkdir -p \"${target_dir}\"; if id -u opencode >/dev/null 2>&1; then chown -R opencode:opencode \"${target_dir}\"; fi; }");
+        builder.AppendLine("opencode_run_as_opencode_or_root() { local command_text=$1; if id -u opencode >/dev/null 2>&1; then su -s /bin/bash -c \"${command_text}\" opencode; else bash -lc \"${command_text}\"; fi; }");
+        builder.AppendLine("opencode_apt_cleanup() { rm -rf /var/lib/apt/lists/*; }");
         builder.AppendLine($"echo \"[workspace-image] Installing {collector.DisplayName}.\"");
 
         if (collector.AptPackages.Count > 0 || collector.RequiresAptMetadataRefresh)
         {
-            builder.AppendLine("apt-get update");
+            builder.AppendLine("opencode_apt_update");
         }
 
         if (collector.AptPackages.Count > 0)
         {
-            builder.AppendLine($"apt-get install -y {string.Join(" ", collector.AptPackages)}");
+            var installCommand = string.Equals(category, OptionalToolingCategory, StringComparison.OrdinalIgnoreCase)
+                ? "opencode_apt_install_optional"
+                : "opencode_apt_install";
+            builder.AppendLine($"{installCommand} {string.Join(" ", collector.AptPackages)}");
         }
 
         AppendCommands(builder, collector.BootstrapCommands);
@@ -387,6 +402,7 @@ public sealed class WorkspaceImageToolingLayoutBuilder
 
         AppendCommands(builder, collector.ImageCommands);
         AppendCommands(builder, collector.ValidationCommands);
+        builder.AppendLine("opencode_apt_cleanup");
 
         return new WorkspaceImageLayerScript
         {

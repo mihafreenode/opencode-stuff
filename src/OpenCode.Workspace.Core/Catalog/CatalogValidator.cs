@@ -1,4 +1,5 @@
 using OpenCode.Workspace.Core.Models;
+using OpenCode.Workspace.Core.Smoke;
 
 namespace OpenCode.Workspace.Core.Catalog;
 
@@ -193,12 +194,13 @@ public sealed class CatalogValidator
     public IReadOnlyList<string> ValidateTemplates(IEnumerable<TemplateManifest> templates, IEnumerable<FeatureManifest> features, IEnumerable<ServiceManifest> services)
     {
         var errors = new List<string>();
+        var templateList = templates.ToList();
         var featureIds = features.Select(feature => feature.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var serviceIds = services.Select(service => service.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        ValidateUniqueIds(templates.Select(template => template.Id), "template", errors);
+        ValidateUniqueIds(templateList.Select(template => template.Id), "template", errors);
 
-        foreach (var template in templates)
+        foreach (var template in templateList)
         {
             if (string.IsNullOrWhiteSpace(template.Id))
             {
@@ -236,6 +238,8 @@ public sealed class CatalogValidator
                 errors.Add($"Template '{template.Id}' contains an empty MCP id.");
             }
         }
+
+        errors.AddRange(WorkspaceSmokeCatalog.ValidateTemplateSmokeMetadata(templateList, serviceIds));
 
         return errors;
     }

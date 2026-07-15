@@ -21,3 +21,12 @@ skills:
   - oracle-generate-test-cases
 mcp:
   - oracle-sqlcl
+smoke:
+  supported: true
+  family: oracle-apex
+  resourceClass: oracle-exclusive
+  timeoutClass: extended
+  expectedServices:
+    - workspace
+    - oracle-demo
+    - oracle-ords

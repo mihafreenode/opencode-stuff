@@ -30,7 +30,7 @@ postInstall:
     if command -v typst >/dev/null 2>&1; then
       typst --version
     elif apt-cache policy typst | grep -F "Candidate:" | grep -Fvq "(none)"; then
-      apt-get install -y typst
+      opencode_apt_install_optional typst
     else
       case "$(uname -m)" in
         x86_64) typst_asset=typst-x86_64-unknown-linux-musl.tar.xz ;;

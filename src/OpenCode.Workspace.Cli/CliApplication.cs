@@ -4,6 +4,7 @@ using OpenCode.Workspace.Core.Diagnostics;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Cli;
@@ -18,6 +19,9 @@ public sealed class CliApplication
     private readonly Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>> _smokeCleanupRunner;
     private readonly Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>> _legacySmokeCleanupRunner;
     private readonly Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>> _runtimeInventoryRunner;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<WorkspaceSmokeDefinition>>> _smokeDefinitionRunner;
+    private readonly Func<WorkspaceSmokeSingleRunRequest, CancellationToken, Task<WorkspaceSmokeResult>> _smokeRunRunner;
+    private readonly Func<WorkspaceSmokeMatrixRunRequest, CancellationToken, Task<WorkspaceSmokeMatrixResult>> _smokeMatrixRunner;
 
     public CliApplication(TextWriter output, TextWriter error)
         : this(output, error, null, null)
@@ -32,7 +36,10 @@ public sealed class CliApplication
         Func<CancellationToken, Task<WorkspaceLoadReport>>? workspaceDiscoveryRunner = null,
         Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>>? smokeCleanupRunner = null,
         Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>>? legacySmokeCleanupRunner = null,
-        Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>>? runtimeInventoryRunner = null)
+        Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>>? runtimeInventoryRunner = null,
+        Func<CancellationToken, Task<IReadOnlyList<WorkspaceSmokeDefinition>>>? smokeDefinitionRunner = null,
+        Func<WorkspaceSmokeSingleRunRequest, CancellationToken, Task<WorkspaceSmokeResult>>? smokeRunRunner = null,
+        Func<WorkspaceSmokeMatrixRunRequest, CancellationToken, Task<WorkspaceSmokeMatrixResult>>? smokeMatrixRunner = null)
     {
         _output = output;
         _error = error;
@@ -42,6 +49,9 @@ public sealed class CliApplication
         _smokeCleanupRunner = smokeCleanupRunner ?? RunSmokeCleanupAsync;
         _legacySmokeCleanupRunner = legacySmokeCleanupRunner ?? RunLegacySmokeCleanupAsync;
         _runtimeInventoryRunner = runtimeInventoryRunner ?? RunRuntimeInventoryAsync;
+        _smokeDefinitionRunner = smokeDefinitionRunner ?? RunSmokeDefinitionsAsync;
+        _smokeRunRunner = smokeRunRunner ?? RunSmokeTemplateAsync;
+        _smokeMatrixRunner = smokeMatrixRunner ?? RunSmokeMatrixAsync;
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
@@ -114,12 +124,71 @@ public sealed class CliApplication
 
     private async Task<int> RunSmokeCommandAsync(string[] args, CancellationToken cancellationToken)
     {
-        if (args.Length == 0 || !string.Equals(args[0], "cleanup", StringComparison.OrdinalIgnoreCase))
+        if (args.Length == 0)
         {
-            throw new ArgumentException("Missing or unsupported smoke subcommand. Use 'smoke cleanup'.");
+            throw new ArgumentException("Missing or unsupported smoke subcommand. Use 'smoke list', 'smoke run', or 'smoke cleanup'.");
         }
 
-        var options = new SmokeCleanupOptions(
+        if (string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            var definitions = await _smokeDefinitionRunner(cancellationToken);
+            var family = ParseOptionValue(args, "--family");
+            var format = ParseOptionValue(args, "--format") ?? "text";
+            if (!string.IsNullOrWhiteSpace(family))
+            {
+                definitions = definitions.Where(item => string.Equals(item.Family, family, StringComparison.OrdinalIgnoreCase)).ToArray();
+            }
+
+            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeDefinitions(definitions, format));
+            return 0;
+        }
+
+        if (string.Equals(args[0], "run", StringComparison.OrdinalIgnoreCase))
+        {
+            var format = ParseOptionValue(args, "--format") ?? "text";
+            var keepWorkspace = args.Contains("--keep-workspace", StringComparer.OrdinalIgnoreCase);
+            var keepRuntimeOnFailure = args.Contains("--keep-runtime-on-failure", StringComparer.OrdinalIgnoreCase);
+            var artifactsRoot = ParseOptionValue(args, "--artifacts-root") ?? Path.Combine(Environment.CurrentDirectory, "artifacts", "template-smoke");
+            var definitions = await _smokeDefinitionRunner(cancellationToken);
+
+            if (args.Contains("--all", StringComparer.OrdinalIgnoreCase))
+            {
+                var family = ParseOptionValue(args, "--family");
+                var selectedDefinitions = string.IsNullOrWhiteSpace(family)
+                    ? definitions
+                    : definitions.Where(item => string.Equals(item.Family, family, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var matrixResult = await _smokeMatrixRunner(new WorkspaceSmokeMatrixRunRequest
+                {
+                    TemplateIds = selectedDefinitions.Select(item => item.TemplateId).ToArray(),
+                    ArtifactsRoot = artifactsRoot,
+                    ParallelCount = int.TryParse(ParseOptionValue(args, "--parallel"), out var parallel) ? parallel : 1,
+                    KeepWorkspace = keepWorkspace,
+                    KeepRuntimeOnFailure = keepRuntimeOnFailure,
+                }, cancellationToken);
+                await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeMatrixResult(matrixResult, format));
+                return matrixResult.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+            }
+
+            var templateId = args.Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal))
+                ?? ParseOptionValue(args, "--template")
+                ?? throw new ArgumentException("Missing smoke template id. Use 'opencode smoke run <template>' or '--all'.");
+            var singleResult = await _smokeRunRunner(new WorkspaceSmokeSingleRunRequest
+            {
+                TemplateId = templateId,
+                ArtifactsRoot = artifactsRoot,
+                KeepWorkspace = keepWorkspace,
+                KeepRuntimeOnFailure = keepRuntimeOnFailure,
+            }, cancellationToken);
+            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeResult(singleResult, format));
+            return singleResult.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+        }
+
+        if (!string.Equals(args[0], "cleanup", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Missing or unsupported smoke subcommand. Use 'smoke list', 'smoke run', or 'smoke cleanup'.");
+        }
+
+        var options = new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(
             DryRun: args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase),
             IncludeAll: args.Contains("--all", StringComparer.OrdinalIgnoreCase) || ParseOptionValue(args, "--run-id") is null,
             RunId: ParseOptionValue(args, "--run-id"),
@@ -195,7 +264,13 @@ public sealed class CliApplication
                     && !string.Equals(argument, "--all", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--owner", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--project", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(argument, "--legacy", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(argument, "--legacy", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--family", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--template", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--parallel", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--artifacts-root", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--keep-workspace", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--keep-runtime-on-failure", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ArgumentException($"Unknown option '{argument}'.");
                 }
@@ -316,13 +391,32 @@ public sealed class CliApplication
     }
 
     private static Task<SmokeCleanupResult> RunSmokeCleanupAsync(SmokeCleanupOptions options, CancellationToken cancellationToken)
-        => new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(options, cancellationToken);
+        => new global::OpenCode.Workspace.Core.Runtime.SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupAsync(options, cancellationToken);
 
     private static Task<LegacyCleanupResult> RunLegacySmokeCleanupAsync(LegacyCleanupOptions options, CancellationToken cancellationToken)
         => new SmokeRuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).CleanupLegacyAsync(options, cancellationToken);
 
     private static Task<RuntimeResourceInventory> RunRuntimeInventoryAsync(RuntimeOwnershipQuery query, CancellationToken cancellationToken)
         => new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(query, cancellationToken);
+
+    private static Task<IReadOnlyList<WorkspaceSmokeDefinition>> RunSmokeDefinitionsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(CreateSmokeApplicationService().DiscoverDefinitions());
+    }
+
+    private static async Task<WorkspaceSmokeResult> RunSmokeTemplateAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken)
+        => await CreateSmokeApplicationService().RunAsync(request, cancellationToken);
+
+    private static async Task<WorkspaceSmokeMatrixResult> RunSmokeMatrixAsync(WorkspaceSmokeMatrixRunRequest request, CancellationToken cancellationToken)
+        => await CreateSmokeApplicationService().RunMatrixAsync(request, cancellationToken);
+
+    private static WorkspaceSmokeApplicationService CreateSmokeApplicationService()
+    {
+        var catalogRoot = ResolveCatalogRoot(Environment.CurrentDirectory) ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
+        var stateRoot = Path.Combine(Path.GetTempPath(), "opencode-workspace-smoke-state");
+        return new WorkspaceSmokeApplicationService(catalogRoot, stateRoot, new DockerContainerRuntime(new DockerService(new ProcessRunner())));
+    }
 
     internal static string? ResolveCatalogRoot(string workspacePath)
     {

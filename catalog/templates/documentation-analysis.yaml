@@ -8,3 +8,8 @@ features:
   - document-processing
   - ocr-processing
 services: []
+smoke:
+  supported: true
+  family: document-processing
+  resourceClass: document-processing
+  timeoutClass: medium

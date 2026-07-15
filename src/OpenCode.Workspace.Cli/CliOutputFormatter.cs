@@ -1,6 +1,7 @@
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.Core.Smoke;
 using System.Text.Json;
 
 namespace OpenCode.Workspace.Cli;
@@ -113,6 +114,9 @@ public static class CliOutputFormatter
             "  opencode debug-workspace-discovery",
             "  opencode runtime list --format json",
             "  opencode runtime doctor --owner smoke",
+            "  opencode smoke list",
+            "  opencode smoke run <template>",
+            "  opencode smoke run --all",
             "  opencode smoke cleanup --dry-run",
             "  opencode smoke cleanup --all",
             "  opencode smoke cleanup --run-id <run-id>",
@@ -228,6 +232,90 @@ public static class CliOutputFormatter
         foreach (var resource in inventory.Resources.Take(20))
         {
             lines.Add($"  {resource.Type}: {resource.Name} owner={resource.OwnerKind} run_id={resource.RunId} project={resource.Project} status={resource.Status}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string FormatSmokeDefinitions(IReadOnlyList<WorkspaceSmokeDefinition> definitions, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(definitions, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Smoke Templates",
+            string.Empty,
+        };
+
+        foreach (var definition in definitions)
+        {
+            lines.Add($"{definition.TemplateId}: family={definition.Family} supported={definition.Supported} resource_class={definition.ResourceClass} timeout_class={definition.TimeoutClass}");
+            lines.Add($"  validators={string.Join(", ", definition.ValidatorIds)}");
+            if (!definition.Supported && !string.IsNullOrWhiteSpace(definition.UnsupportedReason))
+            {
+                lines.Add($"  reason={definition.UnsupportedReason}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string FormatSmokeResult(WorkspaceSmokeResult result, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Smoke Run",
+            string.Empty,
+            $"Template: {result.TemplateId}",
+            $"Run id: {result.RunId}",
+            $"Status: {result.Status}",
+            $"Phase: {result.Phase}",
+            $"Failure classification: {result.FailureClassification}",
+            $"Failure message: {result.FailureMessage}",
+            $"Cleanup verification: {result.CleanupVerificationSucceeded}",
+            $"Artifacts: {result.ArtifactDirectory}",
+        };
+
+        if (result.Validators.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Validators:");
+            lines.AddRange(result.Validators.Select(item => $"  {item.ValidatorId}: {(item.Succeeded ? "pass" : "fail")} {item.Message}"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public static string FormatSmokeMatrixResult(WorkspaceSmokeMatrixResult result, string format)
+    {
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        var lines = new List<string>
+        {
+            "OpenCode Smoke Matrix",
+            string.Empty,
+            $"Matrix run id: {result.MatrixRunId}",
+            $"Status: {result.Status}",
+            $"Passed: {result.PassedCount}",
+            $"Failed: {result.FailedCount}",
+            $"Skipped: {result.SkippedCount}",
+            $"Artifacts: {result.ArtifactDirectory}",
+        };
+
+        foreach (var item in result.Results)
+        {
+            lines.Add($"  {item.TemplateId}: {item.Status} {item.FailureClassification} {item.FailureMessage}".TrimEnd());
         }
 
         return string.Join(Environment.NewLine, lines);

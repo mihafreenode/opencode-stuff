@@ -6,3 +6,8 @@ lifecycle: stable
 features:
   - core
 services: []
+smoke:
+  supported: true
+  family: lightweight
+  resourceClass: lightweight
+  timeoutClass: short
