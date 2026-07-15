@@ -6,6 +6,9 @@ namespace OpenCode.Workspace.Core.Runtime;
 
 public sealed class ProcessRunner : IProcessRunner
 {
+    // ProcessRunner guarantees that stdout and stderr are fully drained before RunAsync returns.
+    // It preserves per-stream line order in StandardOutputLines and StandardErrorLines.
+    // It does not guarantee deterministic relative ordering between stdout and stderr callbacks.
     public async Task<ProcessResult> RunAsync(
         string fileName,
         IEnumerable<string> arguments,
