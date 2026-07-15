@@ -59,6 +59,8 @@ Capture and report:
 
 Prefer the checked-in smoke runner over ad-hoc temporary projects or large inline PowerShell commands.
 
+The generic smoke CLI contract, JSON schema version, exit codes, artifact discovery fields, and cancellation behavior are documented in `docs/testing/smoke-cli-contract.md`.
+
 ## Runtime Validation Ladder
 
 Always validate in this order:
@@ -105,6 +107,8 @@ The smoke runner classifies failures separately as:
 - Oracle Runtime Failure
 - Apex Prerequisite Failure
 - Runtime Resource Exhaustion
+
+`OracleRuntimeSmoke` preserves compatibility but now maps generic smoke outcomes to the same automation exit-code contract as `opencode smoke run`.
 
 ## What It Validates
 

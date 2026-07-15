@@ -22,10 +22,19 @@ public sealed class WorkspaceSmokeApplicationService
         return WorkspaceSmokeCatalog.BuildDefinitions(provider.LoadTemplates());
     }
 
+    public Task<WorkspaceSmokeDefinitionCatalogResult> ListDefinitionsAsync(WorkspaceSmokeDefinitionQuery? query = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var definitions = FilterDefinitions(DiscoverDefinitions(), query);
+        return Task.FromResult(new WorkspaceSmokeDefinitionCatalogResult
+        {
+            Definitions = definitions,
+        });
+    }
+
     public async Task<WorkspaceSmokeResult> RunAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken = default)
     {
-        var definition = DiscoverDefinitions().SingleOrDefault(item => string.Equals(item.TemplateId, request.TemplateId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new ArgumentException($"Unknown smoke template '{request.TemplateId}'.");
+        var definition = ResolveDefinition(request.TemplateId);
         return await CreateRunner().RunAsync(definition, new WorkspaceSmokeRunnerOptions
         {
             ArtifactsRoot = request.ArtifactsRoot,
@@ -33,15 +42,14 @@ public sealed class WorkspaceSmokeApplicationService
             DryRun = request.DryRun,
             KeepWorkspace = request.KeepWorkspace,
             KeepRuntimeOnFailure = request.KeepRuntimeOnFailure,
+            Timeout = request.Timeout,
         }, cancellationToken);
     }
 
     public async Task<WorkspaceSmokeMatrixResult> RunMatrixAsync(WorkspaceSmokeMatrixRunRequest request, CancellationToken cancellationToken = default)
     {
         var definitions = DiscoverDefinitions();
-        var selected = request.TemplateIds.Count == 0
-            ? definitions
-            : definitions.Where(item => request.TemplateIds.Contains(item.TemplateId, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var selected = ResolveDefinitions(definitions, request.TemplateIds);
         var smokeOwnershipService = new SmokeRuntimeOwnershipService(_containerRuntime);
         var runtimeOwnershipService = new RuntimeOwnershipService(_containerRuntime);
         var matrixRunner = new WorkspaceSmokeMatrixRunner(CreateRunner(), smokeOwnershipService, runtimeOwnershipService);
@@ -51,7 +59,67 @@ public sealed class WorkspaceSmokeApplicationService
             ParallelCount = request.ParallelCount,
             KeepWorkspace = request.KeepWorkspace,
             KeepRuntimeOnFailure = request.KeepRuntimeOnFailure,
+            RunTimeoutOverride = request.RunTimeoutOverride,
+            MatrixTimeout = request.MatrixTimeout,
         }, cancellationToken);
+    }
+
+    private WorkspaceSmokeDefinition ResolveDefinition(string templateId)
+    {
+        if (string.IsNullOrWhiteSpace(templateId))
+        {
+            throw new WorkspaceSmokeSelectionException("A smoke template id is required.");
+        }
+
+        return DiscoverDefinitions().SingleOrDefault(item => string.Equals(item.TemplateId, templateId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new WorkspaceSmokeSelectionException($"Unknown smoke template '{templateId}'.");
+    }
+
+    private static IReadOnlyList<WorkspaceSmokeDefinition> ResolveDefinitions(IReadOnlyList<WorkspaceSmokeDefinition> definitions, IReadOnlyList<string> templateIds)
+    {
+        if (templateIds.Count == 0)
+        {
+            throw new WorkspaceSmokeSelectionException("Smoke selection is empty.");
+        }
+
+        var selected = new List<WorkspaceSmokeDefinition>();
+        var missing = new List<string>();
+        foreach (var templateId in templateIds)
+        {
+            var definition = definitions.SingleOrDefault(item => string.Equals(item.TemplateId, templateId, StringComparison.OrdinalIgnoreCase));
+            if (definition is null)
+            {
+                missing.Add(templateId);
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        if (missing.Count > 0)
+        {
+            throw new WorkspaceSmokeSelectionException($"Unknown smoke template(s): {string.Join(", ", missing)}.");
+        }
+
+        if (selected.Count == 0)
+        {
+            throw new WorkspaceSmokeSelectionException("Smoke selection is empty.");
+        }
+
+        return selected;
+    }
+
+    private static IReadOnlyList<WorkspaceSmokeDefinition> FilterDefinitions(IReadOnlyList<WorkspaceSmokeDefinition> definitions, WorkspaceSmokeDefinitionQuery? query)
+    {
+        if (string.IsNullOrWhiteSpace(query?.Family))
+        {
+            return definitions;
+        }
+
+        return definitions
+            .Where(item => string.Equals(item.Family, query.Family, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.TemplateId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private WorkspaceSmokeRunner CreateRunner()
@@ -61,4 +129,12 @@ public sealed class WorkspaceSmokeApplicationService
             _containerRuntime,
             new RuntimeOwnershipService(_containerRuntime),
             new SmokeRuntimeOwnershipService(_containerRuntime));
+}
+
+public sealed class WorkspaceSmokeSelectionException : ArgumentException
+{
+    public WorkspaceSmokeSelectionException(string message)
+        : base(message)
+    {
+    }
 }

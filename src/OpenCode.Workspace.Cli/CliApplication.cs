@@ -19,7 +19,7 @@ public sealed class CliApplication
     private readonly Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>> _smokeCleanupRunner;
     private readonly Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>> _legacySmokeCleanupRunner;
     private readonly Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>> _runtimeInventoryRunner;
-    private readonly Func<CancellationToken, Task<IReadOnlyList<WorkspaceSmokeDefinition>>> _smokeDefinitionRunner;
+    private readonly Func<WorkspaceSmokeDefinitionQuery, CancellationToken, Task<WorkspaceSmokeDefinitionCatalogResult>> _smokeDefinitionRunner;
     private readonly Func<WorkspaceSmokeSingleRunRequest, CancellationToken, Task<WorkspaceSmokeResult>> _smokeRunRunner;
     private readonly Func<WorkspaceSmokeMatrixRunRequest, CancellationToken, Task<WorkspaceSmokeMatrixResult>> _smokeMatrixRunner;
 
@@ -37,7 +37,7 @@ public sealed class CliApplication
         Func<SmokeCleanupOptions, CancellationToken, Task<SmokeCleanupResult>>? smokeCleanupRunner = null,
         Func<LegacyCleanupOptions, CancellationToken, Task<LegacyCleanupResult>>? legacySmokeCleanupRunner = null,
         Func<RuntimeOwnershipQuery, CancellationToken, Task<RuntimeResourceInventory>>? runtimeInventoryRunner = null,
-        Func<CancellationToken, Task<IReadOnlyList<WorkspaceSmokeDefinition>>>? smokeDefinitionRunner = null,
+        Func<WorkspaceSmokeDefinitionQuery, CancellationToken, Task<WorkspaceSmokeDefinitionCatalogResult>>? smokeDefinitionRunner = null,
         Func<WorkspaceSmokeSingleRunRequest, CancellationToken, Task<WorkspaceSmokeResult>>? smokeRunRunner = null,
         Func<WorkspaceSmokeMatrixRunRequest, CancellationToken, Task<WorkspaceSmokeMatrixResult>>? smokeMatrixRunner = null)
     {
@@ -74,16 +74,26 @@ public sealed class CliApplication
                 _ => await FailWithHelpAsync($"Unknown command '{args[0]}'."),
             };
         }
+        catch (OperationCanceledException)
+        {
+            await _error.WriteLineAsync("Command cancelled.");
+            return 130;
+        }
+        catch (WorkspaceSmokeSelectionException exception)
+        {
+            await _error.WriteLineAsync(exception.Message);
+            return 6;
+        }
         catch (ArgumentException exception)
         {
             await _error.WriteLineAsync(exception.Message);
             await _error.WriteLineAsync(CliOutputFormatter.HelpText());
-            return 1;
+            return 2;
         }
         catch (Exception exception)
         {
             await _error.WriteLineAsync(exception.Message);
-            return 1;
+            return 7;
         }
     }
 
@@ -131,32 +141,36 @@ public sealed class CliApplication
 
         if (string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
         {
-            var definitions = await _smokeDefinitionRunner(cancellationToken);
             var family = ParseOptionValue(args, "--family");
-            var format = ParseOptionValue(args, "--format") ?? "text";
-            if (!string.IsNullOrWhiteSpace(family))
-            {
-                definitions = definitions.Where(item => string.Equals(item.Family, family, StringComparison.OrdinalIgnoreCase)).ToArray();
-            }
-
-            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeDefinitions(definitions, format));
+            var format = ParseFormat(args);
+            var catalog = await _smokeDefinitionRunner(new WorkspaceSmokeDefinitionQuery { Family = family }, cancellationToken);
+            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeDefinitions(catalog, format));
             return 0;
         }
 
         if (string.Equals(args[0], "run", StringComparison.OrdinalIgnoreCase))
         {
-            var format = ParseOptionValue(args, "--format") ?? "text";
+            var format = ParseFormat(args);
+            var verbosity = ParseVerbosity(args);
             var keepWorkspace = args.Contains("--keep-workspace", StringComparer.OrdinalIgnoreCase);
             var keepRuntimeOnFailure = args.Contains("--keep-runtime-on-failure", StringComparer.OrdinalIgnoreCase);
             var artifactsRoot = ParseOptionValue(args, "--artifacts-root") ?? Path.Combine(Environment.CurrentDirectory, "artifacts", "template-smoke");
-            var definitions = await _smokeDefinitionRunner(cancellationToken);
+            var timeout = ParseTimeoutOption(args);
+            var selection = ParseSmokeRunSelection(args);
+            var definitions = (await _smokeDefinitionRunner(new WorkspaceSmokeDefinitionQuery { Family = selection.Family }, cancellationToken)).Definitions;
 
-            if (args.Contains("--all", StringComparer.OrdinalIgnoreCase))
+            if (selection.Mode != SmokeRunSelectionMode.SingleTemplate)
             {
-                var family = ParseOptionValue(args, "--family");
-                var selectedDefinitions = string.IsNullOrWhiteSpace(family)
-                    ? definitions
-                    : definitions.Where(item => string.Equals(item.Family, family, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var selectedDefinitions = selection.Mode == SmokeRunSelectionMode.All
+                    ? definitions.OrderBy(item => item.TemplateId, StringComparer.OrdinalIgnoreCase).ToArray()
+                    : definitions.Where(item => string.Equals(item.Family, selection.Family, StringComparison.OrdinalIgnoreCase)).OrderBy(item => item.TemplateId, StringComparer.OrdinalIgnoreCase).ToArray();
+                if (selectedDefinitions.Length == 0)
+                {
+                    throw new WorkspaceSmokeSelectionException(string.IsNullOrWhiteSpace(selection.Family)
+                        ? "Smoke selection is empty."
+                        : $"Unknown smoke family '{selection.Family}'.");
+                }
+
                 var matrixResult = await _smokeMatrixRunner(new WorkspaceSmokeMatrixRunRequest
                 {
                     TemplateIds = selectedDefinitions.Select(item => item.TemplateId).ToArray(),
@@ -164,23 +178,23 @@ public sealed class CliApplication
                     ParallelCount = int.TryParse(ParseOptionValue(args, "--parallel"), out var parallel) ? parallel : 1,
                     KeepWorkspace = keepWorkspace,
                     KeepRuntimeOnFailure = keepRuntimeOnFailure,
+                    MatrixTimeout = timeout,
                 }, cancellationToken);
-                await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeMatrixResult(matrixResult, format));
-                return matrixResult.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+                await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeMatrixResult(matrixResult, format, verbosity));
+                return MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcomeClassifier.Classify(matrixResult));
             }
 
-            var templateId = args.Skip(1).FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal))
-                ?? ParseOptionValue(args, "--template")
-                ?? throw new ArgumentException("Missing smoke template id. Use 'opencode smoke run <template>' or '--all'.");
+            var templateId = selection.TemplateId ?? throw new ArgumentException("Missing smoke template id. Use 'opencode smoke run <template>', '--family', or '--all'.");
             var singleResult = await _smokeRunRunner(new WorkspaceSmokeSingleRunRequest
             {
                 TemplateId = templateId,
                 ArtifactsRoot = artifactsRoot,
                 KeepWorkspace = keepWorkspace,
                 KeepRuntimeOnFailure = keepRuntimeOnFailure,
+                Timeout = timeout,
             }, cancellationToken);
-            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeResult(singleResult, format));
-            return singleResult.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+            await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeResult(singleResult, format, verbosity));
+            return MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcomeClassifier.Classify(singleResult));
         }
 
         if (!string.Equals(args[0], "cleanup", StringComparison.OrdinalIgnoreCase))
@@ -188,27 +202,29 @@ public sealed class CliApplication
             throw new ArgumentException("Missing or unsupported smoke subcommand. Use 'smoke list', 'smoke run', or 'smoke cleanup'.");
         }
 
+        var outputFormat = ParseFormat(args);
+        var outputVerbosity = ParseVerbosity(args);
         var options = new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(
             DryRun: args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase),
             IncludeAll: args.Contains("--all", StringComparer.OrdinalIgnoreCase) || ParseOptionValue(args, "--run-id") is null,
             RunId: ParseOptionValue(args, "--run-id"),
-            OutputFormat: ParseOptionValue(args, "--format") ?? "text");
+            OutputFormat: outputFormat);
 
         if (args.Contains("--legacy", StringComparer.OrdinalIgnoreCase))
         {
-            var outputFormat = ParseOptionValue(args, "--format") ?? "text";
+            var legacyFormat = outputFormat;
             var legacyResult = await _legacySmokeCleanupRunner(new LegacyCleanupOptions
             {
                 DryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase),
-                OutputFormat = outputFormat,
+                OutputFormat = legacyFormat,
             }, cancellationToken);
-            await _output.WriteLineAsync(CliOutputFormatter.FormatLegacySmokeCleanup(legacyResult, outputFormat));
+            await _output.WriteLineAsync(CliOutputFormatter.FormatLegacySmokeCleanup(legacyResult, legacyFormat));
             return legacyResult.Succeeded ? 0 : 1;
         }
 
         var result = await _smokeCleanupRunner(options, cancellationToken);
-        await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeCleanup(result, options.OutputFormat));
-        return result.Succeeded ? 0 : 1;
+        await _output.WriteLineAsync(CliOutputFormatter.FormatSmokeCleanup(result, options.OutputFormat, outputVerbosity));
+        return MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcomeClassifier.Classify(result));
     }
 
     private async Task<int> RunRuntimeCommandAsync(string[] args, CancellationToken cancellationToken)
@@ -225,9 +241,10 @@ public sealed class CliApplication
             WorkspaceRoot = ParseOptionValue(args, "--workspace"),
             Project = ParseOptionValue(args, "--project"),
         };
-        var format = ParseOptionValue(args, "--format") ?? "text";
+        var format = ParseFormat(args);
+        var verbosity = ParseVerbosity(args);
         var inventory = await _runtimeInventoryRunner(query, cancellationToken);
-        await _output.WriteLineAsync(CliOutputFormatter.FormatRuntimeInventory(inventory, format));
+        await _output.WriteLineAsync(CliOutputFormatter.FormatRuntimeInventory(inventory, format, string.Equals(args[0], "doctor", StringComparison.OrdinalIgnoreCase), verbosity));
         return 0;
     }
 
@@ -235,7 +252,7 @@ public sealed class CliApplication
     {
         await _error.WriteLineAsync(message);
         await _error.WriteLineAsync(CliOutputFormatter.HelpText());
-        return 1;
+        return 2;
     }
 
     private static string ParseWorkspaceOption(string[] args)
@@ -246,6 +263,123 @@ public sealed class CliApplication
 
     private static string? ParseOutputOption(string[] args)
         => ParseOptionValue(args, "--output");
+
+    private static string ParseFormat(string[] args)
+    {
+        var format = ParseOptionValue(args, "--format") ?? "text";
+        if (!string.Equals(format, "text", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unsupported format '{format}'. Use 'text' or 'json'.");
+        }
+
+        return format.ToLowerInvariant();
+    }
+
+    private static CliVerbosity ParseVerbosity(string[] args)
+    {
+        var quiet = args.Contains("--quiet", StringComparer.OrdinalIgnoreCase);
+        var verbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
+        if (quiet && verbose)
+        {
+            throw new ArgumentException("Use either --quiet or --verbose, not both.");
+        }
+
+        return quiet ? CliVerbosity.Quiet : verbose ? CliVerbosity.Verbose : CliVerbosity.Default;
+    }
+
+    private static TimeSpan? ParseTimeoutOption(string[] args)
+    {
+        var value = ParseOptionValue(args, "--timeout");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!TimeSpan.TryParse(value, out var timeout) || timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentException($"Invalid timeout '{value}'. Use a positive TimeSpan such as 00:10:00.");
+        }
+
+        return timeout;
+    }
+
+    private static SmokeRunSelection ParseSmokeRunSelection(string[] args)
+    {
+        string? positionalTemplate = null;
+        for (var index = 1; index < args.Length; index++)
+        {
+            if (args[index].StartsWith("--", StringComparison.Ordinal))
+            {
+                if (OptionConsumesValue(args[index]))
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            positionalTemplate = args[index];
+            break;
+        }
+
+        var family = ParseOptionValue(args, "--family");
+        var includeAll = args.Contains("--all", StringComparer.OrdinalIgnoreCase);
+        var selectedCount = (string.IsNullOrWhiteSpace(positionalTemplate) ? 0 : 1)
+            + (string.IsNullOrWhiteSpace(family) ? 0 : 1)
+            + (includeAll ? 1 : 0);
+
+        if (selectedCount == 0)
+        {
+            throw new ArgumentException("Missing smoke selection. Use 'opencode smoke run <template>', '--family <family>', or '--all'.");
+        }
+
+        if (selectedCount > 1)
+        {
+            throw new ArgumentException("Use exactly one smoke selection: a template id, '--family <family>', or '--all'.");
+        }
+
+        if (includeAll)
+        {
+            return new SmokeRunSelection { Mode = SmokeRunSelectionMode.All };
+        }
+
+        if (!string.IsNullOrWhiteSpace(family))
+        {
+            return new SmokeRunSelection { Mode = SmokeRunSelectionMode.Family, Family = family };
+        }
+
+        return new SmokeRunSelection { Mode = SmokeRunSelectionMode.SingleTemplate, TemplateId = positionalTemplate };
+    }
+
+    private static bool OptionConsumesValue(string optionName)
+        => optionName is "--workspace"
+            or "--target"
+            or "--output"
+            or "--run-id"
+            or "--format"
+            or "--owner"
+            or "--project"
+            or "--family"
+            or "--template"
+            or "--parallel"
+            or "--artifacts-root"
+            or "--timeout";
+
+    private static int MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcome outcome)
+        => outcome switch
+        {
+            WorkspaceSmokeAutomationOutcome.Success => 0,
+            WorkspaceSmokeAutomationOutcome.ValidationFailure => 1,
+            WorkspaceSmokeAutomationOutcome.InvalidConfiguration => 2,
+            WorkspaceSmokeAutomationOutcome.CleanupFailure => 3,
+            WorkspaceSmokeAutomationOutcome.LockFailure => 4,
+            WorkspaceSmokeAutomationOutcome.ResourceExhaustion => 5,
+            WorkspaceSmokeAutomationOutcome.UnsupportedSelection => 6,
+            WorkspaceSmokeAutomationOutcome.ToolingFailure => 7,
+            WorkspaceSmokeAutomationOutcome.Cancelled => 130,
+            _ => 7,
+        };
 
     private static string? ParseOptionValue(string[] args, string optionName)
     {
@@ -270,7 +404,10 @@ public sealed class CliApplication
                     && !string.Equals(argument, "--parallel", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--artifacts-root", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(argument, "--keep-workspace", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(argument, "--keep-runtime-on-failure", StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(argument, "--keep-runtime-on-failure", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--quiet", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--verbose", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(argument, "--timeout", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ArgumentException($"Unknown option '{argument}'.");
                 }
@@ -399,10 +536,9 @@ public sealed class CliApplication
     private static Task<RuntimeResourceInventory> RunRuntimeInventoryAsync(RuntimeOwnershipQuery query, CancellationToken cancellationToken)
         => new RuntimeOwnershipService(new DockerContainerRuntime(new DockerService(new ProcessRunner()))).BuildInventoryAsync(query, cancellationToken);
 
-    private static Task<IReadOnlyList<WorkspaceSmokeDefinition>> RunSmokeDefinitionsAsync(CancellationToken cancellationToken)
+    private static Task<WorkspaceSmokeDefinitionCatalogResult> RunSmokeDefinitionsAsync(WorkspaceSmokeDefinitionQuery query, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(CreateSmokeApplicationService().DiscoverDefinitions());
+        return CreateSmokeApplicationService().ListDefinitionsAsync(query, cancellationToken);
     }
 
     private static async Task<WorkspaceSmokeResult> RunSmokeTemplateAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken)
@@ -463,4 +599,18 @@ public sealed class CliApplication
         public Task LaunchAttachSessionAsync(WorkspaceSnapshot snapshot, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Terminal attach is not available in the CLI workspace discovery command.");
     }
+}
+
+internal enum SmokeRunSelectionMode
+{
+    SingleTemplate,
+    Family,
+    All,
+}
+
+internal sealed class SmokeRunSelection
+{
+    public required SmokeRunSelectionMode Mode { get; init; }
+    public string? TemplateId { get; init; }
+    public string? Family { get; init; }
 }

@@ -382,6 +382,8 @@ public sealed class OracleRuntimeSmokeToolTests
 
         Assert.Contains("new WorkspaceSmokeApplicationService", source, StringComparison.Ordinal);
         Assert.Contains("service.RunAsync(new WorkspaceSmokeSingleRunRequest", source, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceSmokeAutomationOutcomeClassifier.Classify(result)", source, StringComparison.Ordinal);
+        Assert.Contains("MapOutcomeToExitCode", source, StringComparison.Ordinal);
         Assert.DoesNotContain("orchestrator.ProvisionAsync", source, StringComparison.Ordinal);
     }
 

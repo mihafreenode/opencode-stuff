@@ -115,7 +115,23 @@ public static class WorkspaceSmokeFailureClassifier
 {
     public static WorkspaceSmokeFailureClassification Classify(Exception exception)
     {
+        if (exception is WorkspaceSmokeTimeoutException timeoutException)
+        {
+            return timeoutException.Classification;
+        }
+
+        if (exception is OperationCanceledException)
+        {
+            return WorkspaceSmokeFailureClassification.Cancelled;
+        }
+
         var message = exception.ToString();
+        if (message.Contains("host-wide smoke lock", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("another Oracle smoke run already owns", StringComparison.OrdinalIgnoreCase))
+        {
+            return WorkspaceSmokeFailureClassification.LockAcquisitionFailure;
+        }
+
         if (message.Contains("Cannot allocate memory", StringComparison.OrdinalIgnoreCase)
             || message.Contains("OutOfMemoryError", StringComparison.OrdinalIgnoreCase)
             || message.Contains("unable to create native thread", StringComparison.OrdinalIgnoreCase)
@@ -199,7 +215,7 @@ public static class WorkspaceSmokeArtifacts
 
     public static async Task WriteRuntimeInventoryArtifactsAsync(string artifactsRoot, string suffix, RuntimeResourceInventory inventory, CancellationToken cancellationToken)
     {
-        await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"runtime-inventory-{suffix}.json"), JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"runtime-inventory-{suffix}.json"), JsonSerializer.Serialize(inventory, WorkspaceSmokeContract.JsonOptions), cancellationToken);
         await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"runtime-inventory-{suffix}.txt"), FormatRuntimeInventorySummary(inventory), cancellationToken);
     }
 
@@ -239,7 +255,7 @@ public static class WorkspaceSmokeArtifacts
 
     public static void WriteResultSummary(string artifactDirectory, WorkspaceSmokeResult result)
     {
-        File.WriteAllText(Path.Combine(artifactDirectory, "summary.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(Path.Combine(artifactDirectory, "summary.json"), JsonSerializer.Serialize(result, WorkspaceSmokeContract.JsonOptions));
         var lines = new List<string>
         {
             $"template={result.TemplateId}",
@@ -268,7 +284,7 @@ public static class WorkspaceSmokeArtifacts
 
     public static void WriteMatrixSummary(string artifactDirectory, WorkspaceSmokeMatrixResult result)
     {
-        File.WriteAllText(Path.Combine(artifactDirectory, "matrix-summary.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(Path.Combine(artifactDirectory, "matrix-summary.json"), JsonSerializer.Serialize(result, WorkspaceSmokeContract.JsonOptions));
         var lines = new[]
         {
             $"matrix_run_id={result.MatrixRunId}",
@@ -383,4 +399,128 @@ public sealed class WorkspaceSmokeLockService
             throw new InvalidOperationException("Runtime resource exhaustion: another Oracle smoke run already owns the host-wide smoke lock.", exception);
         }
     }
+}
+
+public sealed class WorkspaceSmokeTimeoutException : TimeoutException
+{
+    public WorkspaceSmokeTimeoutException(WorkspaceSmokeFailureClassification classification, string message)
+        : base(message)
+    {
+        Classification = classification;
+    }
+
+    public WorkspaceSmokeFailureClassification Classification { get; }
+}
+
+public static class WorkspaceSmokeTimeouts
+{
+    public static readonly TimeSpan CleanupTimeout = TimeSpan.FromMinutes(2);
+
+    public static TimeSpan Resolve(WorkspaceSmokeTimeoutClass timeoutClass)
+        => timeoutClass switch
+        {
+            WorkspaceSmokeTimeoutClass.Short => TimeSpan.FromMinutes(5),
+            WorkspaceSmokeTimeoutClass.Medium => TimeSpan.FromMinutes(10),
+            WorkspaceSmokeTimeoutClass.Long => TimeSpan.FromMinutes(20),
+            WorkspaceSmokeTimeoutClass.Extended => TimeSpan.FromMinutes(45),
+            _ => TimeSpan.FromMinutes(10),
+        };
+
+    public static async Task RunWithTimeoutAsync(Func<CancellationToken, Task> operation, TimeSpan timeout, WorkspaceSmokeFailureClassification timeoutClassification, string timeoutMessage, CancellationToken cancellationToken)
+    {
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+
+        try
+        {
+            await operation(linkedSource.Token);
+        }
+        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new WorkspaceSmokeTimeoutException(timeoutClassification, timeoutMessage);
+        }
+    }
+
+    public static async Task<T> RunWithTimeoutAsync<T>(Func<CancellationToken, Task<T>> operation, TimeSpan timeout, WorkspaceSmokeFailureClassification timeoutClassification, string timeoutMessage, CancellationToken cancellationToken)
+    {
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+
+        try
+        {
+            return await operation(linkedSource.Token);
+        }
+        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new WorkspaceSmokeTimeoutException(timeoutClassification, timeoutMessage);
+        }
+    }
+
+    public static CancellationToken CreateCleanupToken()
+    {
+        var source = new CancellationTokenSource(CleanupTimeout);
+        return source.Token;
+    }
+}
+
+public enum WorkspaceSmokeAutomationOutcome
+{
+    Success,
+    ValidationFailure,
+    InvalidConfiguration,
+    CleanupFailure,
+    LockFailure,
+    ResourceExhaustion,
+    UnsupportedSelection,
+    ToolingFailure,
+    Cancelled,
+}
+
+public static class WorkspaceSmokeAutomationOutcomeClassifier
+{
+    public static WorkspaceSmokeAutomationOutcome Classify(WorkspaceSmokeResult result)
+        => result.Status == WorkspaceSmokeStatus.Cancelled
+            ? WorkspaceSmokeAutomationOutcome.Cancelled
+            : result.FailureClassification switch
+            {
+                WorkspaceSmokeFailureClassification.None when result.Status == WorkspaceSmokeStatus.Passed => WorkspaceSmokeAutomationOutcome.Success,
+                WorkspaceSmokeFailureClassification.UnsupportedSmokeTemplate => WorkspaceSmokeAutomationOutcome.UnsupportedSelection,
+                WorkspaceSmokeFailureClassification.CleanupFailure or WorkspaceSmokeFailureClassification.CleanupTimeout => WorkspaceSmokeAutomationOutcome.CleanupFailure,
+                WorkspaceSmokeFailureClassification.LockAcquisitionFailure => WorkspaceSmokeAutomationOutcome.LockFailure,
+                WorkspaceSmokeFailureClassification.RuntimeResourceExhaustion => WorkspaceSmokeAutomationOutcome.ResourceExhaustion,
+                WorkspaceSmokeFailureClassification.ValidationToolingFailure => WorkspaceSmokeAutomationOutcome.ToolingFailure,
+                _ => WorkspaceSmokeAutomationOutcome.ValidationFailure,
+            };
+
+    public static WorkspaceSmokeAutomationOutcome Classify(WorkspaceSmokeMatrixResult result)
+        => result.Status == WorkspaceSmokeStatus.Cancelled
+            ? WorkspaceSmokeAutomationOutcome.Cancelled
+            : result.FailureClassification switch
+            {
+                WorkspaceSmokeFailureClassification.None when result.Status == WorkspaceSmokeStatus.Passed => WorkspaceSmokeAutomationOutcome.Success,
+                WorkspaceSmokeFailureClassification.UnsupportedSmokeTemplate => WorkspaceSmokeAutomationOutcome.UnsupportedSelection,
+                WorkspaceSmokeFailureClassification.CleanupFailure or WorkspaceSmokeFailureClassification.CleanupTimeout => WorkspaceSmokeAutomationOutcome.CleanupFailure,
+                WorkspaceSmokeFailureClassification.LockAcquisitionFailure => WorkspaceSmokeAutomationOutcome.LockFailure,
+                WorkspaceSmokeFailureClassification.RuntimeResourceExhaustion => WorkspaceSmokeAutomationOutcome.ResourceExhaustion,
+                WorkspaceSmokeFailureClassification.ValidationToolingFailure => WorkspaceSmokeAutomationOutcome.ToolingFailure,
+                _ => WorkspaceSmokeAutomationOutcome.ValidationFailure,
+            };
+
+    public static WorkspaceSmokeAutomationOutcome Classify(SmokeCleanupResult result)
+        => result.Succeeded && result.VerificationSucceeded
+            ? WorkspaceSmokeAutomationOutcome.Success
+            : WorkspaceSmokeAutomationOutcome.CleanupFailure;
+
+    public static WorkspaceSmokeAutomationOutcome Classify(Exception exception)
+        => exception switch
+        {
+            OperationCanceledException => WorkspaceSmokeAutomationOutcome.Cancelled,
+            WorkspaceSmokeSelectionException => WorkspaceSmokeAutomationOutcome.UnsupportedSelection,
+            WorkspaceSmokeTimeoutException timeoutException when timeoutException.Classification is WorkspaceSmokeFailureClassification.CleanupTimeout => WorkspaceSmokeAutomationOutcome.CleanupFailure,
+            WorkspaceSmokeTimeoutException => WorkspaceSmokeAutomationOutcome.ValidationFailure,
+            ArgumentException => WorkspaceSmokeAutomationOutcome.InvalidConfiguration,
+            _ when WorkspaceSmokeFailureClassifier.Classify(exception) == WorkspaceSmokeFailureClassification.LockAcquisitionFailure => WorkspaceSmokeAutomationOutcome.LockFailure,
+            _ when WorkspaceSmokeFailureClassifier.Classify(exception) == WorkspaceSmokeFailureClassification.RuntimeResourceExhaustion => WorkspaceSmokeAutomationOutcome.ResourceExhaustion,
+            _ => WorkspaceSmokeAutomationOutcome.ToolingFailure,
+        };
 }

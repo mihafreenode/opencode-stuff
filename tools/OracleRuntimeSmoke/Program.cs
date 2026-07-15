@@ -108,8 +108,23 @@ public static class OracleRuntimeSmokeCli
         await WriteCompatibilityCleanupArtifactsAsync(artifactsRoot, result, CancellationToken.None);
         Console.WriteLine($"[compat] template={result.TemplateId} status={result.Status} run_id={result.RunId}");
         Console.WriteLine($"[compat] artifacts={artifactsRoot}");
-        return result.Status == WorkspaceSmokeStatus.Passed ? 0 : 1;
+        return MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcomeClassifier.Classify(result));
     }
+
+    private static int MapOutcomeToExitCode(WorkspaceSmokeAutomationOutcome outcome)
+        => outcome switch
+        {
+            WorkspaceSmokeAutomationOutcome.Success => 0,
+            WorkspaceSmokeAutomationOutcome.ValidationFailure => 1,
+            WorkspaceSmokeAutomationOutcome.InvalidConfiguration => 2,
+            WorkspaceSmokeAutomationOutcome.CleanupFailure => 3,
+            WorkspaceSmokeAutomationOutcome.LockFailure => 4,
+            WorkspaceSmokeAutomationOutcome.ResourceExhaustion => 5,
+            WorkspaceSmokeAutomationOutcome.UnsupportedSelection => 6,
+            WorkspaceSmokeAutomationOutcome.ToolingFailure => 7,
+            WorkspaceSmokeAutomationOutcome.Cancelled => 130,
+            _ => 7,
+        };
 
     private static void CopyCompatibilityArtifacts(string sourceDirectory, string destinationDirectory)
     {

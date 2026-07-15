@@ -30,7 +30,7 @@ public sealed class CliApplicationTests
 
         var exitCode = await app.RunAsync(["unknown"]);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Contains("Unknown command", error.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -156,7 +156,7 @@ public sealed class CliApplicationTests
 
         var exitCode = await app.RunAsync(["validate-platform"]);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(2, exitCode);
         Assert.Contains("Missing required option --target", error.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -230,7 +230,7 @@ public sealed class CliApplicationTests
 
             var exitCode = await app.RunAsync(["validate-platform", "--target", "linux/amd64", "--output", root]);
 
-            Assert.Equal(1, exitCode);
+            Assert.Equal(7, exitCode);
             Assert.Contains("Access to the path", error.ToString(), StringComparison.OrdinalIgnoreCase);
         }
         finally
@@ -309,7 +309,7 @@ public sealed class CliApplicationTests
             (_, _) => throw new NotSupportedException(),
             (_, _) => throw new NotSupportedException());
 
-        var exitCode = await app.RunAsync(["smoke", "cleanup", "--dry-run"]);
+        var exitCode = await app.RunAsync(["smoke", "cleanup", "--dry-run", "--verbose"]);
 
         Assert.Equal(0, exitCode);
         Assert.Contains("OpenCode Smoke Cleanup", output.ToString(), StringComparison.Ordinal);

@@ -8,6 +8,9 @@ namespace OpenCode.Workspace.Cli;
 
 public static class CliOutputFormatter
 {
+    public static string SerializeJson<T>(T model)
+        => JsonSerializer.Serialize(model, WorkspaceSmokeContract.JsonOptions);
+
     public static string FormatDoctor(WorkspaceDoctorResult result)
     {
         var lines = new List<string>
@@ -116,6 +119,7 @@ public static class CliOutputFormatter
             "  opencode runtime doctor --owner smoke",
             "  opencode smoke list",
             "  opencode smoke run <template>",
+            "  opencode smoke run --family <family>",
             "  opencode smoke run --all",
             "  opencode smoke cleanup --dry-run",
             "  opencode smoke cleanup --all",
@@ -129,24 +133,16 @@ public static class CliOutputFormatter
         });
     }
 
-    public static string FormatSmokeCleanup(SmokeCleanupResult result, string format)
+    public static string FormatSmokeCleanup(SmokeCleanupResult result, string format, CliVerbosity verbosity)
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(new
-            {
-                result.Succeeded,
-                result.DryRun,
-                result.ComposeDownAttempted,
-                result.ComposeDownSucceeded,
-                result.FallbackRemovalRequired,
-                result.VerificationSucceeded,
-                Resources = result.Resources,
-                Actions = result.Actions,
-                Warnings = result.Warnings,
-                Errors = result.Errors,
-                SuspectedLegacyProjects = result.SuspectedLegacyProjects,
-            }, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(result);
+        }
+
+        if (verbosity == CliVerbosity.Quiet)
+        {
+            return $"status={(result.Succeeded ? "passed" : "failed")}{Environment.NewLine}cleanupVerificationSucceeded={result.VerificationSucceeded}";
         }
 
         var lines = new List<string>
@@ -162,7 +158,7 @@ public static class CliOutputFormatter
             $"Resources discovered: {result.Resources.Count}",
         };
 
-        if (result.Actions.Count > 0)
+        if (result.Actions.Count > 0 && verbosity == CliVerbosity.Verbose)
         {
             lines.Add(string.Empty);
             lines.Add("Actions:");
@@ -190,7 +186,7 @@ public static class CliOutputFormatter
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(result);
         }
 
         var lines = new List<string>
@@ -210,16 +206,21 @@ public static class CliOutputFormatter
         return string.Join(Environment.NewLine, lines);
     }
 
-    public static string FormatRuntimeInventory(RuntimeResourceInventory inventory, string format)
+    public static string FormatRuntimeInventory(RuntimeResourceInventory inventory, string format, bool doctorView, CliVerbosity verbosity)
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(inventory);
+        }
+
+        if (verbosity == CliVerbosity.Quiet)
+        {
+            return $"resources={inventory.Resources.Count}{Environment.NewLine}orphans={inventory.Orphans.Count}{Environment.NewLine}staleRuntimes={inventory.StaleRuntimes.Count}";
         }
 
         var lines = new List<string>
         {
-            "OpenCode Runtime Inventory",
+            doctorView ? "OpenCode Runtime Doctor" : "OpenCode Runtime Inventory",
             string.Empty,
             $"Resources: {inventory.Resources.Count}",
             $"Projects: {inventory.Projects.Count}",
@@ -229,19 +230,27 @@ public static class CliOutputFormatter
             $"Missing labels: {inventory.MissingRequiredLabels.Count}",
         };
 
-        foreach (var resource in inventory.Resources.Take(20))
+        foreach (var resource in inventory.Resources.Take(verbosity == CliVerbosity.Verbose ? 50 : 20))
         {
             lines.Add($"  {resource.Type}: {resource.Name} owner={resource.OwnerKind} run_id={resource.RunId} project={resource.Project} status={resource.Status}");
+        }
+
+        if (doctorView && verbosity == CliVerbosity.Verbose)
+        {
+            foreach (var issue in inventory.Orphans.Concat(inventory.StaleRuntimes).Concat(inventory.DuplicateRunIds).Concat(inventory.MissingRequiredLabels).Take(20))
+            {
+                lines.Add($"  issue: {issue.Kind} {issue.Message}");
+            }
         }
 
         return string.Join(Environment.NewLine, lines);
     }
 
-    public static string FormatSmokeDefinitions(IReadOnlyList<WorkspaceSmokeDefinition> definitions, string format)
+    public static string FormatSmokeDefinitions(WorkspaceSmokeDefinitionCatalogResult catalog, string format)
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(definitions, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(catalog);
         }
 
         var lines = new List<string>
@@ -250,7 +259,7 @@ public static class CliOutputFormatter
             string.Empty,
         };
 
-        foreach (var definition in definitions)
+        foreach (var definition in catalog.Definitions)
         {
             lines.Add($"{definition.TemplateId}: family={definition.Family} supported={definition.Supported} resource_class={definition.ResourceClass} timeout_class={definition.TimeoutClass}");
             lines.Add($"  validators={string.Join(", ", definition.ValidatorIds)}");
@@ -263,11 +272,21 @@ public static class CliOutputFormatter
         return string.Join(Environment.NewLine, lines);
     }
 
-    public static string FormatSmokeResult(WorkspaceSmokeResult result, string format)
+    public static string FormatSmokeResult(WorkspaceSmokeResult result, string format, CliVerbosity verbosity)
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(result);
+        }
+
+        if (verbosity == CliVerbosity.Quiet)
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                $"status={result.Status}",
+                $"runId={result.RunId}",
+                $"artifactDirectory={result.ArtifactDirectory}",
+            });
         }
 
         var lines = new List<string>
@@ -282,9 +301,11 @@ public static class CliOutputFormatter
             $"Failure message: {result.FailureMessage}",
             $"Cleanup verification: {result.CleanupVerificationSucceeded}",
             $"Artifacts: {result.ArtifactDirectory}",
+            $"Summary JSON: {result.SummaryJsonPath}",
+            $"Summary text: {result.SummaryTextPath}",
         };
 
-        if (result.Validators.Count > 0)
+        if (verbosity == CliVerbosity.Verbose && result.Validators.Count > 0)
         {
             lines.Add(string.Empty);
             lines.Add("Validators:");
@@ -294,11 +315,21 @@ public static class CliOutputFormatter
         return string.Join(Environment.NewLine, lines);
     }
 
-    public static string FormatSmokeMatrixResult(WorkspaceSmokeMatrixResult result, string format)
+    public static string FormatSmokeMatrixResult(WorkspaceSmokeMatrixResult result, string format, CliVerbosity verbosity)
     {
         if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
         {
-            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+            return SerializeJson(result);
+        }
+
+        if (verbosity == CliVerbosity.Quiet)
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                $"status={result.Status}",
+                $"matrixRunId={result.MatrixRunId}",
+                $"artifactDirectory={result.ArtifactDirectory}",
+            });
         }
 
         var lines = new List<string>
@@ -311,9 +342,11 @@ public static class CliOutputFormatter
             $"Failed: {result.FailedCount}",
             $"Skipped: {result.SkippedCount}",
             $"Artifacts: {result.ArtifactDirectory}",
+            $"Summary JSON: {result.SummaryJsonPath}",
+            $"Summary text: {result.SummaryTextPath}",
         };
 
-        foreach (var item in result.Results)
+        foreach (var item in result.Results.Take(verbosity == CliVerbosity.Verbose ? result.Results.Count : 20))
         {
             lines.Add($"  {item.TemplateId}: {item.Status} {item.FailureClassification} {item.FailureMessage}".TrimEnd());
         }
@@ -516,4 +549,11 @@ public static class CliOutputFormatter
             return path;
         }
     }
+}
+
+public enum CliVerbosity
+{
+    Default,
+    Quiet,
+    Verbose,
 }

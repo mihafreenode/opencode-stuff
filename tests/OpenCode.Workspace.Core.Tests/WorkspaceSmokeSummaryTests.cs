@@ -1,6 +1,7 @@
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
+using System.Text.Json;
 using Xunit;
 
 namespace OpenCode.Workspace.Core.Tests;
@@ -53,10 +54,14 @@ public sealed class WorkspaceSmokeSummaryTests
             WorkspaceSmokeArtifacts.WriteResultSummary(root, result);
 
             var summary = File.ReadAllText(Path.Combine(root, "summary.txt"));
+            using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "summary.json")));
             Assert.Contains("validator.oracle-apexlang-runtime.apex_installed=True", summary, StringComparison.Ordinal);
             Assert.Contains("validator.oracle-apexlang-runtime.apex_version=26.1.0", summary, StringComparison.Ordinal);
             Assert.Contains("validator.oracle-apexlang-runtime.apex_registry_status=VALID", summary, StringComparison.Ordinal);
             Assert.Contains("validator.oracle-apexlang-runtime.apexlang_application_name=Hello APEXlang", summary, StringComparison.Ordinal);
+            Assert.Equal("1", json.RootElement.GetProperty("schemaVersion").GetString());
+            Assert.Equal("smokeRun", json.RootElement.GetProperty("kind").GetString());
+            Assert.Equal("passed", json.RootElement.GetProperty("status").GetString());
         }
         finally
         {
@@ -78,5 +83,28 @@ public sealed class WorkspaceSmokeSummaryTests
         Assert.DoesNotContain("oracle-apexlang-runtime", definitions["oracle-plsql-demo"].ValidatorIds);
         Assert.Contains("oracle-apex-runtime", definitions["oracle-apex-demo"].ValidatorIds);
         Assert.Contains("oracle-apexlang-runtime", definitions["oracle-apexlang-demo"].ValidatorIds);
+    }
+
+    [Fact]
+    public void AutomationOutcomeClassifier_MapsCleanupFailureSeparately()
+    {
+        var result = new WorkspaceSmokeResult
+        {
+            TemplateId = "general-development",
+            RunId = "run-1",
+            Status = WorkspaceSmokeStatus.Failed,
+            FailureClassification = WorkspaceSmokeFailureClassification.CleanupFailure,
+        };
+
+        Assert.Equal(WorkspaceSmokeAutomationOutcome.CleanupFailure, WorkspaceSmokeAutomationOutcomeClassifier.Classify(result));
+    }
+
+    [Fact]
+    public void ApplicationService_HasNoConsoleDependency()
+    {
+        var source = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Smoke", "WorkspaceSmokeApplicationService.cs"));
+
+        Assert.DoesNotContain("Console.", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("WriteLine", source, StringComparison.Ordinal);
     }
 }

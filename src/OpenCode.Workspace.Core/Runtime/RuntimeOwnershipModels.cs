@@ -96,6 +96,9 @@ public sealed class RuntimeInventoryIssue
 
 public sealed class RuntimeResourceInventory
 {
+    public string SchemaVersion { get; init; } = OpenCode.Workspace.Core.Smoke.WorkspaceSmokeContract.SchemaVersion;
+    public string Kind { get; init; } = "runtimeInventory";
+    public DateTimeOffset GeneratedUtc { get; init; } = DateTimeOffset.UtcNow;
     public IReadOnlyList<RuntimeOwnedResource> Resources { get; init; } = Array.Empty<RuntimeOwnedResource>();
     public IReadOnlyList<RuntimeProjectInventory> Projects { get; init; } = Array.Empty<RuntimeProjectInventory>();
     public IReadOnlyList<RuntimeInventoryIssue> Orphans { get; init; } = Array.Empty<RuntimeInventoryIssue>();
@@ -134,6 +137,9 @@ public sealed record SmokeCleanupOptions(bool DryRun, bool IncludeAll, string? R
 
 public sealed class SmokeCleanupResult
 {
+    public string SchemaVersion { get; init; } = OpenCode.Workspace.Core.Smoke.WorkspaceSmokeContract.SchemaVersion;
+    public string Kind { get; init; } = "smokeCleanup";
+    public DateTimeOffset GeneratedUtc { get; init; } = DateTimeOffset.UtcNow;
     public bool Succeeded { get; init; }
     public bool DryRun { get; init; }
     public bool ComposeDownAttempted { get; init; }

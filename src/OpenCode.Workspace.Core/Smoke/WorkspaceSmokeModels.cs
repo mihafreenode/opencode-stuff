@@ -1,5 +1,7 @@
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OpenCode.Workspace.Core.Smoke;
 
@@ -8,6 +10,7 @@ public enum WorkspaceSmokeStatus
     Passed,
     Failed,
     Skipped,
+    Cancelled,
 }
 
 public enum WorkspaceSmokePhase
@@ -25,6 +28,7 @@ public enum WorkspaceSmokePhase
 public enum WorkspaceSmokeFailureClassification
 {
     None,
+    Cancelled,
     ValidationToolingFailure,
     EnvironmentFailure,
     ProductFailure,
@@ -38,6 +42,10 @@ public enum WorkspaceSmokeFailureClassification
     CleanupFailure,
     UnsupportedSmokeTemplate,
     LockAcquisitionFailure,
+    ProvisioningTimeout,
+    ValidationTimeout,
+    MatrixTimeout,
+    CleanupTimeout,
 }
 
 public enum WorkspaceSmokeResourceClass
@@ -69,6 +77,19 @@ public sealed class WorkspaceSmokeDefinition
     public IReadOnlyList<string> ExpectedServices { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ValidatorIds { get; init; } = Array.Empty<string>();
     public TemplateManifest Template { get; init; } = new();
+}
+
+public sealed class WorkspaceSmokeDefinitionQuery
+{
+    public string? Family { get; init; }
+}
+
+public sealed class WorkspaceSmokeDefinitionCatalogResult
+{
+    public string SchemaVersion { get; init; } = WorkspaceSmokeContract.SchemaVersion;
+    public string Kind { get; init; } = "smokeDefinitionCatalog";
+    public DateTimeOffset GeneratedUtc { get; init; } = DateTimeOffset.UtcNow;
+    public IReadOnlyList<WorkspaceSmokeDefinition> Definitions { get; init; } = Array.Empty<WorkspaceSmokeDefinition>();
 }
 
 public sealed class WorkspaceSmokeCommandResult
@@ -109,6 +130,8 @@ public sealed class WorkspaceSmokeResourceCounts
 
 public sealed class WorkspaceSmokeResult
 {
+    public string SchemaVersion { get; init; } = WorkspaceSmokeContract.SchemaVersion;
+    public string Kind { get; init; } = "smokeRun";
     public string TemplateId { get; init; } = string.Empty;
     public string RunId { get; init; } = string.Empty;
     public string WorkspacePath { get; init; } = string.Empty;
@@ -120,6 +143,10 @@ public sealed class WorkspaceSmokeResult
     public WorkspaceSmokePhase Phase { get; init; }
     public WorkspaceSmokeFailureClassification FailureClassification { get; init; }
     public string FailureMessage { get; init; } = string.Empty;
+    public WorkspaceSmokeFailureClassification OriginalFailureClassification { get; init; }
+    public string OriginalFailureMessage { get; init; } = string.Empty;
+    public WorkspaceSmokeFailureClassification CleanupFailureClassification { get; init; }
+    public string CleanupFailureMessage { get; init; } = string.Empty;
     public IReadOnlyList<WorkspaceSmokeValidatorResult> Validators { get; init; } = Array.Empty<WorkspaceSmokeValidatorResult>();
     public WorkspaceSmokeResourceCounts ResourceCountsBefore { get; init; } = new();
     public WorkspaceSmokeResourceCounts ResourceCountsActive { get; init; } = new();
@@ -127,11 +154,15 @@ public sealed class WorkspaceSmokeResult
     public SmokeCleanupResult? CleanupResult { get; init; }
     public bool CleanupVerificationSucceeded { get; init; }
     public string ArtifactDirectory { get; init; } = string.Empty;
+    public string SummaryJsonPath { get; init; } = string.Empty;
+    public string SummaryTextPath { get; init; } = string.Empty;
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
 }
 
 public sealed class WorkspaceSmokeMatrixResult
 {
+    public string SchemaVersion { get; init; } = WorkspaceSmokeContract.SchemaVersion;
+    public string Kind { get; init; } = "smokeMatrix";
     public string MatrixRunId { get; init; } = string.Empty;
     public IReadOnlyList<string> SelectedTemplates { get; init; } = Array.Empty<string>();
     public DateTimeOffset StartedUtc { get; init; }
@@ -143,7 +174,11 @@ public sealed class WorkspaceSmokeMatrixResult
     public SmokeCleanupResult? FinalHostCleanupResult { get; init; }
     public RuntimeResourceInventory? FinalRuntimeInventory { get; init; }
     public WorkspaceSmokeStatus Status { get; init; }
+    public WorkspaceSmokeFailureClassification FailureClassification { get; init; }
+    public string FailureMessage { get; init; } = string.Empty;
     public string ArtifactDirectory { get; init; } = string.Empty;
+    public string SummaryJsonPath { get; init; } = string.Empty;
+    public string SummaryTextPath { get; init; } = string.Empty;
 }
 
 public sealed class WorkspaceSmokeRunnerOptions
@@ -155,6 +190,7 @@ public sealed class WorkspaceSmokeRunnerOptions
     public bool OracleLockAlreadyHeld { get; init; }
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
+    public TimeSpan? Timeout { get; init; }
 }
 
 public sealed class WorkspaceSmokeMatrixRunnerOptions
@@ -163,6 +199,8 @@ public sealed class WorkspaceSmokeMatrixRunnerOptions
     public int ParallelCount { get; init; } = 1;
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
+    public TimeSpan? RunTimeoutOverride { get; init; }
+    public TimeSpan? MatrixTimeout { get; init; }
 }
 
 public sealed class WorkspaceSmokeSingleRunRequest
@@ -173,6 +211,7 @@ public sealed class WorkspaceSmokeSingleRunRequest
     public bool DryRun { get; init; }
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
+    public TimeSpan? Timeout { get; init; }
 }
 
 public sealed class WorkspaceSmokeMatrixRunRequest
@@ -182,4 +221,24 @@ public sealed class WorkspaceSmokeMatrixRunRequest
     public int ParallelCount { get; init; } = 1;
     public bool KeepWorkspace { get; init; }
     public bool KeepRuntimeOnFailure { get; init; }
+    public TimeSpan? RunTimeoutOverride { get; init; }
+    public TimeSpan? MatrixTimeout { get; init; }
+}
+
+public static class WorkspaceSmokeContract
+{
+    public const string SchemaVersion = "1";
+
+    public static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        return options;
+    }
 }

@@ -57,10 +57,15 @@ public sealed class WorkspaceSmokeRunner
         var status = WorkspaceSmokeStatus.Passed;
         WorkspaceSmokeFailureClassification failureClassification = WorkspaceSmokeFailureClassification.None;
         var failureMessage = string.Empty;
+        WorkspaceSmokeFailureClassification originalFailureClassification = WorkspaceSmokeFailureClassification.None;
+        var originalFailureMessage = string.Empty;
+        WorkspaceSmokeFailureClassification cleanupFailureClassification = WorkspaceSmokeFailureClassification.None;
+        var cleanupFailureMessage = string.Empty;
         WorkspaceSnapshot? snapshot = null;
         var workspaceService = _workspaceServiceFactory.Create();
         IDisposable? lockHandle = null;
         var skipReason = string.Empty;
+        var runTimeout = options.Timeout ?? WorkspaceSmokeTimeouts.Resolve(definition.TimeoutClass);
 
         try
         {
@@ -110,7 +115,12 @@ public sealed class WorkspaceSmokeRunner
             }
 
             phase = WorkspaceSmokePhase.Provisioning;
-            await workspaceService.ProvisionAsync(snapshot, Log, cancellationToken);
+            await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
+                token => workspaceService.ProvisionAsync(snapshot, Log, token),
+                runTimeout,
+                WorkspaceSmokeFailureClassification.ProvisioningTimeout,
+                $"Smoke provisioning timed out after {runTimeout}.",
+                cancellationToken);
             await File.WriteAllTextAsync(Path.Combine(artifactDirectory, "provisioning.log"), provisioningLog.ToString(), cancellationToken);
 
             inventoryActive = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke", RunId = runId }, cancellationToken);
@@ -133,9 +143,14 @@ public sealed class WorkspaceSmokeRunner
             };
             foreach (var validator in _validatorProvider.ResolveValidators(definition))
             {
-                var validatorResult = await validator.ValidateAsync(context, cancellationToken);
+                var validatorResult = await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
+                    token => validator.ValidateAsync(context, token),
+                    runTimeout,
+                    WorkspaceSmokeFailureClassification.ValidationTimeout,
+                    $"Smoke validation timed out after {runTimeout}.",
+                    cancellationToken);
                 validators.Add(validatorResult);
-                await File.WriteAllTextAsync(Path.Combine(validationArtifactDirectory, $"{validator.ValidatorId}.json"), System.Text.Json.JsonSerializer.Serialize(validatorResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+                await File.WriteAllTextAsync(Path.Combine(validationArtifactDirectory, $"{validator.ValidatorId}.json"), System.Text.Json.JsonSerializer.Serialize(validatorResult, WorkspaceSmokeContract.JsonOptions), cancellationToken);
             }
 
             var failures = validators.Where(item => !item.Succeeded).ToArray();
@@ -150,11 +165,21 @@ public sealed class WorkspaceSmokeRunner
             phase = WorkspaceSmokePhase.Completed;
             status = failures.Length == 0 ? WorkspaceSmokeStatus.Passed : WorkspaceSmokeStatus.Failed;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            status = WorkspaceSmokeStatus.Cancelled;
+            failureClassification = WorkspaceSmokeFailureClassification.Cancelled;
+            failureMessage = "Smoke run was cancelled.";
+            originalFailureClassification = failureClassification;
+            originalFailureMessage = failureMessage;
+        }
         catch (Exception exception)
         {
             status = WorkspaceSmokeStatus.Failed;
             failureClassification = WorkspaceSmokeFailureClassifier.Classify(exception);
             failureMessage = exception.Message;
+            originalFailureClassification = failureClassification;
+            originalFailureMessage = failureMessage;
             warnings.Add(exception.ToString());
         }
         finally
@@ -163,9 +188,15 @@ public sealed class WorkspaceSmokeRunner
             {
                 phase = WorkspaceSmokePhase.Cleanup;
                 var shouldRetainRuntime = options.KeepRuntimeOnFailure && !string.IsNullOrWhiteSpace(failureMessage);
+                using var cleanupSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
                 if (!shouldRetainRuntime)
                 {
-                    cleanupResult = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: runId, OutputFormat: "json"), cancellationToken);
+                    cleanupResult = await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
+                        token => _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: runId, OutputFormat: "json"), token),
+                        WorkspaceSmokeTimeouts.CleanupTimeout,
+                        WorkspaceSmokeFailureClassification.CleanupTimeout,
+                        $"Smoke cleanup timed out after {WorkspaceSmokeTimeouts.CleanupTimeout}.",
+                        CancellationToken.None);
                 }
                 else
                 {
@@ -178,13 +209,15 @@ public sealed class WorkspaceSmokeRunner
                     };
                 }
 
-                await File.WriteAllTextAsync(Path.Combine(cleanupArtifactDirectory, "run-cleanup.json"), System.Text.Json.JsonSerializer.Serialize(cleanupResult, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), cancellationToken);
-                inventoryAfter = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cancellationToken);
-                await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(artifactDirectory, "after", inventoryAfter, cancellationToken);
+                await File.WriteAllTextAsync(Path.Combine(cleanupArtifactDirectory, "run-cleanup.json"), System.Text.Json.JsonSerializer.Serialize(cleanupResult, WorkspaceSmokeContract.JsonOptions), cleanupSource.Token);
+                inventoryAfter = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cleanupSource.Token);
+                await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(artifactDirectory, "after", inventoryAfter, cleanupSource.Token);
             }
             catch (Exception cleanupException)
             {
                 warnings.Add(cleanupException.ToString());
+                cleanupFailureClassification = WorkspaceSmokeFailureClassifier.Classify(cleanupException);
+                cleanupFailureMessage = cleanupException.Message;
                 cleanupResult = new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupResult
                 {
                     Succeeded = false,
@@ -201,7 +234,8 @@ public sealed class WorkspaceSmokeRunner
                     workspaceService.DeleteWorkspaceRegistration(snapshot.Paths.RootPath);
                     if (Directory.Exists(snapshot.Paths.RootPath) && !options.KeepWorkspace)
                     {
-                        await _containerRuntime.NormalizeWorkspaceFilePermissionsAsync(snapshot.Paths.RootPath, cancellationToken: cancellationToken);
+                        using var deleteSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
+                        await _containerRuntime.NormalizeWorkspaceFilePermissionsAsync(snapshot.Paths.RootPath, cancellationToken: deleteSource.Token);
                         Directory.Delete(snapshot.Paths.RootPath, recursive: true);
                     }
                 }
@@ -221,9 +255,13 @@ Finalize:
             status = WorkspaceSmokeStatus.Failed;
             failureClassification = WorkspaceSmokeFailureClassification.CleanupFailure;
             finalMessage = "Run cleanup verification failed.";
+            cleanupFailureClassification = WorkspaceSmokeFailureClassification.CleanupFailure;
+            cleanupFailureMessage = finalMessage;
         }
 
         var finalPhase = status == WorkspaceSmokeStatus.Passed ? WorkspaceSmokePhase.Completed : phase;
+        var summaryJsonPath = Path.Combine(artifactDirectory, "summary.json");
+        var summaryTextPath = Path.Combine(artifactDirectory, "summary.txt");
         var result = new WorkspaceSmokeResult
         {
             TemplateId = definition.TemplateId,
@@ -237,6 +275,10 @@ Finalize:
             Phase = finalPhase,
             FailureClassification = failureClassification,
             FailureMessage = finalMessage,
+            OriginalFailureClassification = originalFailureClassification,
+            OriginalFailureMessage = originalFailureMessage,
+            CleanupFailureClassification = cleanupFailureClassification,
+            CleanupFailureMessage = cleanupFailureMessage,
             Validators = validators.ToArray(),
             ResourceCountsBefore = WorkspaceSmokeResourceCounts.FromInventory(inventoryBefore),
             ResourceCountsActive = WorkspaceSmokeResourceCounts.FromInventory(inventoryActive),
@@ -244,6 +286,8 @@ Finalize:
             CleanupResult = cleanupResult,
             CleanupVerificationSucceeded = cleanupResult?.VerificationSucceeded ?? false,
             ArtifactDirectory = artifactDirectory,
+            SummaryJsonPath = summaryJsonPath,
+            SummaryTextPath = summaryTextPath,
             Warnings = warnings.ToArray(),
         };
         WorkspaceSmokeArtifacts.WriteResultSummary(artifactDirectory, result);
@@ -301,6 +345,20 @@ public sealed class WorkspaceSmokeMatrixRunner
         global::OpenCode.Workspace.Core.Runtime.SmokeCleanupResult? finalCleanup = null;
         RuntimeResourceInventory? finalInventory = null;
         var results = new List<WorkspaceSmokeResult>();
+        var status = WorkspaceSmokeStatus.Passed;
+        WorkspaceSmokeFailureClassification failureClassification = WorkspaceSmokeFailureClassification.None;
+        var failureMessage = string.Empty;
+        var selectedTemplates = definitions.Select(item => item.TemplateId).ToArray();
+        var executionToken = cancellationToken;
+        CancellationTokenSource? matrixTimeoutSource = null;
+        CancellationTokenSource? linkedSource = null;
+
+        if (options.MatrixTimeout is not null)
+        {
+            matrixTimeoutSource = new CancellationTokenSource(options.MatrixTimeout.Value);
+            linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, matrixTimeoutSource.Token);
+            executionToken = linkedSource.Token;
+        }
 
         try
         {
@@ -310,14 +368,14 @@ public sealed class WorkspaceSmokeMatrixRunner
             }
 
             var preflight = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "json"), cancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(hostBeforeDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(preflight, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(hostBeforeDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(preflight, WorkspaceSmokeContract.JsonOptions), executionToken);
             if (!preflight.Succeeded || !preflight.VerificationSucceeded)
             {
                 throw new InvalidOperationException("Runtime resource exhaustion: stale smoke-owned Docker resources could not be cleaned before starting the matrix.");
             }
 
-            var initialInventory = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cancellationToken);
-            await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(hostBeforeDirectory, "host-before", initialInventory, cancellationToken);
+            var initialInventory = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, executionToken);
+            await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(hostBeforeDirectory, "host-before", initialInventory, executionToken);
             if (initialInventory.Resources.Count > 0)
             {
                 throw new InvalidOperationException("Runtime resource exhaustion: smoke-owned Docker resources are still active after matrix preflight cleanup.");
@@ -332,7 +390,8 @@ public sealed class WorkspaceSmokeMatrixRunner
                     OracleLockAlreadyHeld = definition.ResourceClass == WorkspaceSmokeResourceClass.OracleExclusive && lockHandle is not null,
                     KeepRuntimeOnFailure = options.KeepRuntimeOnFailure,
                     KeepWorkspace = options.KeepWorkspace,
-                }, cancellationToken);
+                    Timeout = options.RunTimeoutOverride,
+                }, executionToken);
                 results.Add(result);
 
                 var unsafeToContinue = result.CleanupResult is { VerificationSucceeded: false } && !options.KeepRuntimeOnFailure
@@ -342,42 +401,97 @@ public sealed class WorkspaceSmokeMatrixRunner
                     break;
                 }
             }
-
-            finalCleanup = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "json"), cancellationToken);
-            finalInventory = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(hostAfterDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(finalCleanup, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), cancellationToken);
-            await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(hostAfterDirectory, "host-after", finalInventory, cancellationToken);
-
-            var matrixStatus = results.Any(item => item.Status == WorkspaceSmokeStatus.Failed)
-                || finalCleanup is { VerificationSucceeded: false }
-                || finalInventory.Resources.Count > 0
-                    ? WorkspaceSmokeStatus.Failed
-                    : results.All(item => item.Status == WorkspaceSmokeStatus.Skipped)
-                        ? WorkspaceSmokeStatus.Skipped
-                        : WorkspaceSmokeStatus.Passed;
-
-            var matrixResult = new WorkspaceSmokeMatrixResult
-            {
-                MatrixRunId = matrixRunId,
-                SelectedTemplates = definitions.Select(item => item.TemplateId).ToArray(),
-                StartedUtc = startedUtc,
-                FinishedUtc = DateTimeOffset.UtcNow,
-                Results = results.ToArray(),
-                PassedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Passed),
-                FailedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Failed) + ((finalCleanup is { VerificationSucceeded: false } || finalInventory.Resources.Count > 0) ? 1 : 0),
-                SkippedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Skipped),
-                FinalHostCleanupResult = finalCleanup,
-                FinalRuntimeInventory = finalInventory,
-                Status = matrixStatus,
-                ArtifactDirectory = artifactDirectory,
-            };
-            WorkspaceSmokeArtifacts.WriteMatrixSummary(artifactDirectory, matrixResult);
-            return matrixResult;
+        }
+        catch (OperationCanceledException) when (matrixTimeoutSource is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested)
+        {
+            status = WorkspaceSmokeStatus.Failed;
+            failureClassification = WorkspaceSmokeFailureClassification.MatrixTimeout;
+            failureMessage = $"Smoke matrix timed out after {options.MatrixTimeout}.";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            status = WorkspaceSmokeStatus.Cancelled;
+            failureClassification = WorkspaceSmokeFailureClassification.Cancelled;
+            failureMessage = "Smoke matrix was cancelled.";
+        }
+        catch (Exception exception)
+        {
+            status = WorkspaceSmokeStatus.Failed;
+            failureClassification = WorkspaceSmokeFailureClassifier.Classify(exception);
+            failureMessage = exception.Message;
         }
         finally
         {
+            try
+            {
+                using var cleanupSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
+                finalCleanup = await _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: true, RunId: null, OutputFormat: "json"), cleanupSource.Token);
+                finalInventory = await _runtimeOwnershipService.BuildInventoryAsync(new RuntimeOwnershipQuery { OwnerKind = "smoke" }, cleanupSource.Token);
+                await File.WriteAllTextAsync(Path.Combine(hostAfterDirectory, "cleanup.json"), System.Text.Json.JsonSerializer.Serialize(finalCleanup, WorkspaceSmokeContract.JsonOptions), cleanupSource.Token);
+                await WorkspaceSmokeArtifacts.WriteRuntimeInventoryArtifactsAsync(hostAfterDirectory, "host-after", finalInventory, cleanupSource.Token);
+            }
+            catch (Exception cleanupException)
+            {
+                finalCleanup = new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupResult
+                {
+                    Succeeded = false,
+                    DryRun = false,
+                    VerificationSucceeded = false,
+                    Errors = [cleanupException.Message],
+                };
+                if (failureClassification == WorkspaceSmokeFailureClassification.None)
+                {
+                    failureClassification = WorkspaceSmokeFailureClassifier.Classify(cleanupException);
+                    failureMessage = cleanupException.Message;
+                    status = WorkspaceSmokeStatus.Failed;
+                }
+            }
+
             lockHandle?.Dispose();
+            linkedSource?.Dispose();
+            matrixTimeoutSource?.Dispose();
         }
+
+        finalInventory ??= new RuntimeResourceInventory();
+        status = status == WorkspaceSmokeStatus.Cancelled
+            ? WorkspaceSmokeStatus.Cancelled
+            : results.Any(item => item.Status == WorkspaceSmokeStatus.Failed)
+                || finalCleanup is { VerificationSucceeded: false }
+                || finalInventory.Resources.Count > 0
+                || failureClassification != WorkspaceSmokeFailureClassification.None
+                    ? WorkspaceSmokeStatus.Failed
+                    : results.Count > 0 && results.All(item => item.Status == WorkspaceSmokeStatus.Skipped)
+                        ? WorkspaceSmokeStatus.Skipped
+                        : WorkspaceSmokeStatus.Passed;
+        if (status == WorkspaceSmokeStatus.Failed && failureClassification == WorkspaceSmokeFailureClassification.None && finalCleanup is { VerificationSucceeded: false })
+        {
+            failureClassification = WorkspaceSmokeFailureClassification.CleanupFailure;
+            failureMessage = "Final host cleanup verification failed.";
+        }
+
+        var summaryJsonPath = Path.Combine(artifactDirectory, "matrix-summary.json");
+        var summaryTextPath = Path.Combine(artifactDirectory, "matrix-summary.txt");
+        var matrixResult = new WorkspaceSmokeMatrixResult
+        {
+            MatrixRunId = matrixRunId,
+            SelectedTemplates = selectedTemplates,
+            StartedUtc = startedUtc,
+            FinishedUtc = DateTimeOffset.UtcNow,
+            Results = results.ToArray(),
+            PassedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Passed),
+            FailedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Failed) + ((finalCleanup is { VerificationSucceeded: false } || finalInventory.Resources.Count > 0 || failureClassification == WorkspaceSmokeFailureClassification.MatrixTimeout) ? 1 : 0),
+            SkippedCount = results.Count(item => item.Status == WorkspaceSmokeStatus.Skipped),
+            FinalHostCleanupResult = finalCleanup,
+            FinalRuntimeInventory = finalInventory,
+            Status = status,
+            FailureClassification = failureClassification,
+            FailureMessage = failureMessage,
+            ArtifactDirectory = artifactDirectory,
+            SummaryJsonPath = summaryJsonPath,
+            SummaryTextPath = summaryTextPath,
+        };
+        WorkspaceSmokeArtifacts.WriteMatrixSummary(artifactDirectory, matrixResult);
+        return matrixResult;
     }
 
     private static IReadOnlyList<WorkspaceSmokeDefinition> OrderDefinitions(IEnumerable<WorkspaceSmokeDefinition> definitions)
