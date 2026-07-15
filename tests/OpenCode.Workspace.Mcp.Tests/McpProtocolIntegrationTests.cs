@@ -352,28 +352,32 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
     public static async Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot)
     {
         var stderr = new List<string>();
-        var transport = new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Name = "OpenCode Workspace MCP",
-            Command = "dotnet",
-            Arguments = [Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "bin", "Debug", "net10.0", "OpenCode.Workspace.Mcp.dll")],
-            WorkingDirectory = TestPaths.RepositoryRoot,
-            EnvironmentVariables = new Dictionary<string, string?>
-            {
-                ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
-                ["mcp__workspaceStateRoot"] = workspaceStateRoot,
-                ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
-            },
-            StandardErrorLines = line =>
+        var launch = McpHostLaunch.Resolve();
+        var transport = McpHostLaunch.CreateTransport(
+            line =>
             {
                 lock (stderr)
                 {
                     stderr.Add(line);
                 }
             },
-        });
+            new Dictionary<string, string?>
+            {
+                ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
+                ["mcp__workspaceStateRoot"] = workspaceStateRoot,
+                ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
+            });
 
-        var client = await McpClient.CreateAsync(transport);
+        McpClient client;
+        try
+        {
+            client = await McpClient.CreateAsync(transport);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(McpHostLaunch.BuildStartupFailureMessage(launch, stderr, exception), exception);
+        }
+
         return new McpProtocolHarness(transport, client, stderr);
     }
 

@@ -15,8 +15,9 @@ public sealed class McpToolAdapterTests
     [Fact]
     public async Task ToolRegistration_ExposesStableToolNames_OverStdio()
     {
-        var transport = CreateStdioTransport();
-        await using var client = await McpClient.CreateAsync(transport);
+        var stderrLines = new List<string>();
+        var transport = CreateStdioTransport(stderrLines.Add);
+        await using var client = await CreateClientAsync(transport, stderrLines);
         var tools = await client.ListToolsAsync();
         var toolNames = tools.Select(item => item.Name).ToArray();
 
@@ -180,6 +181,50 @@ public sealed class McpToolAdapterTests
         Assert.Equal(McpOperationStatus.Cancelled, stopped.Status);
     }
 
+    [Fact]
+    public void McpHostLaunch_ResolvesAbsoluteBuiltServerPath_WithoutCurrentDirectoryDependency()
+    {
+        var originalDirectory = Environment.CurrentDirectory;
+        var tempDirectory = Path.Combine(Path.GetTempPath(), "opencode-mcp-launch", Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDirectory);
+
+        try
+        {
+            Environment.CurrentDirectory = tempDirectory;
+            var launch = McpHostLaunch.Resolve();
+
+            Assert.True(Path.IsPathRooted(launch.HostDllPath));
+            Assert.True(File.Exists(launch.HostDllPath), launch.HostDllPath);
+            Assert.True(File.Exists(launch.RuntimeConfigPath), launch.RuntimeConfigPath);
+            Assert.True(File.Exists(launch.DepsPath), launch.DepsPath);
+            Assert.Equal(AppContext.BaseDirectory, launch.AppBaseDirectory);
+            Assert.Equal(tempDirectory, launch.CurrentWorkingDirectory);
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalDirectory;
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void McpHostLaunch_MissingOutputDiagnostic_IsActionable()
+    {
+        var launch = McpHostLaunch.Resolve() with
+        {
+            HostDllPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.dll"),
+            RuntimeConfigPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.runtimeconfig.json"),
+            DepsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.deps.json"),
+        };
+
+        var message = Record.Exception(() => McpHostLaunch.AssertHostFilesExist(launch))!.Message;
+
+        Assert.Contains("MCP server command: dotnet", message, StringComparison.Ordinal);
+        Assert.Contains("MCP server path exists: False", message, StringComparison.Ordinal);
+        Assert.Contains("AppContext.BaseDirectory:", message, StringComparison.Ordinal);
+        Assert.Contains("Process architecture:", message, StringComparison.Ordinal);
+    }
+
     private static McpToolEnvelope<T> ReadEnvelope<T>(CallToolResult result)
     {
         if (result.StructuredContent is null)
@@ -190,14 +235,21 @@ public sealed class McpToolAdapterTests
         return JsonSerializer.Deserialize<McpToolEnvelope<T>>(result.StructuredContent.Value.GetRawText())!;
     }
 
-    private static StdioClientTransport CreateStdioTransport()
-        => new(new StdioClientTransportOptions
+    private static StdioClientTransport CreateStdioTransport(Action<string>? stderrLine = null)
+        => McpHostLaunch.CreateTransport(stderrLine);
+
+    private static async Task<McpClient> CreateClientAsync(StdioClientTransport transport, IReadOnlyList<string> stderrLines)
+    {
+        var launch = McpHostLaunch.Resolve();
+        try
         {
-            Name = "OpenCode Workspace MCP",
-            Command = "dotnet",
-            Arguments = [Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "bin", "Debug", "net10.0", "OpenCode.Workspace.Mcp.dll")],
-            WorkingDirectory = TestPaths.RepositoryRoot,
-        });
+            return await McpClient.CreateAsync(transport);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(McpHostLaunch.BuildStartupFailureMessage(launch, stderrLines, exception), exception);
+        }
+    }
 
 }
 

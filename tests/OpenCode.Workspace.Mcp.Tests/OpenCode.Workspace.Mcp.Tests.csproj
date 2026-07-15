@@ -21,4 +21,20 @@
     <ProjectReference Include="..\..\src\OpenCode.Workspace.Mcp\OpenCode.Workspace.Mcp.csproj" />
   </ItemGroup>
 
+  <Target Name="CopyMcpHostOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <McpHostOutputDir>$(MSBuildProjectDirectory)/../../src/OpenCode.Workspace.Mcp/bin/$(Configuration)/net10.0</McpHostOutputDir>
+      <McpHostStagingDir>$(OutDir)mcp-host/</McpHostStagingDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <McpHostFiles Include="$(McpHostOutputDir)/**" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(McpHostStagingDir)" />
+    <Copy SourceFiles="@(McpHostFiles)"
+          DestinationFiles="@(McpHostFiles->'$(McpHostStagingDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
