@@ -111,6 +111,11 @@ jobs:
       - name: MCP live integration tests
         run: dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj -c Release --no-build --filter "Category=LiveDockerIntegration" --logger "trx;LogFileName=mcp-live.trx" --results-directory artifacts/ci/live/mcp
 
+      - name: Packaged MCP lightweight operation validation
+        env:
+          OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: artifacts/ci/live/packaged-mcp
+        run: dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~PackagedDistributionTests.PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly" --logger "trx;LogFileName=packaged-mcp-lightweight.trx" --results-directory artifacts/ci/live/packaged-mcp/results
+
       - name: Final cleanup
         if: always()
         run: |
@@ -221,6 +226,12 @@ jobs:
 
       - name: Oracle APEXlang smoke
         run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run oracle-apexlang-demo --format json > artifacts/ci/oracle/oracle-apexlang-demo.json
+
+      - name: Packaged Oracle MCP validation
+        env:
+          OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: artifacts/ci/oracle/packaged-mcp
+          OPENCODE_RUN_PACKAGED_ORACLE_MCP: "true"
+        run: dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj -c Release --no-build --filter "Category=PackagedOracleMcpIntegration" --logger "trx;LogFileName=packaged-oracle-mcp.trx" --results-directory artifacts/ci/oracle/packaged-mcp/results
 
       - name: Final cleanup
         if: always()

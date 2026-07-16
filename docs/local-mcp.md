@@ -23,6 +23,28 @@ Long-running tools such as `run_smoke`, `run_smoke_matrix`, and `provision_works
 - cleanup may continue briefly after cancellation
 - detailed logs are exposed through operation artifact references
 
+Provisioning flow:
+
+```text
+1. call create_workspace
+2. call provision_workspace
+3. retain operationId
+4. call get_operation with afterSequence
+5. continue polling until completed, failed, or cancelled
+6. inspect validate_workspace, workspace resources, and artifact references
+```
+
+Example polling pattern:
+
+```json
+{
+  "operationId": "<id>",
+  "afterSequence": 42
+}
+```
+
+Oracle, APEX, and APEXlang setup can take a substantial amount of time. A short interval without a new event does not necessarily indicate failure while the local runtime is still provisioning or validating.
+
 OpenCode example:
 
 ```json
