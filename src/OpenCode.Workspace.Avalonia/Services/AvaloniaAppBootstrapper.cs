@@ -41,7 +41,7 @@ public sealed class AvaloniaAppBootstrapper
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), new WorkspaceYamlService(), services.PlatformDetector, services.RuntimeResolver, new WorkspaceResolver(services.CatalogProvider.LoadFeatures(), services.CatalogProvider.LoadServices(), services.CatalogProvider.LoadCapabilities(), services.CatalogProvider.LoadKnowledgePacks()), new ComposeGenerator(), new ProvisioningScriptGenerator());
         var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService, hostCapabilities, services.CatalogProvider);
         var templateShellService = new TemplateCatalogShellService(services.CatalogProvider);
-        var documentationShellService = new DocumentationShellService(applicationBasePath, desktopShellService);
+        var documentationShellService = new DocumentationShellService(services.InstallationLayout.DistributionRoot, desktopShellService);
         var appBuildInfo = new AppBuildInfoService(applicationBasePath).GetCurrent();
 
         return ShellViewModel.Create(

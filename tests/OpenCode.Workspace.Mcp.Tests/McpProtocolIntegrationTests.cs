@@ -142,6 +142,32 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         var artifactPayload = ReadEnvelope<IReadOnlyList<ArtifactListItem>>(smokeArtifacts);
         Assert.Contains(artifactPayload.Data, item => item.RelativePath == "summary.json");
         Assert.Contains(artifactPayload.Data, item => item.RelativePath == "summary.txt");
+        Assert.NotEmpty(completed.RecentEvents);
+    }
+
+    [Fact]
+    [Trait("Category", "McpProtocolIntegration")]
+    [Trait("Category", "LiveDockerIntegration")]
+    public async Task ProtocolGetOperation_SupportsIncrementalAfterSequencePolling()
+    {
+        await using var harness = await McpProtocolHarness.StartAsync(_workspaceStateRoot, _smokeArtifactsRoot);
+
+        var start = await harness.Client.CallToolAsync("run_smoke", new Dictionary<string, object?>
+        {
+            ["templateId"] = "empty-workspace",
+            ["timeout"] = "00:05:00",
+        });
+        var operation = JsonSerializer.Deserialize<McpOperationModel>(start.StructuredContent!.Value.GetRawText())!;
+
+        var first = await harness.WaitForOperationConditionAsync(operation.OperationId, TimeSpan.FromMinutes(2), current => current.LastEventSequence > 1);
+        Assert.NotEmpty(first.RecentEvents);
+
+        var second = await harness.GetOperationAsync(operation.OperationId, first.LastEventSequence);
+        Assert.DoesNotContain(second.RecentEvents, item => item.Sequence <= first.LastEventSequence);
+
+        var completed = await harness.WaitForOperationAsync(operation.OperationId, TimeSpan.FromMinutes(4));
+        Assert.Equal(McpOperationStatus.Succeeded, completed.Status);
+        Assert.True(completed.LastEventSequence >= first.LastEventSequence);
     }
 
     [Fact]
@@ -421,14 +447,21 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
         throw new TimeoutException($"Operation '{operationId}' did not reach the expected condition.");
     }
 
-    public async Task<McpOperationModel> GetOperationAsync(string operationId)
+    public async Task<McpOperationModel> GetOperationAsync(string operationId, long? afterSequence = null)
     {
-        var result = await Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = operationId });
+        var request = new Dictionary<string, object?> { ["operationId"] = operationId };
+        if (afterSequence.HasValue)
+        {
+            request["afterSequence"] = afterSequence.Value;
+        }
+
+        var result = await Client.CallToolAsync("get_operation", request);
         return JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(result.StructuredContent!.Value.GetRawText())!.Data;
     }
 
     public async ValueTask DisposeAsync()
     {
         await Client.DisposeAsync();
+        await TransportDisposal.TryDisposeAsync(Transport);
     }
 }

@@ -46,28 +46,28 @@ jobs:
           - name: Windows CI
             runs_on: windows-latest
             runtime: win-x64
-            publish_dir: artifacts/opencode-stuff-win-x64
-            package_path: artifacts/opencode-stuff-win-x64.zip
-            artifact_name: opencode-stuff-win-x64
-            executable_path: artifacts/opencode-stuff-win-x64/OpenCode.Workspace.Avalonia.exe
+            dist_dir: artifacts/dist/win-x64
+            package_path: artifacts/dist/opencode-workspace-win-x64.zip
+            artifact_name: opencode-workspace-win-x64
+            executable_path: artifacts/dist/win-x64/opencode-workspace-ci-win-x64/bin/desktop/opencode-workspace.exe
             package_kind: zip
             platform_test_project: tests/OpenCode.Workspace.Platform.Windows.Tests/OpenCode.Workspace.Platform.Windows.Tests.csproj
           - name: Linux CI
             runs_on: ubuntu-latest
             runtime: linux-x64
-            publish_dir: artifacts/opencode-stuff-linux-x64
-            package_path: artifacts/opencode-stuff-linux-x64.tar.gz
-            artifact_name: opencode-stuff-linux-x64
-            executable_path: artifacts/opencode-stuff-linux-x64/OpenCode.Workspace.Avalonia
+            dist_dir: artifacts/dist/linux-x64
+            package_path: artifacts/dist/opencode-workspace-linux-x64.tar.gz
+            artifact_name: opencode-workspace-linux-x64
+            executable_path: artifacts/dist/linux-x64/opencode-workspace-ci-linux-x64/bin/desktop/opencode-workspace
             package_kind: tar.gz
             platform_test_project: tests/OpenCode.Workspace.Platform.Linux.Tests/OpenCode.Workspace.Platform.Linux.Tests.csproj
           - name: macOS CI
             runs_on: macos-latest
             runtime: osx-arm64
-            publish_dir: artifacts/opencode-stuff-macos-arm64
-            package_path: artifacts/opencode-stuff-macos-arm64.tar.gz
-            artifact_name: opencode-stuff-macos-arm64
-            executable_path: artifacts/opencode-stuff-macos-arm64/OpenCode.Workspace.Avalonia
+            dist_dir: artifacts/dist/osx-arm64
+            package_path: artifacts/dist/opencode-workspace-osx-arm64.tar.gz
+            artifact_name: opencode-workspace-osx-arm64
+            executable_path: artifacts/dist/osx-arm64/opencode-workspace-ci-osx-arm64/bin/desktop/opencode-workspace
             package_kind: tar.gz
             platform_test_project: tests/OpenCode.Workspace.Platform.MacOS.Tests/OpenCode.Workspace.Platform.MacOS.Tests.csproj
     env:
@@ -97,7 +97,7 @@ jobs:
       - name: Run platform tests
         run: dotnet test ${{ matrix.platform_test_project }} -c Release --no-build
 
-      - name: Publish Avalonia desktop app
+      - name: Publish all local hosts
         run: >-
           dotnet publish src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj
           -c Release
@@ -105,38 +105,81 @@ jobs:
           --self-contained false
           -p:DebugSymbols=false
           -p:DebugType=None
-          -o ${{ matrix.publish_dir }}
+          -o artifacts/publish/${{ matrix.runtime }}/desktop
+
+      - name: Publish CLI
+        run: >-
+          dotnet publish src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj
+          -c Release
+          -r ${{ matrix.runtime }}
+          --self-contained false
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          -o artifacts/publish/${{ matrix.runtime }}/cli
+
+      - name: Publish API
+        run: >-
+          dotnet publish src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj
+          -c Release
+          -r ${{ matrix.runtime }}
+          --self-contained false
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          -o artifacts/publish/${{ matrix.runtime }}/api
+
+      - name: Publish MCP
+        run: >-
+          dotnet publish src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj
+          -c Release
+          -r ${{ matrix.runtime }}
+          --self-contained false
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          -o artifacts/publish/${{ matrix.runtime }}/mcp
+
+      - name: Assemble distribution
+        run: >-
+          dotnet run --project tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj --
+          assemble
+          --source-root .
+          --output-root ${{ matrix.dist_dir }}
+          --runtime ${{ matrix.runtime }}
+          --version ci
+          --desktop-publish-dir artifacts/publish/${{ matrix.runtime }}/desktop
+          --cli-publish-dir artifacts/publish/${{ matrix.runtime }}/cli
+          --api-publish-dir artifacts/publish/${{ matrix.runtime }}/api
+          --mcp-publish-dir artifacts/publish/${{ matrix.runtime }}/mcp
 
       - name: Verify publish output on Windows
         if: matrix.package_kind == 'zip'
         shell: pwsh
         run: |
-          if (-not (Test-Path "${{ matrix.publish_dir }}")) {
-            throw "Publish output directory missing: ${{ matrix.publish_dir }}"
+          if (-not (Test-Path "${{ matrix.executable_path }}")) {
+            throw "Packaged desktop executable missing: ${{ matrix.executable_path }}"
           }
 
-          if (-not (Test-Path "${{ matrix.executable_path }}")) {
-            throw "Published executable missing: ${{ matrix.executable_path }}"
+          if (-not (Test-Path "artifacts/dist/win-x64/opencode-workspace-ci-win-x64/bin/mcp/opencode-workspace-mcp.exe")) {
+            throw "Packaged MCP executable missing."
           }
 
       - name: Verify publish output on Unix
         if: matrix.package_kind == 'tar.gz'
         shell: bash
         run: |
-          test -d "${{ matrix.publish_dir }}"
           test -f "${{ matrix.executable_path }}"
+          test -f "artifacts/dist/${{ matrix.runtime }}/opencode-workspace-ci-${{ matrix.runtime }}/bin/mcp/opencode-workspace-mcp"
 
       - name: Package Windows artifact
         if: matrix.package_kind == 'zip'
         shell: pwsh
         run: |
-          Compress-Archive -Path "${{ matrix.publish_dir }}/*" -DestinationPath "${{ matrix.package_path }}" -Force
+          Compress-Archive -Path "${{ matrix.dist_dir }}/opencode-workspace-ci-${{ matrix.runtime }}/*" -DestinationPath "${{ matrix.package_path }}" -Force
 
       - name: Package Unix artifact
         if: matrix.package_kind == 'tar.gz'
         shell: bash
         run: |
-          tar -C artifacts -czf "${{ matrix.package_path }}" "$(basename "${{ matrix.publish_dir }}")"
+          tar -C "${{ matrix.dist_dir }}" -czf "${{ matrix.package_path }}" "opencode-workspace-ci-${{ matrix.runtime }}"
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
@@ -179,6 +222,6 @@ jobs:
           name: ${{ steps.release-metadata.outputs.name }}
           body: ${{ steps.release-metadata.outputs.body }}
           files: |
-            release-artifacts/opencode-stuff-win-x64/opencode-stuff-win-x64.zip
-            release-artifacts/opencode-stuff-linux-x64/opencode-stuff-linux-x64.tar.gz
-            release-artifacts/opencode-stuff-macos-arm64/opencode-stuff-macos-arm64.tar.gz
+            release-artifacts/opencode-workspace-win-x64/opencode-workspace-win-x64.zip
+            release-artifacts/opencode-workspace-linux-x64/opencode-workspace-linux-x64.tar.gz
+            release-artifacts/opencode-workspace-osx-arm64/opencode-workspace-osx-arm64.tar.gz

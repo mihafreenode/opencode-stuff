@@ -10,9 +10,9 @@ internal static class McpHostLaunch
     public static McpHostLaunchInfo Resolve()
     {
         var hostDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "mcp-host"));
-        var hostDllPath = Path.Combine(hostDirectory, "OpenCode.Workspace.Mcp.dll");
-        var runtimeConfigPath = Path.Combine(hostDirectory, "OpenCode.Workspace.Mcp.runtimeconfig.json");
-        var depsPath = Path.Combine(hostDirectory, "OpenCode.Workspace.Mcp.deps.json");
+        var hostDllPath = Path.Combine(hostDirectory, "opencode-workspace-mcp.dll");
+        var runtimeConfigPath = Path.Combine(hostDirectory, "opencode-workspace-mcp.runtimeconfig.json");
+        var depsPath = Path.Combine(hostDirectory, "opencode-workspace-mcp.deps.json");
         return new McpHostLaunchInfo(
             Command: "dotnet",
             Arguments: [hostDllPath],

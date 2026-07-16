@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Mcp;
@@ -182,6 +183,75 @@ public sealed class McpToolAdapterTests
     }
 
     [Fact]
+    public async Task OperationStore_BoundsRecentEvents_AndReportsTruncation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "opencode-mcp-events", Guid.NewGuid().ToString("n"));
+        var options = new OpenCodeWorkspaceMcpOptions
+        {
+            WorkspaceStateRoot = root,
+            Operations = new OpenCodeWorkspaceMcpOperationOptions { MaxRecentEvents = 2 },
+        };
+        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance);
+
+        var operation = store.Start("run_smoke", string.Empty, "start", async (reporter, _) =>
+        {
+            reporter.ReportProgress("phase1", "first", currentStep: 1, totalSteps: 3);
+            reporter.ReportProgress("phase2", "second", currentStep: 2, totalSteps: 3);
+            reporter.ReportProgress("phase3", "third", currentStep: 3, totalSteps: 3);
+            await Task.Yield();
+            return new RuntimeResourceInventory();
+        });
+
+        await Task.Delay(250);
+        var current = store.Get(operation.OperationId);
+        Assert.Equal(5, current.LastEventSequence);
+        Assert.True(current.EventsTruncated);
+        Assert.Equal(2, current.RecentEvents.Count);
+        Assert.Equal("completed", current.RecentEvents[^1].Phase);
+        Assert.Equal([4L, 5L], current.RecentEvents.Select(item => item.Sequence).ToArray());
+
+        var incremental = store.Get(operation.OperationId, afterSequence: 4);
+        Assert.Single(incremental.RecentEvents);
+        Assert.Equal(5, incremental.RecentEvents[0].Sequence);
+        Assert.False(incremental.EventsTruncated);
+
+        var progressJsonl = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
+        var lines = File.ReadAllLines(progressJsonl);
+        Assert.Equal(5, lines.Length);
+        Assert.DoesNotContain(lines, line => line.Contains("password=secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task OperationStore_WritesStructuredProgressLog_AndSanitizesSecrets()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "opencode-mcp-progress", Guid.NewGuid().ToString("n"));
+        var options = new OpenCodeWorkspaceMcpOptions
+        {
+            WorkspaceStateRoot = root,
+        };
+        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance);
+
+        var operation = store.Start("provision_workspace", "workspace-1", "start", async (reporter, _) =>
+        {
+            reporter.ReportProgress(new CommandLogEntry
+            {
+                Source = "docker",
+                Message = "Connecting with password=secret-value",
+                Phase = "startingOracleDatabase",
+            });
+            await Task.Yield();
+            return new WorkspaceRecordModel { WorkspaceId = "workspace-1" };
+        });
+
+        await Task.Delay(250);
+        var current = store.Get(operation.OperationId);
+        Assert.Contains(current.RecentEvents, item => item.Message.Contains("[redacted]", StringComparison.Ordinal));
+
+        var progressText = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.txt", StringComparison.Ordinal));
+        Assert.DoesNotContain("secret-value", File.ReadAllText(progressText), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void McpHostLaunch_ResolvesAbsoluteBuiltServerPath_WithoutCurrentDirectoryDependency()
     {
         var originalDirectory = Environment.CurrentDirectory;
@@ -212,9 +282,9 @@ public sealed class McpToolAdapterTests
     {
         var launch = McpHostLaunch.Resolve() with
         {
-            HostDllPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.dll"),
-            RuntimeConfigPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.runtimeconfig.json"),
-            DepsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.deps.json"),
+            HostDllPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.dll"),
+            RuntimeConfigPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.runtimeconfig.json"),
+            DepsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.deps.json"),
         };
 
         var message = Record.Exception(() => McpHostLaunch.AssertHostFilesExist(launch))!.Message;
@@ -283,7 +353,7 @@ internal sealed class FakeMcpService : IOpenCodeWorkspaceMcpService
     public Task<IReadOnlyList<OpenCode.Workspace.Mcp.WorkspaceRecordModel>> ListWorkspacesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> GetWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> CreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default) => CreateWorkspaceHandler!(templateId, workspaceName, destinationRoot);
-    public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<string>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> ValidateWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> StopWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     public Task<OpenCode.Workspace.Mcp.WorkspaceRecordModel> RemoveWorkspaceRuntimeAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();

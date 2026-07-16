@@ -38,12 +38,12 @@ public sealed class OpenCodeWorkspaceMcpTools
         IOpenCodeWorkspaceMcpService service)
         => await ExecuteAsync(() => service.CreateWorkspaceAsync(templateId, workspaceName, destinationRoot));
 
-    [McpServerTool(Name = "provision_workspace"), Description("Start a long-running local workspace provisioning operation.")]
+    [McpServerTool(Name = "provision_workspace"), Description("Start a long-running local workspace provisioning operation. The result is an operation id, not completion. Poll get_operation with afterSequence until the terminal status is completed, failed, or cancelled. Do not run Docker manually or start duplicate provisioning while an operation is active.")]
     public static CallToolResult ProvisionWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service, McpOperationStore operations)
         => McpResults.OperationStarted(operations.Start("provision_workspace", workspaceId, "Provisioning workspace.", async (reporter, cancellationToken) =>
         {
             reporter.MarkStarted("preparing", "Preparing workspace provisioning.");
-            return await service.ProvisionWorkspaceAsync(workspaceId, message => reporter.ReportProgress("provisioning", message), cancellationToken);
+            return await service.ProvisionWorkspaceAsync(workspaceId, reporter.ReportProgress, cancellationToken);
         }), "Provision operation started.");
 
     [McpServerTool(Name = "validate_workspace"), Description("Validate a local workspace and return readiness and health details.")]
@@ -58,7 +58,7 @@ public sealed class OpenCodeWorkspaceMcpTools
     public static async Task<CallToolResult> RemoveWorkspaceRuntime([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service)
         => await ExecuteAsync(() => service.RemoveWorkspaceRuntimeAsync(workspaceId));
 
-    [McpServerTool(Name = "run_smoke"), Description("Start a long-running local smoke run.")]
+    [McpServerTool(Name = "run_smoke"), Description("Start a long-running local smoke run. The tool returns an operation immediately. Poll get_operation with afterSequence for incremental progress until the terminal status is completed, failed, or cancelled. Do not assume success from the initial response.")]
     public static async Task<CallToolResult> RunSmoke(
         [Description("Stable template id")] string templateId,
         [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
@@ -76,14 +76,14 @@ public sealed class OpenCodeWorkspaceMcpTools
                 TemplateId = request.TemplateId,
                 ArtifactsRoot = request.ArtifactsRoot,
                 Timeout = request.Timeout,
-                Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+                Progress = new Progress<WorkspaceSmokeProgressUpdate>(reporter.ReportProgress),
             };
             return await service.RunSmokeAsync(request, token);
         });
         return McpResults.OperationStarted(operation, "Smoke operation started.");
     }
 
-    [McpServerTool(Name = "run_smoke_matrix"), Description("Start a long-running local smoke matrix run.")]
+    [McpServerTool(Name = "run_smoke_matrix"), Description("Start a long-running local smoke matrix run. The tool returns an operation immediately. Poll get_operation with afterSequence for incremental progress until the terminal status is completed, failed, or cancelled.")]
     public static async Task<CallToolResult> RunSmokeMatrix(
         [Description("Optional template ids")] string[]? templateIds = null,
         [Description("Optional smoke family")] string? family = null,
@@ -106,7 +106,7 @@ public sealed class OpenCodeWorkspaceMcpTools
             {
                 TemplateIds = request.TemplateIds,
                 MatrixTimeout = request.MatrixTimeout,
-                Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+                Progress = new Progress<WorkspaceSmokeProgressUpdate>(reporter.ReportProgress),
             };
             return await service.RunSmokeMatrixAsync(request, token);
         });
@@ -163,9 +163,9 @@ public sealed class OpenCodeWorkspaceMcpTools
     public static async Task<CallToolResult> ProcessExcelArtifact(string sourcePath, string? destinationWorkspaceId = null, string? processingTemplateId = null, string? outputLogicalName = null, IOpenCodeWorkspaceMcpService service = null!)
         => await ExecuteAsync(() => service.ProcessExcelArtifactAsync(sourcePath, destinationWorkspaceId, processingTemplateId, outputLogicalName));
 
-    [McpServerTool(Name = "get_operation"), Description("Get a long-running local MCP operation.")]
-    public static Task<CallToolResult> GetOperation(string operationId, McpOperationStore operations)
-        => ExecuteAsync(() => Task.FromResult(operations.Get(operationId)));
+    [McpServerTool(Name = "get_operation"), Description("Get a long-running local operation. Use afterSequence to receive only new incremental progress events. Terminal statuses are completed, failed, and cancelled. Cleanup may continue briefly after cancellation and detailed logs are available through artifact references.")]
+    public static Task<CallToolResult> GetOperation(string operationId, long? afterSequence = null, int? maxEvents = null, McpOperationStore operations = null!)
+        => ExecuteAsync(() => Task.FromResult(operations.Get(operationId, afterSequence, maxEvents)));
 
     [McpServerTool(Name = "list_operations"), Description("List in-memory MCP operations for this local process.")]
     public static Task<CallToolResult> ListOperations(McpOperationStore operations)

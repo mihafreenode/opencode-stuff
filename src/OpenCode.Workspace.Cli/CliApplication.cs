@@ -454,7 +454,16 @@ public sealed class CliApplication
 
     private static async Task<PlatformValidationReport> RunPlatformValidationAsync(PlatformValidationRequest request, CancellationToken cancellationToken)
     {
-        var catalogRoot = ResolveCatalogRoot(request.WorkspacePath);
+        OpenCodeWorkspaceInstallationLayout? installationLayout = null;
+        try
+        {
+            installationLayout = OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        var catalogRoot = ResolveCatalogRoot(request.WorkspacePath) ?? installationLayout?.CatalogRoot;
         if (catalogRoot is null)
         {
             return new PlatformValidationReport
@@ -493,7 +502,7 @@ public sealed class CliApplication
     private static async Task<WorkspaceLoadReport> RunWorkspaceDiscoveryAsync(CancellationToken cancellationToken)
     {
         var appDataRoot = WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
-        var catalogRoot = ResolveCatalogRoot(appDataRoot) ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
+        var catalogRoot = ResolveCatalogRoot(appDataRoot) ?? OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory).CatalogRoot;
         var provider = new BuiltInCatalogProvider(catalogRoot);
         var yamlService = new WorkspaceYamlService();
         var repository = new WorkspaceRepository(appDataRoot);
@@ -549,7 +558,7 @@ public sealed class CliApplication
 
     private static WorkspaceSmokeApplicationService CreateSmokeApplicationService()
     {
-        var catalogRoot = ResolveCatalogRoot(Environment.CurrentDirectory) ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
+        var catalogRoot = ResolveCatalogRoot(Environment.CurrentDirectory) ?? OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory).CatalogRoot;
         var stateRoot = Path.Combine(Path.GetTempPath(), "opencode-workspace-smoke-state");
         return new WorkspaceSmokeApplicationService(catalogRoot, stateRoot, new DockerContainerRuntime(new DockerService(new ProcessRunner())));
     }

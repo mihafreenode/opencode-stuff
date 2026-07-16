@@ -10,8 +10,8 @@ public sealed class WorkspaceDesktopServiceFactory
     public WorkspaceDesktopServices Create(string applicationBasePath, string applicationDataRoot)
     {
         var processRunner = new ProcessRunner();
-        var catalogRoot = Path.Combine(applicationBasePath, "catalog");
-        var catalogProvider = new BuiltInCatalogProvider(catalogRoot);
+        var installationLayout = OpenCodeWorkspaceInstallationLayout.Resolve(applicationBasePath);
+        var catalogProvider = new BuiltInCatalogProvider(installationLayout.CatalogRoot);
         var yamlService = new WorkspaceYamlService();
         var repository = new WorkspaceRepository(applicationDataRoot);
         var resolver = new WorkspaceResolver(catalogProvider.LoadFeatures(), catalogProvider.LoadServices(), catalogProvider.LoadCapabilities(), catalogProvider.LoadKnowledgePacks());
@@ -34,6 +34,7 @@ public sealed class WorkspaceDesktopServiceFactory
 
         return new WorkspaceDesktopServices
         {
+            InstallationLayout = installationLayout,
             ProcessRunner = processRunner,
             CatalogProvider = catalogProvider,
             Repository = repository,
@@ -76,6 +77,7 @@ public sealed class WorkspaceDesktopServiceFactory
 
 public sealed class WorkspaceDesktopServices
 {
+    public required OpenCodeWorkspaceInstallationLayout InstallationLayout { get; init; }
     public required ProcessRunner ProcessRunner { get; init; }
     public required BuiltInCatalogProvider CatalogProvider { get; init; }
     public required WorkspaceRepository Repository { get; init; }

@@ -51,13 +51,28 @@ Use Avalonia as the default Windows desktop application.
 
 ## Packaged App
 
-Release packages publish the Avalonia desktop shell as:
+Tagged releases publish one extracted layout per RID, for example:
 
-- `opencode-stuff-win-x64.zip`
-- `opencode-stuff-linux-x64.tar.gz`
-- `opencode-stuff-macos-arm64.tar.gz`
+```text
+opencode-workspace-<version>-win-x64/
+  bin/
+    desktop/opencode-workspace.exe
+    cli/opencode-workspace-cli.exe
+    api/opencode-workspace-api.exe
+    mcp/opencode-workspace-mcp.exe
+  catalog/
+  config/
+  docs/
+  Localization/
+  LICENSE
+  THIRD-PARTY-NOTICES.md
+```
 
-Run the packaged app from the extracted folder. The package includes the desktop executable, platform integrations, bundled catalog, localization files, and user-facing docs.
+Equivalent `bin/...` paths are produced for Linux and macOS.
+
+Run the packaged tools from the extracted folder. The release archive includes the desktop shell, CLI, local API host, local stdio MCP host, bundled catalog content, packaged docs, localization files, and release notices. A source checkout and `dotnet run` are not required.
+
+Packaged MCP setup examples live in `docs/local-mcp.md`.
 
 Windows prerequisites for normal first use:
 

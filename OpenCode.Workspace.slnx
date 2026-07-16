@@ -21,4 +21,7 @@
     <Project Path="tests/OpenCode.Workspace.Platform.MacOS.Tests/OpenCode.Workspace.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.Windows.Tests/OpenCode.Workspace.Platform.Windows.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj" />
+  </Folder>
 </Solution>

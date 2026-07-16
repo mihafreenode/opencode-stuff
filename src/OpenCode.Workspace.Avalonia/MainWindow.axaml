@@ -8,7 +8,7 @@
         Height="920"
         MinWidth="1200"
         MinHeight="760"
-        Icon="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico"
+        Icon="avares://opencode-workspace/Assets/opencode-stuff-satchel-icon.ico"
         Background="{DynamicResource AppBackgroundBrush}">
   <Window.DataTemplates>
     <DataTemplate DataType="vm:WorkspacesPageViewModel">
@@ -1202,7 +1202,7 @@
             Padding="{DynamicResource HeaderPadding}"
             MinHeight="{DynamicResource HeaderHeight}">
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource HeaderColumnSpacing}" VerticalAlignment="Center">
-        <Image Source="avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png"
+        <Image Source="avares://opencode-workspace/Assets/opencode-stuff-header-brand-ui.png"
                  Height="{DynamicResource HeaderLogoHeight}"
                  MaxWidth="760"
                  Stretch="Uniform"

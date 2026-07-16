@@ -1,3 +1,4 @@
+using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Mcp;
@@ -261,7 +262,7 @@ internal sealed class FakeApiService : IOpenCodeWorkspaceMcpService
     public Task<IReadOnlyList<WorkspaceRecordModel>> ListWorkspacesAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<WorkspaceRecordModel>>([]);
     public Task<WorkspaceRecordModel> GetWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new OpenCodeWorkspaceMcpException("workspace_not_found", $"Workspace '{workspaceId}' was not found.");
     public Task<WorkspaceRecordModel> CreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());
-    public Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<string>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());
+    public Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());
     public Task<WorkspaceRecordModel> ValidateWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());
     public Task<WorkspaceRecordModel> StopWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());
     public Task<WorkspaceRecordModel> RemoveWorkspaceRuntimeAsync(string workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(new WorkspaceRecordModel());

@@ -37,6 +37,7 @@ public sealed class OpenCodeWorkspaceMcpOperationOptions
 {
     public TimeSpan CleanupTimeout { get; init; } = TimeSpan.FromMinutes(5);
     public TimeSpan Retention { get; init; } = TimeSpan.FromHours(1);
+    public int MaxRecentEvents { get; init; } = 200;
 }
 
 public sealed class OpenCodeWorkspaceMcpArtifactOptions
@@ -171,6 +172,10 @@ public sealed class McpOperationModel
     public string CleanupFailureClassification { get; init; } = string.Empty;
     public string CleanupFailureMessage { get; init; } = string.Empty;
     public bool CancellationRequested { get; init; }
+    public long LastEventSequence { get; init; }
+    public bool EventsTruncated { get; init; }
+    public IReadOnlyList<WorkspaceOperationProgressEvent> RecentEvents { get; init; } = Array.Empty<WorkspaceOperationProgressEvent>();
+    public IReadOnlyList<string> ArtifactReferences { get; init; } = Array.Empty<string>();
     public JsonElement? Result { get; init; }
 }
 

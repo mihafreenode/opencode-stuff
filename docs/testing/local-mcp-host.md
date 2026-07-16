@@ -173,7 +173,7 @@ This is a deterministic local workflow proof only.
 
 ## Proven Flow
 
-1. start the host with `dotnet run --project src/OpenCode.Workspace.Mcp`
+1. start the packaged host from `bin/mcp/opencode-workspace-mcp`
 2. connect an MCP client over stdio and call `list_workspace_templates`
 3. start a lightweight smoke run with `run_smoke` for `empty-workspace`
 4. poll `get_operation` until the operation reaches a terminal state
@@ -194,7 +194,7 @@ Notes:
 
 ## Configuration
 
-`src/OpenCode.Workspace.Mcp/appsettings.json`:
+`config/mcp/appsettings.json` in the packaged distribution:
 
 ```json
 {
@@ -207,7 +207,8 @@ Notes:
     },
     "operations": {
       "cleanupTimeout": "00:05:00",
-      "retention": "01:00:00"
+      "retention": "01:00:00",
+      "maxRecentEvents": 200
     },
     "artifacts": {
       "maxReadBytes": 10485760
@@ -221,13 +222,13 @@ Notes:
 Windows PowerShell:
 
 ```text
-dotnet run --project src/OpenCode.Workspace.Mcp
+C:\Tools\OpenCodeWorkspace\bin\mcp\opencode-workspace-mcp.exe
 ```
 
 WSL or Linux/macOS:
 
 ```text
-dotnet run --project src/OpenCode.Workspace.Mcp
+~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp
 ```
 
 OpenCode example:
@@ -236,8 +237,7 @@ OpenCode example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "dotnet",
-      "args": ["run", "--project", "src/OpenCode.Workspace.Mcp"]
+      "command": "C:\\Tools\\OpenCodeWorkspace\\bin\\mcp\\opencode-workspace-mcp.exe"
     }
   }
 }
@@ -249,8 +249,7 @@ Claude Code example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "dotnet",
-      "args": ["run", "--project", "src/OpenCode.Workspace.Mcp"]
+      "command": "~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
     }
   }
 }
@@ -262,8 +261,7 @@ Codex example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "dotnet",
-      "args": ["run", "--project", "src/OpenCode.Workspace.Mcp"]
+      "command": "~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
     }
   }
 }

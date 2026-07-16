@@ -32,13 +32,13 @@ public sealed class ShellViewModelTests
         var readme = File.ReadAllText(Path.Combine(repoRoot, "README.md"));
         var brandingReadme = File.ReadAllText(Path.Combine(repoRoot, "branding", "README.md"));
         var brandGuidelines = File.ReadAllText(Path.Combine(repoRoot, "branding", "BRAND_GUIDELINES.md"));
-        var headerImageStart = axaml.IndexOf("<Image Source=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png\"", StringComparison.Ordinal);
+        var headerImageStart = axaml.IndexOf("<Image Source=\"avares://opencode-workspace/Assets/opencode-stuff-header-brand-ui.png\"", StringComparison.Ordinal);
         var headerImageEnd = axaml.IndexOf("/>", headerImageStart, StringComparison.Ordinal);
         var headerImageMarkup = axaml.Substring(headerImageStart, headerImageEnd - headerImageStart);
 
         Assert.Contains("Assets/opencode-stuff-satchel-icon.ico", axaml, StringComparison.Ordinal);
         Assert.Contains("Assets/opencode-stuff-header-brand-ui.png", axaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("Icon=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-header-brand-ui.png\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Icon=\"avares://opencode-workspace/Assets/opencode-stuff-header-brand-ui.png\"", axaml, StringComparison.Ordinal);
         Assert.DoesNotContain("Assets/opencode-stuff-satchel-transparent.png", axaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Workspaces\"", axaml, StringComparison.Ordinal);
         Assert.Contains("Text=\"Runtime\"", axaml, StringComparison.Ordinal);
@@ -76,10 +76,10 @@ public sealed class ShellViewModelTests
         var project = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenCode.Workspace.Avalonia.csproj"));
         var iconHelper = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "AppWindowIcons.cs"));
 
-        Assert.Contains("Icon=\"avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico\"", axaml, StringComparison.Ordinal);
+        Assert.Contains("Icon=\"avares://opencode-workspace/Assets/opencode-stuff-satchel-icon.ico\"", axaml, StringComparison.Ordinal);
         Assert.Contains("<ApplicationIcon>..\\..\\docs\\images\\opencode-stuff-satchel-icon.ico</ApplicationIcon>", project, StringComparison.Ordinal);
         Assert.Contains("<Link>Assets\\opencode-stuff-satchel-icon.ico</Link>", project, StringComparison.Ordinal);
-        Assert.Contains("avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico", iconHelper, StringComparison.Ordinal);
+        Assert.Contains("avares://opencode-workspace/Assets/opencode-stuff-satchel-icon.ico", iconHelper, StringComparison.Ordinal);
     }
 
     [Fact]

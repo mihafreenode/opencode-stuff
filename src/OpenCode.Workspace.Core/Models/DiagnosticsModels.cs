@@ -46,6 +46,12 @@ public sealed class CommandLogEntry
 {
     public required string Source { get; init; }
     public required string Message { get; init; }
+    public string Phase { get; init; } = string.Empty;
+    public DiagnosticSeverity Severity { get; init; } = DiagnosticSeverity.Information;
+    public double? Percent { get; init; }
+    public int? CurrentStep { get; init; }
+    public int? TotalSteps { get; init; }
+    public string ArtifactReference { get; init; } = string.Empty;
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 }
 

@@ -6,7 +6,7 @@ namespace OpenCode.Workspace.Avalonia.Services;
 
 public static class AppWindowIcons
 {
-    public const string AssetPath = "avares://OpenCode.Workspace.Avalonia/Assets/opencode-stuff-satchel-icon.ico";
+    public const string AssetPath = "avares://opencode-workspace/Assets/opencode-stuff-satchel-icon.ico";
 
     private static readonly Lazy<WindowIcon> CachedIcon = new(LoadIcon);
 

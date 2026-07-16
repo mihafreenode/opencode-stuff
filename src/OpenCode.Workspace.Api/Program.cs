@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Api;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Mcp;
 
 var builder = WebApplication.CreateBuilder(args);
+TryAddPackagedConfiguration(builder.Configuration, "api");
 builder.Logging.AddSimpleConsole();
 builder.Services.AddOpenCodeWorkspaceLocalServices(builder.Configuration);
 
 var app = builder.Build();
+StartStandardInputShutdownMonitor(app.Lifetime, app.Logger);
 
 app.Use(async (context, next) =>
 {
@@ -27,6 +30,8 @@ app.Use(async (context, next) =>
 var api = app.MapGroup("/api/v1");
 
 api.MapGet("/health/live", () => Results.Ok(new ApiHealthResponse { Status = "live", Message = "API host is running." }));
+api.MapGet("/server/health", ([FromServices] IOpenCodeWorkspaceMcpService service)
+    => Results.Ok(new ApiEnvelope<ServerHealthModel> { Data = service.GetServerHealth() }));
 api.MapGet("/health/ready", async ([FromServices] IOpenCodeWorkspaceMcpService service) =>
 {
     try
@@ -64,7 +69,7 @@ api.MapPost("/smoke/runs", async (StartSmokeRunRequest request, [FromServices] I
             TemplateId = smokeRequest.TemplateId,
             Timeout = smokeRequest.Timeout,
             ArtifactsRoot = smokeRequest.ArtifactsRoot,
-            Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+            Progress = new Progress<WorkspaceSmokeProgressUpdate>(reporter.ReportProgress),
         };
         return await service.RunSmokeAsync(smokeRequest, cancellationToken);
     });
@@ -90,7 +95,7 @@ api.MapPost("/smoke/matrices", async (StartSmokeMatrixRequest request, [FromServ
         {
             TemplateIds = matrixRequest.TemplateIds,
             MatrixTimeout = matrixRequest.MatrixTimeout,
-            Progress = new Progress<WorkspaceSmokeProgressUpdate>(update => reporter.ReportProgress(update.Phase, update.Message)),
+            Progress = new Progress<WorkspaceSmokeProgressUpdate>(reporter.ReportProgress),
         };
         return await service.RunSmokeMatrixAsync(matrixRequest, cancellationToken);
     });
@@ -112,7 +117,7 @@ api.MapPost("/workspaces/{workspaceId}/provision", (string workspaceId, [FromSer
     var operation = operations.Start("provision_workspace", workspaceId, "Provisioning workspace.", async (reporter, cancellationToken) =>
     {
         reporter.MarkStarted("preparing", "Preparing workspace provisioning.");
-        return await service.ProvisionWorkspaceAsync(workspaceId, message => reporter.ReportProgress("provisioning", message), cancellationToken);
+        return await service.ProvisionWorkspaceAsync(workspaceId, reporter.ReportProgress, cancellationToken);
     });
     return Results.Accepted($"/api/v1/operations/{operation.OperationId}", operation);
 });
@@ -128,8 +133,8 @@ api.MapGet("/runtime/doctor", async (string? owner, string? runId, string? proje
 
 api.MapGet("/operations", ([FromServices] McpOperationStore operations)
     => Results.Ok(new ApiEnvelope<IReadOnlyList<McpOperationModel>> { Data = operations.List() }));
-api.MapGet("/operations/{operationId}", (string operationId, [FromServices] McpOperationStore operations)
-    => Results.Ok(new ApiEnvelope<McpOperationModel> { Data = operations.Get(operationId) }));
+api.MapGet("/operations/{operationId}", (string operationId, long? afterSequence, int? maxEvents, [FromServices] McpOperationStore operations)
+    => Results.Ok(new ApiEnvelope<McpOperationModel> { Data = operations.Get(operationId, afterSequence, maxEvents) }));
 api.MapPost("/operations/{operationId}/cancel", (string operationId, [FromServices] McpOperationStore operations)
     => Results.Ok(new ApiEnvelope<McpOperationModel> { Data = operations.Cancel(operationId) }));
 
@@ -137,6 +142,60 @@ app.Run();
 
 static TimeSpan? ParseTimeout(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : TimeSpan.Parse(value);
+
+static void TryAddPackagedConfiguration(ConfigurationManager configuration, string hostName)
+{
+    try
+    {
+        var installationLayout = OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory);
+        var configPath = installationLayout.GetConfigFilePath(hostName);
+        if (File.Exists(configPath))
+        {
+            configuration.AddJsonFile(configPath, optional: true, reloadOnChange: false);
+        }
+    }
+    catch (InvalidOperationException)
+    {
+    }
+}
+
+static void StartStandardInputShutdownMonitor(IHostApplicationLifetime lifetime, ILogger logger)
+{
+    if (!Console.IsInputRedirected)
+    {
+        return;
+    }
+
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            using var input = Console.OpenStandardInput();
+            var buffer = new byte[4096];
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), CancellationToken.None);
+                if (read == 0)
+                {
+                    logger.LogInformation("Standard input reached EOF. Requesting host shutdown.");
+                    lifetime.StopApplication();
+                    return;
+                }
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (IOException exception)
+        {
+            logger.LogDebug(exception, "Standard input shutdown monitor stopped after I/O exception.");
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Standard input shutdown monitor failed.");
+        }
+    });
+}
 
 static (int StatusCode, ApiErrorEnvelope Envelope) MapError(Exception exception)
 {

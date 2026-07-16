@@ -24,7 +24,7 @@ public interface IOpenCodeWorkspaceMcpService
     Task<IReadOnlyList<WorkspaceRecordModel>> ListWorkspacesAsync(CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> GetWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> CreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default);
-    Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<string>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> ValidateWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> StopWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> RemoveWorkspaceRuntimeAsync(string workspaceId, CancellationToken cancellationToken = default);
@@ -74,11 +74,8 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         _options = options;
         _logger = logger;
-        _catalogRoot = catalogRoot
-            ?? NormalizeOptionalPath(options.CatalogRoot)
-            ?? ResolveCatalogRoot(Environment.CurrentDirectory)
-            ?? ResolveCatalogRoot(AppContext.BaseDirectory)
-            ?? throw new InvalidOperationException("Catalog root was not found. Run from the repository root or a package output that includes catalog/.");
+        var installationLayout = OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory, NormalizeOptionalPath(catalogRoot) ?? NormalizeOptionalPath(options.CatalogRoot));
+        _catalogRoot = installationLayout.CatalogRoot;
         _workspaceStateRoot = workspaceStateRoot
             ?? NormalizeOptionalPath(options.WorkspaceStateRoot)
             ?? WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot();
@@ -249,10 +246,10 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             Mcp = template.Mcp.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
         };
 
-    public async Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<string>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
     {
         var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
-        await _workspaceOrchestrator.ProvisionAsync(snapshot, entry => progress?.Invoke(entry.Message), cancellationToken);
+        await _workspaceOrchestrator.ProvisionAsync(snapshot, progress, cancellationToken);
         return await GetWorkspaceAsync(workspaceId, cancellationToken);
     }
 
@@ -703,28 +700,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     }
 
     internal static string? ResolveCatalogRoot(string workspacePath)
-    {
-        var roots = new[] { workspacePath, Environment.CurrentDirectory, AppContext.BaseDirectory }
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-        foreach (var start in roots)
-        {
-            var current = start;
-            while (!string.IsNullOrWhiteSpace(current))
-            {
-                var candidate = Path.Combine(current, "catalog");
-                if (Directory.Exists(candidate))
-                {
-                    return candidate;
-                }
-
-                current = Path.GetDirectoryName(current);
-            }
-        }
-
-        return null;
-    }
+        => OpenCodeWorkspaceInstallationLayout.Resolve(workspacePath).CatalogRoot;
 
     private static string? NormalizeOptionalPath(string? path)
         => string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
