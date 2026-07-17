@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Hosting.Server;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Api;
 using OpenCode.Workspace.Core.Runtime;
@@ -11,7 +12,11 @@ builder.Logging.AddSimpleConsole();
 builder.Services.AddOpenCodeWorkspaceLocalServices(builder.Configuration);
 
 var app = builder.Build();
-StartStandardInputShutdownMonitor(app.Lifetime, app.Logger);
+var server = app.Services.GetRequiredService<IServer>();
+if (!string.Equals(server.GetType().FullName, "Microsoft.AspNetCore.TestHost.TestServer", StringComparison.Ordinal))
+{
+    StartStandardInputShutdownMonitor(app.Lifetime, app.Logger);
+}
 
 app.Use(async (context, next) =>
 {

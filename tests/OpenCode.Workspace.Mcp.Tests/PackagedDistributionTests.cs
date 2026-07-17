@@ -17,6 +17,7 @@ public sealed class PackagedDistributionTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode package tests", Guid.NewGuid().ToString("n"));
     private readonly string? _artifactRoot = Environment.GetEnvironmentVariable("OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT");
+    private readonly string? _existingPackageRoot = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ROOT");
 
     [Fact]
     [Trait("Category", "PackageIntegration")]
@@ -382,6 +383,20 @@ public sealed class PackagedDistributionTests : IDisposable
 
     private async Task<string> CreateExtractedDistributionAsync()
     {
+        if (!string.IsNullOrWhiteSpace(_existingPackageRoot))
+        {
+            var packageRoot = Path.GetFullPath(_existingPackageRoot);
+            if (!Directory.Exists(packageRoot))
+            {
+                throw new DirectoryNotFoundException($"Existing package root was not found: '{packageRoot}'.");
+            }
+
+            var existingPackageCopyRoot = Path.Combine(_root, "existing-package", Path.GetFileName(packageRoot));
+            Directory.CreateDirectory(Path.GetDirectoryName(existingPackageCopyRoot)!);
+            CopyDirectory(packageRoot, existingPackageCopyRoot);
+            return existingPackageCopyRoot;
+        }
+
         Directory.CreateDirectory(_root);
         var runtime = GetRuntimeIdentifier();
         var publishRoot = Path.Combine(_root, "publish");

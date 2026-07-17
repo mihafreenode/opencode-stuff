@@ -4,6 +4,41 @@ Use this checklist before tagging a post-WPF Avalonia release candidate.
 
 This checklist is intentionally manual for now. The goal is to validate the packaged desktop app exactly as a user would receive it without blocking the release on full GUI automation.
 
+## Local Windows Release Build
+
+Use the checked-in local release packaging script to reproduce the Windows tagged-release layout before creating a GitHub tag.
+
+Windows PowerShell:
+
+```powershell
+.\tools\build-release.ps1 -Clean
+```
+
+From WSL:
+
+```bash
+./tools/build-release-from-wsl.sh -Clean
+```
+
+Direct WSL to Windows PowerShell invocation:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  -File "$(wslpath -w ./tools/build-release.ps1)"
+```
+
+The default local build targets `win-x64`, publishes desktop, CLI, API, and MCP hosts, assembles the normal package layout, validates the packaged hosts, and creates a ZIP plus SHA-256 checksum under `artifacts\release`.
+
+Resulting packaged MCP path:
+
+```text
+artifacts\release\win-x64\package\
+opencode-workspace-<version>-win-x64\
+bin\mcp\opencode-workspace-mcp.exe
+```
+
+Use this locally assembled package when testing Codex, Claude Code, and OpenCode MCP integration before creating a GitHub release tag.
+
 ## Package Under Test
 
 - Windows package: `opencode-stuff-win-x64.zip`
