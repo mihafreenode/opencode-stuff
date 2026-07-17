@@ -74,6 +74,33 @@ Run the packaged tools from the extracted folder. The release archive includes t
 
 Packaged MCP setup examples live in `docs/local-mcp.md`.
 
+## Local MCP integration
+
+OpenCode Workspace includes a local stdio MCP server for Codex, Claude Code, OpenCode, and other MCP-compatible local clients. The packaged MCP host can list templates, create and provision workspaces, report incremental progress, validate runtimes, run smoke tests, inspect diagnostics, and retrieve generated artifacts.
+
+The local MCP host is included in every normal OpenCode Workspace release archive under `bin/mcp/`. It is local-only, stdio-based, and does not expose an HTTP listener or public network endpoint.
+
+Packaged executable paths:
+
+| Platform | MCP executable |
+| -------- | -------------- |
+| Windows | `bin\mcp\opencode-workspace-mcp.exe` |
+| Linux | `bin/mcp/opencode-workspace-mcp` |
+| macOS | `bin/mcp/opencode-workspace-mcp` |
+
+Safe verification prompt:
+
+```text
+Use the OpenCode Workspace MCP server.
+
+List the available workspace templates and summarize the
+oracle-apexlang-demo template.
+
+Do not create or provision anything yet.
+```
+
+See [Local MCP setup](docs/local-mcp.md) for release installation, Codex, Claude Code, and OpenCode configuration, long-running operation polling, and provisioning examples.
+
 Windows prerequisites for normal first use:
 
 - Git
