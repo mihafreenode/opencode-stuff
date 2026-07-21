@@ -1,17 +1,18 @@
 using OpenCode.Workspace.Core.Runtime;
+using OpenCode.Workspace.LocalClient;
 using OpenCode.Workspace.Mcp;
 
 namespace OpenCode.Workspace.Api;
 
 public sealed class ApiEnvelope<T>
 {
-    public string ContractVersion { get; init; } = OpenCodeWorkspaceMcpContract.ContractVersion;
+    public string ContractVersion { get; init; } = LocalHostContract.ContractVersion;
     public T Data { get; init; } = default!;
 }
 
 public sealed class ApiErrorEnvelope
 {
-    public string ContractVersion { get; init; } = OpenCodeWorkspaceMcpContract.ContractVersion;
+    public string ContractVersion { get; init; } = LocalHostContract.ContractVersion;
     public string Code { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public string Recommendation { get; init; } = string.Empty;
@@ -19,7 +20,7 @@ public sealed class ApiErrorEnvelope
 
 public sealed class ApiHealthResponse
 {
-    public string ContractVersion { get; init; } = OpenCodeWorkspaceMcpContract.ContractVersion;
+    public string ContractVersion { get; init; } = LocalHostContract.ContractVersion;
     public string Status { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public RuntimeResourceInventory? RuntimeInventory { get; init; }

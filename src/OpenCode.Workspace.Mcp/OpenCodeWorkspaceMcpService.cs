@@ -9,6 +9,7 @@ using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.LocalClient;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -24,10 +25,46 @@ public interface IOpenCodeWorkspaceMcpService
     Task<IReadOnlyList<WorkspaceRecordModel>> ListWorkspacesAsync(CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> GetWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> CreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default);
+    Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default);
+    Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, CancellationToken cancellationToken = default);
+    Task<string> SuggestSavePointMessageAsync(string workspaceId, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> CreateSavePointAsync(string workspaceId, string message, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> CreateCheckpointAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceBackupOperationResultModel> BackupWorkspaceAsync(string workspaceId, string destinationPath, bool overwriteExisting, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspacePublishAssessmentModel> AssessWorkspacePublishAsync(string workspaceId, CancellationToken cancellationToken = default);
+    Task<WorkspacePublishOperationResultModel> PublishWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRemovalOperationResultModel> RemoveWorkspaceAsync(string workspaceId, bool removeOwnedRuntimeResources, bool deleteWorkspaceFiles, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecoveryAssessmentModel> AssessWorkspaceRecoveryAsync(string workspaceId, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationStatusResult> GetSynchronizationStatusAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationOperationResult> ExportSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationOperationResult> ImportSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationOperationResult> PullSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationOperationResult> PushSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationOperationResult> ValidateSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationDiffResult> DiffSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceSynchronizationExecutionResult> SynchronizeWorkspaceAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default);
+    Task<OracleAssistantPlanOperationRecord> PlanOracleApexChangeAsync(string workspaceId, OracleApexAssistantRequest request, CancellationToken cancellationToken = default);
+    Task<OracleAssistantApplyOperationRecord> ExecuteOracleApexPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan plan, string planId, string contextRevision, CancellationToken cancellationToken = default);
+    Task<OracleAssistantRepairPlanOperationRecord> CreateOracleApexRepairPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, string planId, string executionId, string contextRevision, CancellationToken cancellationToken = default);
+    Task<OracleAssistantRepairOperationRecord> ExecuteOracleApexRepairPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, string planId, string executionId, string repairPlanId, string contextRevision, CancellationToken cancellationToken = default);
+    Task<OracleAssistantRollbackOperationRecord> RollBackOracleApexGeneratedChangeAsync(string workspaceId, string executionId, CancellationToken cancellationToken = default);
+    Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string workspaceId, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default);
+    Task<OracleApexConnectExistingApplicationResult> ConnectExistingOracleApexApplicationAsync(string workspaceId, string environmentName, string workspaceName, string parsingSchema, int applicationId, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default);
+    Task<OracleAssistantSynchronizationOperationRecord> ValidateOracleAssistantGeneratedApplicationAsync(string workspaceId, string? executionId = null, string? environmentName = null, CancellationToken cancellationToken = default);
+    Task<OracleAssistantSynchronizationOperationRecord> ImportOracleAssistantGeneratedApplicationAsync(string workspaceId, string? executionId = null, string? environmentName = null, bool allowNonDevelopmentDeployment = false, CancellationToken cancellationToken = default);
+    Task<WorkspaceTimeline> GetWorkspaceTimelineAsync(string workspaceId, CancellationToken cancellationToken = default);
+    Task<WorkspaceCheckpointIndex> GetWorkspaceCheckpointIndexAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> ProvisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> PrepareWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> StartWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> ValidateWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> StopWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default);
     Task<WorkspaceRecordModel> RemoveWorkspaceRuntimeAsync(string workspaceId, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> RecoverWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> ResetWorkspaceRuntimeAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> AttachWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
+    Task<WorkspaceRecordModel> ReprovisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkspaceSmokeDefinition>> SelectSmokeDefinitionsAsync(WorkspaceSmokeDefinitionSelectionRequest request, CancellationToken cancellationToken = default);
     Task<WorkspaceSmokeResult> RunSmokeAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken = default);
     Task<WorkspaceSmokeMatrixResult> RunSmokeMatrixAsync(WorkspaceSmokeMatrixRunRequest request, CancellationToken cancellationToken = default);
@@ -69,6 +106,15 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     private readonly WorkspaceOrchestrator _workspaceOrchestrator;
     private readonly WorkspaceSmokeApplicationService _workspaceSmokeApplicationService;
     private readonly TemplateExpander _templateExpander = new();
+    private readonly WorkspaceSavePointMessageService _savePointMessageService;
+    private readonly WorkspaceTimelineService _workspaceTimelineService = new();
+    private readonly WorkspaceCheckpointService _workspaceCheckpointService = new();
+    private readonly WorkspaceBackupExportService _workspaceBackupExportService;
+    private readonly WorkspaceBackupManifestService _workspaceBackupManifestService;
+    private readonly WorkspacePublishAssessmentService _workspacePublishAssessmentService;
+    private readonly WorkspaceRemovalService _workspaceRemovalService;
+    private readonly OracleApexValidationFeedbackService _oracleApexValidationFeedbackService;
+    private readonly OracleApexAssistantService _oracleApexAssistantService;
 
     public OpenCodeWorkspaceMcpService(OpenCodeWorkspaceMcpOptions options, ILogger<OpenCodeWorkspaceMcpService> logger, string? catalogRoot = null, string? workspaceStateRoot = null, string? smokeArtifactsRoot = null)
     {
@@ -88,10 +134,18 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         _catalogProvider = new BuiltInCatalogProvider(_catalogRoot);
         _workspaceResolver = new WorkspaceResolver(_catalogProvider.LoadFeatures(), _catalogProvider.LoadServices(), _catalogProvider.LoadCapabilities(), _catalogProvider.LoadKnowledgePacks());
         _workspaceRepository = new WorkspaceRepository(_workspaceStateRoot);
+        _savePointMessageService = new WorkspaceSavePointMessageService(_processRunner);
+        var ignorePolicyService = new WorkspaceIgnorePolicyService();
         var containerRuntime = new DockerContainerRuntime(new DockerService(_processRunner));
         _runtimeOwnershipService = new RuntimeOwnershipService(containerRuntime);
         _smokeRuntimeOwnershipService = new SmokeRuntimeOwnershipService(containerRuntime);
         _workspaceDoctorService = new WorkspaceDoctorService(new PlatformDetector(_processRunner), new RuntimeResolver(), _discoveryService, _yamlService, _runtimeStateService);
+        _workspaceBackupExportService = new WorkspaceBackupExportService(ignorePolicyService);
+        _workspaceBackupManifestService = new WorkspaceBackupManifestService();
+        _workspacePublishAssessmentService = new WorkspacePublishAssessmentService(_processRunner);
+        _workspaceRemovalService = new WorkspaceRemovalService(_workspaceRepository);
+        _oracleApexValidationFeedbackService = new OracleApexValidationFeedbackService();
+        _oracleApexAssistantService = new OracleApexAssistantService(new McpOracleApexAssistantSynchronizationService(_workspaceOrchestrator));
         _workspaceOrchestrator = new WorkspaceOrchestrator(
             _yamlService,
             _discoveryService,
@@ -107,9 +161,9 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             new WorkspaceCheckpointService(),
             new WorkspaceTimelineService(),
             new WorkspaceSafetyService(),
-            new WorkspaceIgnorePolicyService(),
+            ignorePolicyService,
             _runtimeStateService,
-            new GitWorkspaceProvider(_processRunner, new WorkspaceIgnorePolicyService()),
+            new GitWorkspaceProvider(_processRunner, ignorePolicyService),
             containerRuntime,
             new PlatformDetector(_processRunner),
             new RuntimeResolver(),
@@ -229,6 +283,470 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         return ToWorkspaceRecordModel(snapshot);
     }
 
+    public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
+        => _workspaceOrchestrator.InspectExistingGitCheckoutAsync(repositoryPath, workspaceName, cancellationToken);
+
+    public async Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default)
+    {
+        var repositoryService = new GitRepositoryService(new ProcessRunner());
+        return await repositoryService.ValidateBranchNameAsync(repositoryPath, branchName, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, CancellationToken cancellationToken = default)
+    {
+        var snapshot = await _workspaceOrchestrator.ImportExistingGitCheckoutAsync(request, cancellationToken: cancellationToken);
+        return ToWorkspaceRecordModel(snapshot);
+    }
+
+    public async Task<string> SuggestSavePointMessageAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var workspace = await GetWorkspaceAsync(workspaceId, cancellationToken);
+        return await _savePointMessageService.SuggestAsync(workspace.WorkspaceRoot, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> CreateSavePointAsync(string workspaceId, string message, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.CreateSavePointAsync(snapshot, message, progress, cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> CreateCheckpointAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.CreateCheckpointAsync(snapshot, progress, cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceBackupOperationResultModel> BackupWorkspaceAsync(string workspaceId, string destinationPath, bool overwriteExisting, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_request", "Backup destination is required.", "Choose a backup destination and retry.");
+        }
+
+        if (!overwriteExisting && File.Exists(destinationPath))
+        {
+            throw new OpenCodeWorkspaceMcpException("backup_destination_exists", $"Backup destination '{destinationPath}' already exists.", "Choose a different destination or allow overwrite.");
+        }
+
+        progress?.Invoke(new CommandLogEntry { Source = "backup", Phase = "loadingWorkspace", Message = "Loading current workspace state..." });
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        progress?.Invoke(new CommandLogEntry { Source = "backup", Phase = "loadingWorkspace", Message = $"Selected workspace '{snapshot.Definition.Workspace.Name}'." });
+        progress?.Invoke(new CommandLogEntry { Source = "backup", Phase = "exportingBackup", Message = "Applying backup export rules..." });
+        var export = await _workspaceBackupExportService.ExportAsync(snapshot, destinationPath, new DelegateOperationLogSink(progress), cancellationToken);
+        progress?.Invoke(new CommandLogEntry { Source = "backup", Phase = "writingManifest", Message = "Writing backup manifest..." });
+        var manifest = _workspaceBackupManifestService.WriteAndEmbedManifest(snapshot, export, destinationPath, DateTimeOffset.UtcNow);
+        var message = $"Backup created at '{export.ArchivePath}' with {export.FileCount} file(s).";
+        return new WorkspaceBackupOperationResultModel
+        {
+            Workspace = await GetWorkspaceAsync(workspaceId, cancellationToken),
+            Message = message,
+            Export = export,
+            Manifest = manifest,
+        };
+    }
+
+    public async Task<WorkspacePublishAssessmentModel> AssessWorkspacePublishAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var workspace = await GetWorkspaceAsync(workspaceId, cancellationToken);
+        var assessment = await _workspacePublishAssessmentService.AssessAsync(workspace.Snapshot, cancellationToken: cancellationToken);
+        return new WorkspacePublishAssessmentModel
+        {
+            WorkspaceId = workspaceId,
+            WorkspaceName = assessment.WorkspaceName,
+            CurrentBranch = assessment.CurrentBranch,
+            Summary = assessment.Summary,
+            ConfirmationMessage = assessment.ConfirmationMessage,
+            Findings = assessment.Findings,
+            Warnings = assessment.Warnings,
+            CanPublish = assessment.CanPublish,
+            IsBlocked = assessment.IsBlocked,
+            RequiresConfirmation = assessment.RequiresConfirmation,
+            RequiresSavePoint = assessment.RequiresSavePoint,
+            HasRemoteConfigured = assessment.HasRemoteConfigured,
+            RemoteName = assessment.RemoteName,
+            RemoteBranch = assessment.RemoteBranch,
+            AheadCount = assessment.AheadCount,
+            BehindCount = assessment.BehindCount,
+        };
+    }
+
+    public async Task<WorkspacePublishOperationResultModel> PublishWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        progress?.Invoke(new CommandLogEntry { Source = "publish", Phase = "loadingWorkspace", Message = "Loading current workspace state..." });
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        progress?.Invoke(new CommandLogEntry { Source = "publish", Phase = "loadingWorkspace", Message = $"Selected workspace '{snapshot.Definition.Workspace.Name}'." });
+        progress?.Invoke(new CommandLogEntry { Source = "publish", Phase = "publishing", Message = "Publishing Working Copy..." });
+        var review = await _workspaceOrchestrator.PublishAsync(snapshot, progress, cancellationToken);
+        if (review.IsBlocked)
+        {
+            throw new InvalidOperationException(review.Message);
+        }
+
+        return new WorkspacePublishOperationResultModel
+        {
+            Workspace = await GetWorkspaceAsync(workspaceId, cancellationToken),
+            Message = review.Message,
+            Review = review,
+        };
+    }
+
+    public async Task<WorkspaceRemovalOperationResultModel> RemoveWorkspaceAsync(string workspaceId, bool removeOwnedRuntimeResources, bool deleteWorkspaceFiles, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var workspace = await GetWorkspaceAsync(workspaceId, cancellationToken);
+        var snapshot = workspace.Snapshot;
+        var configurationPath = snapshot.Paths.WorkspaceYamlPath;
+        if (!File.Exists(configurationPath))
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_request", $"Workspace '{snapshot.Definition.Workspace.Name}' configuration file was not found before removal could start. Probed path: '{configurationPath}'.", "Refresh the workspace list and retry.");
+        }
+
+        progress?.Invoke(new CommandLogEntry { Source = "remove", Phase = "preparingRemoval", Message = "Preparing removal..." });
+        progress?.Invoke(new CommandLogEntry { Source = "remove", Phase = "preparingRemoval", Message = $"Selected workspace '{snapshot.Definition.Workspace.Name}' at '{snapshot.Paths.RootPath}'." });
+
+        if (removeOwnedRuntimeResources)
+        {
+            progress?.Invoke(new CommandLogEntry { Source = "remove", Phase = "removingRuntimeResources", Message = "Removing Docker resources..." });
+            await _workspaceOrchestrator.RemoveDockerResourcesAsync(snapshot, progress, cancellationToken: cancellationToken);
+        }
+
+        progress?.Invoke(new CommandLogEntry { Source = "remove", Phase = "removingRegistration", Message = "Removing workspace from list..." });
+        var removal = await _workspaceRemovalService.RemoveAsync(new OpenCode.Workspace.AppSupport.WorkspaceRemovalRequest
+        {
+            WorkspaceName = snapshot.Definition.Workspace.Name,
+            WorkspaceRoot = snapshot.Paths.RootPath,
+            DeleteWorkspaceFiles = deleteWorkspaceFiles,
+        }, cancellationToken);
+
+        if (!removal.Succeeded)
+        {
+            throw new OpenCodeWorkspaceMcpException("workspace_removal_failed", removal.FailureReason, "Review the removal warnings and retry with a supported removal choice.");
+        }
+
+        return new WorkspaceRemovalOperationResultModel
+        {
+            Message = removeOwnedRuntimeResources
+                ? $"Removed Docker resources for '{removal.WorkspaceName}' and unregistered it from the workspace list."
+                : $"Removed '{removal.WorkspaceName}' from the workspace list.",
+            Removal = new WorkspaceRemovalResultRecordModel
+            {
+                WorkspaceId = workspaceId,
+                WorkspaceName = removal.WorkspaceName,
+                WorkspaceRoot = removal.WorkspaceRoot,
+                RegistrationRemoved = true,
+                RuntimeResourcesRemoved = removeOwnedRuntimeResources,
+                WorkspaceFilesDeleted = removal.FilesDeleted,
+                Warnings = removal.Warnings,
+                Succeeded = removal.Succeeded,
+                FailureReason = removal.FailureReason,
+            },
+        };
+    }
+
+    public async Task<WorkspaceRecoveryAssessmentModel> AssessWorkspaceRecoveryAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var findings = new List<string>();
+        var currentProblems = new List<string>();
+        var previousFailureContext = new List<string>();
+        if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+        {
+            findings.Add("Generated runtime files are out of date and need repair.");
+            currentProblems.Add("Runtime files need repair");
+        }
+
+        if (snapshot.LocalRuntimeState is null)
+        {
+            findings.Add("Local runtime state is missing and will be regenerated.");
+            currentProblems.Add("Runtime metadata is missing");
+        }
+
+        if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            findings.Add($"Workspace runtime is currently {snapshot.RuntimeState}.");
+            currentProblems.Add($"Workspace is currently {snapshot.RuntimeState.ToString().ToLowerInvariant()}");
+        }
+
+        if (snapshot.RuntimeState == WorkspaceRuntimeState.Unknown)
+        {
+            currentProblems.Add("Docker availability could not be confirmed");
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Record.LastOperationResult) && snapshot.Record.LastOperationSucceeded == false)
+        {
+            findings.Add($"Last operation failed: {snapshot.Record.LastOperationResult}");
+            foreach (var problem in BuildPreviousFailureContext(snapshot.Record.LastOperationResult!))
+            {
+                previousFailureContext.Add(problem);
+            }
+        }
+
+        if (findings.Count == 0)
+        {
+            findings.Add("No blocking issues were detected, but recovery can still revalidate generated files and runtime state.");
+        }
+
+        if (currentProblems.Count == 0)
+        {
+            currentProblems.Add("No live blocking issues detected");
+        }
+
+        return new WorkspaceRecoveryAssessmentModel
+        {
+            Title = "Recover Workspace",
+            Summary = "Recovery validates generated files, repairs Docker compose state, and refreshes runtime readiness without deleting user work.",
+            Findings = findings,
+            ConfirmationMessage = "Run workspace recovery now?",
+            WorkspaceName = snapshot.Definition.Workspace.Name,
+            StatusSummary = BuildRecoveryStatusSummary(snapshot),
+            RecoverActions = ["Regenerate runtime files", "Refresh Docker Compose state", "Rebuild runtime metadata", "Validate generated scripts", "Keep your project files"],
+            CurrentProblems = currentProblems.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            PreviousFailureContext = previousFailureContext.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            WillNotChange = ["Delete project files", "Modify Git history", "Delete documents", "Remove untracked work"],
+            ManualActionSummary = BuildRecoveryManualActionSummary(snapshot.Record.LastOperationResult),
+            ManualActions = BuildRecoveryManualActions(snapshot.Record.LastOperationResult),
+            AdvancedDetails = BuildRecoveryAdvancedDetails(snapshot, findings),
+            LastCheckedAt = DateTimeOffset.Now,
+        };
+    }
+
+    public async Task<WorkspaceSynchronizationStatusResult> GetSynchronizationStatusAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.GetSynchronizationStatusAsync(snapshot, environmentName, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationOperationResult> ExportSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.ExportSynchronizationAsync(snapshot, environmentName, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationOperationResult> ImportSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, environmentName, deploymentProfileOverride, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationOperationResult> PullSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.PullSynchronizationAsync(snapshot, environmentName, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationOperationResult> PushSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.PushSynchronizationAsync(snapshot, environmentName, deploymentProfileOverride, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationOperationResult> ValidateSynchronizationAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, environmentName, deploymentProfileOverride, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationDiffResult> DiffSynchronizationAsync(string workspaceId, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.DiffSynchronizationAsync(snapshot, environmentName, cancellationToken);
+    }
+
+    public async Task<WorkspaceSynchronizationExecutionResult> SynchronizeWorkspaceAsync(string workspaceId, string? environmentName = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
+    {
+        var status = await GetSynchronizationStatusAsync(workspaceId, environmentName, cancellationToken);
+        var currentState = status.Snapshot.DefaultEnvironment?.State ?? status.Snapshot.State;
+
+        return currentState switch
+        {
+            WorkspaceSynchronizationState.DeploymentAhead => new WorkspaceSynchronizationExecutionResult
+            {
+                PreviousState = currentState,
+                ActionPerformed = WorkspaceSynchronizationExecutionAction.PullChanges,
+                OperationResult = await PullSynchronizationAsync(workspaceId, environmentName, cancellationToken),
+            },
+            WorkspaceSynchronizationState.GitAhead or WorkspaceSynchronizationState.InSync or WorkspaceSynchronizationState.Unknown => new WorkspaceSynchronizationExecutionResult
+            {
+                PreviousState = currentState,
+                ActionPerformed = WorkspaceSynchronizationExecutionAction.PushChanges,
+                OperationResult = await PushSynchronizationAsync(workspaceId, environmentName, deploymentProfileOverride, cancellationToken),
+            },
+            WorkspaceSynchronizationState.ValidationFailed => new WorkspaceSynchronizationExecutionResult
+            {
+                PreviousState = currentState,
+                ActionPerformed = WorkspaceSynchronizationExecutionAction.Validate,
+                OperationResult = await ValidateSynchronizationAsync(workspaceId, environmentName, deploymentProfileOverride, cancellationToken),
+            },
+            _ => new WorkspaceSynchronizationExecutionResult
+            {
+                PreviousState = currentState,
+                ActionPerformed = WorkspaceSynchronizationExecutionAction.ShowDiff,
+                DiffResult = await DiffSynchronizationAsync(workspaceId, environmentName, cancellationToken),
+            },
+        };
+    }
+
+    public async Task<OracleAssistantPlanOperationRecord> PlanOracleApexChangeAsync(string workspaceId, OracleApexAssistantRequest request, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var response = _oracleApexAssistantService.CreatePlan(snapshot, request);
+        return new OracleAssistantPlanOperationRecord
+        {
+            PlanId = $"plan-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}",
+            ContextRevision = BuildAssistantContextRevision(snapshot, request.EnvironmentName),
+            CreatedAt = DateTimeOffset.UtcNow,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleAssistantApplyOperationRecord> ExecuteOracleApexPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan plan, string planId, string contextRevision, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var response = await _oracleApexAssistantService.ExecutePlanAsync(snapshot, request, plan, cancellationToken);
+        return new OracleAssistantApplyOperationRecord
+        {
+            PlanId = planId,
+            ContextRevision = contextRevision,
+            ExecutionId = response.RollbackManifest?.ExecutionId ?? string.Empty,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleAssistantRepairPlanOperationRecord> CreateOracleApexRepairPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, string planId, string executionId, string contextRevision, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var response = _oracleApexAssistantService.CreateRepairPlan(snapshot, request, sourcePlan, validation);
+        return new OracleAssistantRepairPlanOperationRecord
+        {
+            RepairPlanId = $"repair-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}",
+            PlanId = planId,
+            ExecutionId = executionId,
+            ContextRevision = contextRevision,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleAssistantRepairOperationRecord> ExecuteOracleApexRepairPlanAsync(string workspaceId, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, string planId, string executionId, string repairPlanId, string contextRevision, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var resolvedExecutionId = ResolveAssistantExecutionId(snapshot, executionId);
+        var resolvedEnvironmentName = string.IsNullOrWhiteSpace(request.EnvironmentName) ? ResolveAssistantEnvironmentName(snapshot, resolvedExecutionId) : request.EnvironmentName;
+        var currentContextRevision = BuildAssistantContextRevision(snapshot, resolvedEnvironmentName);
+        if (!string.Equals(currentContextRevision, contextRevision, StringComparison.Ordinal))
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_request", $"Oracle Assistant repair plan '{repairPlanId}' is stale for the current workspace context.", "Rebuild the repair plan and retry.");
+        }
+
+        var response = await _oracleApexAssistantService.ExecuteRepairPlanAsync(snapshot, new OracleApexAssistantRequest
+        {
+            Prompt = request.Prompt,
+            ConfirmPlan = true,
+            PostEditBehavior = request.PostEditBehavior == OracleApexAssistantPostEditBehavior.Auto ? OracleApexAssistantPostEditBehavior.ValidateOnly : request.PostEditBehavior,
+            EnvironmentName = resolvedEnvironmentName,
+            EnableSafeAutomaticRepair = request.EnableSafeAutomaticRepair,
+            AllowNonDevelopmentDeployment = request.AllowNonDevelopmentDeployment,
+        }, repairPlan, cancellationToken);
+        return new OracleAssistantRepairOperationRecord
+        {
+            RepairPlanId = repairPlanId,
+            PlanId = planId,
+            ExecutionId = response.RollbackManifest?.ExecutionId ?? resolvedExecutionId,
+            ContextRevision = contextRevision,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleAssistantRollbackOperationRecord> RollBackOracleApexGeneratedChangeAsync(string workspaceId, string executionId, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var resolvedExecutionId = ResolveAssistantExecutionId(snapshot, executionId);
+        var resolvedEnvironmentName = ResolveAssistantEnvironmentName(snapshot, resolvedExecutionId);
+        var response = await _oracleApexAssistantService.RollBackGeneratedChangeAsync(snapshot, resolvedEnvironmentName, cancellationToken);
+        return new OracleAssistantRollbackOperationRecord
+        {
+            ExecutionId = resolvedExecutionId,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(string workspaceId, string environmentName, string workspaceName, string parsingSchema, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.DiscoverOracleApexApplicationsAsync(snapshot, environmentName, workspaceName, parsingSchema, sqlclProfile, sourcePath, cancellationToken);
+    }
+
+    public async Task<OracleApexConnectExistingApplicationResult> ConnectExistingOracleApexApplicationAsync(string workspaceId, string environmentName, string workspaceName, string parsingSchema, int applicationId, string sqlclProfile, string sourcePath, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        return await _workspaceOrchestrator.ConnectExistingOracleApexApplicationAsync(snapshot, environmentName, workspaceName, parsingSchema, applicationId, string.Empty, string.Empty, sqlclProfile, sourcePath, cancellationToken);
+    }
+
+    public async Task<OracleAssistantSynchronizationOperationRecord> ValidateOracleAssistantGeneratedApplicationAsync(string workspaceId, string? executionId = null, string? environmentName = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var resolvedExecutionId = ResolveAssistantExecutionId(snapshot, executionId);
+        var resolvedEnvironmentName = string.IsNullOrWhiteSpace(environmentName) ? ResolveAssistantEnvironmentName(snapshot, resolvedExecutionId) : environmentName!;
+        var response = await _workspaceOrchestrator.ValidateSynchronizationAsync(snapshot, resolvedEnvironmentName, cancellationToken: cancellationToken);
+        return new OracleAssistantSynchronizationOperationRecord
+        {
+            ExecutionId = resolvedExecutionId,
+            Response = response,
+        };
+    }
+
+    public async Task<OracleAssistantSynchronizationOperationRecord> ImportOracleAssistantGeneratedApplicationAsync(string workspaceId, string? executionId = null, string? environmentName = null, bool allowNonDevelopmentDeployment = false, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var resolvedExecutionId = ResolveAssistantExecutionId(snapshot, executionId);
+        var resolvedEnvironmentName = string.IsNullOrWhiteSpace(environmentName) ? ResolveAssistantEnvironmentName(snapshot, resolvedExecutionId) : environmentName!;
+        var syncState = snapshot.Synchronization.DefaultEnvironment?.State ?? WorkspaceSynchronizationState.Unknown;
+        if (syncState is WorkspaceSynchronizationState.ValidationFailed or WorkspaceSynchronizationState.Diverged or WorkspaceSynchronizationState.DeploymentAhead)
+        {
+            return new OracleAssistantSynchronizationOperationRecord
+            {
+                ExecutionId = resolvedExecutionId,
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = snapshot.Synchronization,
+                    Message = $"Import blocked because synchronization state is '{syncState}'.",
+                },
+            };
+        }
+
+        if (!allowNonDevelopmentDeployment && !string.Equals(resolvedEnvironmentName, "dev", StringComparison.OrdinalIgnoreCase) && !string.Equals(resolvedEnvironmentName, "development", StringComparison.OrdinalIgnoreCase))
+        {
+            return new OracleAssistantSynchronizationOperationRecord
+            {
+                ExecutionId = resolvedExecutionId,
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = snapshot.Synchronization,
+                    Message = $"Import blocked because environment '{resolvedEnvironmentName}' is not a development environment.",
+                },
+            };
+        }
+
+        var response = await _workspaceOrchestrator.ImportSynchronizationAsync(snapshot, resolvedEnvironmentName, cancellationToken: cancellationToken);
+        return new OracleAssistantSynchronizationOperationRecord
+        {
+            ExecutionId = resolvedExecutionId,
+            Response = response,
+        };
+    }
+
+    public async Task<WorkspaceTimeline> GetWorkspaceTimelineAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var workspace = await GetWorkspaceAsync(workspaceId, cancellationToken);
+        return _workspaceTimelineService.Load(workspace.Snapshot.Paths.TimelinePath);
+    }
+
+    public async Task<WorkspaceCheckpointIndex> GetWorkspaceCheckpointIndexAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var workspace = await GetWorkspaceAsync(workspaceId, cancellationToken);
+        return _workspaceCheckpointService.LoadIndex(workspace.Snapshot.Paths.CheckpointIndexPath);
+    }
+
     private static WorkspaceDefinition BuildWorkspaceDefinition(string workspaceName, TemplateManifest template)
         => new()
         {
@@ -256,6 +774,24 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     public async Task<WorkspaceRecordModel> ValidateWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
         => await GetWorkspaceAsync(workspaceId, cancellationToken);
 
+    public async Task<WorkspaceRecordModel> PrepareWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        if (snapshot.UpdateRequired || snapshot.AppliedState is null)
+        {
+            await _workspaceOrchestrator.ProvisionAsync(snapshot, progress, cancellationToken);
+        }
+        else if (snapshot.RuntimeState != WorkspaceRuntimeState.Running)
+        {
+            await _workspaceOrchestrator.StartAsync(snapshot, progress, cancellationToken);
+        }
+
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> StartWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+        => await PrepareWorkspaceAsync(workspaceId, progress, cancellationToken);
+
     public async Task<WorkspaceRecordModel> StopWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
         var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
@@ -267,6 +803,49 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
     {
         var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
         await _workspaceOrchestrator.RemoveDockerResourcesAsync(snapshot, cancellationToken: cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> RecoverWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.RecoverAsync(snapshot, progress, cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> ResetWorkspaceRuntimeAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.ResetRuntimeAsync(snapshot, progress, cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> AttachWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.LaunchAttachForRunningWorkspaceAsync(snapshot, progress, cancellationToken);
+        return await GetWorkspaceAsync(workspaceId, cancellationToken);
+    }
+
+    public async Task<WorkspaceRecordModel> ReprovisionWorkspaceAsync(string workspaceId, Action<CommandLogEntry>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        var wasRunning = snapshot.RuntimeState == WorkspaceRuntimeState.Running;
+        if (wasRunning)
+        {
+            await _workspaceOrchestrator.StopAsync(snapshot, progress, cancellationToken: cancellationToken);
+            snapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        }
+
+        await _workspaceOrchestrator.ProvisionAsync(snapshot, progress, cancellationToken);
+        var validationSnapshot = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+        await _workspaceOrchestrator.RecoverAsync(validationSnapshot, progress, cancellationToken);
+        if (!wasRunning)
+        {
+            var refreshed = (await GetWorkspaceAsync(workspaceId, cancellationToken)).Snapshot;
+            await _workspaceOrchestrator.StopAsync(refreshed, progress, cancellationToken: cancellationToken);
+        }
+
         return await GetWorkspaceAsync(workspaceId, cancellationToken);
     }
 
@@ -662,6 +1241,125 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         return fullPath;
     }
 
+    private string ResolveAssistantExecutionId(WorkspaceSnapshot snapshot, string? executionId)
+    {
+        var manifest = _oracleApexValidationFeedbackService.ReadRollbackManifest(snapshot)
+            ?? throw new OpenCodeWorkspaceMcpException("invalid_request", "No Oracle Assistant execution is available for validation or import.", "Run the Oracle Assistant plan first and retry.");
+
+        if (!string.IsNullOrWhiteSpace(executionId) && !string.Equals(manifest.ExecutionId, executionId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_request", $"Oracle Assistant execution '{executionId}' does not match the current workspace execution '{manifest.ExecutionId}'.", "Refresh the Assistant state and retry.");
+        }
+
+        return manifest.ExecutionId;
+    }
+
+    private string ResolveAssistantEnvironmentName(WorkspaceSnapshot snapshot, string executionId)
+    {
+        var manifest = _oracleApexValidationFeedbackService.ReadRollbackManifest(snapshot)
+            ?? throw new OpenCodeWorkspaceMcpException("invalid_request", "No Oracle Assistant execution is available for validation or import.", "Run the Oracle Assistant plan first and retry.");
+        if (!string.Equals(manifest.ExecutionId, executionId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new OpenCodeWorkspaceMcpException("invalid_request", $"Oracle Assistant execution '{executionId}' is no longer current for this workspace.", "Refresh the Assistant state and retry.");
+        }
+
+        return string.IsNullOrWhiteSpace(manifest.EnvironmentName)
+            ? snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? "dev"
+            : manifest.EnvironmentName;
+    }
+
+    private static string BuildAssistantContextRevision(WorkspaceSnapshot snapshot, string? environmentName)
+    {
+        var resolvedEnvironmentName = string.IsNullOrWhiteSpace(environmentName)
+            ? snapshot.Synchronization.DefaultEnvironment?.EnvironmentName ?? "dev"
+            : environmentName;
+        var environment = snapshot.Synchronization.DefaultEnvironment;
+        var gitRevision = string.IsNullOrWhiteSpace(snapshot.Safety.AdvancedGit.LatestCommitSha) ? "nogit" : snapshot.Safety.AdvancedGit.LatestCommitSha;
+        var sourceSignature = environment?.WorkspaceSourceSignature ?? string.Empty;
+        return $"{resolvedEnvironmentName}|{gitRevision}|{sourceSignature}";
+    }
+
+    private static string BuildRecoveryStatusSummary(WorkspaceSnapshot snapshot)
+    {
+        var lastFailure = snapshot.Record.LastOperationSucceeded == false ? snapshot.Record.LastOperationResult : null;
+        return lastFailure?.Contains("could not start", StringComparison.OrdinalIgnoreCase) == true
+            ? "Workspace could not start"
+            : "Workspace needs repair";
+    }
+
+    private static IReadOnlyList<string> BuildPreviousFailureContext(string failureText)
+    {
+        var items = new List<string>();
+        foreach (var line in failureText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+            {
+                items.Add(line);
+                continue;
+            }
+
+            if (!line.StartsWith("Command:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Exit code:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Likely causes:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Suggested actions:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Host port details:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("This workspace docker compose ps:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("Running containers:", StringComparison.OrdinalIgnoreCase)
+                && !line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                items.Add(line);
+            }
+        }
+
+        return items;
+    }
+
+    private static string BuildRecoveryManualActionSummary(string? failureText)
+    {
+        if (string.IsNullOrWhiteSpace(failureText))
+        {
+            return string.Empty;
+        }
+
+        return failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase)
+            ? BuildPreviousFailureContext(failureText).FirstOrDefault() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static IReadOnlyList<string> BuildRecoveryManualActions(string? failureText)
+    {
+        if (string.IsNullOrWhiteSpace(failureText) || !failureText.Contains("already in use", StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<string>();
+        }
+
+        var actions = new List<string> { "Stop the other workspace" };
+        if (failureText.Contains("1521", StringComparison.OrdinalIgnoreCase))
+        {
+            actions.Add("Change the Oracle port");
+        }
+
+        return actions;
+    }
+
+    private static string BuildRecoveryAdvancedDetails(WorkspaceSnapshot snapshot, IReadOnlyList<string> findings)
+        => string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                $"Workspace root: {snapshot.Paths.RootPath}",
+                $"Compose path: {snapshot.Paths.ComposePath}",
+                $"Runtime-state path: {snapshot.Paths.RuntimeStatePath}",
+                $"Applied-state path: {snapshot.Paths.AppliedStatePath}",
+                $"Attach script path: {snapshot.Paths.AttachWrapperScriptPath}",
+                "Primary service: workspace",
+                $"Runtime target: {snapshot.ResolvedRuntimePlan?.TargetPlatform ?? snapshot.LocalRuntimeState?.ResolvedPlatform ?? "Unavailable"}",
+                $"Runtime state: {snapshot.RuntimeState}",
+                $"Update required: {snapshot.UpdateRequired}",
+                string.Empty,
+                "Diagnostics:",
+            }.Concat(findings));
+
     private string ResolveWorkspaceIdFromPath(string root)
     {
         var match = _workspaceRepository.LoadAll().FirstOrDefault(item => root.StartsWith(item.RootPath, StringComparison.OrdinalIgnoreCase));
@@ -734,5 +1432,109 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         public string Kind { get; init; } = string.Empty;
         public string OwnerId { get; init; } = string.Empty;
         public string RelativePath { get; init; } = string.Empty;
+    }
+}
+
+internal sealed class McpOracleApexAssistantSynchronizationService(WorkspaceOrchestrator orchestrator) : IOracleApexAssistantSynchronizationService
+{
+    public Task<WorkspaceSynchronizationOperationResult> ValidateAsync(WorkspaceSnapshot snapshot, string? environmentName, CancellationToken cancellationToken = default)
+        => orchestrator.ValidateSynchronizationAsync(snapshot, environmentName, cancellationToken: cancellationToken);
+
+    public Task<WorkspaceSynchronizationOperationResult> ImportAsync(WorkspaceSnapshot snapshot, string? environmentName, CancellationToken cancellationToken = default)
+        => orchestrator.ImportSynchronizationAsync(snapshot, environmentName, cancellationToken: cancellationToken);
+
+    public Task<WorkspaceSynchronizationStatusResult> GetStatusAsync(WorkspaceSnapshot snapshot, string? environmentName, CancellationToken cancellationToken = default)
+        => orchestrator.GetSynchronizationStatusAsync(snapshot, environmentName, cancellationToken);
+}
+
+public sealed class WorkspaceBackupOperationResultModel
+{
+    public required WorkspaceRecordModel Workspace { get; init; }
+    public required string Message { get; init; }
+    public required WorkspaceBackupExportResult Export { get; init; }
+    public required WorkspaceBackupManifestResult Manifest { get; init; }
+}
+
+public sealed class WorkspacePublishAssessmentModel
+{
+    public string WorkspaceId { get; init; } = string.Empty;
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string CurrentBranch { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public string ConfirmationMessage { get; init; } = string.Empty;
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+    public bool CanPublish { get; init; }
+    public bool IsBlocked { get; init; }
+    public bool RequiresConfirmation { get; init; }
+    public bool RequiresSavePoint { get; init; }
+    public bool HasRemoteConfigured { get; init; }
+    public string RemoteName { get; init; } = string.Empty;
+    public string RemoteBranch { get; init; } = string.Empty;
+    public int AheadCount { get; init; }
+    public int BehindCount { get; init; }
+}
+
+public sealed class WorkspacePublishOperationResultModel
+{
+    public required WorkspaceRecordModel Workspace { get; init; }
+    public required string Message { get; init; }
+    public required WorkspacePublishReview Review { get; init; }
+}
+
+public sealed class WorkspaceRemovalOperationResultModel
+{
+    public required string Message { get; init; }
+    public required WorkspaceRemovalResultRecordModel Removal { get; init; }
+}
+
+public sealed class WorkspaceRemovalResultRecordModel
+{
+    public string WorkspaceId { get; init; } = string.Empty;
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string WorkspaceRoot { get; init; } = string.Empty;
+    public bool RegistrationRemoved { get; init; }
+    public bool RuntimeResourcesRemoved { get; init; }
+    public bool WorkspaceFilesDeleted { get; init; }
+    public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+    public bool Succeeded { get; init; }
+    public string FailureReason { get; init; } = string.Empty;
+}
+
+public sealed class WorkspaceRecoveryAssessmentModel
+{
+    public string Title { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public IReadOnlyList<string> Findings { get; init; } = Array.Empty<string>();
+    public string ConfirmationMessage { get; init; } = string.Empty;
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string StatusSummary { get; init; } = string.Empty;
+    public IReadOnlyList<string> RecoverActions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> CurrentProblems { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> PreviousFailureContext { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> WillNotChange { get; init; } = Array.Empty<string>();
+    public string ManualActionSummary { get; init; } = string.Empty;
+    public IReadOnlyList<string> ManualActions { get; init; } = Array.Empty<string>();
+    public string AdvancedDetails { get; init; } = string.Empty;
+    public DateTimeOffset? LastCheckedAt { get; init; }
+}
+
+internal sealed class DelegateOperationLogSink(Action<CommandLogEntry>? progress) : IOperationLogSink
+{
+    public void Append(OperationTranscriptLine line)
+    {
+        progress?.Invoke(new CommandLogEntry
+        {
+            Source = "backup",
+            Phase = line.Kind switch
+            {
+                OperationTranscriptLineKind.Result => "completed",
+                OperationTranscriptLineKind.StandardError => "backupWarning",
+                OperationTranscriptLineKind.Comment => "backupDetail",
+                _ => "backup",
+            },
+            Message = line.Text,
+            Severity = line.Kind == OperationTranscriptLineKind.StandardError ? DiagnosticSeverity.Warning : DiagnosticSeverity.Information,
+        });
     }
 }

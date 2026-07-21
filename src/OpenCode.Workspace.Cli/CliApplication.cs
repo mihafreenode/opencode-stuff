@@ -69,6 +69,7 @@ public sealed class CliApplication
                 "doctor" => await RunDoctorCommandAsync(args[1..], cancellationToken),
                 "validate-platform" => await RunValidatePlatformCommandAsync(args[1..], cancellationToken),
                 "debug-workspace-discovery" => await RunWorkspaceDiscoveryCommandAsync(cancellationToken),
+                "interactive-session" => await RunInteractiveSessionCommandAsync(args[1..], cancellationToken),
                 "smoke" => await RunSmokeCommandAsync(args[1..], cancellationToken),
                 "runtime" => await RunRuntimeCommandAsync(args[1..], cancellationToken),
                 _ => await FailWithHelpAsync($"Unknown command '{args[0]}'."),
@@ -246,6 +247,16 @@ public sealed class CliApplication
         var inventory = await _runtimeInventoryRunner(query, cancellationToken);
         await _output.WriteLineAsync(CliOutputFormatter.FormatRuntimeInventory(inventory, format, string.Equals(args[0], "doctor", StringComparison.OrdinalIgnoreCase), verbosity));
         return 0;
+    }
+
+    private async Task<int> RunInteractiveSessionCommandAsync(string[] args, CancellationToken cancellationToken)
+    {
+        if (args.Length == 0 || !string.Equals(args[0], "attach", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Missing interactive-session subcommand. Use 'interactive-session attach'.");
+        }
+
+        return await new InteractiveSessionAttachHelper(_output, _error).RunAsync(args[1..], cancellationToken);
     }
 
     private async Task<int> FailWithHelpAsync(string message)

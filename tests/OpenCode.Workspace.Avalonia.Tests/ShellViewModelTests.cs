@@ -5,6 +5,7 @@ using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.Avalonia.ViewModels;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Workspaces;
+using OpenCode.Workspace.LocalClient;
 using OpenCode.Workspace.Platform;
 using OpenCode.Workspace.Platform.Windows;
 using OperationTranscript = OpenCode.Workspace.AppSupport.OperationTranscript;
@@ -242,7 +243,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public void ShellCreation_DoesNotSynchronouslyLoadWorkspaces()
     {
-        var desktop = new TrackingDesktopShellService();
+        var desktop = new TrackingDesktopWorkspaceService();
 
         _ = ShellViewModel.Create(
             desktop,
@@ -250,6 +251,7 @@ public sealed class ShellViewModelTests
             new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
             new FakeDocumentationShellService(),
+            desktop,
             new ThemeCoordinator(ThemeMode.System),
             CreateAppBuildInfo(),
             "en");
@@ -271,7 +273,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task WorkspaceLoadingFailure_DoesNotPreventShellConstruction()
     {
-        var shell = CreateShellWithDesktop(new ThrowingDesktopShellService());
+        var shell = CreateShellWithDesktop(new ThrowingDesktopWorkspaceService());
 
         await shell.InitializeAsync();
 
@@ -318,7 +320,7 @@ public sealed class ShellViewModelTests
     public async Task OracleCreateCancellation_DoesNotContinue()
     {
         var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([]));
         page.SetInteractionService(new FakeWorkspaceInteractionService
         {
             OracleNoticeConfirmed = false,
@@ -341,7 +343,7 @@ public sealed class ShellViewModelTests
     {
         var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
         WorkspaceSnapshot? createdSnapshot = null;
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
             {
@@ -380,7 +382,7 @@ public sealed class ShellViewModelTests
     {
         var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"], Services = ["postgres"] };
         WorkspaceSnapshot? createdSnapshot = null;
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
             {
@@ -420,7 +422,7 @@ public sealed class ShellViewModelTests
     {
         WorkspaceSnapshot? createdSnapshot = null;
         var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
             {
@@ -468,7 +470,7 @@ public sealed class ShellViewModelTests
                 Summary = "Provisioning failed. Retry provisioning after reviewing diagnostics.",
             });
         var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
             {
@@ -503,7 +505,7 @@ public sealed class ShellViewModelTests
     {
         WorkspaceSnapshot? createdSnapshot = null;
         var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             CreateWorkspaceAsyncFactory = (rootPath, definition, _, _) =>
             {
@@ -536,7 +538,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task OpenExistingRepository_ImportsSelectedDraftAndUpdatesSummary()
     {
-        var service = new FakeDesktopShellService([]);
+        var service = new FakeDesktopWorkspaceService([]);
         var interaction = new FakeWorkspaceInteractionService
         {
             ExistingRepositoryImportDraft = new ExistingRepositoryImportDraft
@@ -565,7 +567,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task OpenExistingRepository_CancelledDialog_DoesNotImport()
     {
-        var service = new FakeDesktopShellService([]);
+        var service = new FakeDesktopWorkspaceService([]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { ExistingRepositoryImportDraft = null });
 
@@ -579,7 +581,7 @@ public sealed class ShellViewModelTests
     public async Task SettingsPage_TerminalProfileSetupShowsResult()
     {
         var snapshot = CreateSnapshot("alpha");
-        var settings = CreateSettingsPage(new FakeDesktopShellService([snapshot])
+        var settings = CreateSettingsPage(new FakeDesktopWorkspaceService([snapshot])
         {
             WindowsTerminalProfileResult = new WindowsTerminalProfileOperationResult
             {
@@ -607,7 +609,7 @@ public sealed class ShellViewModelTests
     public async Task SettingsPage_TerminalProfileSetupShowsFailure()
     {
         var snapshot = CreateSnapshot("alpha");
-        var settings = CreateSettingsPage(new FakeDesktopShellService([snapshot])
+        var settings = CreateSettingsPage(new FakeDesktopWorkspaceService([snapshot])
         {
             WindowsTerminalProfileResult = new WindowsTerminalProfileOperationResult
             {
@@ -645,7 +647,7 @@ public sealed class ShellViewModelTests
     public async Task OracleStartCancellation_BlocksWorkflow()
     {
         var snapshot = CreateOracleSnapshot("oracle-start", oracleNoticeShown: false);
-        var service = new FakeDesktopShellService([snapshot]);
+        var service = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = false });
         await page.LoadAsync();
@@ -660,7 +662,7 @@ public sealed class ShellViewModelTests
     public async Task OracleStartAcknowledgement_AllowsWorkflow()
     {
         var snapshot = CreateOracleSnapshot("oracle-start", oracleNoticeShown: false);
-        var service = new FakeDesktopShellService([snapshot]);
+        var service = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = true });
         await page.LoadAsync();
@@ -675,7 +677,7 @@ public sealed class ShellViewModelTests
     public async Task OracleReprovisionCancellation_BlocksWorkflow()
     {
         var snapshot = CreateOracleSnapshot("oracle-reprovision", oracleNoticeShown: false);
-        var service = new FakeDesktopShellService([snapshot]);
+        var service = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = false });
         await page.LoadAsync();
@@ -690,7 +692,7 @@ public sealed class ShellViewModelTests
     public async Task OracleReprovisionAcknowledgement_AllowsWorkflow()
     {
         var snapshot = CreateOracleSnapshot("oracle-reprovision", oracleNoticeShown: false);
-        var service = new FakeDesktopShellService([snapshot]);
+        var service = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { OracleNoticeConfirmed = true });
         await page.LoadAsync();
@@ -704,7 +706,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task WorkspaceList_LoadsFromInjectedServiceModel()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
 
         await page.LoadAsync();
 
@@ -717,7 +719,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task SelectedWorkspace_UpdatesDetailPanel()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta") ]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta") ]));
         await page.LoadAsync();
 
         page.SelectedWorkspace = page.Workspaces.Last();
@@ -730,7 +732,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task SelectedWorkspace_DefaultsToMostRecentlyOpenedWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
         await page.LoadAsync();
 
         Assert.Equal("beta", page.DetailTitle);
@@ -740,7 +742,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task EmptyState_ShownWhenNoWorkspacesExist()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([]));
 
         await page.LoadAsync();
 
@@ -751,7 +753,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task MissingRuntimeState_DoesNotPreventDisplay()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha", includeRuntimeState: false)]));
 
         await page.LoadAsync();
 
@@ -777,7 +779,7 @@ public sealed class ShellViewModelTests
             ErrorMessage = "workspace.yaml missing",
         };
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")], [invalidItem]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")], [invalidItem]));
 
         await page.LoadAsync();
         page.SelectedWorkspace = page.Workspaces.Single(item => item.Name == "broken");
@@ -811,7 +813,7 @@ public sealed class ShellViewModelTests
             },
             ErrorMessage = "broken workspace",
         };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")], [invalidItem]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")], [invalidItem]));
 
         await page.LoadAsync();
 
@@ -830,7 +832,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var snapshots = new[] { CreateSnapshot("alpha"), CreateSnapshot("beta") };
-        var service = new FakeDesktopShellService(snapshots)
+        var service = new FakeDesktopWorkspaceService(snapshots)
         {
             LoadWorkspaceItemsAsyncFactory = async (_, progress, _) =>
             {
@@ -1006,7 +1008,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task AttachAction_IsEnabledForLoadedWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
         await page.LoadAsync();
 
         var attach = page.DetailAdvancedActions.Single(item => item.Label == "Attach Only");
@@ -1036,7 +1038,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
@@ -1074,7 +1076,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             page.SetInteractionService(new FakeWorkspaceInteractionService());
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
@@ -1113,7 +1115,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
 
@@ -1134,7 +1136,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             AttachResultFactoryAsync = async (_, _, cancellationToken) =>
             {
@@ -1158,7 +1160,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task AttachFailure_IsSurfacedInTranscript()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             AttachException = new InvalidOperationException("Windows Terminal launch failed."),
         });
@@ -1174,7 +1176,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task OpenWorkspace_UsesSingleOpenAction()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
 
         await page.LoadAsync();
@@ -1188,7 +1190,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task OpenWorkspaceFailure_IsSurfacedWithoutThrowing()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             OpenWorkspaceException = new InvalidOperationException("Runtime files need repair. Run Recover Workspace."),
         });
@@ -1208,7 +1210,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             OpenWorkspaceResultFactoryAsync = async (_, sink, cancellationToken) =>
             {
@@ -1250,7 +1252,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             page.SetInteractionService(new FakeWorkspaceInteractionService());
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
@@ -1287,7 +1289,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             page.SetInteractionService(new FakeWorkspaceInteractionService());
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
@@ -1309,7 +1311,7 @@ public sealed class ShellViewModelTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip") };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             BackupResultFactoryAsync = async (_, _, _, cancellationToken) =>
             {
@@ -1357,7 +1359,7 @@ public sealed class ShellViewModelTests
     public async Task BackupCancellation_StopsBeforeExport()
     {
         var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = null };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(interaction);
 
@@ -1374,7 +1376,7 @@ public sealed class ShellViewModelTests
     {
         var archivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip");
         var interaction = new FakeWorkspaceInteractionService { BackupArchivePath = archivePath };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         service.BackupResultFactoryAsync = (_, _, _, _) => Task.FromResult(new WorkspaceBackupResult
         {
             Snapshot = CreateSnapshot("alpha"),
@@ -1414,7 +1416,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task BackupFailure_IsSurfacedInTranscript()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             BackupException = new InvalidOperationException("Backup export failed."),
         });
@@ -1426,6 +1428,75 @@ public sealed class ShellViewModelTests
         Assert.Contains("Preparing backup...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Equal("Backup export failed.", page.DetailSummary);
         Assert.Contains("Backup export failed.", page.OperationLogText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BackupProductionPath_UsesWorkspaceApplicationServiceInsteadOfLegacyDesktopService()
+    {
+        var snapshot = WithWorkspaceId(CreateSnapshot("alpha"), "alpha");
+        var archivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+            BackupResult = new WorkspaceBackupResult
+            {
+                Snapshot = snapshot,
+                Message = "Backup created.",
+                Transcript = new OperationTranscript { OperationName = "backup_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Export = new WorkspaceBackupExportResult
+                {
+                    ArchivePath = archivePath,
+                    FileCount = 3,
+                    ArchiveSizeBytes = 1536,
+                    IncludedEntries = [],
+                    ExcludedEntries = [],
+                    Warnings = [],
+                },
+                Manifest = new WorkspaceBackupManifestResult
+                {
+                    ManifestPath = Path.Combine(Path.GetTempPath(), "backup-manifest.yaml"),
+                    ArchiveEntryPath = "backup-manifest.yaml",
+                    IncludedFileCount = 3,
+                    ExcludedFileCount = 0,
+                    WarningCount = 0,
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { BackupArchivePath = archivePath });
+
+        await page.LoadAsync();
+        await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync();
+
+        Assert.Equal(1, application.BackupCallCount);
+        Assert.Same(snapshot, application.LastBackupWorkspace);
+        Assert.Equal(archivePath, application.LastBackupDestinationPath);
+        Assert.Equal(0, legacy.BackupCallCount);
+        Assert.Contains(page.DetailItems, item => item.Label == "Archive" && item.Value == archivePath);
+        Assert.Equal("Backup created.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task BackupProductionPath_SurfacesWorkspaceApplicationFailureWithoutCallingLegacyDesktopService()
+    {
+        var snapshot = WithWorkspaceId(CreateSnapshot("alpha"), "alpha");
+        var archivePath = Path.Combine(Path.GetTempPath(), $"backup-{Guid.NewGuid():N}.zip");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+            BackupException = new InvalidOperationException("Backup export failed."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService { BackupArchivePath = archivePath });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Backup").Command).ExecuteAsync());
+
+        Assert.Equal(1, application.BackupCallCount);
+        Assert.Equal(0, legacy.BackupCallCount);
+        Assert.Equal("Backup export failed.", page.DetailSummary);
     }
 
     [Fact]
@@ -1449,7 +1520,7 @@ public sealed class ShellViewModelTests
                 },
             };
 
-            var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [recordOnlyItem]));
+            var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [recordOnlyItem]));
             page.SetInteractionService(new FakeWorkspaceInteractionService());
             await page.LoadAsync();
             page.SelectedWorkspace = page.Workspaces.Single(item => item.RootPath == workspaceRoot);
@@ -1468,6 +1539,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task PublishBlockedByDirtyWork_ShowsSavePointRequirement()
     {
+        var snapshot = CreateSnapshot("alpha");
         var assessment = new WorkspacePublishAssessment
         {
             WorkspaceName = "alpha",
@@ -1486,15 +1558,24 @@ public sealed class ShellViewModelTests
             AheadCount = 1,
             BehindCount = 0,
         };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
+            PublishAssessment = new WorkspacePublishAssessment { WorkspaceName = "legacy", CurrentBranch = "legacy", Summary = "legacy", ConfirmationMessage = string.Empty, Findings = [], Warnings = [], CanPublish = false, IsBlocked = true, RequiresConfirmation = false, RequiresSavePoint = false, HasRemoteConfigured = false, RemoteName = string.Empty, RemoteBranch = string.Empty, AheadCount = 0, BehindCount = 0 },
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             PublishAssessment = assessment,
-        });
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync();
 
+        Assert.Equal(1, application.PublishAssessmentCallCount);
+        Assert.Equal(0, application.PublishCallCount);
+        Assert.Equal(0, legacy.PublishCallCount);
         Assert.Contains("Preparing publish...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("Create a Save Point before publishing", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains(page.DetailItems, item => item.Label == "Findings" && item.Value.Contains("1 changed, 2 untracked", StringComparison.Ordinal));
@@ -1503,6 +1584,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task PublishCancellation_StopsBeforeExecution()
     {
+        var snapshot = CreateSnapshot("alpha");
         var assessment = new WorkspacePublishAssessment
         {
             WorkspaceName = "alpha",
@@ -1521,11 +1603,16 @@ public sealed class ShellViewModelTests
             AheadCount = 1,
             BehindCount = 0,
         };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
+            PublishAssessment = new WorkspacePublishAssessment { WorkspaceName = "legacy", CurrentBranch = "legacy", Summary = "legacy", ConfirmationMessage = string.Empty, Findings = [], Warnings = [], CanPublish = false, IsBlocked = true, RequiresConfirmation = false, RequiresSavePoint = false, HasRemoteConfigured = false, RemoteName = string.Empty, RemoteBranch = string.Empty, AheadCount = 0, BehindCount = 0 },
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             PublishAssessment = assessment,
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = false });
 
         await page.LoadAsync();
@@ -1533,7 +1620,9 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("Cancelled.", page.OperationLogText, StringComparison.Ordinal);
         Assert.Equal("Publish cancelled.", page.DetailSummary);
-        Assert.Equal(0, service.PublishCallCount);
+        Assert.Equal(1, application.PublishAssessmentCallCount);
+        Assert.Equal(0, application.PublishCallCount);
+        Assert.Equal(0, legacy.PublishCallCount);
     }
 
     [Fact]
@@ -1558,10 +1647,15 @@ public sealed class ShellViewModelTests
             AheadCount = 1,
             BehindCount = 0,
         };
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
+            PublishAssessment = new WorkspacePublishAssessment { WorkspaceName = "legacy", CurrentBranch = "legacy", Summary = "legacy", ConfirmationMessage = string.Empty, Findings = [], Warnings = [], CanPublish = false, IsBlocked = true, RequiresConfirmation = false, RequiresSavePoint = false, HasRemoteConfigured = false, RemoteName = string.Empty, RemoteBranch = string.Empty, AheadCount = 0, BehindCount = 0 },
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             PublishAssessment = assessment,
-            PublishResultFactoryAsync = (_, _, cancellationToken) => Task.FromResult(new WorkspacePublishResult
+            PublishResult = new WorkspacePublishResult
             {
                 Snapshot = snapshot,
                 Message = "Working Copy published successfully.",
@@ -1577,23 +1671,27 @@ public sealed class ShellViewModelTests
                     BehindCount = 0,
                     LatestCommitSha = "abc123",
                 },
-            }),
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = true });
 
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync();
 
+        Assert.Equal(1, application.PublishAssessmentCallCount);
+        Assert.Equal(1, application.PublishCallCount);
+        Assert.Same(snapshot, application.LastPublishedWorkspace);
+        Assert.Equal(0, legacy.PublishCallCount);
         Assert.Contains(page.DetailItems, item => item.Label == "Remote" && item.Value == "origin");
         Assert.Contains(page.DetailItems, item => item.Label == "Tracking" && item.Value == "origin/workspace/users/alpha");
         Assert.Contains(page.DetailItems, item => item.Label == "Latest commit" && item.Value == "abc123");
-        Assert.Equal(1, service.PublishCallCount);
     }
 
     [Fact]
     public async Task PublishFailure_IsSurfacedInTranscript()
     {
+        var snapshot = CreateSnapshot("alpha");
         var assessment = new WorkspacePublishAssessment
         {
             WorkspaceName = "alpha",
@@ -1612,16 +1710,25 @@ public sealed class ShellViewModelTests
             AheadCount = 1,
             BehindCount = 0,
         };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
+            PublishAssessment = new WorkspacePublishAssessment { WorkspaceName = "legacy", CurrentBranch = "legacy", Summary = "legacy", ConfirmationMessage = string.Empty, Findings = [], Warnings = [], CanPublish = false, IsBlocked = true, RequiresConfirmation = false, RequiresSavePoint = false, HasRemoteConfigured = false, RemoteName = string.Empty, RemoteBranch = string.Empty, AheadCount = 0, BehindCount = 0 },
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             PublishAssessment = assessment,
             PublishException = new InvalidOperationException("Authentication failed while publishing."),
-        });
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService { PublishConfirmed = true });
 
         await page.LoadAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Publish").Command).ExecuteAsync());
 
+        Assert.Equal(1, application.PublishAssessmentCallCount);
+        Assert.Equal(1, application.PublishCallCount);
+        Assert.Equal(0, legacy.PublishCallCount);
         Assert.Contains("Preparing publish...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Equal("Authentication failed while publishing.", page.DetailSummary);
         Assert.Contains("Authentication failed while publishing.", page.OperationLogText, StringComparison.Ordinal);
@@ -1630,7 +1737,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RemoveAction_IsEnabledForSelectedWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -1643,7 +1750,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RemoveCancellation_DoesNotRemoveWorkspace()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = false });
 
@@ -1675,8 +1782,11 @@ public sealed class ShellViewModelTests
     {
         var first = CreateSnapshot("alpha");
         var second = CreateSnapshot("beta");
-        var service = new FakeDesktopShellService([first, second]);
-        service.RemoveResultFactoryAsync = (_, _, _) => Task.FromResult(new WorkspaceRemovalOperationResult
+        var legacy = new FakeDesktopWorkspaceService([first, second]);
+        var application = new FakeDesktopWorkspaceApplicationService(first)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = first.Record, Snapshot = first }, new WorkspaceShellItem { Record = second.Record, Snapshot = second }],
+            RemoveResult = new WorkspaceRemovalOperationResult
         {
             Message = "Removed 'alpha' from the workspace list.",
             Transcript = new OperationTranscript(),
@@ -1689,8 +1799,9 @@ public sealed class ShellViewModelTests
                 Succeeded = true,
                 FailureReason = string.Empty,
             },
-        });
-        var page = new WorkspacesPageViewModel(service);
+        },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
 
         await page.LoadAsync();
@@ -1699,17 +1810,23 @@ public sealed class ShellViewModelTests
 
         Assert.Single(page.Workspaces);
         Assert.Equal("beta", page.SelectedWorkspace?.Name);
-        Assert.Equal(1, service.RemoveCallCount);
+        Assert.Equal(1, application.RemoveCallCount);
+        Assert.Equal(0, legacy.RemoveCallCount);
+        Assert.Equal(WorkspaceRemovalChoice.RegistrationOnly, application.LastRemoveChoice);
         Assert.Equal("Removed 'alpha' from the workspace list.", page.DetailSummary);
     }
 
     [Fact]
     public async Task RemoveDockerResourcesFailure_IsSurfacedWithoutCrashing()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             RemoveException = new InvalidOperationException("Docker cleanup failed because Docker is unavailable."),
-        });
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService
         {
             RemoveConfirmed = true,
@@ -1719,6 +1836,9 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
+        Assert.Equal(1, application.RemoveCallCount);
+        Assert.Equal(WorkspaceRemovalChoice.DockerResources, application.LastRemoveChoice);
+        Assert.Equal(0, legacy.RemoveCallCount);
         Assert.Contains("Preparing removal...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("Docker cleanup failed because Docker is unavailable.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
@@ -1727,15 +1847,22 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RemoveFailure_IsSurfacedClearlyWithoutThrowing()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
             RemoveException = new InvalidOperationException("Workspace root path is required before removal can run."),
-        });
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true });
 
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
+        Assert.Equal(1, application.RemoveCallCount);
+        Assert.Equal(0, legacy.RemoveCallCount);
+        Assert.Single(page.Workspaces);
         Assert.Contains("Preparing removal...", page.OperationLogText, StringComparison.Ordinal);
         Assert.Contains("Workspace root path is required", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
@@ -1744,8 +1871,13 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RemoveDialogFailure_IsSurfacedClearlyWithoutThrowing()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
-        var page = new WorkspacesPageViewModel(service);
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService
         {
             RemoveDialogException = new InvalidOperationException("Remove dialog failed to open."),
@@ -1754,7 +1886,8 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
-        Assert.Equal(0, service.RemoveCallCount);
+        Assert.Equal(0, application.RemoveCallCount);
+        Assert.Equal(0, legacy.RemoveCallCount);
         Assert.Contains("Remove dialog failed to open.", page.DetailSummary, StringComparison.Ordinal);
         Assert.Contains("Failed.", page.OperationLogText, StringComparison.Ordinal);
     }
@@ -1762,8 +1895,13 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RemoveUnsupportedDeleteChoice_IsRejectedBeforeRemovalStarts()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
-        var page = new WorkspacesPageViewModel(service);
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
         page.SetInteractionService(new FakeWorkspaceInteractionService
         {
             RemoveConfirmed = true,
@@ -1773,7 +1911,8 @@ public sealed class ShellViewModelTests
         await page.LoadAsync();
         await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
-        Assert.Equal(0, service.RemoveCallCount);
+        Assert.Equal(0, application.RemoveCallCount);
+        Assert.Equal(0, legacy.RemoveCallCount);
         Assert.Contains("Delete workspace files is not available in this version", page.DetailSummary, StringComparison.Ordinal);
         Assert.DoesNotContain("Removing workspace from list...", page.OperationLogText, StringComparison.Ordinal);
     }
@@ -1800,8 +1939,26 @@ public sealed class ShellViewModelTests
                 ErrorMessage = "workspace.yaml missing",
             };
 
-            var service = new FakeDesktopShellService([], [recordOnlyItem]);
-            var page = new WorkspacesPageViewModel(service);
+            var legacy = new FakeDesktopWorkspaceService([], [recordOnlyItem]);
+            var application = new FakeDesktopWorkspaceApplicationService(CreateSnapshot("alpha"))
+            {
+                LoadResultItems = [recordOnlyItem],
+                RemoveResult = new WorkspaceRemovalOperationResult
+                {
+                    Message = "Removed 'rc-first-workspace' from the workspace list.",
+                    Transcript = new OperationTranscript(),
+                    Removal = new WorkspaceRemovalResult
+                    {
+                        WorkspaceName = "rc-first-workspace",
+                        WorkspaceRoot = workspaceRoot,
+                        FilesDeleted = false,
+                        Warnings = [],
+                        Succeeded = true,
+                        FailureReason = string.Empty,
+                    },
+                },
+            };
+            var page = new WorkspacesPageViewModel(application, legacy);
             page.SetInteractionService(new FakeWorkspaceInteractionService { RemoveConfirmed = true, RemoveChoice = WorkspaceRemovalChoice.RegistrationOnly });
 
             await page.LoadAsync();
@@ -1810,7 +1967,7 @@ public sealed class ShellViewModelTests
 
             await ((AsyncRelayCommand)page.DetailActions.Single(item => item.Label == "Remove").Command).ExecuteAsync();
 
-            Assert.Equal(workspaceRoot, service.LastRemoveRootPath);
+            Assert.Equal(workspaceRoot, application.LastRemoveRootPath);
         }
         finally
         {
@@ -1824,7 +1981,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task CheckpointCancellation_DoesNotCreateCheckpoint()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService { CheckpointConfirmed = false });
 
@@ -1839,7 +1996,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task CheckpointFailure_IsSurfacedInTranscript()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             CheckpointException = new InvalidOperationException("Checkpoint review required."),
         });
@@ -1856,7 +2013,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task CheckpointSuccess_ShowsCheckpointSummary()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
@@ -1871,7 +2028,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task OpenWorkspace_DelegatesToUnifiedOpenFlow()
     {
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
@@ -1889,7 +2046,7 @@ public sealed class ShellViewModelTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var interaction = new FakeWorkspaceInteractionService();
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             SavePointResultFactoryAsync = async (_, _, _, cancellationToken) =>
             {
@@ -1915,7 +2072,7 @@ public sealed class ShellViewModelTests
     public async Task SavePointCancellation_StopsBeforeSave()
     {
         var interaction = new FakeWorkspaceInteractionService { SavePointDraft = null };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(interaction);
 
@@ -1931,7 +2088,7 @@ public sealed class ShellViewModelTests
     public async Task SavePointConfirmation_PassesDialogMessageToDesktopShellService()
     {
         var interaction = new FakeWorkspaceInteractionService { SavePointDraft = new SavePointDraft { Message = "Edited Save Point message" } };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(interaction);
 
@@ -1946,7 +2103,7 @@ public sealed class ShellViewModelTests
     public async Task SavePointSuccess_ReenablesSavePointActionAfterCompletion()
     {
         var interaction = new FakeWorkspaceInteractionService { SavePointDraft = new SavePointDraft { Message = "Edited Save Point message" } };
-        var service = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var service = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(service);
         page.SetInteractionService(interaction);
 
@@ -1962,7 +2119,7 @@ public sealed class ShellViewModelTests
     public async Task TimelineRefreshes_AfterSavePointSuccess()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             TimelineByPath =
             {
@@ -2017,7 +2174,7 @@ public sealed class ShellViewModelTests
     public async Task TimelineEntrySelection_ShowsDetailsAndCopyActions()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             TimelineByPath =
             {
@@ -2059,7 +2216,7 @@ public sealed class ShellViewModelTests
     public async Task TimelineCopyFailure_IsSurfacedWithoutThrowing()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             TimelineByPath =
             {
@@ -2096,7 +2253,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateSnapshot("alpha");
         File.WriteAllText(snapshot.Paths.TimelinePath, "events: []\n");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             TimelineByPath =
             {
@@ -2116,7 +2273,7 @@ public sealed class ShellViewModelTests
     public async Task TimelinePage_ShowsActionableDiagnostics_WhenTimelineLoadFails()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             TimelineException = new InvalidOperationException("timeline.yaml is corrupt"),
         };
@@ -2132,7 +2289,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task SavePointFailure_IsSurfacedInTranscript()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             SavePointException = new InvalidOperationException("Save Point validation failed."),
         });
@@ -2149,7 +2306,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ReprovisionAction_VisibleForSelectedWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
 
@@ -2162,7 +2319,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Reprovision_EnabledWhenWorkspaceCanBeReprovisioned()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
 
@@ -2181,7 +2338,7 @@ public sealed class ShellViewModelTests
             CreatedUtc = DateTimeOffset.UtcNow,
             LastOpenedUtc = DateTimeOffset.UtcNow,
         };
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([], [new WorkspaceShellItem { Record = invalidRecord, ErrorMessage = "workspace.yaml missing" }]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([], [new WorkspaceShellItem { Record = invalidRecord, ErrorMessage = "workspace.yaml missing" }]));
 
         await page.LoadAsync();
 
@@ -2193,7 +2350,7 @@ public sealed class ShellViewModelTests
     {
         var original = CreateSnapshot("alpha", includeRuntimeState: false, lastOperationResult: "Workspace provisioning failed. Exit code: 127. /workspace/.env: line 17...", lastOperationSucceeded: false);
         var refreshed = CreateSnapshot("alpha", includeRuntimeState: true, updateRequired: false, lastOperationResult: "Workspace reprovisioned successfully.");
-        var desktop = new FakeDesktopShellService([original])
+        var desktop = new FakeDesktopWorkspaceService([original])
         {
             ReprovisionResultFactory = (_, _) => new WorkspaceReprovisionResult { Snapshot = refreshed, Succeeded = true, Message = "Workspace reprovisioned successfully." },
         };
@@ -2214,7 +2371,7 @@ public sealed class ShellViewModelTests
         var previousFailure = "Workspace provisioning failed. Exit code: 127. /workspace/.env: line 17: $'Analiza\\r': command not found";
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationResult: previousFailure, lastOperationSucceeded: false)])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha", lastOperationResult: previousFailure, lastOperationSucceeded: false)])
         {
             ReprovisionResultFactoryAsync = async (_, sink, _) =>
             {
@@ -2249,7 +2406,7 @@ public sealed class ShellViewModelTests
     public async Task WorkspaceRows_AppearImmediatelyWhileDetailsContinueLoading()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             LoadWorkspaceItemsAsyncFactory = async (_, progress, cancellationToken) =>
             {
@@ -2288,7 +2445,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var alpha = CreateSnapshot("alpha");
-        var service = new FakeDesktopShellService([])
+        var service = new FakeDesktopWorkspaceService([])
         {
             LoadWorkspaceItemsAsyncFactory = async (_, progress, cancellationToken) =>
             {
@@ -2321,7 +2478,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactoryAsync = async (_, _, cancellationToken) =>
             {
@@ -2359,7 +2516,7 @@ public sealed class ShellViewModelTests
                     CreateServiceHealthSnapshot("apex", "Oracle APEX", WorkspaceHealthStatus.Attention, "Oracle APEX is not available yet."),
                 ]));
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -2402,7 +2559,7 @@ public sealed class ShellViewModelTests
                 new WorkspaceAttentionItem { Key = "oracle-apex", Label = "Oracle APEX", Scope = WorkspaceAttentionScope.Capability, Severity = WorkspaceAttentionSeverity.Attention, Summary = "Oracle APEX is not available yet.", RecommendedActionLabel = "Investigate Oracle APEX" },
             ],
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -2458,7 +2615,7 @@ public sealed class ShellViewModelTests
                 new WorkspaceAttentionItem { Key = "development-environment", Label = "Development Environment", Scope = WorkspaceAttentionScope.DevelopmentEnvironment, Severity = WorkspaceAttentionSeverity.Attention, Summary = "Development environment needs attention: OpenCode CLI, screen.", RecommendedActionLabel = "Inspect Development Environment" },
             ],
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -2486,7 +2643,7 @@ public sealed class ShellViewModelTests
                     new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
                 ],
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -2498,7 +2655,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ReadyWorkspace_ShowsAvailableServicesAndHidesRebuildRuntime()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
 
@@ -2536,7 +2693,7 @@ public sealed class ShellViewModelTests
             Readiness = baseSnapshot.Readiness,
             AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -2572,7 +2729,7 @@ public sealed class ShellViewModelTests
             Readiness = baseSnapshot.Readiness,
             AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -2582,27 +2739,357 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OracleApexWorkspace_DiscoveryUsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexDiscoveryResultFactoryAsync = (_, _, _, _, _, _, _) => throw new InvalidOperationException("legacy Oracle APEX discovery should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexDiscoveryResult = new OracleApexApplicationDiscoveryResult
+            {
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+                Applications =
+                [
+                    new OracleApexApplicationInfo { ApplicationId = 100, ApplicationName = "Reports", Alias = "reports" },
+                    new OracleApexApplicationInfo { ApplicationId = 101, ApplicationName = "Admin", Alias = "admin" },
+                ],
+                Summary = "Found 2 Oracle APEX application(s) in workspace 'TEST'.",
+            },
+        };
+        var interaction = new FakeWorkspaceInteractionService
+        {
+            ConnectOracleApexApplicationDraft = null,
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ConnectExistingOracleApexApplicationAsync");
+
+        Assert.Equal(1, application.OracleApexDiscoveryCallCount);
+        Assert.Same(snapshot, application.LastOracleApexDiscoveryWorkspace);
+        Assert.Equal(0, legacy.ConnectOracleApexApplicationCallCount);
+        Assert.NotNull(interaction.LastOracleApexDiscoveryResult);
+        Assert.Equal(100, interaction.LastOracleApexDiscoveryResult!.Applications[0].ApplicationId);
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_DiscoveryFailureClearsBusyState_WithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexDiscoveryResultFactoryAsync = (_, _, _, _, _, _, _) => throw new InvalidOperationException("legacy Oracle APEX discovery should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexDiscoveryException = new InvalidOperationException("Oracle APEX discovery failed."),
+        };
+        var interaction = new FakeWorkspaceInteractionService { ConnectOracleApexApplicationDraft = null };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "ConnectExistingOracleApexApplicationAsync"));
+
+        Assert.False(page.IsBusyForWorkspaceActions);
+        Assert.Equal(1, application.OracleApexDiscoveryCallCount);
+        Assert.Equal(0, legacy.ConnectOracleApexApplicationCallCount);
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_ConnectExistingApplicationUsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.Unknown);
+        var connected = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ConnectOracleApexApplicationResultFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy Oracle APEX connect should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ConnectOracleApexApplicationResult = new WorkspaceOperationResult
+            {
+                Snapshot = connected,
+                Message = "Connected Oracle APEX application 'Reports' (100) for environment 'dev', exported it to 'src/apex', and validated the exported source.",
+                Transcript = new OperationTranscript { OperationName = "connect_existing_oracle_apex_application", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var interaction = new FakeWorkspaceInteractionService
+        {
+            ConnectOracleApexApplicationDraft = new ConnectOracleApexApplicationDraft
+            {
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+                ApplicationId = 100,
+                ApplicationName = "Reports",
+                Alias = "reports",
+            },
+            InvokeConnectOracleApexDiscovery = false,
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ConnectExistingOracleApexApplicationAsync");
+
+        Assert.Equal(1, application.ConnectOracleApexApplicationCallCount);
+        Assert.Same(snapshot, application.LastConnectOracleApexApplicationWorkspace);
+        Assert.Equal(100, application.LastConnectOracleApexApplicationDraft?.ApplicationId);
+        Assert.Equal("Reports", application.LastConnectOracleApexApplicationDraft?.ApplicationName);
+        Assert.Equal(0, legacy.ConnectOracleApexApplicationCallCount);
+        Assert.Equal(connected.Definition.Oracle.Apex.Environments["dev"].ApplicationId, page.SelectedWorkspace?.Snapshot?.Definition.Oracle.Apex.Environments["dev"].ApplicationId);
+    }
+
+    [Fact]
+    public async Task OracleApexWorkspace_ConnectExistingApplicationStaleSelectionIsSurfaced_WithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.Unknown);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ConnectOracleApexApplicationResultFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy Oracle APEX connect should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ConnectOracleApexApplicationException = new InvalidOperationException("Oracle APEX application '999' was not found in workspace 'TEST'."),
+        };
+        var interaction = new FakeWorkspaceInteractionService
+        {
+            ConnectOracleApexApplicationDraft = new ConnectOracleApexApplicationDraft
+            {
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+                ApplicationId = 999,
+                ApplicationName = "Missing",
+            },
+            InvokeConnectOracleApexDiscovery = false,
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ConnectExistingOracleApexApplicationAsync");
+
+        Assert.Equal(1, application.ConnectOracleApexApplicationCallCount);
+        Assert.Equal(0, legacy.ConnectOracleApexApplicationCallCount);
+        Assert.Equal(999, application.LastConnectOracleApexApplicationDraft?.ApplicationId);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+        Assert.Contains("999", page.DetailSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InteractiveSessions_AreLoadedForSelectedWorkspace_ThroughApplicationService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+        };
+        var interactive = new FakeDesktopInteractiveSessionApplicationService
+        {
+            SessionsResult =
+            [
+                new InteractiveAgentSessionRecord
+                {
+                    InteractiveAgentSessionId = "interactive-alpha-1",
+                    WorkspaceId = snapshot.Definition.Workspace.Id,
+                    WorkspaceInstanceId = $"workspace-{snapshot.Definition.Workspace.Id}",
+                    Title = "OpenCode session - alpha",
+                    Status = InteractiveAgentSessionStatus.Detached,
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    UpdatedUtc = DateTimeOffset.UtcNow,
+                    LastActivityUtc = DateTimeOffset.UtcNow,
+                },
+            ],
+        };
+        var page = new WorkspacesPageViewModel(application, new FakeDesktopPlatformService(), interactive);
+
+        await page.LoadAsync();
+        page.SelectedWorkspace = page.Workspaces[0];
+        await InvokePrivateAsync(page, "RefreshInteractiveSessionsAsync");
+
+        Assert.True(interactive.LoadSessionsCallCount >= 1);
+        Assert.Equal("alpha", interactive.LastWorkspaceId);
+        Assert.Single(page.InteractiveSessions);
+        Assert.Equal("interactive-alpha-1", page.InteractiveSessions[0].InteractiveAgentSessionId);
+    }
+
+    [Fact]
+    public async Task InteractiveSessionCreation_UsesApplicationService_AndUpdatesUi()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var created = new InteractiveAgentSessionRecord
+        {
+            InteractiveAgentSessionId = "interactive-alpha-created",
+            WorkspaceId = snapshot.Definition.Workspace.Id,
+            WorkspaceInstanceId = $"workspace-{snapshot.Definition.Workspace.Id}",
+            Title = $"OpenCode session - {snapshot.Definition.Workspace.Name}",
+            Status = InteractiveAgentSessionStatus.Detached,
+            CreatedUtc = DateTimeOffset.UtcNow,
+            UpdatedUtc = DateTimeOffset.UtcNow,
+            LastActivityUtc = DateTimeOffset.UtcNow,
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+        };
+        var interactive = new FakeDesktopInteractiveSessionApplicationService
+        {
+            CreatedSessionResult = created,
+            SessionsResult = [created],
+        };
+        var page = new WorkspacesPageViewModel(application, new FakeDesktopPlatformService(), interactive);
+
+        await page.LoadAsync();
+        page.SelectedWorkspace = page.Workspaces[0];
+        await InvokePrivateAsync(page, "CreateInteractiveSessionAsync");
+
+        Assert.Equal(1, interactive.CreateSessionCallCount);
+        Assert.Same(snapshot, interactive.LastWorkspace);
+        Assert.True(interactive.LoadSessionsCallCount >= 1);
+        Assert.Single(page.InteractiveSessions);
+        Assert.Equal("interactive-alpha-created", page.SelectedInteractiveSession?.InteractiveAgentSessionId);
+    }
+
+    [Fact]
+    public async Task InteractiveSessionAttach_UsesInteractiveService_AndLauncherDescriptor()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var session = new InteractiveAgentSessionRecord
+        {
+            InteractiveAgentSessionId = "interactive-alpha-1",
+            WorkspaceId = snapshot.Definition.Workspace.Id,
+            WorkspaceInstanceId = $"workspace-{snapshot.Definition.Workspace.Id}",
+            Title = "OpenCode session - alpha",
+            Status = InteractiveAgentSessionStatus.Detached,
+            CreatedUtc = DateTimeOffset.UtcNow,
+            UpdatedUtc = DateTimeOffset.UtcNow,
+            LastActivityUtc = DateTimeOffset.UtcNow,
+        };
+        var attachedSession = session with
+        {
+            Status = InteractiveAgentSessionStatus.Attached,
+            ActiveAttachmentId = "attachment-1",
+            ActiveLease = new InteractiveAttachmentLease
+            {
+                InteractiveAgentSessionId = session.InteractiveAgentSessionId,
+                AttachmentId = "attachment-1",
+                HolderKind = "WindowsTerminal",
+                HolderClientInstanceId = "client-1",
+                AcquiredUtc = DateTimeOffset.UtcNow,
+                LeaseExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(1),
+                LastHeartbeatUtc = DateTimeOffset.UtcNow,
+                Version = 1,
+            },
+        };
+        var interactive = new FakeDesktopInteractiveSessionApplicationService
+        {
+            SessionsResult = [session],
+            AttachResult = new InteractiveSessionAttachResult
+            {
+                Session = attachedSession,
+                Attachment = new InteractiveSessionAttachmentRecord
+                {
+                    AttachmentId = "attachment-1",
+                    InteractiveAgentSessionId = session.InteractiveAgentSessionId,
+                    Kind = InteractiveAttachmentKind.WindowsTerminal,
+                    Status = InteractiveAttachmentStatus.Active,
+                    ClientInstanceId = "client-1",
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                    AttachedUtc = DateTimeOffset.UtcNow,
+                    LastActivityUtc = DateTimeOffset.UtcNow,
+                    LastHeartbeatUtc = DateTimeOffset.UtcNow,
+                    LeaseExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(1),
+                    LeaseVersion = 1,
+                },
+                LaunchDescriptor = new ApprovedTerminalLaunchDescriptor { FileName = "wt.exe", LaunchKind = "windows-terminal" },
+            },
+        };
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceApplicationService(snapshot), new FakeDesktopPlatformService(), interactive);
+
+        await page.LoadAsync();
+        page.SelectedWorkspace = page.Workspaces[0];
+        await InvokePrivateAsync(page, "RefreshInteractiveSessionsAsync");
+        page.SelectedInteractiveSession = page.InteractiveSessions[0];
+        await page.AttachInteractiveSessionCommand.ExecuteAsync();
+
+        Assert.Equal(1, interactive.AttachCallCount);
+        Assert.Equal("interactive-alpha-1", interactive.LastSessionId);
+        Assert.Equal("wt.exe", interactive.LastLaunchDescriptor?.FileName);
+    }
+
+    [Fact]
+    public async Task OpenWorkspaceFolder_UsesDesktopPlatformService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var platform = new FakeDesktopPlatformService();
+        var page = new WorkspacesPageViewModel(application, platform);
+
+        await page.LoadAsync();
+        await page.OpenWorkspaceFolderCommand.ExecuteAsync();
+
+        Assert.Equal(1, platform.OpenPathCallCount);
+        Assert.Equal(snapshot.Paths.RootPath, platform.LastOpenedPath);
+    }
+
+    [Fact]
     public async Task OracleApexWorkspace_BuildsAssistantPlanForReview()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
                 Response = new OracleApexAssistantPlanResponse
                 {
-                    Request = request,
-                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" },
+                    Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" },
                     Review = "Summary: Create Reports page\nClassification: Additive",
                     Classification = OracleApexPlanClassification.Additive,
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                 },
-            })
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Validation failed.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics = [new OracleApexCompilerDiagnostic { Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing required property 'alias'.", FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5 }],
+                        Mappings = [new OracleApexDiagnosticMapping { Diagnostic = new OracleApexCompilerDiagnostic { Message = "Missing required property 'alias'." }, WorkspaceIdentifier = "Reports", WorkspaceSemanticType = "page", PlannedOperationTitle = "Create page 'Reports'", BlueprintModule = "Reporting", BlueprintEntity = "Report" }],
+                    },
+                    RepairReview = "Repair review",
+                    SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair" },
+                    Stage = OracleApexAssistantStage.SqlclValidation,
+                },
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2617,26 +3104,27 @@ public sealed class ShellViewModelTests
     public async Task OracleApexWorkspace_BlocksAssistantExecutionWhenQuestionsRemain()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
                 Response = new OracleApexAssistantPlanResponse
                 {
-                    Request = request,
-                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Request = new OracleApexAssistantRequest { Prompt = "Add navigation entry" },
+                    Plan = new OracleApexEditPlan { Intent = "Add navigation entry", EnvironmentName = "dev", SourcePath = "src/apex" },
                     Review = "Questions remain",
                     Classification = OracleApexPlanClassification.PotentiallyConflicting,
                     UnresolvedQuestions = ["Choose a navigation menu."],
                     ConfirmationRequired = true,
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                 },
-            })
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Add navigation entry";
@@ -2649,27 +3137,31 @@ public sealed class ShellViewModelTests
     public async Task OracleApexWorkspace_ShowsAssistantRollbackDiagnostics()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
                 Response = new OracleApexAssistantPlanResponse
                 {
-                    Request = request,
-                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" },
+                    Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" },
                     Review = "Review",
                     Classification = OracleApexPlanClassification.Additive,
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                 },
-            }),
-            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "Rolled back after validation failure.",
                 Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
                 Response = new OracleApexAssistantExecutionResponse
                 {
                     IsSuccess = false,
@@ -2677,9 +3169,9 @@ public sealed class ShellViewModelTests
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                     Diagnostics = new OracleApexSemanticEditDiagnostics { Entries = [new OracleApexWorkspaceIndexDiagnostic { Message = "Region type is missing.", Severity = "Error", Code = "missing-required-property" }] },
                 },
-            })
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2713,31 +3205,35 @@ public sealed class ShellViewModelTests
             Readiness = snapshot.Readiness,
             AvailableServices = snapshot.AvailableServices,
         };
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
                 Response = new OracleApexAssistantPlanResponse
                 {
-                    Request = request,
-                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" },
+                    Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" },
                     Review = "Review",
                     Classification = OracleApexPlanClassification.Additive,
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                 },
-            }),
-            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
             {
                 Snapshot = completed,
                 Message = "Applied, validated, and imported.",
                 Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
                 Response = new OracleApexAssistantExecutionResponse { IsSuccess = true, Summary = "Applied, validated, and imported.", WorkspaceIndex = new OracleApexWorkspaceIndex() },
-            })
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2753,27 +3249,31 @@ public sealed class ShellViewModelTests
     public async Task OracleApexWorkspace_ShowsCompilerDiagnosticsAndRepairReview()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
                 Response = new OracleApexAssistantPlanResponse
                 {
-                    Request = request,
-                    Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" },
+                    Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" },
+                    Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" },
                     Review = "Review",
                     Classification = OracleApexPlanClassification.Additive,
                     WorkspaceIndex = new OracleApexWorkspaceIndex(),
                 },
-            }),
-            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "Validation failed.",
                 Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
                 Response = new OracleApexAssistantExecutionResponse
                 {
                     IsSuccess = true,
@@ -2788,9 +3288,9 @@ public sealed class ShellViewModelTests
                     SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair" },
                     Stage = OracleApexAssistantStage.SqlclValidation,
                 },
-            })
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2807,15 +3307,8 @@ public sealed class ShellViewModelTests
     public async Task OracleApexWorkspace_OpensDiagnosticSourceFromCompilerDiagnostics()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
-            {
-                Snapshot = currentSnapshot!,
-                Message = "plan ready",
-                Transcript = new OperationTranscript(),
-                Response = new OracleApexAssistantPlanResponse { Request = request, Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
-            }),
             OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
             {
                 Snapshot = currentSnapshot!,
@@ -2824,7 +3317,27 @@ public sealed class ShellViewModelTests
                 Response = new OracleApexAssistantExecutionResponse { IsSuccess = true, Summary = "Validation failed.", WorkspaceIndex = new OracleApexWorkspaceIndex(), CompilerValidation = new OracleApexValidationResult { Diagnostics = [new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5, Message = "Broken" }], Mappings = [new OracleApexDiagnosticMapping { Diagnostic = new OracleApexCompilerDiagnostic { Message = "Broken" } }] }, Stage = OracleApexAssistantStage.SqlclValidation },
             })
         };
-        var page = new WorkspacesPageViewModel(service);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse { IsSuccess = true, Summary = "Validation failed.", WorkspaceIndex = new OracleApexWorkspaceIndex(), CompilerValidation = new OracleApexValidationResult { Diagnostics = [new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5, Message = "Broken" }], Mappings = [new OracleApexDiagnosticMapping { Diagnostic = new OracleApexCompilerDiagnostic { Message = "Broken" } }] }, Stage = OracleApexAssistantStage.SqlclValidation },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2832,7 +3345,7 @@ public sealed class ShellViewModelTests
         await page.ApplyApexlangValidateOnlyCommand.ExecuteAsync();
         await page.OpenApexDiagnosticSourceCommand.ExecuteAsync();
 
-        Assert.Contains("p00003-reports.apx", service.LastOpenedSourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("p00003-reports.apx", legacy.LastOpenedSourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2840,7 +3353,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
         WriteAssistantEvidence(snapshot.Paths.OpencodePath);
-        var service = new FakeDesktopShellService([snapshot]);
+        var service = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(service);
 
         await page.LoadAsync();
@@ -2855,15 +3368,8 @@ public sealed class ShellViewModelTests
     public async Task OracleApexWorkspace_NavigatesSelectedDiagnosticWithoutFallingBackToFirst()
     {
         var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
-            {
-                Snapshot = currentSnapshot!,
-                Message = "plan ready",
-                Transcript = new OperationTranscript(),
-                Response = new OracleApexAssistantPlanResponse { Request = request, Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
-            }),
             OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
             {
                 Snapshot = currentSnapshot!,
@@ -2891,7 +3397,46 @@ public sealed class ShellViewModelTests
                 },
             })
         };
-        var page = new WorkspacesPageViewModel(service);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Validation failed.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics =
+                        [
+                            new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00003-reports.apx", Line = 4, Column = 5, Message = "First", Severity = "Error", CompilerCode = "A1" },
+                            new OracleApexCompilerDiagnostic { FilePath = "src/apex/pages/p00004-admin.apx", Line = 8, Column = 3, Message = "Second", Severity = "Error", CompilerCode = "A2" },
+                        ],
+                        Mappings =
+                        [
+                            new OracleApexDiagnosticMapping { Diagnostic = new OracleApexCompilerDiagnostic { Message = "First" } },
+                            new OracleApexDiagnosticMapping { Diagnostic = new OracleApexCompilerDiagnostic { Message = "Second" } },
+                        ],
+                    },
+                    Stage = OracleApexAssistantStage.SqlclValidation,
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2901,9 +3446,9 @@ public sealed class ShellViewModelTests
         await page.OpenApexDiagnosticSourceCommand.ExecuteAsync();
 
         Assert.Contains("Diagnostic 2 of 2", page.ApexAssistantDiagnosticPositionLabel, StringComparison.Ordinal);
-        Assert.Equal(8, service.LastOpenedSourceLine);
-        Assert.Equal(3, service.LastOpenedSourceColumn);
-        Assert.Contains("p00004-admin.apx", service.LastOpenedSourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(8, legacy.LastOpenedSourceLine);
+        Assert.Equal(3, legacy.LastOpenedSourceColumn);
+        Assert.Contains("p00004-admin.apx", legacy.LastOpenedSourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2929,31 +3474,37 @@ public sealed class ShellViewModelTests
             Readiness = snapshot.Readiness,
             AvailableServices = snapshot.AvailableServices,
         });
-        var service = new FakeDesktopShellService([snapshot])
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
         {
-            OracleApexAssistantPlanFactoryAsync = (rootPath, request, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantPlanResult
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "plan ready",
                 Transcript = new OperationTranscript(),
-                Response = new OracleApexAssistantPlanResponse { Request = request, Plan = new OracleApexEditPlan { Intent = request.Prompt, EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
-            }),
-            OracleApexAssistantExecutionFactoryAsync = (rootPath, request, plan, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantExecutionResult
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
             {
-                Snapshot = currentSnapshot!,
+                Snapshot = snapshot,
                 Message = "Applied.",
                 Transcript = new OperationTranscript(),
+                RepairPlanId = string.Empty,
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "tx1",
                 Response = new OracleApexAssistantExecutionResponse { IsSuccess = true, Summary = "Applied.", WorkspaceIndex = new OracleApexWorkspaceIndex(), RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "tx1", RollbackState = OracleApexAssistantRollbackState.Available } },
-            }),
-            OracleApexAssistantRollbackFactoryAsync = (rootPath, environmentName, currentSnapshot, logSink, cancellationToken) => Task.FromResult(new WorkspaceApexAssistantRollbackResult
+            },
+            OracleAssistantRollbackResult = new WorkspaceApexAssistantRollbackResult
             {
                 Snapshot = rolledBack,
                 Message = "Rollback completed.",
                 Transcript = new OperationTranscript(),
+                ExecutionId = "tx1",
                 Response = new OracleApexAssistantRollbackResponse { IsSuccess = true, Summary = "Rollback completed.", RollbackState = OracleApexAssistantRollbackState.Completed },
-            })
+            },
         };
-        var page = new WorkspacesPageViewModel(service);
+        var page = new WorkspacesPageViewModel(application, legacy);
 
         await page.LoadAsync();
         page.ApexAssistantPrompt = "Create Reports page";
@@ -2962,12 +3513,13 @@ public sealed class ShellViewModelTests
         await page.RollBackApexlangGeneratedChangeCommand.ExecuteAsync();
 
         Assert.Contains("Rollback completed", page.ApexAssistantExecutionSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, application.OracleAssistantRollbackCallCount);
     }
 
     [Fact]
     public async Task NonOracleWorkspace_DisablesConnectExistingApplicationAction()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -3052,7 +3604,7 @@ public sealed class ShellViewModelTests
             Readiness = baseSnapshot.Readiness,
             AvailableServices = WorkspaceServiceCatalog.Build(definition, baseSnapshot.LocalRuntimeState, baseSnapshot.Paths.RootPath),
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -3064,7 +3616,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ConnectedWorkspace_ShowsOracleApexSyncCard()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead)]));
 
         await page.LoadAsync();
 
@@ -3081,7 +3633,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task UnconnectedWorkspace_HidesOracleApexSyncCard()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
 
@@ -3097,7 +3649,7 @@ public sealed class ShellViewModelTests
     [InlineData(WorkspaceSynchronizationState.Unknown, "Validate")]
     public async Task OracleApexSyncCard_MapsStateToRecommendedAction(WorkspaceSynchronizationState state, string expectedAction)
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateConnectedOracleApexSnapshot(state)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateConnectedOracleApexSnapshot(state)]));
 
         await page.LoadAsync();
 
@@ -3122,7 +3674,7 @@ public sealed class ShellViewModelTests
                     new WorkspaceCapabilitySnapshot { Key = "sql-developer-web", Label = "SQL Developer Web", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available },
                 ],
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3133,7 +3685,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ReadinessPresentation_UsesSharedLabel_ForNeedsPreparationWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha", includeRuntimeState: false)]));
 
         await page.LoadAsync();
 
@@ -3172,7 +3724,7 @@ public sealed class ShellViewModelTests
             Health = snapshot.Health,
             Readiness = snapshot.Readiness,
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3192,7 +3744,7 @@ public sealed class ShellViewModelTests
                 PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
                 Summary = "Rebuild Runtime is the next normal recovery step.",
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3212,7 +3764,7 @@ public sealed class ShellViewModelTests
                 PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
                 Summary = "Open Workspace can prepare and open this workspace.",
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3233,7 +3785,7 @@ public sealed class ShellViewModelTests
                 Summary = "Preparing workspace. This may take several minutes.",
                 IsOperationInProgress = true,
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3257,7 +3809,7 @@ public sealed class ShellViewModelTests
                     new WorkspaceCapabilitySnapshot { Key = "development-shell", Label = "Development Shell", State = OpenCode.Workspace.Core.Models.WorkspaceCapabilityState.Available, Summary = "Development shell is available.", IsPrimaryWorkSurface = true },
                 ],
             });
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
 
         await page.LoadAsync();
@@ -3281,7 +3833,7 @@ public sealed class ShellViewModelTests
                 PrimaryAction = WorkspacePrimaryAction.OpenWorkspace,
                 Summary = "Open Workspace can prepare and open this workspace.",
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3304,7 +3856,7 @@ public sealed class ShellViewModelTests
                 PrimaryAction = WorkspacePrimaryAction.RebuildRuntime,
                 Summary = "Rebuild Runtime is the next normal recovery step.",
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3318,7 +3870,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactoryAsync = async (_, sink, cancellationToken) =>
             {
@@ -3351,7 +3903,7 @@ public sealed class ShellViewModelTests
     public async Task MissingRuntimeState_UsesNeedsRepairHealthSummary()
     {
         var snapshot = CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Open Workspace", lastOperationResult: "Old failure", lastOperationSucceeded: false);
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3414,7 +3966,7 @@ public sealed class ShellViewModelTests
                     },
                 ]),
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3428,7 +3980,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Recommendation_RemainsSecondaryToPrimaryAction()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha", includeRuntimeState: false)]));
 
         await page.LoadAsync();
 
@@ -3442,7 +3994,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace action failed.", lastOperationSucceeded: false);
         snapshot = WithHealth(snapshot, CreateHealthSnapshot(WorkspaceHealthStatus.Healthy, "Workspace is running.", "Open Workspace."));
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3463,7 +4015,7 @@ public sealed class ShellViewModelTests
             [
                 CreateServiceHealthSnapshot("pgadmin", "pgAdmin", WorkspaceHealthStatus.Healthy, "pgAdmin is available."),
             ]));
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3486,7 +4038,7 @@ public sealed class ShellViewModelTests
                 CreateServiceHealthSnapshot("ords", "Oracle REST Data Services", WorkspaceHealthStatus.Healthy, "ORDS is available."),
                 CreateServiceHealthSnapshot("sql-developer-web", "SQL Developer Web", WorkspaceHealthStatus.Healthy, "SQL Developer Web is available."),
             ]));
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3500,7 +4052,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task WorkspaceDiscoveryFailure_UsesRunDiagnosticsInNormalRecommendation()
     {
-        var desktop = new FakeDesktopShellService([])
+        var desktop = new FakeDesktopWorkspaceService([])
         {
             LoadWorkspaceItemsAsyncFactory = (_, _, _) => throw new InvalidOperationException("discovery failed"),
         };
@@ -3578,7 +4130,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
             Health = snapshot.Health,
         });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
 
         await page.LoadAsync();
 
@@ -3593,7 +4145,7 @@ public sealed class ShellViewModelTests
         var previousFailure = "Oracle prerequisite validation failed. XDB status was INVALID.";
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationResult: previousFailure, lastOperationSucceeded: false)])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha", lastOperationResult: previousFailure, lastOperationSucceeded: false)])
         {
             ReprovisionResultFactoryAsync = async (_, sink, _) =>
             {
@@ -3628,7 +4180,7 @@ public sealed class ShellViewModelTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta")])
         {
             ReprovisionResultFactoryAsync = async (_, sink, cancellationToken) =>
             {
@@ -3670,7 +4222,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Reprovision_HighVolumeOutput_CopyAllUsesFullTranscriptFile()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactory = (_, sink) =>
             {
@@ -3700,7 +4252,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Reprovision_FailurePreservesFullTranscriptFile()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactoryAsync = async (_, sink, _) =>
             {
@@ -3727,7 +4279,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Reprovision_CreatesOperationTranscript()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactory = (_, sink) =>
             {
@@ -3747,7 +4299,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Reprovision_ProgressAndCommandOutput_AreAppended()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactory = (_, sink) =>
             {
@@ -3772,7 +4324,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FailedReprovision_ShowsFailureState()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationResult: "Old failure", lastOperationSucceeded: false)])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha", lastOperationResult: "Old failure", lastOperationSucceeded: false)])
         {
             ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
         };
@@ -3798,7 +4350,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FailureSummary_IsConciseAndExcludesFullCommand()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
         };
@@ -3814,7 +4366,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FailedWorkspaceState_OffersEnabledRecommendedAction()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha", lastOperationName: "Attach", lastOperationResult: "Workspace is not running. Start it first.", lastOperationSucceeded: false)]);
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha", lastOperationName: "Attach", lastOperationResult: "Workspace is not running. Start it first.", lastOperationSucceeded: false)]);
         var page = new WorkspacesPageViewModel(desktop);
 
         await page.LoadAsync();
@@ -3881,7 +4433,7 @@ public sealed class ShellViewModelTests
             Health = snapshot.Health,
         });
 
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
@@ -3948,7 +4500,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
         });
 
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
@@ -3973,7 +4525,7 @@ public sealed class ShellViewModelTests
                 Summary = "Rebuild Runtime is the next normal recovery step.",
                 CanRebuildRuntime = true,
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -3989,7 +4541,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ReadyWorkspace_DoesNotPromoteRebuildRuntime_IntoPrimaryPlacement()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4012,7 +4564,7 @@ public sealed class ShellViewModelTests
                 Summary = "Provisioning failed.",
                 CanOpenWorkspace = true,
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4037,7 +4589,7 @@ public sealed class ShellViewModelTests
                 Summary = "Rebuild Runtime is the next normal recovery step.",
                 CanRebuildRuntime = true,
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4066,7 +4618,7 @@ public sealed class ShellViewModelTests
                 Summary = "Rebuild Runtime is the next normal recovery step.",
                 CanRebuildRuntime = true,
             });
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4100,7 +4652,7 @@ public sealed class ShellViewModelTests
                 EstimatedDuration = "4-6 minutes",
             });
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4152,7 +4704,7 @@ public sealed class ShellViewModelTests
                 ],
             });
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4184,7 +4736,7 @@ public sealed class ShellViewModelTests
                 EstimatedDuration = "1-2 minutes",
             });
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4197,7 +4749,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task MissingRuntimeState_RecommendsRecoverWorkspace()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Open Workspace", lastOperationResult: "Runtime state is missing.", lastOperationSucceeded: false)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha", includeRuntimeState: false, lastOperationName: "Open Workspace", lastOperationResult: "Runtime state is missing.", lastOperationSucceeded: false)]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4229,7 +4781,7 @@ public sealed class ShellViewModelTests
                 EstimatedDuration = "1-2 minutes",
             });
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
         await page.LoadAsync();
@@ -4242,7 +4794,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task TroubleshootWorkspace_RevalidatesVolatileStateBeforeOpeningDiagnostics()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(desktop);
         var interaction = new FakeWorkspaceInteractionService();
         page.SetInteractionService(interaction);
@@ -4260,7 +4812,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateSnapshot("alpha", lastOperationName: "Open Workspace", lastOperationResult: "Workspace provisioning stopped.", lastOperationSucceeded: false);
         var interaction = new FakeWorkspaceInteractionService();
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(interaction);
 
         await page.LoadAsync();
@@ -4275,7 +4827,7 @@ public sealed class ShellViewModelTests
     public async Task RunDiagnostics_WithNoSelectedWorkspace_IsSafeNoOp()
     {
         var interaction = new FakeWorkspaceInteractionService();
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([]));
         page.SetInteractionService(interaction);
 
         await page.TroubleshootWorkspaceCommand.ExecuteAsync();
@@ -4288,7 +4840,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateSnapshot("alpha");
         var interaction = new FakeWorkspaceInteractionService();
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(interaction);
 
         await page.LoadAsync();
@@ -4323,7 +4875,7 @@ public sealed class ShellViewModelTests
             EstimatedDuration = "1-2 minutes",
         });
         var interaction = new FakeWorkspaceInteractionService();
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         page.SetInteractionService(interaction);
 
         await page.LoadAsync();
@@ -4390,7 +4942,7 @@ public sealed class ShellViewModelTests
             UpdateRequired = snapshot.UpdateRequired,
         });
 
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
         page.SetInteractionService(new FakeWorkspaceInteractionService());
 
@@ -4454,9 +5006,10 @@ public sealed class ShellViewModelTests
             ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
             UpdateRequired = snapshot.UpdateRequired,
         });
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var interaction = new FakeWorkspaceInteractionService { ResetRuntimeConfirmed = false };
-        var page = new WorkspacesPageViewModel(desktop);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var page = new WorkspacesPageViewModel(application, desktop);
         page.SetInteractionService(interaction);
 
         await page.LoadAsync();
@@ -4470,13 +5023,1169 @@ public sealed class ShellViewModelTests
         Assert.Contains("Git history", interaction.LastResetRuntimePrompt.Keeps);
         Assert.Contains("Documentation", interaction.LastResetRuntimePrompt.Keeps);
         Assert.Contains("Downloads/cache", interaction.LastResetRuntimePrompt.Keeps);
+        Assert.Equal(0, desktop.BuildRuntimeResetPromptCallCount);
         Assert.Equal(0, desktop.ResetRuntimeCallCount);
+    }
+
+    [Fact]
+    public async Task SynchronizationValidation_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ValidateSynchronizationException = new InvalidOperationException("legacy validate should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ValidateSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = "Validated APEX source for environment 'dev'. Current state: InSync.",
+                Transcript = new OperationTranscript { OperationName = "validate_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ValidateSynchronizationAsync");
+
+        Assert.Equal(1, application.ValidateSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastValidatedSynchronizationWorkspace);
+        Assert.Equal(0, legacy.ValidateSynchronizationCallCount);
+    }
+
+    [Fact]
+    public async Task SynchronizationValidationFailureResult_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ValidateSynchronizationException = new InvalidOperationException("legacy validate should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ValidateSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = "Deployment profile validation failed. Deployment profile 'bad-profile' was not found.",
+                Transcript = new OperationTranscript { OperationName = "validate_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = false, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ValidateSynchronizationAsync");
+
+        Assert.Equal(1, application.ValidateSynchronizationCallCount);
+        Assert.Equal(0, legacy.ValidateSynchronizationCallCount);
+    }
+
+    [Fact]
+    public async Task SynchronizationDiff_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            DiffSynchronizationException = new InvalidOperationException("legacy diff should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            DiffSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = "Differences were detected between workspace source and exported Oracle APEX source.\napplication/pages/page_00001.sql differs",
+                Transcript = new OperationTranscript { OperationName = "diff_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "DiffSynchronizationAsync");
+
+        Assert.Equal(1, application.DiffSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastDiffSynchronizationWorkspace);
+        Assert.Equal(0, legacy.DiffSynchronizationCallCount);
+    }
+
+    [Fact]
+    public async Task SynchronizationDiffException_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            DiffSynchronizationException = new InvalidOperationException("legacy diff should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            DiffSynchronizationException = new InvalidOperationException("Oracle APEX export failed during diff."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "DiffSynchronizationAsync");
+
+        Assert.Equal(1, application.DiffSynchronizationCallCount);
+        Assert.Equal(0, legacy.DiffSynchronizationCallCount);
+        Assert.Equal("Oracle APEX export failed during diff.", page.DetailSummary);
+    }
+
+    [Fact]
+    public async Task SynchronizationExport_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var refreshed = CreateSnapshot("alpha");
+        refreshed = new WorkspaceSnapshot
+        {
+            Record = refreshed.Record,
+            Definition = refreshed.Definition,
+            Paths = refreshed.Paths,
+            ConfigurationPath = refreshed.ConfigurationPath,
+            RuntimeState = refreshed.RuntimeState,
+            Safety = refreshed.Safety,
+            Session = refreshed.Session,
+            AppliedState = refreshed.AppliedState,
+            LocalRuntimeState = refreshed.LocalRuntimeState,
+            ResolvedRuntimePlan = refreshed.ResolvedRuntimePlan,
+            UpdateRequired = refreshed.UpdateRequired,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                State = WorkspaceSynchronizationState.InSync,
+                Summary = "Export refreshed the workspace source tree.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    ActiveDeploymentProfile = "default",
+                    AvailableDeploymentProfiles = ["default"],
+                    State = WorkspaceSynchronizationState.InSync,
+                    Summary = "In sync",
+                },
+            },
+            Health = refreshed.Health,
+            Readiness = refreshed.Readiness,
+            AvailableServices = refreshed.AvailableServices,
+        };
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ExportSynchronizationException = new InvalidOperationException("legacy export should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ExportSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Exported Oracle APEX application for environment 'dev'.",
+                Transcript = new OperationTranscript { OperationName = "export_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ExportSynchronizationAsync");
+
+        Assert.Equal(1, application.ExportSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastExportSynchronizationWorkspace);
+        Assert.Equal(0, legacy.ExportSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationExportFailure_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ExportSynchronizationException = new InvalidOperationException("legacy export should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ExportSynchronizationException = new InvalidOperationException("Oracle APEX export failed for environment 'dev'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ExportSynchronizationAsync");
+
+        Assert.Equal(1, application.ExportSynchronizationCallCount);
+        Assert.Equal(0, legacy.ExportSynchronizationCallCount);
+        Assert.Equal("Oracle APEX export failed for environment 'dev'.", page.DetailSummary);
+        Assert.Equal("alpha", page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task SynchronizationImport_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var refreshed = CreateSnapshot("alpha");
+        refreshed = new WorkspaceSnapshot
+        {
+            Record = refreshed.Record,
+            Definition = refreshed.Definition,
+            Paths = refreshed.Paths,
+            ConfigurationPath = refreshed.ConfigurationPath,
+            RuntimeState = refreshed.RuntimeState,
+            Safety = refreshed.Safety,
+            Session = refreshed.Session,
+            AppliedState = refreshed.AppliedState,
+            LocalRuntimeState = refreshed.LocalRuntimeState,
+            ResolvedRuntimePlan = refreshed.ResolvedRuntimePlan,
+            UpdateRequired = refreshed.UpdateRequired,
+            Synchronization = new WorkspaceSynchronizationSnapshot
+            {
+                State = WorkspaceSynchronizationState.InSync,
+                Summary = "Imported workspace source into Oracle APEX.",
+                DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
+                {
+                    EnvironmentName = "dev",
+                    ActiveDeploymentProfile = "default",
+                    AvailableDeploymentProfiles = ["default"],
+                    State = WorkspaceSynchronizationState.InSync,
+                    Summary = "In sync",
+                    LastDeploymentResult = "Succeeded",
+                },
+            },
+            Health = refreshed.Health,
+            Readiness = refreshed.Readiness,
+            AvailableServices = refreshed.AvailableServices,
+        };
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ImportSynchronizationException = new InvalidOperationException("legacy import should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ImportSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Imported workspace source into Oracle APEX for environment 'dev'.",
+                Transcript = new OperationTranscript { OperationName = "import_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ImportSynchronizationAsync");
+
+        Assert.Equal(1, application.ImportSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastImportSynchronizationWorkspace);
+        Assert.Equal(0, legacy.ImportSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationImportFailure_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ImportSynchronizationException = new InvalidOperationException("legacy import should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ImportSynchronizationException = new InvalidOperationException("Oracle APEX import failed for environment 'dev'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ImportSynchronizationAsync");
+
+        Assert.Equal(1, application.ImportSynchronizationCallCount);
+        Assert.Equal(0, legacy.ImportSynchronizationCallCount);
+        Assert.Equal("Oracle APEX import failed for environment 'dev'.", page.DetailSummary);
+        Assert.Equal("alpha", page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task SynchronizationInSync_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Validation started\nValidation succeeded\nImport completed\nSynchronization metadata updated\nFinal sync state: InSync",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Same(snapshot, application.LastSynchronizedWorkspace);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationGitAhead_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.GitAhead);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Validation started\nValidation succeeded\nImport completed\nSynchronization metadata updated\nFinal sync state: InSync",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationDeploymentAhead_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Pulled Oracle APEX changes into workspace source.",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationValidationFailed_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceResult = new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation started\nValidation failed\nPush aborted\nFinal sync state: ValidationFailed",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = false, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.ValidationFailed, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationDiverged_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.Diverged);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceResult = new WorkspaceOperationResult
+            {
+                Snapshot = snapshot,
+                Message = "Differences were detected between workspace source and exported Oracle APEX source.\napplication/pages/page_00001.sql differs",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.Diverged, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationException_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.Unknown);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            SynchronizeSynchronizationException = new InvalidOperationException("legacy synchronize should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            SynchronizeWorkspaceException = new InvalidOperationException("Synchronization orchestration failed."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "SynchronizeWorkspaceAsync");
+
+        Assert.Equal(1, application.SynchronizeWorkspaceCallCount);
+        Assert.Equal(0, legacy.SynchronizeSynchronizationCallCount);
+        Assert.Equal("Synchronization orchestration failed.", page.DetailSummary);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task SynchronizationPull_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            PullSynchronizationException = new InvalidOperationException("legacy pull should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            PullSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Pulled Oracle APEX changes into workspace source.",
+                Transcript = new OperationTranscript { OperationName = "pull_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "PullSynchronizationAsync");
+
+        Assert.Equal(1, application.PullSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastPullSynchronizationWorkspace);
+        Assert.Equal(0, legacy.PullSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationPullFailure_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.DeploymentAhead);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            PullSynchronizationException = new InvalidOperationException("legacy pull should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            PullSynchronizationException = new InvalidOperationException("Oracle APEX pull failed for environment 'dev'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "PullSynchronizationAsync");
+
+        Assert.Equal(1, application.PullSynchronizationCallCount);
+        Assert.Equal(0, legacy.PullSynchronizationCallCount);
+        Assert.Equal("Oracle APEX pull failed for environment 'dev'.", page.DetailSummary);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task SynchronizationPush_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.GitAhead);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            PushSynchronizationException = new InvalidOperationException("legacy push should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            PushSynchronizationResult = new WorkspaceOperationResult
+            {
+                Snapshot = refreshed,
+                Message = "Validation started\nValidation succeeded\nImport completed\nSynchronization metadata updated\nFinal sync state: InSync",
+                Transcript = new OperationTranscript { OperationName = "push_synchronization", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "PushSynchronizationAsync");
+
+        Assert.Equal(1, application.PushSynchronizationCallCount);
+        Assert.Same(snapshot, application.LastPushSynchronizationWorkspace);
+        Assert.Equal(0, legacy.PushSynchronizationCallCount);
+        Assert.Equal(WorkspaceSynchronizationState.InSync, page.SelectedWorkspace?.Snapshot?.Synchronization.State);
+    }
+
+    [Fact]
+    public async Task SynchronizationPushFailure_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            PushSynchronizationException = new InvalidOperationException("legacy push should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            PushSynchronizationException = new InvalidOperationException("Oracle APEX push failed for environment 'dev'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "PushSynchronizationAsync");
+
+        Assert.Equal(1, application.PushSynchronizationCallCount);
+        Assert.Equal(0, legacy.PushSynchronizationCallCount);
+        Assert.Equal("Oracle APEX push failed for environment 'dev'.", page.DetailSummary);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task OracleAssistantValidation_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantValidationFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy assistant validation should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantValidationResult = new WorkspaceApexAssistantValidationResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript { OperationName = "validate_oracle_assistant", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = false, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = snapshot.Synchronization,
+                    Message = "Validation failed.",
+                    Validation = new OracleApexValidationResult
+                    {
+                        IsSuccess = false,
+                        Diagnostics = [new OracleApexCompilerDiagnostic { FilePath = "src/apex/page.sql", Line = 12, Column = 3, Severity = "Error", CompilerCode = "APEX-001", Message = "Invalid SQL.", Component = "page", Property = "source", Category = "validation" }],
+                    },
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse { RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = "dev" } });
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "RevalidateApexlangAsync");
+
+        Assert.Equal(1, application.OracleAssistantValidationCallCount);
+        Assert.Equal(0, legacy.OracleAssistantValidationCallCount);
+        Assert.Contains("APEX-001", page.ApexAssistantCompilerDiagnosticsText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OracleAssistantImport_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var refreshed = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantImportFactoryAsync = (_, _, _, _, _, _) => throw new InvalidOperationException("legacy assistant import should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantImportResult = new WorkspaceApexAssistantImportResult
+            {
+                Snapshot = refreshed,
+                Message = "Imported validated APEXlang source.",
+                Transcript = new OperationTranscript { OperationName = "import_oracle_assistant", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = refreshed.Synchronization,
+                    Message = "Imported validated APEXlang source.",
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse { RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = "dev" } });
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "ImportApexlangAsync");
+
+        Assert.Equal(1, application.OracleAssistantImportCallCount);
+        Assert.Equal(0, legacy.OracleAssistantImportCallCount);
+        Assert.Equal("Import completed", page.ApexAssistantStageLabel);
+    }
+
+    [Fact]
+    public async Task OracleAssistantImportStaleExecution_IsSurfacedWithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantImportFactoryAsync = (_, _, _, _, _, _) => throw new InvalidOperationException("legacy assistant import should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantImportException = new InvalidOperationException("Oracle Assistant execution 'exec-1' does not match the current workspace execution 'exec-2'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse { RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = "dev" } });
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "ImportApexlangAsync"));
+
+        Assert.Equal(1, application.OracleAssistantImportCallCount);
+        Assert.Equal(0, legacy.OracleAssistantImportCallCount);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task OracleAssistantPlanning_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy assistant planning should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "Plan ready for review.",
+                Transcript = new OperationTranscript { OperationName = "plan_oracle_assistant", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new OracleApexAssistantPlanResponse
+                {
+                    Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" },
+                    Plan = new OracleApexEditPlan { ExpectedChangedFiles = ["src/apex/page.sql"] },
+                    Review = "Create Reports page and update navigation.",
+                    Classification = OracleApexPlanClassification.Additive,
+                    Warnings = ["Will update shared navigation."],
+                    PostEditBehavior = OracleApexAssistantPostEditBehavior.ValidateOnly,
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy) { ApexAssistantPrompt = "Create Reports page" };
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "RunApexAssistantPlanAsync");
+
+        Assert.Equal(1, application.OracleAssistantPlanCallCount);
+        Assert.Equal("Create Reports page", application.LastOracleAssistantPlanRequest?.Prompt);
+        Assert.Equal(0, legacy.OracleAssistantPlanCallCount);
+        Assert.Contains("shared navigation", page.ApexAssistantDiagnosticsText, StringComparison.Ordinal);
+        Assert.Contains("src/apex/page.sql", page.ApexAssistantChangedFilesText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OracleAssistantPlanningFailure_UsesWorkspaceApplicationService_NotLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy assistant planning should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantPlanException = new InvalidOperationException("Assistant planning failed."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy) { ApexAssistantPrompt = "Create Reports page" };
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "RunApexAssistantPlanAsync"));
+
+        Assert.Equal(1, application.OracleAssistantPlanCallCount);
+        Assert.Equal(0, legacy.OracleAssistantPlanCallCount);
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRepairPlanning_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantPlanFactoryAsync = (_, _, _, _, _) => throw new InvalidOperationException("legacy assistant planning should not be used"),
+            OracleApexAssistantRepairPlanFactoryAsync = (_, _, _, _, _, _, _) => throw new InvalidOperationException("legacy assistant repair planning should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Validation failed.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    ChangedFiles = [],
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics = [new OracleApexCompilerDiagnostic { Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing alias." }],
+                    },
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+                    SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair", ExpectedChangedFiles = ["src/apex/pages/p00003-reports.apx"] },
+                },
+            },
+            OracleAssistantRepairPlanResult = new WorkspaceApexAssistantRepairPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "Repair plan available.",
+                Transcript = new OperationTranscript(),
+                RepairPlanId = "repair-1",
+                PlanId = "plan-1",
+                ExecutionId = "exec-1",
+                ContextRevision = "dev|nogit|",
+                Response = new OracleApexAssistantRepairPlanResponse
+                {
+                    Plan = new OracleApexEditPlan
+                    {
+                        Intent = "repair",
+                        ExpectedChangedFiles = ["src/apex/pages/p00003-reports.apx"],
+                        AffectedSymbols = ["page:reports"],
+                        Operations =
+                        {
+                            new OracleApexPlannedOperation
+                            {
+                                Sequence = 1,
+                                Title = "Restore page alias",
+                                TargetComponentType = "page",
+                                TargetIdentifier = "Reports",
+                                ExpectedChangedFiles = ["src/apex/pages/p00003-reports.apx"],
+                            },
+                        },
+                    },
+                    Review = "Repair review",
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics = [new OracleApexCompilerDiagnostic { CompilerCode = "APEX-1001", Message = "Missing alias." }],
+                    },
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService());
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        SeedApexAssistantRepairPlanningState(
+            page,
+            "plan-1",
+            "exec-1",
+            "dev|nogit|",
+            application.OracleApexAssistantPlanResult!.Response,
+            application.OracleAssistantExecutionResult!.Response,
+            "Validation failed");
+        await InvokePrivateAsync(page, "BuildApexlangRepairPlanAsync");
+
+        Assert.Equal(1, application.OracleAssistantRepairPlanCallCount);
+        Assert.Same(snapshot, application.LastOracleAssistantRepairWorkspace);
+        Assert.Equal("plan-1", application.LastOracleAssistantRepairPlanId);
+        Assert.Equal("exec-1", application.LastOracleAssistantRepairExecutionSourceExecutionId);
+        Assert.Equal("dev|nogit|", application.LastOracleAssistantRepairContextRevision);
+        Assert.Equal("Missing alias.", application.LastOracleAssistantRepairValidation?.Diagnostics.Single().Message);
+        Assert.Equal("repair-1", GetPrivateField<string>(page, "_apexAssistantCurrentRepairPlanId"));
+        Assert.Equal("Repair plan available", page.ApexAssistantStageLabel);
+        Assert.Equal("Repair review", page.ApexAssistantRepairReviewText);
+        Assert.True(page.ApplyApexlangRepairCommand.CanExecute(null));
+        Assert.Equal(string.Empty, page.ApexAssistantChangedFilesText);
+        Assert.Equal(0, legacy.OracleAssistantRepairPlanCallCount);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRepairPlanningFailure_ClearsBusyState_WithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantRepairPlanFactoryAsync = (_, _, _, _, _, _, _) => throw new InvalidOperationException("legacy assistant repair planning should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Validation failed.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics = [new OracleApexCompilerDiagnostic { Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing alias." }],
+                    },
+                    SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair" },
+                    Stage = OracleApexAssistantStage.SqlclValidation,
+                },
+            },
+            OracleAssistantRepairPlanException = new InvalidOperationException("Repair planning failed."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        SeedApexAssistantRepairPlanningState(
+            page,
+            "plan-1",
+            "exec-1",
+            "dev|nogit|",
+            application.OracleApexAssistantPlanResult!.Response,
+            application.OracleAssistantExecutionResult!.Response,
+            "Validation failed");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "BuildApexlangRepairPlanAsync"));
+
+        Assert.Equal("Repair planning failed.", exception.Message);
+        Assert.False(page.IsBusyForWorkspaceActions);
+        Assert.Equal("Validation failed", page.ApexAssistantStageLabel);
+        Assert.Equal("exec-1", GetPrivateField<string>(page, "_apexAssistantCurrentExecutionId"));
+        Assert.Equal(snapshot.Definition.Workspace.Name, page.SelectedWorkspace?.Name);
+        Assert.Equal(1, application.OracleAssistantRepairPlanCallCount);
+        Assert.Equal(0, legacy.OracleAssistantRepairPlanCallCount);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRepairPlanning_StaleRepairPlan_RemainsDisabled_WithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OracleApexAssistantRepairPlanFactoryAsync = (_, _, _, _, _, _, _) => throw new InvalidOperationException("legacy assistant repair planning should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleApexAssistantPlanResult = new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "plan ready",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                Response = new OracleApexAssistantPlanResponse { Request = new OracleApexAssistantRequest { Prompt = "Create Reports page" }, Plan = new OracleApexEditPlan { Intent = "Create Reports page", EnvironmentName = "dev", SourcePath = "src/apex" }, Review = "Review", Classification = OracleApexPlanClassification.Additive, WorkspaceIndex = new OracleApexWorkspaceIndex() },
+            },
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = snapshot,
+                Message = "Validation failed.",
+                Transcript = new OperationTranscript(),
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Validation failed.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    CompilerValidation = new OracleApexValidationResult
+                    {
+                        Diagnostics = [new OracleApexCompilerDiagnostic { Severity = "Error", CompilerCode = "APEX-1001", Message = "Missing alias." }],
+                    },
+                    SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair" },
+                    Stage = OracleApexAssistantStage.SqlclValidation,
+                },
+            },
+            OracleAssistantRepairPlanResult = new WorkspaceApexAssistantRepairPlanResult
+            {
+                Snapshot = snapshot,
+                Message = "Repair plan available.",
+                Transcript = new OperationTranscript(),
+                RepairPlanId = "repair-stale-1",
+                PlanId = "plan-1",
+                ExecutionId = "exec-1",
+                ContextRevision = "dev|nogit|",
+                Response = new OracleApexAssistantRepairPlanResponse
+                {
+                    Plan = new OracleApexEditPlan
+                    {
+                        Intent = "repair",
+                        Summary = "Repair plan is stale and requires a fresh execution context.",
+                        Warnings = { "Validation evidence changed since execution." },
+                    },
+                    Review = "Repair plan is stale for execution exec-1.",
+                    CompilerValidation = new OracleApexValidationResult { Diagnostics = [new OracleApexCompilerDiagnostic { CompilerCode = "APEX-1001", Message = "Missing alias." }] },
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        page.ApexAssistantPrompt = "Create Reports page";
+        SeedApexAssistantRepairPlanningState(
+            page,
+            "plan-1",
+            "exec-1",
+            "dev|nogit|",
+            application.OracleApexAssistantPlanResult!.Response,
+            application.OracleAssistantExecutionResult!.Response,
+            "Validation failed");
+        await InvokePrivateAsync(page, "BuildApexlangRepairPlanAsync");
+
+        Assert.Equal("repair-stale-1", GetPrivateField<string>(page, "_apexAssistantCurrentRepairPlanId"));
+        Assert.Contains("stale", page.ApexAssistantRepairReviewText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(page.ApplyApexlangRepairCommand.CanExecute(null));
+        Assert.Equal(1, application.OracleAssistantRepairPlanCallCount);
+        Assert.Equal(0, legacy.OracleAssistantRepairPlanCallCount);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRepairExecution_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var repaired = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantExecutionResult = new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = repaired,
+                Message = "Applied semantic repair.",
+                Transcript = new OperationTranscript { OperationName = "execute_oracle_assistant_repair", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                RepairPlanId = "repair-1",
+                PlanId = "plan-1",
+                ContextRevision = "dev|nogit|",
+                ExecutionId = "exec-2",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Applied semantic repair.",
+                    ChangedFiles = ["src/apex/pages/p00003-reports.apx"],
+                    Warnings = ["Revalidated after repair."],
+                    CompilerValidation = new OracleApexValidationResult { IsSuccess = true },
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-2", EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+                    Stage = OracleApexAssistantStage.Preview,
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        SeedApexAssistantRepairExecutionState(page, "plan-1", "exec-1", "repair-1", "dev|nogit|");
+
+        await InvokePrivateAsync(page, "ApplyApexlangRepairAsync");
+
+        Assert.Equal(1, application.OracleAssistantRepairExecutionCallCount);
+        Assert.Same(snapshot, application.LastOracleAssistantRepairExecutionWorkspace);
+        Assert.Equal("plan-1", application.LastOracleAssistantRepairExecutionPlanId);
+        Assert.Equal("exec-1", application.LastOracleAssistantRepairExecutionId);
+        Assert.Equal("repair-1", application.LastOracleAssistantRepairExecutionRepairPlanId);
+        Assert.Equal(0, legacy.OracleAssistantRepairPlanCallCount);
+        Assert.Equal("exec-2", GetPrivateField<string>(page, "_apexAssistantCurrentExecutionId"));
+        Assert.Equal("Ready to import", page.ApexAssistantStageLabel);
+        Assert.Contains("p00003-reports.apx", page.ApexAssistantChangedFilesText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRepairExecution_UnknownRepairPlanId_IsSurfacedWithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.ValidationFailed);
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantRepairExecutionException = new InvalidOperationException("Oracle Assistant repair plan 'repair-missing' was not found for workspace 'oracle-demo'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        SeedApexAssistantRepairExecutionState(page, "plan-1", "exec-1", "repair-missing", "dev|nogit|");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "ApplyApexlangRepairAsync"));
+
+        Assert.Contains("repair-missing", exception.Message, StringComparison.Ordinal);
+        Assert.False(page.IsBusyForWorkspaceActions);
+        Assert.Equal(1, application.OracleAssistantRepairExecutionCallCount);
+        Assert.Equal(0, legacy.OracleAssistantRepairPlanCallCount);
+        Assert.Equal("exec-1", GetPrivateField<string>(page, "_apexAssistantCurrentExecutionId"));
+    }
+
+    [Fact]
+    public async Task OracleAssistantRollback_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var rolledBack = WithComputedReadiness(new WorkspaceSnapshot
+        {
+            Record = snapshot.Record,
+            Definition = snapshot.Definition,
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
+            Assistant = new WorkspaceApexAssistantSnapshot { State = WorkspaceApexAssistantState.RolledBack, Summary = "Rollback completed.", WasRolledBack = true },
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
+        });
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantRollbackResult = new WorkspaceApexAssistantRollbackResult
+            {
+                Snapshot = rolledBack,
+                Message = "Rollback completed.",
+                Transcript = new OperationTranscript { OperationName = "rollback_oracle_assistant", WorkspaceName = snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantRollbackResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Rollback completed.",
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", RollbackState = OracleApexAssistantRollbackState.Completed },
+                    RollbackState = OracleApexAssistantRollbackState.Completed,
+                    RestoredFiles = ["src/apex/pages/p00003-reports.apx"],
+                },
+            },
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse
+        {
+            RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+        });
+
+        await InvokePrivateAsync(page, "RollBackApexlangGeneratedChangeAsync");
+
+        Assert.Equal(1, application.OracleAssistantRollbackCallCount);
+        Assert.Same(snapshot, application.LastOracleAssistantRollbackWorkspace);
+        Assert.Equal("exec-1", application.LastOracleAssistantRollbackExecutionId);
+        Assert.Contains("Rollback completed", page.ApexAssistantExecutionSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Rollback completed", page.ApexAssistantStageLabel);
+    }
+
+    [Fact]
+    public async Task OracleAssistantRollback_UnknownExecutionId_IsSurfacedWithoutLegacyFallback()
+    {
+        var snapshot = CreateConnectedOracleApexSnapshot(WorkspaceSynchronizationState.InSync);
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleAssistantRollbackException = new InvalidOperationException("Oracle Assistant execution 'exec-missing' was not found for workspace 'oracle-demo'."),
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse
+        {
+            RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-missing", EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => InvokePrivateAsync(page, "RollBackApexlangGeneratedChangeAsync"));
+
+        Assert.Contains("exec-missing", exception.Message, StringComparison.Ordinal);
+        Assert.False(page.IsBusyForWorkspaceActions);
+        Assert.Equal(1, application.OracleAssistantRollbackCallCount);
+    }
+
+    [Fact]
+    public async Task RecoveryAssessment_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            RecoveryAssessmentException = new InvalidOperationException("legacy recovery assessment should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            RecoveryAssessment = new WorkspaceRecoveryAssessment
+            {
+                Title = "Recover Workspace",
+                Summary = "Recovery validates generated files.",
+                Findings = ["Generated runtime files are out of date and need repair."],
+                ConfirmationMessage = "Run workspace recovery now?",
+                WorkspaceName = "alpha",
+                StatusSummary = "Workspace needs repair",
+            },
+        };
+        var interaction = new FakeWorkspaceInteractionService { RecoveryConfirmed = false };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "RecoverSelectedWorkspaceAsync");
+
+        Assert.Equal(1, application.RecoveryAssessmentCallCount);
+        Assert.Equal(0, legacy.RecoveryAssessmentCallCount);
+        Assert.Equal(0, application.RecoverCallCount);
+        Assert.NotNull(interaction.LastRecoveryAssessment);
+        Assert.Equal("Recovery cancelled.", page.DetailSummary);
     }
 
     [Fact]
     public async Task OperationLogVisibility_TogglesAndDefaultsVisibleAfterOperation()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
         Assert.False(page.IsOperationLogVisible);
@@ -4498,7 +6207,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task WorkspaceListAndOperationLog_AreSeparateStates()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha"), CreateSnapshot("beta")]));
 
         await page.LoadAsync();
         page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Comment, Text = "log line" });
@@ -4510,7 +6219,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task FullFailureText_RemainsInOperationLog()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionException = new InvalidOperationException("Command: docker exec odip-analiza-workspace bash /opt/opencode-workspace/config/provision.sh\nExit code: 127\n/workspace/.env: line 17: $'Analiza\\r': command not found"),
         };
@@ -4527,7 +6236,7 @@ public sealed class ShellViewModelTests
     public async Task CopyAllText_ContainsFullCommandAndError()
     {
         var clipboard = new FakeClipboardService();
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             ReprovisionResultFactory = (_, sink) =>
             {
@@ -4550,7 +6259,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task ClearingOperationLog_RemovesVisiblePanelState()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha")]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]));
 
         await page.LoadAsync();
         page.AppendOperationTranscriptLine(new OperationTranscriptLine { Kind = OperationTranscriptLineKind.Command, Text = "docker exec workspace bash /opt/opencode-workspace/config/provision.sh" });
@@ -4626,7 +6335,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task StartingNewOperation_ClearsPreviousVisibleLog()
     {
-        var desktop = new FakeDesktopShellService([CreateSnapshot("alpha")]);
+        var desktop = new FakeDesktopWorkspaceService([CreateSnapshot("alpha")]);
         var page = new WorkspacesPageViewModel(desktop);
 
         await page.LoadAsync();
@@ -4639,7 +6348,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task RuntimeStateMissing_ProducesReprovisionRecommendation()
     {
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([CreateSnapshot("alpha", includeRuntimeState: false)]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([CreateSnapshot("alpha", includeRuntimeState: false)]));
 
         await page.LoadAsync();
 
@@ -4697,7 +6406,7 @@ public sealed class ShellViewModelTests
                 RefreshInterval = TimeSpan.FromSeconds(30),
                 ProviderKey = "oracle",
             });
-        var desktop = new FakeDesktopShellService([snapshot]);
+        var desktop = new FakeDesktopWorkspaceService([snapshot]);
         var page = new WorkspacesPageViewModel(desktop);
 
         await page.LoadAsync();
@@ -4718,7 +6427,7 @@ public sealed class ShellViewModelTests
     {
         var snapshot = CreateSnapshot("alpha");
         var interaction = new FakeWorkspaceInteractionService();
-        var workspacesPage = new WorkspacesPageViewModel(new FakeDesktopShellService([snapshot]));
+        var workspacesPage = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([snapshot]));
         workspacesPage.SetInteractionService(interaction);
 
         await workspacesPage.LoadAsync();
@@ -4749,7 +6458,7 @@ public sealed class ShellViewModelTests
         var older = CreateSnapshot("older", lastOpenedUtc: DateTimeOffset.UtcNow.AddHours(-2), createdUtc: DateTimeOffset.UtcNow.AddHours(-2));
         var recent = CreateSnapshot("recent", lastOpenedUtc: DateTimeOffset.UtcNow, createdUtc: DateTimeOffset.UtcNow);
 
-        var page = new WorkspacesPageViewModel(new FakeDesktopShellService([older, recent]));
+        var page = new WorkspacesPageViewModel(new FakeDesktopWorkspaceService([older, recent]));
 
         await page.LoadAsync();
 
@@ -4774,7 +6483,7 @@ public sealed class ShellViewModelTests
     [Fact]
     public async Task Shell_IncludesRuntimeResourcesNavigationPage()
     {
-        var shell = CreateShellWithDesktop(new FakeDesktopShellService([CreateSnapshot("alpha")])
+        var shell = CreateShellWithDesktop(new FakeDesktopWorkspaceService([CreateSnapshot("alpha")])
         {
             RuntimeResourceExplorerFactoryAsync = _ => Task.FromResult(new WorkspaceRuntimeExplorerReport()),
         });
@@ -4788,7 +6497,7 @@ public sealed class ShellViewModelTests
     public async Task RuntimeResourcesPage_OpenOwningWorkspace_NavigatesBackToWorkspace()
     {
         var snapshot = CreateSnapshot("alpha");
-        var desktop = new FakeDesktopShellService([snapshot])
+        var desktop = new FakeDesktopWorkspaceService([snapshot])
         {
             RuntimeResourceExplorerFactoryAsync = _ => Task.FromResult(new WorkspaceRuntimeExplorerReport
             {
@@ -4829,11 +6538,11 @@ public sealed class ShellViewModelTests
 
     private static ShellViewModel CreateShell(IReadOnlyList<WorkspaceSnapshot>? snapshots = null)
     {
-        var desktop = new FakeDesktopShellService(snapshots ?? [CreateSnapshot("alpha")]);
+        var desktop = new FakeDesktopWorkspaceService(snapshots ?? [CreateSnapshot("alpha")]);
         return CreateShellWithDesktop(desktop);
     }
 
-    private static ShellViewModel CreateShellWithDesktop(IDesktopShellService desktop)
+    private static ShellViewModel CreateShellWithDesktop(IDesktopWorkspaceService desktop)
     {
         return ShellViewModel.Create(
             desktop,
@@ -4841,6 +6550,7 @@ public sealed class ShellViewModelTests
             new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
             new FakeDocumentationShellService(),
+            desktop,
             new ThemeCoordinator(ThemeMode.System),
             CreateAppBuildInfo(),
             "en");
@@ -4854,9 +6564,9 @@ public sealed class ShellViewModelTests
     private static AppBuildInfo CreateAppBuildInfo()
         => new("/tmp/app", "Debug", "1.0.0", "1.0.0-preview", "abcdef123456", DateTimeOffset.UtcNow.ToString("O"), "1.0.0", "workspace-yaml-v1");
 
-    private static SettingsPageViewModel CreateSettingsPage(FakeDesktopShellService? desktop = null, WorkspaceSnapshot? selectedWorkspace = null, ThemeCoordinator? coordinator = null)
+    private static SettingsPageViewModel CreateSettingsPage(FakeDesktopWorkspaceService? desktop = null, WorkspaceSnapshot? selectedWorkspace = null, ThemeCoordinator? coordinator = null)
     {
-        var actualDesktop = desktop ?? new FakeDesktopShellService([selectedWorkspace ?? CreateSnapshot("alpha")]);
+        var actualDesktop = desktop ?? new FakeDesktopWorkspaceService([selectedWorkspace ?? CreateSnapshot("alpha")]);
         var actualWorkspace = selectedWorkspace ?? actualDesktop.LoadWorkspaceItemsAsync(false).GetAwaiter().GetResult().Items.First().Snapshot!;
         return new SettingsPageViewModel(coordinator ?? new ThemeCoordinator(ThemeMode.System), CreateAppBuildInfo(), actualDesktop, new FakeHostCapabilities(), () => new WorkspaceSummaryViewModel(new WorkspaceShellItem { Record = actualWorkspace.Record, Snapshot = actualWorkspace }));
     }
@@ -5305,6 +7015,41 @@ public sealed class ShellViewModelTests
         });
     }
 
+    private static WorkspaceSnapshot WithWorkspaceId(WorkspaceSnapshot snapshot, string workspaceId)
+        => new()
+        {
+            Record = snapshot.Record,
+            Definition = new WorkspaceDefinition
+            {
+                Workspace = new WorkspaceMetadata { Id = workspaceId, Name = snapshot.Definition.Workspace.Name, Image = snapshot.Definition.Workspace.Image },
+                Provider = snapshot.Definition.Provider,
+                Runtime = snapshot.Definition.Runtime,
+                Features = snapshot.Definition.Features.ToList(),
+                Skills = snapshot.Definition.Skills.ToList(),
+                Services = snapshot.Definition.Services.ToList(),
+                Mcp = snapshot.Definition.Mcp.ToList(),
+                Terminal = snapshot.Definition.Terminal,
+                Agent = snapshot.Definition.Agent,
+                Oracle = snapshot.Definition.Oracle,
+                Analytics = snapshot.Definition.Analytics,
+                KnowledgePacks = snapshot.Definition.KnowledgePacks.ToList(),
+            },
+            Paths = snapshot.Paths,
+            ConfigurationPath = snapshot.ConfigurationPath,
+            RuntimeState = snapshot.RuntimeState,
+            Safety = snapshot.Safety,
+            Session = snapshot.Session,
+            AppliedState = snapshot.AppliedState,
+            LocalRuntimeState = snapshot.LocalRuntimeState,
+            ResolvedRuntimePlan = snapshot.ResolvedRuntimePlan,
+            UpdateRequired = snapshot.UpdateRequired,
+            Synchronization = snapshot.Synchronization,
+            Assistant = snapshot.Assistant,
+            Health = snapshot.Health,
+            Readiness = snapshot.Readiness,
+            AvailableServices = snapshot.AvailableServices,
+        };
+
     private static void WriteAssistantEvidence(string opencodePath)
     {
         var folder = Path.Combine(opencodePath, "knowledge", "apex-assistant");
@@ -5313,7 +7058,540 @@ public sealed class ShellViewModelTests
         File.WriteAllText(Path.Combine(folder, "evidence.json"), "{\n  \"ValidationByComponentType\": { \"page\": { \"SuccessCount\": 1, \"FailureCount\": 2 } },\n  \"MissingProperties\": { \"alias\": 2 },\n  \"FailedBlueprintOperations\": { \"Create page 'Reports'\": 1 },\n  \"AppliedRepairActions\": { \"Set alias on 'Reports'\": 1 }\n}\n");
     }
 
-    private sealed class FakeDesktopShellService : IDesktopShellService
+    [Fact]
+    public async Task Wave1_LoadAsync_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => throw new InvalidOperationException("legacy load should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+
+        Assert.Equal(1, application.LoadCallCount);
+    }
+
+    [Fact]
+    public async Task Wave1_OpenWorkspace_UsesWorkspaceApplicationService_NotLegacyOpen()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            OpenWorkspaceException = new InvalidOperationException("legacy open should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var page = new WorkspacesPageViewModel(application, legacy);
+
+        await page.LoadAsync();
+        await page.OpenSelectedWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(1, application.OpenCallCount);
+        Assert.Equal(0, legacy.OpenWorkspaceCallCount);
+    }
+
+    [Fact]
+    public async Task Wave1_StartResetAttachReprovision_UseWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot])
+        {
+            ResetRuntimeException = new InvalidOperationException("legacy reset should not be used"),
+            AttachException = new InvalidOperationException("legacy attach should not be used"),
+            ReprovisionException = new InvalidOperationException("legacy reprovision should not be used"),
+        };
+        var interaction = new FakeWorkspaceInteractionService { ResetRuntimeConfirmed = true };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await InvokePrivateAsync(page, "StartSelectedWorkspaceAsync");
+        await InvokePrivateAsync(page, "ResetRuntimeSelectedWorkspaceAsync");
+        await InvokePrivateAsync(page, "AttachSelectedWorkspaceAsync");
+        await InvokePrivateAsync(page, "ReprovisionSelectedWorkspaceAsync");
+
+        Assert.Equal(1, application.StartCallCount);
+        Assert.Equal(1, application.ResetCallCount);
+        Assert.Equal(1, application.AttachCallCount);
+        Assert.Equal(1, application.ReprovisionCallCount);
+        Assert.Equal(0, legacy.StartCallCount);
+        Assert.Equal(0, legacy.ResetRuntimeCallCount);
+        Assert.Equal(0, legacy.AttachCallCount);
+        Assert.Equal(0, legacy.ReprovisionCallCount);
+    }
+
+    [Fact]
+    public async Task Wave1_Troubleshoot_UsesWorkspaceApplicationService_ForVolatileRefresh()
+    {
+        var snapshot = CreateSnapshot("alpha");
+        var legacy = new FakeDesktopWorkspaceService([snapshot]);
+        var interaction = new FakeWorkspaceInteractionService();
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot);
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(interaction);
+
+        await page.LoadAsync();
+        await page.TroubleshootWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(1, application.RefreshCallCount);
+        Assert.Equal(0, legacy.RefreshVolatileWorkspaceStateCallCount);
+    }
+
+    [Fact]
+    public async Task Wave2A_CreateWorkspace_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var template = new TemplateManifest { Id = "general-development", DisplayName = "General Development", Features = ["core"] };
+        var snapshot = CreateSnapshot("created-demo");
+        var legacy = new FakeDesktopWorkspaceService([])
+        {
+            CreateWorkspaceAsyncFactory = (_, _, _, _) => throw new InvalidOperationException("legacy create should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            CreateWorkspaceResult = snapshot,
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "created-demo",
+                WorkspaceRootPath = snapshot.Paths.RootPath,
+                Template = template,
+            },
+        });
+
+        await page.CreateWorkspaceCommand.ExecuteAsync();
+
+        Assert.Equal(1, application.CreateWorkspaceCallCount);
+        Assert.Equal(1, application.PrepareCallCount);
+        Assert.Contains(page.Workspaces, item => string.Equals(item.RootPath, snapshot.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Wave2A_OracleNotice_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var template = new TemplateManifest { Id = OracleWorkspaceFamily.OraclePlSqlTemplateId, DisplayName = "Oracle PL/SQL Demo" };
+        var snapshot = CreateSnapshot("oracle-demo");
+        var legacy = new FakeDesktopWorkspaceService([])
+        {
+            AcknowledgeOracleNoticeAsyncFactory = (_, _, _) => throw new InvalidOperationException("legacy notice should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            OracleNoticePrompt = new OracleSoftwareNoticePrompt
+            {
+                Title = "Oracle Software Notice",
+                SubjectName = "oracle-demo",
+                Summary = "summary",
+                Facts = ["fact"],
+                AcknowledgementLabel = "ack",
+                ConfirmLabel = "ok",
+                CancelLabel = "cancel",
+            },
+            CreateWorkspaceResult = snapshot,
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            OracleNoticeConfirmed = true,
+            CreateWorkspaceDraft = new CreateWorkspaceDraft
+            {
+                WorkspaceName = "oracle-demo",
+                WorkspaceRootPath = snapshot.Paths.RootPath,
+                Template = template,
+            },
+        });
+
+        await page.CreateWorkspaceCommand.ExecuteAsync();
+
+        Assert.True(application.OracleNoticeBuildCallCount >= 1);
+        Assert.Equal(1, application.OracleNoticeAcknowledgeCallCount);
+        Assert.Equal(0, legacy.AcknowledgeOracleNoticeCallCount);
+    }
+
+    [Fact]
+    public async Task Wave2A_ImportExistingRepository_UsesWorkspaceApplicationService_NotLegacyService()
+    {
+        var snapshot = CreateSnapshot("demo-workspace");
+        var legacy = new FakeDesktopWorkspaceService([])
+        {
+            LoadWorkspaceItemsAsyncFactory = (_, _, _) => throw new InvalidOperationException("legacy load should not be used"),
+        };
+        var application = new FakeDesktopWorkspaceApplicationService(snapshot)
+        {
+            ImportWorkspaceResult = snapshot,
+            LoadResultItems = [new WorkspaceShellItem { Record = snapshot.Record, Snapshot = snapshot }],
+        };
+        var page = new WorkspacesPageViewModel(application, legacy);
+        page.SetInteractionService(new FakeWorkspaceInteractionService
+        {
+            ExistingRepositoryImportDraft = new ExistingRepositoryImportDraft
+            {
+                RepositoryPath = @"C:\repo\demo",
+                WorkspaceName = "demo-workspace",
+                BranchMode = ExistingGitCheckoutBranchMode.CreateNamedFeatureBranch,
+                NamedBranch = "users/test/demo-feature",
+                ReuseExistingNamedBranch = true,
+            },
+        });
+
+        await page.OpenExistingRepositoryCommand.ExecuteAsync();
+
+        Assert.Equal(1, application.InspectCallCount);
+        Assert.Equal(1, application.ValidateBranchCallCount);
+        Assert.Equal(1, application.ImportWorkspaceCallCount);
+        Assert.NotNull(application.LastImportRequest);
+        Assert.Equal(@"C:\repo\demo", application.LastImportRequest!.RepositoryPath);
+    }
+
+    [Fact]
+    public void Wave1_MigrationGuard_TargetedLegacyCallsRemovedFromWorkspacesPage()
+    {
+        var source = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.LoadWorkspaceItemsAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.RefreshVolatileWorkspaceStateAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PrepareWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.OpenWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.StartWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.StopWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.RemoveWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.AssessWorkspaceRecoveryAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.BuildRuntimeResetPrompt", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ExportSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ImportSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.SynchronizeWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PullSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PushSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ValidateOracleApexGeneratedApplicationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ImportOracleApexGeneratedApplicationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PlanOracleApexChangeAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ValidateSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.DiffSynchronizationAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.AssessWorkspacePublishAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PublishWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.BackupWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.RecoverWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ResetRuntimeAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.AttachWorkspaceAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ReprovisionWorkspaceAsync", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave2C1_MigrationGuard_BackupLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.BackupWorkspaceAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceBackupExportService.ExportAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceBackupManifestService.WriteAndEmbedManifest", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave2C2_MigrationGuard_PublishLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.AssessWorkspacePublishAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.PublishWorkspaceAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspacePublishAssessmentService.AssessAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceOrchestrator.PublishAsync", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave2C3_MigrationGuard_RemoveLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.RemoveWorkspaceAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceRemovalService.RemoveAsync", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave2C4_MigrationGuard_RecoveryPromptLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.AssessWorkspaceRecoveryAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.BuildRuntimeResetPrompt", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3A_MigrationGuard_SynchronizationLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.ValidateSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.DiffSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> ValidateSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> DiffSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3B1_MigrationGuard_SynchronizationExportLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.ExportSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> ExportSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> ExportSynchronizationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3B2_MigrationGuard_SynchronizationImportLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.ImportSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> ImportSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> ImportSynchronizationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3C_MigrationGuard_SynchronizationLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.SynchronizeWorkspaceAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async Task<WorkspaceOperationResult> SynchronizeWorkspaceAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> SynchronizeWorkspaceAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunValidateSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunImportSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunDiffSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3D1_MigrationGuard_PullLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.PullSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> PullSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> PullSynchronizationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave3D2_MigrationGuard_PushLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.PushSynchronizationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public Task<WorkspaceOperationResult> PushSynchronizationAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> PushSynchronizationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceOrchestrator.PushSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunSynchronizationOperationAsync(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave4A_MigrationGuard_OracleAssistantValidationImportLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.ValidateOracleApexGeneratedApplicationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ImportOracleApexGeneratedApplicationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceOrchestrator.ValidateSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_workspaceOrchestrator.ImportSynchronizationAsync(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave4B1_MigrationGuard_OracleAssistantPlanningLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.PlanOracleApexChangeAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_oracleApexAssistantService.CreatePlan(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave4C1_MigrationGuard_OracleAssistantRepairPlanningLegacyPathRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.BuildOracleApexRepairPlanAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_oracleApexAssistantService.CreateRepairPlan(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave4C2_MigrationGuard_OracleAssistantRepairExecutionAndRollbackLegacyPathsRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.ExecuteOracleApexRepairPlanAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.RollBackOracleApexGeneratedChangeAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceApexAssistantRollbackResult> RollBackOracleApexGeneratedChangeAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_oracleApexAssistantService.ExecuteRepairPlanAsync(", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_oracleApexAssistantService.RollBackGeneratedChangeAsync(", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave4D_MigrationGuard_OracleApexDiscoveryAndConnectLegacyPathsRemoved()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var workspacesPageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "WorkspacesPageViewModel.cs"));
+        var desktopShellSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopShellInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+
+        Assert.DoesNotContain("_legacyDesktopShellService.DiscoverOracleApexApplicationsAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("_legacyDesktopShellService.ConnectExistingOracleApexApplicationAsync", workspacesPageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync", desktopShellInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync", desktopShellSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("public async Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync", desktopShellSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wave5A_ArchitectureGuard_DesktopPlatformServiceOwnsOnlyNativeActions()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var platformInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopPlatformService.cs"));
+        var avaloniaSourceMatches = GrepOldNamesInAvaloniaSources(repoRoot);
+
+        Assert.Contains("Task OpenPathAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.Contains("Task<WorkspaceSourceNavigationResult> OpenSourceLocationAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreateWorkspaceAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartWorkspaceAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("BackupWorkspaceAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishWorkspaceAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("SynchronizeWorkspaceAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("PlanOracleApexChangeAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExecuteOracleApexPlanAsync", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("InteractiveSession", platformInterfaceSource, StringComparison.Ordinal);
+        Assert.Empty(avaloniaSourceMatches);
+    }
+
+    private static async Task InvokePrivateAsync(object instance, string methodName)
+    {
+        var method = instance.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Could not find method '{methodName}'.");
+        await ((Task)method.Invoke(instance, Array.Empty<object>())!);
+    }
+
+    private static void SetPrivateField(object instance, string fieldName, object? value)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Could not find field '{fieldName}'.");
+        field.SetValue(instance, value);
+    }
+
+    private static T GetPrivateField<T>(object instance, string fieldName)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Could not find field '{fieldName}'.");
+        return (T)field.GetValue(instance)!;
+    }
+
+    private static void SeedApexAssistantRepairPlanningState(
+        WorkspacesPageViewModel page,
+        string planId,
+        string executionId,
+        string contextRevision,
+        OracleApexAssistantPlanResponse planResponse,
+        OracleApexAssistantExecutionResponse executionResponse,
+        string stageLabel)
+    {
+        SetPrivateField(page, "_apexAssistantPlanResponse", planResponse);
+        SetPrivateField(page, "_apexAssistantExecutionResponse", executionResponse);
+        SetPrivateField(page, "_apexAssistantCurrentPlanId", planId);
+        SetPrivateField(page, "_apexAssistantCurrentExecutionId", executionId);
+        SetPrivateField(page, "_apexAssistantCurrentContextRevision", contextRevision);
+        SetPrivateField(page, "_apexAssistantStageLabel", stageLabel);
+    }
+
+    private static void SeedApexAssistantRepairExecutionState(
+        WorkspacesPageViewModel page,
+        string planId,
+        string executionId,
+        string repairPlanId,
+        string contextRevision)
+    {
+        SetPrivateField(page, "_apexAssistantRepairPlanResponse", new OracleApexAssistantRepairPlanResponse
+        {
+            Plan = new OracleApexEditPlan
+            {
+                Intent = "repair",
+                Operations =
+                {
+                    new OracleApexPlannedOperation { Sequence = 1, Title = "Repair page alias", TargetComponentType = "page", TargetIdentifier = "Reports" },
+                },
+            },
+            Review = "Repair review",
+            CompilerValidation = new OracleApexValidationResult { Diagnostics = [new OracleApexCompilerDiagnostic { CompilerCode = "APEX-1001", Message = "Missing alias." }] },
+        });
+        SetPrivateField(page, "_apexAssistantExecutionResponse", new OracleApexAssistantExecutionResponse
+        {
+            RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = executionId, EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+            CompilerValidation = new OracleApexValidationResult { Diagnostics = [new OracleApexCompilerDiagnostic { CompilerCode = "APEX-1001", Message = "Missing alias." }] },
+            SuggestedRepairPlan = new OracleApexEditPlan { Intent = "repair" },
+            Stage = OracleApexAssistantStage.SqlclValidation,
+        });
+        SetPrivateField(page, "_apexAssistantCurrentPlanId", planId);
+        SetPrivateField(page, "_apexAssistantCurrentExecutionId", executionId);
+        SetPrivateField(page, "_apexAssistantCurrentRepairPlanId", repairPlanId);
+        SetPrivateField(page, "_apexAssistantCurrentContextRevision", contextRevision);
+        SetPrivateField(page, "_apexAssistantStageLabel", "Repair plan available");
+    }
+
+    private static string[] GrepOldNamesInAvaloniaSources(string repoRoot)
+    {
+        return Directory.GetFiles(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia"), "*.cs", SearchOption.AllDirectories)
+            .SelectMany(file => File.ReadAllLines(file).Select((line, index) => new { file, line, index }))
+            .Where(item => item.line.Contains("_legacyDesktopShellService", StringComparison.Ordinal)
+                || item.line.Contains("IDesktopShellService", StringComparison.Ordinal)
+                || item.line.Contains("DesktopShellService", StringComparison.Ordinal))
+            .Select(item => $"{item.file}:{item.index + 1}:{item.line}")
+            .ToArray();
+    }
+
+    private sealed class FakeDesktopWorkspaceService : IDesktopWorkspaceService
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
         private readonly IReadOnlyList<WorkspaceShellItem> _extraItems;
@@ -5340,7 +7618,6 @@ public sealed class ShellViewModelTests
         public Func<string, OracleApexAssistantRequest, OracleApexEditPlan, OracleApexValidationResult, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantRepairPlanResult>>? OracleApexAssistantRepairPlanFactoryAsync { get; set; }
         public Func<string, string, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantValidationResult>>? OracleApexAssistantValidationFactoryAsync { get; set; }
         public Func<string, string, bool, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantImportResult>>? OracleApexAssistantImportFactoryAsync { get; set; }
-        public Func<string, string, WorkspaceSnapshot?, IOperationLogSink?, CancellationToken, Task<WorkspaceApexAssistantRollbackResult>>? OracleApexAssistantRollbackFactoryAsync { get; set; }
         public Func<string, WorkspaceSnapshot?, CancellationToken, Task<WorkspaceSnapshot>>? AcknowledgeOracleNoticeAsyncFactory { get; set; }
         public WorkspacePublishAssessment PublishAssessment { get; set; } = new()
         {
@@ -5364,6 +7641,14 @@ public sealed class ShellViewModelTests
         public Exception? OpenWorkspaceException { get; init; }
         public Exception? ResetRuntimeException { get; init; }
         public Exception? AttachException { get; init; }
+        public Exception? RecoveryAssessmentException { get; init; }
+        public Exception? ExportSynchronizationException { get; init; }
+        public Exception? PullSynchronizationException { get; init; }
+        public Exception? ImportSynchronizationException { get; init; }
+        public Exception? PushSynchronizationException { get; init; }
+        public Exception? SynchronizeSynchronizationException { get; init; }
+        public Exception? ValidateSynchronizationException { get; init; }
+        public Exception? DiffSynchronizationException { get; init; }
         public Exception? RemoveException { get; init; }
         public Exception? PublishException { get; init; }
         public Exception? BackupException { get; init; }
@@ -5392,6 +7677,19 @@ public sealed class ShellViewModelTests
         public int StartCallCount { get; private set; }
         public int OpenWorkspaceCallCount { get; private set; }
         public int ResetRuntimeCallCount { get; private set; }
+        public int BuildRuntimeResetPromptCallCount { get; private set; }
+        public int RecoveryAssessmentCallCount { get; private set; }
+        public int OracleAssistantValidationCallCount { get; private set; }
+        public int OracleAssistantImportCallCount { get; private set; }
+        public int OracleAssistantPlanCallCount { get; private set; }
+        public int OracleAssistantRepairPlanCallCount { get; private set; }
+        public int ExportSynchronizationCallCount { get; private set; }
+        public int PullSynchronizationCallCount { get; private set; }
+        public int ImportSynchronizationCallCount { get; private set; }
+        public int PushSynchronizationCallCount { get; private set; }
+        public int SynchronizeSynchronizationCallCount { get; private set; }
+        public int ValidateSynchronizationCallCount { get; private set; }
+        public int DiffSynchronizationCallCount { get; private set; }
         public int AttachCallCount { get; private set; }
         public int PrepareCallCount { get; private set; }
         public int ReprovisionCallCount { get; private set; }
@@ -5406,7 +7704,7 @@ public sealed class ShellViewModelTests
         public Dictionary<string, WorkspaceTimeline> TimelineByPath { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<string> OpenedPaths { get; } = [];
 
-        public FakeDesktopShellService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
+        public FakeDesktopWorkspaceService(IReadOnlyList<WorkspaceSnapshot> snapshots, IReadOnlyList<WorkspaceShellItem>? extraItems = null)
         {
             _snapshots = snapshots;
             _extraItems = extraItems ?? [];
@@ -5480,7 +7778,9 @@ public sealed class ShellViewModelTests
                 : null;
 
         public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot snapshot)
-            => new()
+        {
+            BuildRuntimeResetPromptCallCount++;
+            return new()
             {
                 WorkspaceName = snapshot.Definition.Workspace.Name,
                 WorkspaceRoot = snapshot.Paths.RootPath,
@@ -5489,6 +7789,7 @@ public sealed class ShellViewModelTests
                 Keeps = ["Workspace files", "Git history", "Documentation", "Downloads/cache", "workspace.yaml"],
                 ConfirmationMessage = "Reset runtime and continue?",
             };
+        }
 
         public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
         {
@@ -5686,37 +7987,6 @@ public sealed class ShellViewModelTests
             });
         }
 
-        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-        {
-            RemoveCallCount++;
-            LastRemoveRootPath = rootPath;
-
-            if (RemoveException is not null)
-            {
-                throw RemoveException;
-            }
-
-            if (RemoveResultFactoryAsync is not null)
-            {
-                return RemoveResultFactoryAsync(rootPath, logSink, cancellationToken);
-            }
-
-            return Task.FromResult(new WorkspaceRemovalOperationResult
-            {
-                Message = "Removed from workspace list.",
-                Transcript = new OperationTranscript(),
-                Removal = new WorkspaceRemovalResult
-                {
-                    WorkspaceName = currentSnapshot?.Definition.Workspace.Name ?? "removed",
-                    WorkspaceRoot = rootPath,
-                    FilesDeleted = false,
-                    Warnings = [],
-                    Succeeded = true,
-                    FailureReason = string.Empty,
-                },
-            });
-        }
-
         public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
             => Task.FromResult(WindowsTerminalProfileResult);
 
@@ -5835,7 +8105,9 @@ public sealed class ShellViewModelTests
         }
 
         public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(string rootPath, OracleApexAssistantRequest request, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => OracleApexAssistantPlanFactoryAsync?.Invoke(rootPath, request, currentSnapshot, logSink, cancellationToken)
+        {
+            OracleAssistantPlanCallCount++;
+            return OracleApexAssistantPlanFactoryAsync?.Invoke(rootPath, request, currentSnapshot, logSink, cancellationToken)
                 ?? Task.FromResult(new WorkspaceApexAssistantPlanResult
                 {
                     Snapshot = currentSnapshot ?? CreateSnapshot("assistant-plan"),
@@ -5850,6 +8122,7 @@ public sealed class ShellViewModelTests
                         WorkspaceIndex = new OracleApexWorkspaceIndex(),
                     },
                 });
+        }
 
         public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan plan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => OracleApexAssistantExecutionFactoryAsync?.Invoke(rootPath, request, plan, currentSnapshot, logSink, cancellationToken)
@@ -5867,7 +8140,9 @@ public sealed class ShellViewModelTests
                 });
 
         public Task<WorkspaceApexAssistantRepairPlanResult> BuildOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => OracleApexAssistantRepairPlanFactoryAsync?.Invoke(rootPath, request, sourcePlan, validation, currentSnapshot, logSink, cancellationToken)
+        {
+            OracleAssistantRepairPlanCallCount++;
+            return OracleApexAssistantRepairPlanFactoryAsync?.Invoke(rootPath, request, sourcePlan, validation, currentSnapshot, logSink, cancellationToken)
                 ?? Task.FromResult(new WorkspaceApexAssistantRepairPlanResult
                 {
                     Snapshot = currentSnapshot ?? CreateSnapshot("assistant-repair-plan"),
@@ -5880,12 +8155,12 @@ public sealed class ShellViewModelTests
                         CompilerValidation = validation,
                     },
                 });
-
-        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => ExecuteOracleApexPlanAsync(rootPath, request, repairPlan, currentSnapshot, logSink, cancellationToken);
+        }
 
         public Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => OracleApexAssistantValidationFactoryAsync?.Invoke(rootPath, environmentName, currentSnapshot, logSink, cancellationToken)
+        {
+            OracleAssistantValidationCallCount++;
+            return OracleApexAssistantValidationFactoryAsync?.Invoke(rootPath, environmentName, currentSnapshot, logSink, cancellationToken)
                 ?? Task.FromResult(new WorkspaceApexAssistantValidationResult
                 {
                     Snapshot = currentSnapshot ?? CreateSnapshot("assistant-validate"),
@@ -5893,9 +8168,12 @@ public sealed class ShellViewModelTests
                     Transcript = new OperationTranscript(),
                     Response = new WorkspaceSynchronizationOperationResult { Snapshot = (currentSnapshot ?? CreateSnapshot("assistant-validate")).Synchronization, Message = "Validated.", Validation = new OracleApexValidationResult { IsSuccess = true } },
                 });
+        }
 
         public Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, bool allowNonDevelopmentDeployment, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => OracleApexAssistantImportFactoryAsync?.Invoke(rootPath, environmentName, allowNonDevelopmentDeployment, currentSnapshot, logSink, cancellationToken)
+        {
+            OracleAssistantImportCallCount++;
+            return OracleApexAssistantImportFactoryAsync?.Invoke(rootPath, environmentName, allowNonDevelopmentDeployment, currentSnapshot, logSink, cancellationToken)
                 ?? Task.FromResult(new WorkspaceApexAssistantImportResult
                 {
                     Snapshot = currentSnapshot ?? CreateSnapshot("assistant-import"),
@@ -5903,40 +8181,95 @@ public sealed class ShellViewModelTests
                     Transcript = new OperationTranscript(),
                     Response = new WorkspaceSynchronizationOperationResult { Snapshot = (currentSnapshot ?? CreateSnapshot("assistant-import")).Synchronization, Message = "Imported." },
                 });
-
-        public Task<WorkspaceApexAssistantRollbackResult> RollBackOracleApexGeneratedChangeAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => OracleApexAssistantRollbackFactoryAsync?.Invoke(rootPath, environmentName, currentSnapshot, logSink, cancellationToken)
-                ?? Task.FromResult(new WorkspaceApexAssistantRollbackResult
-                {
-                    Snapshot = currentSnapshot ?? CreateSnapshot("assistant-rollback"),
-                    Message = "Rollback completed.",
-                    Transcript = new OperationTranscript(),
-                    Response = new OracleApexAssistantRollbackResponse { IsSuccess = true, Summary = "Rollback completed.", RollbackState = OracleApexAssistantRollbackState.Completed },
-                });
+        }
 
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Validated.", Transcript = new OperationTranscript() });
+        {
+            ValidateSynchronizationCallCount++;
+            if (ValidateSynchronizationException is not null)
+            {
+                throw ValidateSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Validated.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Exported.", Transcript = new OperationTranscript() });
+        {
+            ExportSynchronizationCallCount++;
+            if (ExportSynchronizationException is not null)
+            {
+                throw ExportSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Exported.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Imported.", Transcript = new OperationTranscript() });
+        {
+            ImportSynchronizationCallCount++;
+            if (ImportSynchronizationException is not null)
+            {
+                throw ImportSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Imported.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> PullSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Pulled.", Transcript = new OperationTranscript() });
+        {
+            PullSynchronizationCallCount++;
+            if (PullSynchronizationException is not null)
+            {
+                throw PullSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Pulled.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> PushSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Pushed.", Transcript = new OperationTranscript() });
+        {
+            PushSynchronizationCallCount++;
+            if (PushSynchronizationException is not null)
+            {
+                throw PushSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Pushed.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> SynchronizeWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Synchronized.", Transcript = new OperationTranscript() });
+        {
+            SynchronizeSynchronizationCallCount++;
+            if (SynchronizeSynchronizationException is not null)
+            {
+                throw SynchronizeSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "Synchronized.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceOperationResult> DiffSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "No differences.", Transcript = new OperationTranscript() });
+        {
+            DiffSynchronizationCallCount++;
+            if (DiffSynchronizationException is not null)
+            {
+                throw DiffSynchronizationException;
+            }
+
+            return Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("sync"), Message = "No differences.", Transcript = new OperationTranscript() });
+        }
 
         public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default)
-            => Task.FromResult(new WorkspaceRecoveryAssessment { Title = "Recover", Summary = "summary", Findings = ["finding"], ConfirmationMessage = "confirm" });
+        {
+            RecoveryAssessmentCallCount++;
+            if (RecoveryAssessmentException is not null)
+            {
+                throw RecoveryAssessmentException;
+            }
+
+            return Task.FromResult(new WorkspaceRecoveryAssessment { Title = "Recover", Summary = "summary", Findings = ["finding"], ConfirmationMessage = "confirm" });
+        }
 
         public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new WorkspaceOperationResult { Snapshot = currentSnapshot ?? CreateSnapshot("recovered"), Message = "recovered", Transcript = new OperationTranscript() });
@@ -6101,7 +8434,7 @@ public sealed class ShellViewModelTests
         }
     }
 
-    private sealed class TrackingDesktopShellService : IDesktopShellService
+    private sealed class TrackingDesktopWorkspaceService : IDesktopWorkspaceService
     {
         public int LoadCalls { get; private set; }
         public string? LastOpenedSourcePath { get; private set; }
@@ -6133,7 +8466,6 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> StopWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -6144,10 +8476,8 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(string rootPath, OracleApexAssistantRequest request, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan plan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceApexAssistantRepairPlanResult> BuildOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync(string rootPath, OracleApexAssistantRequest request, OracleApexEditPlan repairPlan, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync(string rootPath, string environmentName, bool allowNonDevelopmentDeployment, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
-        public Task<WorkspaceApexAssistantRollbackResult> RollBackOracleApexGeneratedChangeAsync(string rootPath, string environmentName, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ExportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceOperationResult> ImportSynchronizationAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, string? deploymentProfileOverride = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
@@ -6176,6 +8506,909 @@ public sealed class ShellViewModelTests
         }
     }
 
+    private sealed class FakeDesktopPlatformService : IDesktopPlatformService
+    {
+        public int OpenPathCallCount { get; private set; }
+        public int OpenSourceLocationCallCount { get; private set; }
+        public string? LastOpenedPath { get; private set; }
+        public string? LastOpenedSourcePath { get; private set; }
+        public int LastOpenedSourceLine { get; private set; }
+        public int LastOpenedSourceColumn { get; private set; }
+        public CancellationToken LastOpenPathCancellationToken { get; private set; }
+        public CancellationToken LastOpenSourceCancellationToken { get; private set; }
+        public Exception? OpenPathException { get; init; }
+        public Exception? OpenSourceException { get; init; }
+
+        public Task OpenPathAsync(string path, CancellationToken cancellationToken = default)
+        {
+            OpenPathCallCount++;
+            LastOpenedPath = path;
+            LastOpenPathCancellationToken = cancellationToken;
+            if (OpenPathException is not null)
+            {
+                throw OpenPathException;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<WorkspaceSourceNavigationResult> OpenSourceLocationAsync(string path, int line, int column, CancellationToken cancellationToken = default)
+        {
+            OpenSourceLocationCallCount++;
+            LastOpenedSourcePath = path;
+            LastOpenedSourceLine = line;
+            LastOpenedSourceColumn = column;
+            LastOpenSourceCancellationToken = cancellationToken;
+            if (OpenSourceException is not null)
+            {
+                throw OpenSourceException;
+            }
+
+            return Task.FromResult(new WorkspaceSourceNavigationResult { Message = $"Opened '{path}:{line}:{column}'", UsedFallback = false });
+        }
+    }
+
+    private sealed class FakeDesktopWorkspaceApplicationService : IDesktopWorkspaceApplicationService
+    {
+        private readonly WorkspaceSnapshot _snapshot;
+
+        public FakeDesktopWorkspaceApplicationService(WorkspaceSnapshot snapshot)
+        {
+            _snapshot = snapshot;
+        }
+
+        public int LoadCallCount { get; private set; }
+        public int RefreshCallCount { get; private set; }
+        public int PrepareCallCount { get; private set; }
+        public int OpenCallCount { get; private set; }
+        public int StartCallCount { get; private set; }
+        public int StopCallCount { get; private set; }
+        public int RecoverCallCount { get; private set; }
+        public int ResetCallCount { get; private set; }
+        public int AttachCallCount { get; private set; }
+        public int ReprovisionCallCount { get; private set; }
+        public int CreateWorkspaceCallCount { get; private set; }
+        public int BuildWorkspaceDefinitionCallCount { get; private set; }
+        public int InspectCallCount { get; private set; }
+        public int ValidateBranchCallCount { get; private set; }
+        public int ImportWorkspaceCallCount { get; private set; }
+        public int OracleNoticeBuildCallCount { get; private set; }
+        public int OracleNoticeAcknowledgeCallCount { get; private set; }
+        public int SuggestSavePointMessageCallCount { get; private set; }
+        public int CreateSavePointCallCount { get; private set; }
+        public int CreateCheckpointCallCount { get; private set; }
+        public int LoadTimelineCallCount { get; private set; }
+        public int LoadInteractiveSessionsCallCount { get; private set; }
+        public int CreateInteractiveSessionCallCount { get; private set; }
+        public int PublishAssessmentCallCount { get; private set; }
+        public int RecoveryAssessmentCallCount { get; private set; }
+        public int OracleAssistantPlanCallCount { get; private set; }
+        public int OracleAssistantRepairExecutionCallCount { get; private set; }
+        public int OracleAssistantRepairPlanCallCount { get; private set; }
+        public int OracleAssistantRollbackCallCount { get; private set; }
+        public int OracleApexDiscoveryCallCount { get; private set; }
+        public int ConnectOracleApexApplicationCallCount { get; private set; }
+        public int OracleAssistantValidationCallCount { get; private set; }
+        public int OracleAssistantImportCallCount { get; private set; }
+        public int PublishCallCount { get; private set; }
+        public int RemoveCallCount { get; private set; }
+        public int SynchronizationStatusCallCount { get; private set; }
+        public int ExportSynchronizationCallCount { get; private set; }
+        public int PullSynchronizationCallCount { get; private set; }
+        public int ImportSynchronizationCallCount { get; private set; }
+        public int PushSynchronizationCallCount { get; private set; }
+        public int SynchronizeWorkspaceCallCount { get; private set; }
+        public int ValidateSynchronizationCallCount { get; private set; }
+        public int DiffSynchronizationCallCount { get; private set; }
+        public int BackupCallCount { get; private set; }
+        public WorkspaceSnapshot? CreateWorkspaceResult { get; init; }
+        public WorkspaceSnapshot? ImportWorkspaceResult { get; init; }
+        public OracleSoftwareNoticePrompt? OracleNoticePrompt { get; init; }
+        public IReadOnlyList<WorkspaceShellItem>? LoadResultItems { get; init; }
+        public WorkspacePublishAssessment PublishAssessment { get; init; } = new()
+        {
+            WorkspaceName = "alpha",
+            CurrentBranch = "users/test/alpha",
+            Summary = "Ready to publish 1 commit(s) to 'origin/users/test/alpha'.",
+            ConfirmationMessage = "Publish this Working Copy now?",
+            Findings = ["Ahead/behind: 1/0"],
+            Warnings = [],
+            CanPublish = true,
+            IsBlocked = false,
+            RequiresConfirmation = true,
+            RequiresSavePoint = false,
+            HasRemoteConfigured = true,
+            RemoteName = "origin",
+            RemoteBranch = "origin/users/test/alpha",
+            AheadCount = 1,
+            BehindCount = 0,
+        };
+        public WorkspacePublishResult? PublishResult { get; init; }
+        public Exception? PublishException { get; init; }
+        public WorkspaceRemovalOperationResult? RemoveResult { get; init; }
+        public Exception? RemoveException { get; init; }
+        public WorkspaceRecoveryAssessment RecoveryAssessment { get; init; } = new() { Title = "Recover Workspace", Summary = "summary", Findings = ["finding"], ConfirmationMessage = "confirm", WorkspaceName = "alpha", StatusSummary = "status" };
+        public WorkspaceApexAssistantValidationResult? OracleAssistantValidationResult { get; init; }
+        public WorkspaceApexAssistantImportResult? OracleAssistantImportResult { get; init; }
+        public OracleApexApplicationDiscoveryResult? OracleApexDiscoveryResult { get; init; }
+        public WorkspaceApexAssistantPlanResult? OracleApexAssistantPlanResult { get; init; }
+        public WorkspaceApexAssistantExecutionResult? OracleAssistantExecutionResult { get; init; }
+        public WorkspaceApexAssistantRepairPlanResult? OracleAssistantRepairPlanResult { get; init; }
+        public WorkspaceApexAssistantRollbackResult? OracleAssistantRollbackResult { get; init; }
+        public WorkspaceOperationResult? ConnectOracleApexApplicationResult { get; init; }
+        public Exception? OracleApexDiscoveryException { get; init; }
+        public Exception? ConnectOracleApexApplicationException { get; init; }
+        public Exception? OracleAssistantPlanException { get; init; }
+        public Exception? OracleAssistantRepairExecutionException { get; init; }
+        public Exception? OracleAssistantValidationException { get; init; }
+        public Exception? OracleAssistantImportException { get; init; }
+        public Exception? OracleAssistantExecutionException { get; init; }
+        public Exception? OracleAssistantRepairPlanException { get; init; }
+        public Exception? OracleAssistantRollbackException { get; init; }
+        public WorkspaceSynchronizationStatusResult SynchronizationStatus { get; init; } = new() { Snapshot = new WorkspaceSynchronizationSnapshot { State = WorkspaceSynchronizationState.Unknown, Summary = "Unknown" } };
+        public WorkspaceOperationResult? ExportSynchronizationResult { get; init; }
+        public WorkspaceOperationResult? PullSynchronizationResult { get; init; }
+        public WorkspaceOperationResult? ImportSynchronizationResult { get; init; }
+        public WorkspaceOperationResult? PushSynchronizationResult { get; init; }
+        public WorkspaceOperationResult? SynchronizeWorkspaceResult { get; init; }
+        public WorkspaceOperationResult? ValidateSynchronizationResult { get; init; }
+        public WorkspaceOperationResult? DiffSynchronizationResult { get; init; }
+        public Exception? ExportSynchronizationException { get; init; }
+        public Exception? PullSynchronizationException { get; init; }
+        public Exception? ImportSynchronizationException { get; init; }
+        public Exception? PushSynchronizationException { get; init; }
+        public Exception? SynchronizeWorkspaceException { get; init; }
+        public Exception? ValidateSynchronizationException { get; init; }
+        public Exception? DiffSynchronizationException { get; init; }
+        public WorkspaceBackupResult? BackupResult { get; init; }
+        public Exception? BackupException { get; init; }
+        public ExistingGitCheckoutImportRequest? LastImportRequest { get; private set; }
+        public WorkspaceSnapshot? LastPublishAssessmentWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastPublishedWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastRemoveWorkspace { get; private set; }
+        public string? LastRemoveRootPath { get; private set; }
+        public WorkspaceRemovalChoice LastRemoveChoice { get; private set; }
+        public WorkspaceSnapshot? LastRecoveryAssessmentWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleAssistantValidationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleAssistantImportWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleAssistantRepairWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleAssistantRepairExecutionWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleAssistantRollbackWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastOracleApexDiscoveryWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastConnectOracleApexApplicationWorkspace { get; private set; }
+        public ConnectOracleApexApplicationDraft? LastOracleApexDiscoveryDraft { get; private set; }
+        public ConnectOracleApexApplicationDraft? LastConnectOracleApexApplicationDraft { get; private set; }
+        public OracleApexAssistantRequest? LastOracleAssistantPlanRequest { get; private set; }
+        public OracleApexAssistantRequest? LastOracleAssistantRepairRequest { get; private set; }
+        public OracleApexEditPlan? LastOracleAssistantRepairSourcePlan { get; private set; }
+        public string? LastOracleAssistantRepairExecutionPlanId { get; private set; }
+        public string? LastOracleAssistantRepairExecutionSourceExecutionId { get; private set; }
+        public string? LastOracleAssistantRepairExecutionRepairPlanId { get; private set; }
+        public string? LastOracleAssistantRollbackExecutionId { get; private set; }
+        public OracleApexValidationResult? LastOracleAssistantRepairValidation { get; private set; }
+        public string? LastOracleAssistantExecutionPlanId { get; private set; }
+        public string? LastOracleAssistantExecutionContextRevision { get; private set; }
+        public string? LastOracleAssistantRepairPlanId { get; private set; }
+        public string? LastOracleAssistantRepairExecutionId { get; private set; }
+        public string? LastOracleAssistantRepairContextRevision { get; private set; }
+        public CancellationToken LastOracleAssistantRepairCancellationToken { get; private set; }
+        public WorkspaceSnapshot? LastSynchronizationStatusWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastExportSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastPullSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastImportSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastPushSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastSynchronizedWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastValidatedSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastDiffSynchronizationWorkspace { get; private set; }
+        public WorkspaceSnapshot? LastBackupWorkspace { get; private set; }
+        public string? LastBackupDestinationPath { get; private set; }
+        public WorkspaceTimeline TimelineResult { get; init; } = new WorkspaceTimeline();
+        public IReadOnlyList<InteractiveAgentSessionRecord> InteractiveSessionsResult { get; init; } = Array.Empty<InteractiveAgentSessionRecord>();
+        public InteractiveAgentSessionRecord? CreatedInteractiveSessionResult { get; init; }
+        public string? LastInteractiveSessionsWorkspaceId { get; private set; }
+        public WorkspaceSnapshot? LastInteractiveSessionWorkspace { get; private set; }
+        public string? LastInteractiveSessionTitle { get; private set; }
+
+        public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(CancellationToken cancellationToken = default)
+        {
+            LoadCallCount++;
+            return Task.FromResult(new WorkspaceLoadResult
+            {
+                Items = LoadResultItems ?? [new WorkspaceShellItem { Record = _snapshot.Record, Snapshot = _snapshot }],
+                Report = new WorkspaceLoadReport { RawRecordCount = (LoadResultItems ?? [new WorkspaceShellItem { Record = _snapshot.Record, Snapshot = _snapshot }]).Count, SnapshotAttemptCount = (LoadResultItems ?? [new WorkspaceShellItem { Record = _snapshot.Record, Snapshot = _snapshot }]).Count, SnapshotCount = (LoadResultItems ?? [new WorkspaceShellItem { Record = _snapshot.Record, Snapshot = _snapshot }]).Count, ItemsReturnedCount = (LoadResultItems ?? [new WorkspaceShellItem { Record = _snapshot.Record, Snapshot = _snapshot }]).Count },
+            });
+        }
+
+        public Task<IReadOnlyList<InteractiveAgentSessionRecord>> LoadInteractiveSessionsAsync(string? workspaceId, CancellationToken cancellationToken = default)
+        {
+            LoadInteractiveSessionsCallCount++;
+            LastInteractiveSessionsWorkspaceId = workspaceId;
+            return Task.FromResult(InteractiveSessionsResult);
+        }
+
+        public Task<InteractiveAgentSessionRecord> CreateInteractiveSessionAsync(WorkspaceSnapshot workspace, string? title, CancellationToken cancellationToken = default)
+        {
+            CreateInteractiveSessionCallCount++;
+            LastInteractiveSessionWorkspace = workspace;
+            LastInteractiveSessionTitle = title;
+            return Task.FromResult(CreatedInteractiveSessionResult ?? new InteractiveAgentSessionRecord
+            {
+                InteractiveAgentSessionId = "interactive-created",
+                WorkspaceId = workspace.Definition.Workspace.Id,
+                WorkspaceInstanceId = $"workspace-{workspace.Definition.Workspace.Id}",
+                Title = title ?? $"OpenCode session - {workspace.Definition.Workspace.Name}",
+                Status = InteractiveAgentSessionStatus.Detached,
+                CreatedUtc = DateTimeOffset.UtcNow,
+                UpdatedUtc = DateTimeOffset.UtcNow,
+                LastActivityUtc = DateTimeOffset.UtcNow,
+            });
+        }
+
+        public WorkspaceDefinition BuildWorkspaceDefinition(CreateWorkspaceDraft draft)
+        {
+            BuildWorkspaceDefinitionCallCount++;
+            return new WorkspaceDefinition { Workspace = new WorkspaceMetadata { Id = draft.WorkspaceName, Name = draft.WorkspaceName, Image = "ubuntu:24.04" } };
+        }
+
+        public OracleSoftwareNoticePrompt? BuildOracleSoftwareNotice(CreateWorkspaceDraft draft)
+        {
+            OracleNoticeBuildCallCount++;
+            return OracleNoticePrompt;
+        }
+
+        public Task<WorkspaceSnapshot> AcknowledgeOracleSoftwareNoticeAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
+        {
+            OracleNoticeAcknowledgeCallCount++;
+            return Task.FromResult(snapshot);
+        }
+
+        public Task<WorkspaceSnapshot> CreateWorkspaceAsync(CreateWorkspaceDraft draft, CancellationToken cancellationToken = default)
+        {
+            CreateWorkspaceCallCount++;
+            return Task.FromResult(CreateWorkspaceResult ?? _snapshot);
+        }
+
+        public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(string repositoryPath, string workspaceName, CancellationToken cancellationToken = default)
+        {
+            InspectCallCount++;
+            return Task.FromResult(new ExistingGitCheckoutPlan
+            {
+                RepositoryPath = repositoryPath,
+                WorkspaceName = workspaceName,
+                Repository = new GitRepositoryInspection(IsRepository: true, CurrentBranch: "main", IsSafeWorkingCopy: true),
+                DiscoveryResult = new WorkspaceDiscoveryResult { Status = WorkspaceDiscoveryStatus.NotFound },
+            });
+        }
+
+        public Task<GitBranchValidationResult> ValidateExistingGitCheckoutBranchAsync(string repositoryPath, string branchName, CancellationToken cancellationToken = default)
+        {
+            ValidateBranchCallCount++;
+            return Task.FromResult(new GitBranchValidationResult(true, string.Empty, false));
+        }
+
+        public Task<WorkspaceSnapshot> ImportExistingGitCheckoutAsync(ExistingGitCheckoutImportRequest request, CancellationToken cancellationToken = default)
+        {
+            ImportWorkspaceCallCount++;
+            LastImportRequest = request;
+            return Task.FromResult(ImportWorkspaceResult ?? _snapshot);
+        }
+
+        public Task<string> SuggestSavePointMessageAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            SuggestSavePointMessageCallCount++;
+            return Task.FromResult("Capture current workspace state");
+        }
+
+        public Task<WorkspaceOperationResult> CreateSavePointAsync(WorkspaceSnapshot workspace, string message, CancellationToken cancellationToken = default)
+        {
+            CreateSavePointCallCount++;
+            return Task.FromResult(BuildResult("Save Point created."));
+        }
+
+        public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            CreateCheckpointCallCount++;
+            return Task.FromResult(new WorkspaceCheckpointOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Checkpoint created.",
+                Transcript = new OperationTranscript { OperationName = "checkpoint", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Checkpoint = new WorkspaceCheckpointRecord { Id = "cp-1", CurrentBranch = "users/test/demo", CurrentCommitSha = "abc123", CreatedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceTimeline> LoadTimelineAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            LoadTimelineCallCount++;
+            return Task.FromResult(TimelineResult);
+        }
+
+        public Task<WorkspaceSnapshot?> RefreshVolatileWorkspaceStateAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            RefreshCallCount++;
+            return Task.FromResult<WorkspaceSnapshot?>(_snapshot);
+        }
+
+        public Task<WorkspaceRecoveryAssessment> AssessWorkspaceRecoveryAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            RecoveryAssessmentCallCount++;
+            LastRecoveryAssessmentWorkspace = workspace;
+            return Task.FromResult(RecoveryAssessment);
+        }
+
+        public WorkspaceRuntimeResetPrompt BuildRuntimeResetPrompt(WorkspaceSnapshot workspace)
+            => DesktopWorkspaceProjectionMapper.BuildRuntimeResetPrompt(workspace);
+
+        public Task<WorkspaceSynchronizationStatusResult> GetSynchronizationStatusAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            SynchronizationStatusCallCount++;
+            LastSynchronizationStatusWorkspace = workspace;
+            return Task.FromResult(SynchronizationStatus);
+        }
+
+        public Task<WorkspaceApexAssistantValidationResult> ValidateOracleApexGeneratedApplicationAsync(WorkspaceSnapshot workspace, string environmentName, string? executionId, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantValidationCallCount++;
+            LastOracleAssistantValidationWorkspace = workspace;
+            if (OracleAssistantValidationException is not null)
+            {
+                throw OracleAssistantValidationException;
+            }
+
+            return Task.FromResult(OracleAssistantValidationResult ?? new WorkspaceApexAssistantValidationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Validated APEXlang source.",
+                Transcript = new OperationTranscript { OperationName = "validate_oracle_assistant", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = _snapshot.Synchronization,
+                    Message = "Validated APEXlang source.",
+                    Validation = new OracleApexValidationResult { IsSuccess = true },
+                },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantPlanResult> PlanOracleApexChangeAsync(WorkspaceSnapshot workspace, OracleApexAssistantRequest request, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantPlanCallCount++;
+            LastOracleAssistantPlanRequest = request;
+            if (OracleAssistantPlanException is not null)
+            {
+                throw OracleAssistantPlanException;
+            }
+
+            return Task.FromResult(OracleApexAssistantPlanResult ?? new WorkspaceApexAssistantPlanResult
+            {
+                Snapshot = _snapshot,
+                Message = "Plan ready for review.",
+                Transcript = new OperationTranscript { OperationName = "plan_oracle_assistant", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new OracleApexAssistantPlanResponse { Request = request, Plan = new OracleApexEditPlan(), Review = "Plan ready for review." },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexPlanAsync(WorkspaceSnapshot workspace, OracleApexAssistantRequest request, OracleApexEditPlan plan, string planId, string contextRevision, CancellationToken cancellationToken = default)
+        {
+            LastOracleAssistantExecutionPlanId = planId;
+            LastOracleAssistantExecutionContextRevision = contextRevision;
+            if (OracleAssistantExecutionException is not null)
+            {
+                throw OracleAssistantExecutionException;
+            }
+
+            return Task.FromResult(OracleAssistantExecutionResult ?? new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = _snapshot,
+                Message = "Applied semantic changes.",
+                Transcript = new OperationTranscript { OperationName = "apply_oracle_assistant", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                PlanId = planId,
+                ContextRevision = contextRevision,
+                ExecutionId = "exec-1",
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Applied semantic changes.",
+                    ChangedFiles = plan.ExpectedChangedFiles,
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = "exec-1", EnvironmentName = request.EnvironmentName, RollbackState = OracleApexAssistantRollbackState.Available },
+                    Stage = OracleApexAssistantStage.Preview,
+                },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantRepairPlanResult> BuildOracleApexRepairPlanAsync(WorkspaceSnapshot workspace, OracleApexAssistantRequest request, OracleApexEditPlan sourcePlan, OracleApexValidationResult validation, string planId, string executionId, string contextRevision, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantRepairPlanCallCount++;
+            LastOracleAssistantRepairWorkspace = workspace;
+            LastOracleAssistantRepairRequest = request;
+            LastOracleAssistantRepairSourcePlan = sourcePlan;
+            LastOracleAssistantRepairValidation = validation;
+            LastOracleAssistantRepairPlanId = planId;
+            LastOracleAssistantRepairExecutionSourceExecutionId = executionId;
+            LastOracleAssistantRepairContextRevision = contextRevision;
+            LastOracleAssistantRepairCancellationToken = cancellationToken;
+            if (OracleAssistantRepairPlanException is not null)
+            {
+                throw OracleAssistantRepairPlanException;
+            }
+
+            return Task.FromResult(OracleAssistantRepairPlanResult ?? new WorkspaceApexAssistantRepairPlanResult
+            {
+                Snapshot = _snapshot,
+                Message = "Repair plan available.",
+                Transcript = new OperationTranscript { OperationName = "plan_oracle_assistant_repair", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                RepairPlanId = "repair-1",
+                PlanId = planId,
+                ExecutionId = executionId,
+                ContextRevision = contextRevision,
+                Response = new OracleApexAssistantRepairPlanResponse
+                {
+                    Plan = new OracleApexEditPlan { Intent = "repair", ExpectedChangedFiles = sourcePlan.ExpectedChangedFiles },
+                    Review = "Repair review",
+                    CompilerValidation = validation,
+                },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantExecutionResult> ExecuteOracleApexRepairPlanAsync(WorkspaceSnapshot workspace, string planId, string executionId, string repairPlanId, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantRepairExecutionCallCount++;
+            LastOracleAssistantRepairExecutionWorkspace = workspace;
+            LastOracleAssistantRepairExecutionPlanId = planId;
+            LastOracleAssistantRepairExecutionId = executionId;
+            LastOracleAssistantRepairExecutionRepairPlanId = repairPlanId;
+            if (OracleAssistantRepairExecutionException is not null)
+            {
+                throw OracleAssistantRepairExecutionException;
+            }
+
+            return Task.FromResult(OracleAssistantExecutionResult ?? new WorkspaceApexAssistantExecutionResult
+            {
+                Snapshot = _snapshot,
+                Message = "Applied semantic repair.",
+                Transcript = new OperationTranscript { OperationName = "execute_oracle_assistant_repair", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                RepairPlanId = repairPlanId,
+                PlanId = planId,
+                ContextRevision = LastOracleAssistantRepairContextRevision ?? "dev|nogit|",
+                ExecutionId = executionId,
+                Response = new OracleApexAssistantExecutionResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Applied semantic repair.",
+                    WorkspaceIndex = new OracleApexWorkspaceIndex(),
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = executionId, EnvironmentName = "dev", RollbackState = OracleApexAssistantRollbackState.Available },
+                    Stage = OracleApexAssistantStage.Preview,
+                },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantRollbackResult> RollbackOracleApexGeneratedChangeAsync(WorkspaceSnapshot workspace, string executionId, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantRollbackCallCount++;
+            LastOracleAssistantRollbackWorkspace = workspace;
+            LastOracleAssistantRollbackExecutionId = executionId;
+            if (OracleAssistantRollbackException is not null)
+            {
+                throw OracleAssistantRollbackException;
+            }
+
+            return Task.FromResult(OracleAssistantRollbackResult ?? new WorkspaceApexAssistantRollbackResult
+            {
+                Snapshot = _snapshot,
+                Message = "Rollback completed.",
+                Transcript = new OperationTranscript { OperationName = "rollback_oracle_assistant", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                ExecutionId = executionId,
+                Response = new OracleApexAssistantRollbackResponse
+                {
+                    IsSuccess = true,
+                    Summary = "Rollback completed.",
+                    RollbackManifest = new OracleApexAssistantRollbackManifest { ExecutionId = executionId, RollbackState = OracleApexAssistantRollbackState.Completed },
+                    RollbackState = OracleApexAssistantRollbackState.Completed,
+                },
+            });
+        }
+
+        public Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(WorkspaceSnapshot workspace, ConnectOracleApexApplicationDraft draft, CancellationToken cancellationToken = default)
+        {
+            OracleApexDiscoveryCallCount++;
+            LastOracleApexDiscoveryWorkspace = workspace;
+            LastOracleApexDiscoveryDraft = draft;
+            if (OracleApexDiscoveryException is not null)
+            {
+                throw OracleApexDiscoveryException;
+            }
+
+            return Task.FromResult(OracleApexDiscoveryResult ?? new OracleApexApplicationDiscoveryResult
+            {
+                EnvironmentName = draft.EnvironmentName,
+                WorkspaceName = draft.WorkspaceName,
+                ParsingSchema = draft.ParsingSchema,
+                SqlclProfile = draft.SqlclProfile,
+                SourcePath = draft.SourcePath,
+                Applications = [new OracleApexApplicationInfo { ApplicationId = 100, ApplicationName = "Reports", Alias = "reports" }],
+                Summary = "Found 1 Oracle APEX application(s).",
+            });
+        }
+
+        public Task<WorkspaceOperationResult> ConnectExistingOracleApexApplicationAsync(WorkspaceSnapshot workspace, ConnectOracleApexApplicationDraft draft, CancellationToken cancellationToken = default)
+        {
+            ConnectOracleApexApplicationCallCount++;
+            LastConnectOracleApexApplicationWorkspace = workspace;
+            LastConnectOracleApexApplicationDraft = draft;
+            if (ConnectOracleApexApplicationException is not null)
+            {
+                throw ConnectOracleApexApplicationException;
+            }
+
+            return Task.FromResult(ConnectOracleApexApplicationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = $"Connected Oracle APEX application '{draft.ApplicationName}' ({draft.ApplicationId}).",
+                Transcript = new OperationTranscript { OperationName = "connect_existing_oracle_apex_application", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceApexAssistantImportResult> ImportOracleApexGeneratedApplicationAsync(WorkspaceSnapshot workspace, string environmentName, bool allowNonDevelopmentDeployment, string? executionId, CancellationToken cancellationToken = default)
+        {
+            OracleAssistantImportCallCount++;
+            LastOracleAssistantImportWorkspace = workspace;
+            if (OracleAssistantImportException is not null)
+            {
+                throw OracleAssistantImportException;
+            }
+
+            return Task.FromResult(OracleAssistantImportResult ?? new WorkspaceApexAssistantImportResult
+            {
+                Snapshot = _snapshot,
+                Message = "Imported validated APEXlang source.",
+                Transcript = new OperationTranscript { OperationName = "import_oracle_assistant", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Response = new WorkspaceSynchronizationOperationResult
+                {
+                    Snapshot = _snapshot.Synchronization,
+                    Message = "Imported validated APEXlang source.",
+                },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> ExportSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            ExportSynchronizationCallCount++;
+            LastExportSynchronizationWorkspace = workspace;
+            if (ExportSynchronizationException is not null)
+            {
+                throw ExportSynchronizationException;
+            }
+
+            return Task.FromResult(ExportSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Exported Oracle APEX application for environment 'dev'.",
+                Transcript = new OperationTranscript { OperationName = "export_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> PullSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            PullSynchronizationCallCount++;
+            LastPullSynchronizationWorkspace = workspace;
+            if (PullSynchronizationException is not null)
+            {
+                throw PullSynchronizationException;
+            }
+
+            return Task.FromResult(PullSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Pulled Oracle APEX changes into workspace source.",
+                Transcript = new OperationTranscript { OperationName = "pull_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> ImportSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            ImportSynchronizationCallCount++;
+            LastImportSynchronizationWorkspace = workspace;
+            if (ImportSynchronizationException is not null)
+            {
+                throw ImportSynchronizationException;
+            }
+
+            return Task.FromResult(ImportSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Imported workspace source into Oracle APEX for environment 'dev'.",
+                Transcript = new OperationTranscript { OperationName = "import_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> PushSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            PushSynchronizationCallCount++;
+            LastPushSynchronizationWorkspace = workspace;
+            if (PushSynchronizationException is not null)
+            {
+                throw PushSynchronizationException;
+            }
+
+            return Task.FromResult(PushSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Validation started\nValidation succeeded\nImport completed\nSynchronization metadata updated\nFinal sync state: InSync",
+                Transcript = new OperationTranscript { OperationName = "push_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> SynchronizeWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            SynchronizeWorkspaceCallCount++;
+            LastSynchronizedWorkspace = workspace;
+            if (SynchronizeWorkspaceException is not null)
+            {
+                throw SynchronizeWorkspaceException;
+            }
+
+            return Task.FromResult(SynchronizeWorkspaceResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Synchronized.",
+                Transcript = new OperationTranscript { OperationName = "synchronize_workspace", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> ValidateSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            ValidateSynchronizationCallCount++;
+            LastValidatedSynchronizationWorkspace = workspace;
+            if (ValidateSynchronizationException is not null)
+            {
+                throw ValidateSynchronizationException;
+            }
+
+            return Task.FromResult(ValidateSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "Validated.",
+                Transcript = new OperationTranscript { OperationName = "validate_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> DiffSynchronizationAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            DiffSynchronizationCallCount++;
+            LastDiffSynchronizationWorkspace = workspace;
+            if (DiffSynchronizationException is not null)
+            {
+                throw DiffSynchronizationException;
+            }
+
+            return Task.FromResult(DiffSynchronizationResult ?? new WorkspaceOperationResult
+            {
+                Snapshot = _snapshot,
+                Message = "No differences were detected between workspace source and exported Oracle APEX source.",
+                Transcript = new OperationTranscript { OperationName = "diff_synchronization", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            });
+        }
+
+        public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            PublishAssessmentCallCount++;
+            LastPublishAssessmentWorkspace = workspace;
+            return Task.FromResult(PublishAssessment);
+        }
+
+        public Task<WorkspaceOperationResult> PrepareWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            PrepareCallCount++;
+            return Task.FromResult(BuildResult("prepared"));
+        }
+
+        public Task<WorkspaceOperationResult> OpenWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            OpenCallCount++;
+            return Task.FromResult(BuildResult("opened"));
+        }
+
+        public Task<WorkspaceOperationResult> StartWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            StartCallCount++;
+            return Task.FromResult(BuildResult("started"));
+        }
+
+        public Task<WorkspaceOperationResult> StopWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            StopCallCount++;
+            return Task.FromResult(BuildResult("stopped"));
+        }
+
+        public Task<WorkspacePublishResult> PublishWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            PublishCallCount++;
+            LastPublishedWorkspace = workspace;
+            if (PublishException is not null)
+            {
+                throw PublishException;
+            }
+
+            return Task.FromResult(PublishResult ?? new WorkspacePublishResult
+            {
+                Snapshot = _snapshot,
+                Message = "Working Copy published successfully.",
+                Transcript = new OperationTranscript { OperationName = "publish_workspace", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Review = new WorkspacePublishReview
+                {
+                    IsBlocked = false,
+                    Message = "Working Copy published successfully.",
+                    WorkingCopyName = workspace.Safety.AdvancedGit.CurrentBranch,
+                    RemoteName = "origin",
+                    RemoteBranch = "origin/users/test/published",
+                    AheadCount = 0,
+                    BehindCount = 0,
+                    LatestCommitSha = "head123",
+                },
+            });
+        }
+
+        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceSnapshot? workspace, WorkspaceRemovalChoice choice, CancellationToken cancellationToken = default)
+        {
+            RemoveCallCount++;
+            LastRemoveWorkspace = workspace;
+            LastRemoveRootPath = rootPath;
+            LastRemoveChoice = choice;
+            if (RemoveException is not null)
+            {
+                throw RemoveException;
+            }
+
+            return Task.FromResult(RemoveResult ?? new WorkspaceRemovalOperationResult
+            {
+                Message = choice == WorkspaceRemovalChoice.DockerResources
+                    ? $"Removed Docker resources for '{workspace?.Definition.Workspace.Name ?? Path.GetFileName(rootPath)}' and unregistered it from the workspace list."
+                    : $"Removed '{workspace?.Definition.Workspace.Name ?? Path.GetFileName(rootPath)}' from the workspace list.",
+                Transcript = new OperationTranscript { OperationName = "remove_workspace", WorkspaceName = workspace?.Definition.Workspace.Name ?? Path.GetFileName(rootPath), Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Removal = new WorkspaceRemovalResult
+                {
+                    WorkspaceName = workspace?.Definition.Workspace.Name ?? Path.GetFileName(rootPath),
+                    WorkspaceRoot = workspace?.Paths.RootPath ?? rootPath,
+                    FilesDeleted = false,
+                    Warnings = [],
+                    Succeeded = true,
+                    FailureReason = string.Empty,
+                },
+            });
+        }
+
+        public Task<WorkspaceBackupResult> BackupWorkspaceAsync(WorkspaceSnapshot workspace, string destinationPath, CancellationToken cancellationToken = default)
+        {
+            BackupCallCount++;
+            LastBackupWorkspace = workspace;
+            LastBackupDestinationPath = destinationPath;
+            if (BackupException is not null)
+            {
+                throw BackupException;
+            }
+
+            return Task.FromResult(BackupResult ?? new WorkspaceBackupResult
+            {
+                Snapshot = _snapshot,
+                Message = "Backup created.",
+                Transcript = new OperationTranscript { OperationName = "backup_workspace", WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+                Export = new WorkspaceBackupExportResult
+                {
+                    ArchivePath = destinationPath,
+                    FileCount = 1,
+                    ArchiveSizeBytes = 1024,
+                    IncludedEntries = [],
+                    ExcludedEntries = [],
+                    Warnings = [],
+                },
+                Manifest = new WorkspaceBackupManifestResult
+                {
+                    ManifestPath = Path.ChangeExtension(destinationPath, null) + "-backup-manifest.yaml",
+                    ArchiveEntryPath = "backup-manifest.yaml",
+                    IncludedFileCount = 1,
+                    ExcludedFileCount = 0,
+                    WarningCount = 0,
+                },
+            });
+        }
+
+        public Task<WorkspaceOperationResult> RecoverWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            RecoverCallCount++;
+            return Task.FromResult(BuildResult("recovered"));
+        }
+
+        public Task<WorkspaceOperationResult> ResetRuntimeAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            ResetCallCount++;
+            return Task.FromResult(BuildResult("reset"));
+        }
+
+        public Task<WorkspaceOperationResult> AttachWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            AttachCallCount++;
+            return Task.FromResult(BuildResult("attached"));
+        }
+
+        public Task<WorkspaceOperationResult> ReprovisionWorkspaceAsync(WorkspaceSnapshot workspace, CancellationToken cancellationToken = default)
+        {
+            ReprovisionCallCount++;
+            return Task.FromResult(BuildResult("reprovisioned"));
+        }
+
+        private WorkspaceOperationResult BuildResult(string message)
+            => new()
+            {
+                Snapshot = _snapshot,
+                Message = message,
+                Transcript = new OperationTranscript { OperationName = message, WorkspaceName = _snapshot.Definition.Workspace.Name, Succeeded = true, CompletedUtc = DateTimeOffset.UtcNow },
+            };
+    }
+
+    private sealed class FakeDesktopInteractiveSessionApplicationService : IDesktopInteractiveSessionApplicationService
+    {
+        public int LoadSessionsCallCount { get; private set; }
+        public int CreateSessionCallCount { get; private set; }
+        public int AttachCallCount { get; private set; }
+        public int TransferCallCount { get; private set; }
+        public int DetachCallCount { get; private set; }
+        public string? LastWorkspaceId { get; private set; }
+        public WorkspaceSnapshot? LastWorkspace { get; private set; }
+        public string? LastSessionId { get; private set; }
+        public ApprovedTerminalLaunchDescriptor? LastLaunchDescriptor { get; private set; }
+        public IReadOnlyList<InteractiveAgentSessionRecord> SessionsResult { get; init; } = Array.Empty<InteractiveAgentSessionRecord>();
+        public InteractiveAgentSessionRecord? CreatedSessionResult { get; init; }
+        public InteractiveSessionAttachResult? AttachResult { get; init; }
+        public InteractiveAgentSessionRecord? DetachedSessionResult { get; init; }
+
+        public Task<IReadOnlyList<InteractiveAgentSessionRecord>> LoadSessionsAsync(string? workspaceId, CancellationToken cancellationToken = default)
+        {
+            LoadSessionsCallCount++;
+            LastWorkspaceId = workspaceId;
+            return Task.FromResult(SessionsResult);
+        }
+
+        public Task<InteractiveAgentSessionRecord> CreateSessionAsync(WorkspaceSnapshot workspace, string? title, CancellationToken cancellationToken = default)
+        {
+            CreateSessionCallCount++;
+            LastWorkspace = workspace;
+            return Task.FromResult(CreatedSessionResult ?? new InteractiveAgentSessionRecord
+            {
+                InteractiveAgentSessionId = "interactive-created",
+                WorkspaceId = workspace.Definition.Workspace.Id,
+                WorkspaceInstanceId = $"workspace-{workspace.Definition.Workspace.Id}",
+                Title = title ?? $"OpenCode session - {workspace.Definition.Workspace.Name}",
+                Status = InteractiveAgentSessionStatus.Detached,
+                CreatedUtc = DateTimeOffset.UtcNow,
+                UpdatedUtc = DateTimeOffset.UtcNow,
+                LastActivityUtc = DateTimeOffset.UtcNow,
+            });
+        }
+
+        public Task<InteractiveSessionAttachResult> AttachAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
+        {
+            AttachCallCount++;
+            LastSessionId = interactiveAgentSessionId;
+            LastLaunchDescriptor = AttachResult?.LaunchDescriptor;
+            return Task.FromResult(AttachResult ?? new InteractiveSessionAttachResult());
+        }
+
+        public Task<InteractiveSessionAttachResult> RequestTransferAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
+        {
+            TransferCallCount++;
+            LastSessionId = interactiveAgentSessionId;
+            LastLaunchDescriptor = AttachResult?.LaunchDescriptor;
+            return Task.FromResult(AttachResult ?? new InteractiveSessionAttachResult());
+        }
+
+        public Task<InteractiveAgentSessionRecord> DetachAsync(InteractiveAgentSessionRecord session, CancellationToken cancellationToken = default)
+        {
+            DetachCallCount++;
+            LastSessionId = session.InteractiveAgentSessionId;
+            return Task.FromResult(DetachedSessionResult ?? session with { Status = InteractiveAgentSessionStatus.Detached, ActiveAttachmentId = string.Empty, ActiveLease = null });
+        }
+    }
+
     private sealed class FakeWorkspaceInteractionService : IWorkspaceInteractionService
     {
         public CreateWorkspaceDraft? CreateWorkspaceDraft { get; init; }
@@ -6188,17 +9421,38 @@ public sealed class ShellViewModelTests
         public WorkspaceRemovalChoice RemoveChoice { get; init; } = WorkspaceRemovalChoice.RegistrationOnly;
         public Exception? RemoveDialogException { get; init; }
         public bool PublishConfirmed { get; init; } = true;
+        public bool RecoveryConfirmed { get; init; } = true;
         public SavePointDraft? SavePointDraft { get; init; } = new SavePointDraft { Message = "Capture current workspace state" };
         public ConnectOracleApexApplicationDraft? ConnectOracleApexApplicationDraft { get; init; }
+        public bool InvokeConnectOracleApexDiscovery { get; init; } = true;
         public bool ResetRuntimeConfirmed { get; init; } = true;
         public WorkspaceRuntimeResetPrompt? LastResetRuntimePrompt { get; private set; }
+        public WorkspaceRecoveryAssessment? LastRecoveryAssessment { get; private set; }
         public WorkspaceDiagnosticsSession? LastWorkspaceDiagnosticsSession { get; private set; }
+        public OracleApexApplicationDiscoveryResult? LastOracleApexDiscoveryResult { get; private set; }
 
         public Task<CreateWorkspaceDraft?> ShowCreateWorkspaceDialogAsync(IReadOnlyList<TemplateManifest> templates, CancellationToken cancellationToken = default)
             => Task.FromResult(CreateWorkspaceDraft);
 
         public Task<ExistingRepositoryImportDraft?> ShowOpenExistingRepositoryDialogAsync(Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync, Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync, CancellationToken cancellationToken = default)
-            => Task.FromResult(ExistingRepositoryImportDraft);
+            => ExistingRepositoryImportDraft is null
+                ? Task.FromResult<ExistingRepositoryImportDraft?>(null)
+                : InvokeCheckoutCallbacksAsync(inspectRepositoryAsync, validateBranchAsync, ExistingRepositoryImportDraft, cancellationToken);
+
+        private static async Task<ExistingRepositoryImportDraft?> InvokeCheckoutCallbacksAsync(
+            Func<string, string, CancellationToken, Task<ExistingGitCheckoutPlan>> inspectRepositoryAsync,
+            Func<string, string, CancellationToken, Task<GitBranchValidationResult>> validateBranchAsync,
+            ExistingRepositoryImportDraft draft,
+            CancellationToken cancellationToken)
+        {
+            await inspectRepositoryAsync(draft.RepositoryPath, draft.WorkspaceName, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(draft.NamedBranch))
+            {
+                await validateBranchAsync(draft.RepositoryPath, draft.NamedBranch, cancellationToken);
+            }
+
+            return draft;
+        }
 
         public Task<string?> ShowBackupDestinationDialogAsync(string suggestedFileName, CancellationToken cancellationToken = default)
             => Task.FromResult(BackupArchivePath);
@@ -6229,10 +9483,23 @@ public sealed class ShellViewModelTests
             => Task.FromResult(SavePointDraft);
 
         public Task<ConnectOracleApexApplicationDraft?> ShowConnectOracleApexApplicationDialogAsync(Func<ConnectOracleApexApplicationDraft, CancellationToken, Task<OracleApexApplicationDiscoveryResult>> discoverApplicationsAsync, ConnectOracleApexApplicationDraft initialDraft, CancellationToken cancellationToken = default)
-            => Task.FromResult(ConnectOracleApexApplicationDraft);
+            => InvokeConnectOracleApexDialogAsync(discoverApplicationsAsync, initialDraft, cancellationToken);
 
-        public Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
-            => Task.FromResult(true);
+        private async Task<ConnectOracleApexApplicationDraft?> InvokeConnectOracleApexDialogAsync(Func<ConnectOracleApexApplicationDraft, CancellationToken, Task<OracleApexApplicationDiscoveryResult>> discoverApplicationsAsync, ConnectOracleApexApplicationDraft initialDraft, CancellationToken cancellationToken)
+        {
+            if (InvokeConnectOracleApexDiscovery)
+            {
+                LastOracleApexDiscoveryResult = await discoverApplicationsAsync(initialDraft, cancellationToken);
+            }
+
+            return ConnectOracleApexApplicationDraft;
+        }
+
+        public async Task<bool> ConfirmRecoveryAsync(WorkspaceRecoveryAssessment assessment, Func<CancellationToken, Task<WorkspaceRecoveryAssessment>> refreshAssessmentAsync, CancellationToken cancellationToken = default)
+        {
+            LastRecoveryAssessment = await refreshAssessmentAsync(cancellationToken);
+            return RecoveryConfirmed;
+        }
 
         public Task<bool> ConfirmResetRuntimeAsync(WorkspaceRuntimeResetPrompt prompt, CancellationToken cancellationToken = default)
         {
@@ -6247,7 +9514,7 @@ public sealed class ShellViewModelTests
         }
     }
 
-    private sealed class ThrowingDesktopShellService : IDesktopShellService
+    private sealed class ThrowingDesktopWorkspaceService : IDesktopWorkspaceService
     {
         public Task<WorkspaceLoadResult> LoadWorkspaceItemsAsync(bool includeRuntimeInspection, Action<WorkspaceLoadProgressUpdate>? progress = null, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("Simulated workspace discovery failure.");
@@ -6271,7 +9538,6 @@ public sealed class ShellViewModelTests
         public Task<WorkspaceOperationResult> StartWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceOperationResult> StopWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspaceCheckpointOperationResult> CreateCheckpointAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
-        public Task<WorkspaceRemovalOperationResult> RemoveWorkspaceAsync(string rootPath, WorkspaceRemovalChoice choice, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WindowsTerminalProfileOperationResult> EnsureWindowsTerminalProfileAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishAssessment> AssessWorkspacePublishAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");
         public Task<WorkspacePublishResult> PublishWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Simulated workspace discovery failure.");

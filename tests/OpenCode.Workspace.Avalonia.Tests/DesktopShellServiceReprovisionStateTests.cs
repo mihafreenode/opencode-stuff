@@ -11,7 +11,7 @@ using OperationTranscriptLineKind = OpenCode.Workspace.AppSupport.OperationTrans
 
 namespace OpenCode.Workspace.Avalonia.Tests;
 
-public sealed class DesktopShellServiceReprovisionStateTests
+public sealed class DesktopWorkspaceServiceReprovisionStateTests
 {
     [Fact]
     public async Task OpenWorkspace_OnNewWorkspace_ProvisionsThenOpens()
@@ -206,7 +206,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             };
             var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Provision Failure"), includeRuntimeInspection: false);
-            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+            var service = CreateDesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService);
 
             var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
 
@@ -234,7 +234,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var runtime = new StubContainerRuntime();
             var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Recover Demo"), includeRuntimeInspection: false);
-            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+            var service = new DesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
 
             var userFile = Path.Combine(workspaceRoot, "docs", "preserve-me.txt");
             Directory.CreateDirectory(Path.GetDirectoryName(userFile)!);
@@ -333,7 +333,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             };
             await repository.SaveAsync(staleRecord, CancellationToken.None);
             var staleSnapshot = await orchestrator.LoadSnapshotAsync(workspaceRoot, includeRuntimeInspection: true, includeSessionInspection: false);
-            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+            var service = CreateDesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService);
 
             var refreshed = await service.RefreshVolatileWorkspaceStateAsync(workspaceRoot, staleSnapshot);
 
@@ -366,7 +366,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             };
             var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Open Failure"), includeRuntimeInspection: false);
-            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+            var service = CreateDesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService);
 
             var exception = await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, created));
 
@@ -396,7 +396,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var runtime = new StubContainerRuntime();
             var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
             var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Recover Failure"), includeRuntimeInspection: false);
-            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+            var service = new DesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
 
             File.Delete(created.Paths.ComposePath);
             File.Delete(created.Paths.RuntimeStatePath);
@@ -476,7 +476,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
                     ? SuccessProcessResult(fileName, arguments, "")
                     : SuccessProcessResult(fileName, arguments, "present"));
             });
-            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+            var service = CreateDesktopWorkspaceService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
 
             var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = runningSnapshot.Paths.RootPath, Snapshot = runningSnapshot, WorkspaceName = runningSnapshot.Definition.Workspace.Name });
 
@@ -507,7 +507,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Docker Failure");
             var snapshot = CreateRunningTroubleshootingSnapshot(fixture.OpenSnapshot);
             var processRunner = new FakeProcessRunner((fileName, arguments) => Task.FromResult(FailureProcessResult(fileName, arguments, "docker exec failed")));
-            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+            var service = CreateDesktopWorkspaceService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
 
             var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = snapshot.Paths.RootPath, Snapshot = snapshot, WorkspaceName = snapshot.Definition.Workspace.Name });
 
@@ -530,7 +530,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var fixture = await CreateValidProvisionedStoppedWorkspaceFixtureAsync(tempRoot, "Docker Missing");
             var snapshot = CreateRunningTroubleshootingSnapshot(fixture.OpenSnapshot);
             var processRunner = new FakeProcessRunner((_, _) => throw new Win32Exception("executable not found"));
-            var service = CreateDesktopShellService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
+            var service = CreateDesktopWorkspaceService(fixture.Orchestrator, new WorkspaceRepository(GetAppDataRoot(tempRoot)), new WorkspaceTimelineService(), new WorkspaceCheckpointService(), processRunner);
 
             var report = await service.GetWorkspaceTroubleshootingReportAsync(new WorkspaceTroubleshootingRequest { RootPath = snapshot.Paths.RootPath, Snapshot = snapshot, WorkspaceName = snapshot.Definition.Workspace.Name });
 
@@ -562,7 +562,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             await orchestrator.ProvisionAsync(created);
             File.Delete(created.Paths.RuntimeStatePath);
             var missingRuntimeStateSnapshot = await orchestrator.LoadSnapshotAsync(created.Paths.RootPath, includeRuntimeInspection: true, includeSessionInspection: false);
-            var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+            var service = CreateDesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService);
 
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.OpenWorkspaceAsync(created.Paths.RootPath, missingRuntimeStateSnapshot));
             var saved = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
@@ -601,7 +601,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
             var failingOrchestrator = CreateOrchestrator(tempRoot, repository, timelineService, failingRuntime);
             var created = await failingOrchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Odip Analiza"), includeRuntimeInspection: false);
 
-            var failingService = new DesktopShellService(failingOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+            var failingService = new DesktopWorkspaceService(failingOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
             await Assert.ThrowsAsync<WorkspaceProvisioningException>(() => failingService.ReprovisionWorkspaceAsync(created.Paths.RootPath));
 
             var failedRecord = repository.LoadAll().Single(record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
@@ -610,7 +610,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
 
             var successfulRuntime = new StubContainerRuntime();
             var successfulOrchestrator = CreateOrchestrator(tempRoot, repository, timelineService, successfulRuntime);
-            var successfulService = new DesktopShellService(successfulOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
+            var successfulService = new DesktopWorkspaceService(successfulOrchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
 
             var result = await successfulService.ReprovisionWorkspaceAsync(created.Paths.RootPath);
 
@@ -626,109 +626,6 @@ public sealed class DesktopShellServiceReprovisionStateTests
             Assert.Contains(timeline.Events, item => item.Type == "reprovision-failed" && item.Details.Contains("/workspace/.env: line 17", StringComparison.Ordinal));
             Assert.Contains(timeline.Events, item => item.Type == "reprovision-succeeded");
             Assert.Contains(result.Transcript.Lines, line => line.Kind == OperationTranscriptLineKind.Result && line.Text == "Completed");
-        }
-        finally
-        {
-            DeleteTempRoot(tempRoot);
-        }
-    }
-
-    [Fact]
-    public async Task Remove_DeleteFilesUnsupported_IsRejectedBeforeSideEffects_AndLeavesWorkspaceRegistered()
-    {
-        var tempRoot = CreateTempRoot();
-        var workspaceRoot = Path.Combine(tempRoot, "workspace");
-        Directory.CreateDirectory(workspaceRoot);
-
-        try
-        {
-            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
-            var timelineService = new WorkspaceTimelineService();
-            var checkpointService = new WorkspaceCheckpointService();
-            var runtime = new StubContainerRuntime();
-            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
-            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Remove Failure"), includeRuntimeInspection: false);
-            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
-
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveWorkspaceAsync(created.Paths.RootPath, WorkspaceRemovalChoice.DeleteFiles, created));
-
-            Assert.Contains("Delete workspace files is not available in this version", exception.Message, StringComparison.Ordinal);
-            Assert.Equal(0, runtime.RemoveCallCount);
-            Assert.Contains(repository.LoadAll(), record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            DeleteTempRoot(tempRoot);
-        }
-    }
-
-    [Fact]
-    public async Task Remove_DockerCleanupFailure_LeavesWorkspaceRegistered()
-    {
-        var tempRoot = CreateTempRoot();
-        var workspaceRoot = Path.Combine(tempRoot, "workspace");
-        Directory.CreateDirectory(workspaceRoot);
-
-        try
-        {
-            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
-            var timelineService = new WorkspaceTimelineService();
-            var checkpointService = new WorkspaceCheckpointService();
-            var runtime = new StubContainerRuntime
-            {
-                RemoveResultFactory = () => Failure("docker compose rm", "Docker engine is unavailable."),
-            };
-            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
-            var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition("Remove Docker Failure"), includeRuntimeInspection: false);
-            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
-
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveWorkspaceAsync(created.Paths.RootPath, WorkspaceRemovalChoice.DockerResources, created));
-
-            Assert.Contains("Docker engine is unavailable.", exception.Message, StringComparison.Ordinal);
-            Assert.Equal(1, runtime.RemoveCallCount);
-            Assert.Contains(repository.LoadAll(), record => string.Equals(record.RootPath, created.Paths.RootPath, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            DeleteTempRoot(tempRoot);
-        }
-    }
-
-    [Fact]
-    public async Task Remove_DockerResourcesWithNestedConfigurationPath_ProbesWorkspaceYamlInsideSelectedWorkspaceRoot()
-    {
-        var tempRoot = CreateTempRoot();
-        var baseRoot = Path.Combine(tempRoot, "workspaces");
-        var workspaceRoot = Path.Combine(baseRoot, "rc-first-workspace");
-        Directory.CreateDirectory(workspaceRoot);
-
-        try
-        {
-            var repository = new WorkspaceRepository(GetAppDataRoot(tempRoot));
-            repository.Save(new WorkspaceRecord
-            {
-                Name = "rc-first-workspace",
-                RootPath = baseRoot,
-                RepositoryPath = baseRoot,
-                ConfigurationPath = "rc-first-workspace/workspace.yaml",
-                CreatedUtc = DateTimeOffset.UtcNow,
-                LastOpenedUtc = DateTimeOffset.UtcNow,
-            });
-
-            var timelineService = new WorkspaceTimelineService();
-            var checkpointService = new WorkspaceCheckpointService();
-            var runtime = new StubContainerRuntime();
-            var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
-            var service = new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())));
-
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveWorkspaceAsync(workspaceRoot, WorkspaceRemovalChoice.DockerResources));
-
-            var expectedPath = Path.Combine(workspaceRoot, "workspace.yaml");
-            var unexpectedPath = Path.Combine(baseRoot, "workspace.yaml");
-            Assert.Contains(expectedPath, exception.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain(unexpectedPath, exception.Message, StringComparison.Ordinal);
-            Assert.Equal(0, runtime.RemoveCallCount);
-            Assert.Contains(repository.LoadAll(), record => string.Equals(record.Name, "rc-first-workspace", StringComparison.Ordinal));
         }
         finally
         {
@@ -774,7 +671,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
         var runtime = new StubContainerRuntime();
         var orchestrator = CreateOrchestrator(tempRoot, repository, timelineService, runtime);
         var created = await orchestrator.CreateWorkspaceAsync(workspaceRoot, CreateDefinition(workspaceName), includeRuntimeInspection: false);
-        var service = CreateDesktopShellService(orchestrator, repository, timelineService, checkpointService);
+        var service = CreateDesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService);
         return new WorkspaceOpenFixture(created, created, service, orchestrator);
     }
 
@@ -794,10 +691,10 @@ public sealed class DesktopShellServiceReprovisionStateTests
         return fixture with { OpenSnapshot = snapshot };
     }
 
-    private static DesktopShellService CreateDesktopShellService(WorkspaceOrchestrator orchestrator, WorkspaceRepository repository, WorkspaceTimelineService timelineService, WorkspaceCheckpointService checkpointService, IProcessRunner? processRunner = null)
+    private static DesktopWorkspaceService CreateDesktopWorkspaceService(WorkspaceOrchestrator orchestrator, WorkspaceRepository repository, WorkspaceTimelineService timelineService, WorkspaceCheckpointService checkpointService, IProcessRunner? processRunner = null)
     {
         var effectiveProcessRunner = processRunner ?? new ProcessRunner();
-        return new DesktopShellService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new WorkspaceBackupExportService(), new WorkspaceBackupManifestService(), new WorkspacePublishAssessmentService(new ProcessRunner()), new WorkspaceRemovalService(repository), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())), effectiveProcessRunner);
+        return new DesktopWorkspaceService(orchestrator, repository, timelineService, checkpointService, new WorkspaceSavePointMessageService(new ProcessRunner()), new OracleSoftwareNoticeService(repository), new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), new WindowsHostCapabilities(new ProcessRunner())), effectiveProcessRunner);
     }
 
     private static WorkspaceSnapshot CreateRunningTroubleshootingSnapshot(WorkspaceSnapshot source)
@@ -917,7 +814,7 @@ public sealed class DesktopShellServiceReprovisionStateTests
         return Convert.ToHexString(sha256.ComputeHash(stream));
     }
 
-    private sealed record WorkspaceOpenFixture(WorkspaceSnapshot CreatedSnapshot, WorkspaceSnapshot OpenSnapshot, DesktopShellService Service, WorkspaceOrchestrator Orchestrator);
+    private sealed record WorkspaceOpenFixture(WorkspaceSnapshot CreatedSnapshot, WorkspaceSnapshot OpenSnapshot, DesktopWorkspaceService Service, WorkspaceOrchestrator Orchestrator);
 
     private sealed class FakeWorkspaceProvider : IWorkspaceProvider
     {

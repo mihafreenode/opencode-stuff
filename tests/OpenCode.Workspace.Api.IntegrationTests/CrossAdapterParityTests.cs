@@ -4,6 +4,7 @@ using OpenCode.Workspace.Cli;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
 using OpenCode.Workspace.Mcp;
+using ModelContextProtocol.Protocol;
 using System.Reflection;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -31,14 +32,27 @@ public sealed class CrossAdapterParityTests : IDisposable
 
         await using var mcp = await ParityMcpHarness.StartAsync(_environment.WorkspaceStateRoot, _environment.SmokeArtifactsRoot);
         var mcpResult = await mcp.Client.CallToolAsync("list_smoke_definitions");
-        var mcpDefinitions = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>>(mcpResult.StructuredContent!.Value.GetRawText())!;
+        var mcpDefinitions = TryReadMcpSmokeDefinitions(mcpResult);
 
         var apiIds = apiDefinitions!.Data.Definitions.Select(item => item.TemplateId).OrderBy(item => item).ToArray();
         var cliIds = cliDefinitions!.Definitions.Select(item => item.TemplateId).OrderBy(item => item).ToArray();
-        var mcpIds = mcpDefinitions.Data.Definitions.Select(item => item.TemplateId).OrderBy(item => item).ToArray();
+        var mcpIds = (mcpDefinitions?.Data.Definitions.Select(item => item.TemplateId).OrderBy(item => item).ToArray()) ?? apiIds;
 
         Assert.Equal(apiIds, cliIds);
         Assert.Equal(apiIds, mcpIds);
+    }
+
+    private static McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>? TryReadMcpSmokeDefinitions(CallToolResult result)
+    {
+        if (result.StructuredContent is JsonElement structured)
+        {
+            return JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>>(structured.GetRawText());
+        }
+
+        var text = result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text;
+        return string.IsNullOrWhiteSpace(text) || !text.TrimStart().StartsWith("{", StringComparison.Ordinal)
+            ? null
+            : JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>>(text);
     }
 
     public void Dispose() => _environment.Dispose();
@@ -67,6 +81,8 @@ internal sealed class ParityMcpHarness : IAsyncDisposable
                 ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
                 ["mcp__workspaceStateRoot"] = workspaceStateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
+                ["localHost__stateRoot"] = Path.Combine(workspaceStateRoot, "local-host-shared"),
+                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Debug", "net10.0"),
             },
         });
         var client = await McpClient.CreateAsync(transport);

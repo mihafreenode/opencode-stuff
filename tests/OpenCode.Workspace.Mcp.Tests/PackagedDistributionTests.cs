@@ -13,7 +13,8 @@ using Xunit;
 
 namespace OpenCode.Workspace.Mcp.Tests;
 
-public sealed class PackagedDistributionTests : IDisposable
+[Collection("Packaged distribution")]
+public sealed class PackagedDistributionTests(PackagedDistributionFixture fixture) : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode package tests", Guid.NewGuid().ToString("n"));
     private readonly string? _artifactRoot = Environment.GetEnvironmentVariable("OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT");
@@ -23,7 +24,7 @@ public sealed class PackagedDistributionTests : IDisposable
     [Trait("Category", "PackageIntegration")]
     public async Task ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully()
     {
-        var packageRoot = await CreateExtractedDistributionAsync();
+        var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo");
         Directory.CreateDirectory(outsideRepositoryRoot);
         WriteTextArtifact(EnsureArtifactDirectory("packaged-host-validation"), "distribution-manifest.txt", BuildDistributionManifest(packageRoot));
@@ -49,12 +50,12 @@ public sealed class PackagedDistributionTests : IDisposable
         Assert.Equal(0, cliRuntime.ExitCode);
         Assert.Contains("resources", cliRuntime.StandardOutput, StringComparison.Ordinal);
 
-        var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "api"), "opencode-workspace-api");
+        var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "opencode-workspace-api");
         var apiPort = PackagedHostValidationHelpers.GetFreeTcpPort();
         await using var api = await PackagedProcessHarness.StartAsync(
             "api",
             apiExecutable,
-            Array.Empty<string>(),
+            ["--shutdown-on-stdin-eof"],
             outsideRepositoryRoot,
             new Dictionary<string, string?>
             {
@@ -93,10 +94,10 @@ public sealed class PackagedDistributionTests : IDisposable
         Assert.Contains(tools, item => item.Name == "list_workspace_templates");
         Assert.Contains(tools, item => item.Name == "get_operation");
         var templates = await mcp.Client.CallToolAsync("list_workspace_templates");
-        var templateEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<IReadOnlyList<WorkspaceTemplateSummaryModel>>>(templates.StructuredContent!.Value.GetRawText())!;
+        var templateEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<IReadOnlyList<WorkspaceTemplateSummaryModel>>>(GetStructuredOrTextPayload(templates))!;
         Assert.Contains(templateEnvelope.Data, item => item.TemplateId == "empty-workspace");
         var smokeDefinitionsTool = await mcp.Client.CallToolAsync("list_smoke_definitions");
-        var smokeDefinitionsEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>>(smokeDefinitionsTool.StructuredContent!.Value.GetRawText())!;
+        var smokeDefinitionsEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceSmokeDefinitionCatalogResult>>(GetStructuredOrTextPayload(smokeDefinitionsTool))!;
         Assert.Contains(smokeDefinitionsEnvelope.Data.Definitions, item => item.TemplateId == "empty-workspace");
         var resourceTemplates = await mcp.Client.ListResourceTemplatesAsync();
         Assert.Contains(resourceTemplates, item => item.UriTemplate == "opencode://templates/{templateId}");
@@ -123,7 +124,7 @@ public sealed class PackagedDistributionTests : IDisposable
             return;
         }
 
-        var packageRoot = await CreateExtractedDistributionAsync();
+        var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo smoke");
         Directory.CreateDirectory(outsideRepositoryRoot);
         var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "opencode-workspace-mcp");
@@ -143,13 +144,14 @@ public sealed class PackagedDistributionTests : IDisposable
         var packageArtifactRoot = EnsureArtifactDirectory("packaged-lightweight-smoke");
         WriteTextArtifact(packageArtifactRoot, "distribution-manifest.txt", BuildDistributionManifest(packageRoot));
         WriteTextArtifact(packageArtifactRoot, "mcp-stderr-startup.log", string.Join(Environment.NewLine, mcp.StandardErrorLines));
+        var preservedRoot = Path.Combine(packageArtifactRoot, "preserved-runtime-root");
 
         var preflightCleanup = await mcp.Client.CallToolAsync("cleanup_smoke_resources", new Dictionary<string, object?>
         {
             ["dryRun"] = false,
             ["includeAll"] = true,
         });
-        var preflightCleanupEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<SmokeCleanupResult>>(preflightCleanup.StructuredContent!.Value.GetRawText())!;
+        var preflightCleanupEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<SmokeCleanupResult>>(GetStructuredOrTextPayload(preflightCleanup))!;
         Assert.True(preflightCleanupEnvelope.Data.Succeeded);
         Assert.True(preflightCleanupEnvelope.Data.VerificationSucceeded);
         WriteJsonArtifact(packageArtifactRoot, "preflight-cleanup.json", preflightCleanupEnvelope.Data);
@@ -159,7 +161,7 @@ public sealed class PackagedDistributionTests : IDisposable
             ["templateId"] = "empty-workspace",
             ["timeout"] = "00:05:00",
         });
-        var operation = JsonSerializer.Deserialize<McpOperationModel>(start.StructuredContent!.Value.GetRawText())!;
+        var operation = JsonSerializer.Deserialize<McpOperationModel>(GetStructuredOrTextPayload(start))!;
         Assert.NotEmpty(operation.OperationId);
         WriteJsonArtifact(packageArtifactRoot, "operation-start.json", operation);
 
@@ -168,49 +170,51 @@ public sealed class PackagedDistributionTests : IDisposable
         var seenSequences = new HashSet<long>();
         var allEvents = new List<WorkspaceOperationProgressEvent>();
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(4);
-        while (DateTimeOffset.UtcNow < deadline)
+        try
         {
-            var result = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?>
+            while (DateTimeOffset.UtcNow < deadline)
             {
-                ["operationId"] = operation.OperationId,
-                ["afterSequence"] = afterSequence,
-            });
-            current = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(result.StructuredContent!.Value.GetRawText())!.Data;
-            foreach (var progressEvent in current.RecentEvents)
-            {
-                Assert.True(seenSequences.Add(progressEvent.Sequence));
-                allEvents.Add(progressEvent);
+                var result = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?>
+                {
+                    ["operationId"] = operation.OperationId,
+                    ["afterSequence"] = afterSequence,
+                });
+                current = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(result.StructuredContent!.Value.GetRawText())!.Data;
+                foreach (var progressEvent in current.RecentEvents)
+                {
+                    Assert.True(seenSequences.Add(progressEvent.Sequence));
+                    allEvents.Add(progressEvent);
+                }
+
+                afterSequence = current.LastEventSequence;
+                if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+                {
+                    break;
+                }
+
+                await Task.Delay(250);
             }
 
-            afterSequence = current.LastEventSequence;
-            if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
-            {
-                break;
-            }
+            Assert.Equal(McpOperationStatus.Succeeded, current.Status);
+            Assert.True(current.LastEventSequence > 0);
+            Assert.NotEmpty(current.ArtifactReferences);
+            Assert.Contains(current.ArtifactReferences, path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
+            Assert.NotEmpty(allEvents);
+            Assert.Contains(allEvents, item => item.Phase == "queued");
+            Assert.Contains(allEvents, item => item.Phase == "completed");
+            Assert.Contains(allEvents, item => item.Phase == "creatingWorkspace");
+            Assert.Contains(allEvents, item => item.Phase == "provisioning");
+            Assert.Contains(allEvents, item => item.Phase == "validating");
+            Assert.Contains(allEvents, item => item.Phase == "cleaningUp");
+            Assert.Contains(allEvents, item => item.Phase == "verifyingCleanup");
+            Assert.Equal(allEvents.Select(item => item.Sequence).OrderBy(item => item).ToArray(), allEvents.Select(item => item.Sequence).ToArray());
 
-            await Task.Delay(250);
-        }
-
-        Assert.Equal(McpOperationStatus.Succeeded, current.Status);
-        Assert.True(current.LastEventSequence > 0);
-        Assert.NotEmpty(current.ArtifactReferences);
-        Assert.Contains(current.ArtifactReferences, path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
-        Assert.NotEmpty(allEvents);
-        Assert.Contains(allEvents, item => item.Phase == "queued");
-        Assert.Contains(allEvents, item => item.Phase == "completed");
-        Assert.Contains(allEvents, item => item.Phase == "creatingWorkspace");
-        Assert.Contains(allEvents, item => item.Phase == "provisioning");
-        Assert.Contains(allEvents, item => item.Phase == "validating");
-        Assert.Contains(allEvents, item => item.Phase == "cleaningUp");
-        Assert.Contains(allEvents, item => item.Phase == "verifyingCleanup");
-        Assert.Equal(allEvents.Select(item => item.Sequence).OrderBy(item => item).ToArray(), allEvents.Select(item => item.Sequence).ToArray());
-
-        var smokeResult = current.Result!.Value.Deserialize<OpenCode.Workspace.Core.Smoke.WorkspaceSmokeResult>();
-        Assert.NotNull(smokeResult);
-        Assert.True(smokeResult!.CleanupVerificationSucceeded);
-        Assert.True(smokeResult.CleanupResult?.VerificationSucceeded ?? false);
-        WriteJsonArtifact(packageArtifactRoot, "operation-final.json", current);
-        WriteJsonArtifact(packageArtifactRoot, "smoke-result.json", smokeResult);
+            var smokeResult = current.Result!.Value.Deserialize<OpenCode.Workspace.Core.Smoke.WorkspaceSmokeResult>();
+            Assert.NotNull(smokeResult);
+            Assert.True(smokeResult!.CleanupVerificationSucceeded);
+            Assert.True(smokeResult.CleanupResult?.VerificationSucceeded ?? false);
+            WriteJsonArtifact(packageArtifactRoot, "operation-final.json", current);
+            WriteJsonArtifact(packageArtifactRoot, "smoke-result.json", smokeResult);
 
         var smokeSummary = await mcp.Client.ReadResourceAsync($"opencode://smoke/{smokeResult.RunId}/summary");
         var smokeSummaryText = smokeSummary.Contents.OfType<TextResourceContents>().Single().Text;
@@ -228,23 +232,29 @@ public sealed class PackagedDistributionTests : IDisposable
         Assert.Empty(runtimeInventoryEnvelope.Data.Resources);
         WriteJsonArtifact(packageArtifactRoot, "runtime-inventory.json", runtimeInventoryEnvelope.Data);
 
-        var jsonlPath = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
-        var textPath = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.txt", StringComparison.Ordinal));
-        Assert.True(File.Exists(jsonlPath));
-        Assert.True(File.Exists(textPath));
-        var jsonlLines = File.ReadAllLines(jsonlPath);
-        var textLog = File.ReadAllText(textPath);
-        Assert.NotEmpty(jsonlLines);
-        Assert.DoesNotContain(jsonlLines, line => line.Contains("password=", StringComparison.OrdinalIgnoreCase) || line.Contains("token=", StringComparison.OrdinalIgnoreCase) || line.Contains("secret=", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain("password=", textLog, StringComparison.OrdinalIgnoreCase);
-        var progressEntries = jsonlLines.Select(line => JsonSerializer.Deserialize<WorkspaceOperationProgressEvent>(line, OpenCodeWorkspaceMcpContract.JsonOptions)!).ToArray();
-        Assert.Equal(progressEntries.Select(item => item.Sequence).OrderBy(item => item).ToArray(), progressEntries.Select(item => item.Sequence).ToArray());
-        Assert.All(progressEntries, entry => Assert.Equal(TimeSpan.Zero, entry.TimestampUtc.Offset));
-        Assert.Equal(current.LastEventSequence, progressEntries[^1].Sequence);
-        Assert.Equal(current.CurrentPhase, progressEntries[^1].Phase);
-        Assert.Equal(current.ProgressMessage, progressEntries[^1].Message);
-        WriteTextArtifact(packageArtifactRoot, "operation-progress.jsonl", string.Join(Environment.NewLine, jsonlLines));
-        WriteTextArtifact(packageArtifactRoot, "operation-progress.txt", textLog);
+            var jsonlPath = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
+            var textPath = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.txt", StringComparison.Ordinal));
+            Assert.True(File.Exists(jsonlPath));
+            Assert.True(File.Exists(textPath));
+            var jsonlLines = File.ReadAllLines(jsonlPath);
+            var textLog = File.ReadAllText(textPath);
+            Assert.NotEmpty(jsonlLines);
+            Assert.DoesNotContain(jsonlLines, line => line.Contains("password=", StringComparison.OrdinalIgnoreCase) || line.Contains("token=", StringComparison.OrdinalIgnoreCase) || line.Contains("secret=", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain("password=", textLog, StringComparison.OrdinalIgnoreCase);
+            var progressEntries = jsonlLines.Select(line => JsonSerializer.Deserialize<WorkspaceOperationProgressEvent>(line, OpenCodeWorkspaceMcpContract.JsonOptions)!).ToArray();
+            Assert.Equal(progressEntries.Select(item => item.Sequence).OrderBy(item => item).ToArray(), progressEntries.Select(item => item.Sequence).ToArray());
+            Assert.All(progressEntries, entry => Assert.Equal(TimeSpan.Zero, entry.TimestampUtc.Offset));
+            Assert.Equal(current.LastEventSequence, progressEntries[^1].Sequence);
+            Assert.Equal(current.CurrentPhase, progressEntries[^1].Phase);
+            Assert.Equal(current.ProgressMessage, progressEntries[^1].Message);
+            WriteTextArtifact(packageArtifactRoot, "operation-progress.jsonl", string.Join(Environment.NewLine, jsonlLines));
+            WriteTextArtifact(packageArtifactRoot, "operation-progress.txt", textLog);
+        }
+        catch
+        {
+            PreservePackagedSmokeFailure(packageArtifactRoot, preservedRoot, current, operation, packageRoot, Path.Combine(_root, "packaged-mcp-state"));
+            throw;
+        }
 
         await mcp.DisposeClientAndTransportAsync(TimeSpan.FromSeconds(30));
         Assert.False(mcp.Report.ForcedTerminationRequired);
@@ -253,6 +263,65 @@ public sealed class PackagedDistributionTests : IDisposable
         WriteJsonArtifact(packageArtifactRoot, "mcp-lifecycle.json", mcp.Report);
         WriteTextArtifact(packageArtifactRoot, "mcp-stderr-final.log", string.Join(Environment.NewLine, mcp.StandardErrorLines));
     }
+
+    private static void PreservePackagedSmokeFailure(string artifactRoot, string preservedRoot, McpOperationModel current, McpOperationModel start, string packageRoot, string stateRoot)
+    {
+        Directory.CreateDirectory(artifactRoot);
+        WriteStaticJsonArtifact(artifactRoot, "operation-current-failure.json", current);
+        WriteStaticJsonArtifact(artifactRoot, "operation-start-failure.json", start);
+        WriteStaticTextArtifact(artifactRoot, "preserved-root.txt", preservedRoot);
+        if (Directory.Exists(preservedRoot))
+        {
+            Directory.Delete(preservedRoot, recursive: true);
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(preservedRoot)!);
+        TryCopyDirectory(packageRoot, Path.Combine(preservedRoot, "package-copy"));
+        if (Directory.Exists(stateRoot))
+        {
+            TryCopyDirectory(stateRoot, Path.Combine(preservedRoot, "state-root"));
+        }
+
+        var jsonlPath = current.ArtifactReferences.FirstOrDefault(path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
+        if (!string.IsNullOrWhiteSpace(jsonlPath) && File.Exists(jsonlPath))
+        {
+            WriteStaticTextArtifact(artifactRoot, "operation-progress-raw-lines.txt", DumpJsonlLines(jsonlPath));
+        }
+    }
+
+    private static string DumpJsonlLines(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var lines = File.ReadAllLines(path);
+        var output = new List<string> { $"path={path}", $"bytes={bytes.Length}", $"lines={lines.Length}" };
+        var offset = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var lineBytes = System.Text.Encoding.UTF8.GetBytes(line + Environment.NewLine);
+            var parse = "ok";
+            try
+            {
+                JsonSerializer.Deserialize<WorkspaceOperationProgressEvent>(line, OpenCodeWorkspaceMcpContract.JsonOptions);
+            }
+            catch (Exception exception)
+            {
+                parse = exception.GetType().Name + ": " + exception.Message;
+            }
+
+            output.Add($"line={i + 1} offset={offset} byteLength={lineBytes.Length} parse={parse}");
+            output.Add(line.Length > 200 ? line[..200] : line);
+            offset += lineBytes.Length;
+        }
+
+        return string.Join(Environment.NewLine, output);
+    }
+
+    private static void WriteStaticJsonArtifact<T>(string directory, string fileName, T value)
+        => File.WriteAllText(Path.Combine(directory, fileName), JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
+
+    private static void WriteStaticTextArtifact(string directory, string fileName, string text)
+        => File.WriteAllText(Path.Combine(directory, fileName), text);
 
     [Fact]
     [Trait("Category", "PackagedOracleMcpIntegration")]
@@ -263,7 +332,7 @@ public sealed class PackagedDistributionTests : IDisposable
             return;
         }
 
-        var packageRoot = await CreateExtractedDistributionAsync();
+        var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo oracle");
         Directory.CreateDirectory(outsideRepositoryRoot);
         var artifactRoot = EnsureArtifactDirectory("packaged-oracle-mcp");
@@ -381,7 +450,7 @@ public sealed class PackagedDistributionTests : IDisposable
         }
     }
 
-    private async Task<string> CreateExtractedDistributionAsync()
+    private string CreateExtractedDistribution()
     {
         if (!string.IsNullOrWhiteSpace(_existingPackageRoot))
         {
@@ -397,100 +466,7 @@ public sealed class PackagedDistributionTests : IDisposable
             return existingPackageCopyRoot;
         }
 
-        Directory.CreateDirectory(_root);
-        var runtime = GetRuntimeIdentifier();
-        var publishRoot = Path.Combine(_root, "publish");
-        var outputRoot = Path.Combine(_root, "dist");
-        Directory.CreateDirectory(publishRoot);
-
-        await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj", "-c", "Release", "-r", runtime, "--self-contained", "false", "-o", Path.Combine(publishRoot, "desktop")], TestPaths.RepositoryRoot);
-        await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj", "-c", "Release", "-r", runtime, "--self-contained", "false", "-o", Path.Combine(publishRoot, "cli")], TestPaths.RepositoryRoot);
-        await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj", "-c", "Release", "-r", runtime, "--self-contained", "false", "-o", Path.Combine(publishRoot, "api")], TestPaths.RepositoryRoot);
-        await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj", "-c", "Release", "-r", runtime, "--self-contained", "false", "-o", Path.Combine(publishRoot, "mcp")], TestPaths.RepositoryRoot);
-        await RunSetupCommandAsync("dotnet", ["run", "--project", "tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj", "--", "assemble", "--source-root", TestPaths.RepositoryRoot, "--output-root", outputRoot, "--runtime", runtime, "--version", "0.0.0-test", "--desktop-publish-dir", Path.Combine(publishRoot, "desktop"), "--cli-publish-dir", Path.Combine(publishRoot, "cli") , "--api-publish-dir", Path.Combine(publishRoot, "api"), "--mcp-publish-dir", Path.Combine(publishRoot, "mcp"), "--create-zip", OperatingSystem.IsWindows() ? "true" : "false"], TestPaths.RepositoryRoot);
-
-        if (OperatingSystem.IsWindows())
-        {
-            var zipPath = Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}.zip");
-            var extractRoot = Path.Combine(_root, "extracted");
-            ZipFile.ExtractToDirectory(zipPath, extractRoot, overwriteFiles: true);
-            return Path.Combine(extractRoot, $"opencode-workspace-0.0.0-test-{runtime}");
-        }
-
-        var sourcePackageRoot = Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}");
-        var copiedRoot = Path.Combine(_root, "copied", $"opencode-workspace-0.0.0-test-{runtime}");
-        CopyDirectory(sourcePackageRoot, copiedRoot);
-        return copiedRoot;
-    }
-
-    private static async Task RunSetupCommandAsync(string fileName, IReadOnlyList<string> arguments, string workingDirectory)
-    {
-        var stdout = new List<string>();
-        var stderr = new List<string>();
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Could not start '{fileName}'.");
-        process.OutputDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is not null)
-            {
-                stdout.Add(eventArgs.Data);
-            }
-        };
-        process.ErrorDataReceived += (_, eventArgs) =>
-        {
-            if (eventArgs.Data is not null)
-            {
-                stderr.Add(eventArgs.Data);
-            }
-        };
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try
-        {
-            if (!process.HasExited)
-            {
-                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnExited(object? sender, EventArgs args) => completion.TrySetResult();
-                process.EnableRaisingEvents = true;
-                process.Exited += OnExited;
-                try
-                {
-                    using var registration = timeoutCts.Token.Register(() => completion.TrySetCanceled(timeoutCts.Token));
-                    await completion.Task;
-                }
-                finally
-                {
-                    process.Exited -= OnExited;
-                }
-            }
-        }
-        catch (OperationCanceledException exception)
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-            }
-
-            throw new TimeoutException($"Setup command timed out: {fileName} {string.Join(' ', arguments)}", exception);
-        }
-
-        Assert.True(process.ExitCode == 0, $"Setup command failed: {fileName} {string.Join(' ', arguments)}{Environment.NewLine}{string.Join(Environment.NewLine, stdout)}{Environment.NewLine}{string.Join(Environment.NewLine, stderr)}");
+        return fixture.CopyPackageTo(_root);
     }
 
     private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
@@ -509,6 +485,35 @@ public sealed class PackagedDistributionTests : IDisposable
             if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(destinationPath, File.GetUnixFileMode(file));
+            }
+        }
+    }
+
+    private static void TryCopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (var directory in Directory.GetDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, directory)));
+        }
+
+        foreach (var file in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                var destinationPath = Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                File.Copy(file, destinationPath, overwrite: true);
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(destinationPath, File.GetUnixFileMode(file));
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
             }
         }
     }
@@ -570,4 +575,9 @@ public sealed class PackagedDistributionTests : IDisposable
             return false;
         }
     }
+
+    private static string GetStructuredOrTextPayload(CallToolResult result)
+        => result.StructuredContent is JsonElement structured
+            ? structured.GetRawText()
+            : result.Content.OfType<TextContentBlock>().First().Text;
 }

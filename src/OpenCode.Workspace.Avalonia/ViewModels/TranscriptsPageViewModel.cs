@@ -7,7 +7,7 @@ public sealed class TranscriptsPageViewModel : PageViewModel
 {
     private TranscriptEntryViewModel? _selectedEntry;
 
-    public TranscriptsPageViewModel(IDesktopShellService desktopShellService)
+    public TranscriptsPageViewModel(IDesktopWorkspaceService desktopWorkspaceService)
         : base("Transcripts", "Structured recent activity instead of raw log walls.")
     {
         DetailTitle = "Transcripts";

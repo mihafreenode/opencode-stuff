@@ -8,18 +8,18 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 public sealed class SettingsPageViewModel : PageViewModel
 {
     private readonly IThemeCoordinator _themeCoordinator;
-    private readonly IDesktopShellService _desktopShellService;
+    private readonly IDesktopWorkspaceService _desktopWorkspaceService;
     private readonly IHostCapabilities _hostCapabilities;
     private readonly Func<WorkspaceSummaryViewModel?> _selectedWorkspaceProvider;
     private ThemeMode _selectedThemeMode;
     private string _terminalProfileStatus = string.Empty;
     private HostCapabilityReport? _hostCapabilityReport;
 
-    public SettingsPageViewModel(IThemeCoordinator themeCoordinator, AppBuildInfo appBuildInfo, IDesktopShellService desktopShellService, IHostCapabilities hostCapabilities, Func<WorkspaceSummaryViewModel?> selectedWorkspaceProvider)
+    public SettingsPageViewModel(IThemeCoordinator themeCoordinator, AppBuildInfo appBuildInfo, IDesktopWorkspaceService desktopWorkspaceService, IHostCapabilities hostCapabilities, Func<WorkspaceSummaryViewModel?> selectedWorkspaceProvider)
         : base("Settings", "Theme selection and basic app information.")
     {
         _themeCoordinator = themeCoordinator;
-        _desktopShellService = desktopShellService;
+        _desktopWorkspaceService = desktopWorkspaceService;
         _hostCapabilities = hostCapabilities;
         _selectedWorkspaceProvider = selectedWorkspaceProvider;
         AppVersionLine = $"Version: {appBuildInfo.AssemblyVersion} ({appBuildInfo.InformationalVersion})";
@@ -83,7 +83,7 @@ public sealed class SettingsPageViewModel : PageViewModel
             return;
         }
 
-        var result = await _desktopShellService.EnsureWindowsTerminalProfileAsync(workspace.RootPath, workspace.Snapshot);
+        var result = await _desktopWorkspaceService.EnsureWindowsTerminalProfileAsync(workspace.RootPath, workspace.Snapshot);
         TerminalProfileStatus = result.Message;
         RefreshTerminalProfileDetails(result.Setup);
     }

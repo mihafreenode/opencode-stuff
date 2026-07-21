@@ -6,7 +6,7 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 
 public sealed class RuntimeResourcesPageViewModel : PageViewModel
 {
-    private readonly IDesktopShellService _desktopShellService;
+    private readonly IDesktopWorkspaceService _desktopWorkspaceService;
     private WorkspaceRuntimeWorkspaceEntry? _selectedWorkspace;
     private WorkspaceRuntimeResourceEntry? _selectedResource;
     private WorkspaceRuntimeConflictEntry? _selectedConflict;
@@ -14,10 +14,10 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
     private WorkspaceRuntimeHealthEntry? _selectedHealth;
     private string _statusMessage;
 
-    public RuntimeResourcesPageViewModel(IDesktopShellService desktopShellService)
+    public RuntimeResourcesPageViewModel(IDesktopWorkspaceService desktopWorkspaceService)
         : base("Runtime Resources", "Workspace-centric runtime resources, ownership, conflicts, and cleanup guidance.")
     {
-        _desktopShellService = desktopShellService;
+        _desktopWorkspaceService = desktopWorkspaceService;
         _statusMessage = "Refresh runtime resources to inspect ownership, conflicts, and orphaned Docker resources.";
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         OpenOwningWorkspaceCommand = new AsyncRelayCommand(OpenOwningWorkspaceAsync, CanOpenOwningWorkspace);
@@ -160,7 +160,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
 
     public async Task RefreshAsync()
     {
-        var report = await _desktopShellService.GetRuntimeResourceExplorerAsync();
+        var report = await _desktopWorkspaceService.GetRuntimeResourceExplorerAsync();
         ReplaceCollection(Workspaces, report.Workspaces);
         ReplaceCollection(Resources, report.Resources);
         ReplaceCollection(Conflicts, report.Conflicts);
@@ -306,7 +306,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var url = (_selectedResource ?? _selectedOrphanedResource)?.OpenUrl;
         if (!string.IsNullOrWhiteSpace(url))
         {
-            await _desktopShellService.OpenPathAsync(url);
+            await _desktopWorkspaceService.OpenPathAsync(url);
         }
     }
 
@@ -315,7 +315,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopShellService.StartWorkspaceAsync(rootPath);
+            await _desktopWorkspaceService.StartWorkspaceAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -325,7 +325,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopShellService.StopWorkspaceAsync(rootPath);
+            await _desktopWorkspaceService.StopWorkspaceAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -335,7 +335,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopShellService.ReleaseRuntimeResourcesAsync(rootPath);
+            await _desktopWorkspaceService.ReleaseRuntimeResourcesAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -345,7 +345,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopShellService.ResetRuntimeAsync(rootPath);
+            await _desktopWorkspaceService.ResetRuntimeAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -358,7 +358,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
             return;
         }
 
-        var inspect = await _desktopShellService.InspectRuntimeResourceAsync(resource);
+        var inspect = await _desktopWorkspaceService.InspectRuntimeResourceAsync(resource);
         DetailTitle = inspect.Title;
         DetailSummary = inspect.Summary;
         DetailItems.Clear();
@@ -368,7 +368,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
 
     private async Task CleanOrphanedResourcesAsync()
     {
-        await _desktopShellService.CleanOrphanedRuntimeResourcesAsync();
+        await _desktopWorkspaceService.CleanOrphanedRuntimeResourcesAsync();
         await RefreshAsync();
     }
 

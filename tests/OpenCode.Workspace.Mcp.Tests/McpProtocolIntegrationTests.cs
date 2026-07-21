@@ -100,7 +100,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             ["timeout"] = "00:05:00",
             ["artifactsRoot"] = string.Empty,
         });
-        var operation = JsonSerializer.Deserialize<McpOperationModel>(start.StructuredContent!.Value.GetRawText())!;
+        var operation = ReadOperationResult(start);
         Assert.Equal("queued", operation.CurrentPhase);
         Assert.NotEmpty(operation.OperationResourceUri);
 
@@ -157,7 +157,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             ["templateId"] = "empty-workspace",
             ["timeout"] = "00:05:00",
         });
-        var operation = JsonSerializer.Deserialize<McpOperationModel>(start.StructuredContent!.Value.GetRawText())!;
+        var operation = ReadOperationResult(start);
 
         var first = await harness.WaitForOperationConditionAsync(operation.OperationId, TimeSpan.FromMinutes(2), current => current.LastEventSequence > 1);
         Assert.NotEmpty(first.RecentEvents);
@@ -183,7 +183,8 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             ["timeout"] = "00:05:00",
             ["artifactsRoot"] = string.Empty,
         });
-        var operation = JsonSerializer.Deserialize<McpOperationModel>(start.StructuredContent!.Value.GetRawText())!;
+        var operation = ReadOperationResult(start);
+        Assert.Equal("queued", operation.CurrentPhase);
 
         var active = await harness.WaitForOperationConditionAsync(operation.OperationId, TimeSpan.FromMinutes(2), current => current.Status == McpOperationStatus.Running && current.StartedUtc is not null);
         Assert.True(active.CancellationRequested is false);
@@ -329,7 +330,31 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
     }
 
     private static McpToolEnvelope<T> ReadEnvelope<T>(CallToolResult result)
-        => JsonSerializer.Deserialize<McpToolEnvelope<T>>(result.StructuredContent!.Value.GetRawText())!;
+        => JsonSerializer.Deserialize<McpToolEnvelope<T>>(GetStructuredOrTextPayload(result))!;
+
+    private static McpOperationModel ReadOperationResult(CallToolResult result)
+    {
+        var payload = GetStructuredOrTextPayload(result);
+        var direct = JsonSerializer.Deserialize<McpOperationModel>(payload);
+        if (direct is not null && !string.IsNullOrWhiteSpace(direct.OperationId))
+        {
+            return direct;
+        }
+
+        var envelope = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(payload);
+        if (envelope?.Data is not null && !string.IsNullOrWhiteSpace(envelope.Data.OperationId))
+        {
+            return envelope.Data;
+        }
+
+        var error = JsonSerializer.Deserialize<McpErrorEnvelope>(payload);
+        if (error is not null && !string.IsNullOrWhiteSpace(error.Code))
+        {
+            throw new InvalidOperationException($"MCP operation start returned error {error.Code}: {error.Message}");
+        }
+
+        return direct ?? new McpOperationModel();
+    }
 
     private static McpErrorEnvelope ReadError(CallToolResult result)
     {
@@ -340,6 +365,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
 
         return JsonSerializer.Deserialize<McpErrorEnvelope>(result.Content.OfType<TextContentBlock>().First().Text)!;
     }
+
+    private static string GetStructuredOrTextPayload(CallToolResult result)
+        => result.StructuredContent is JsonElement structured
+            ? structured.GetRawText()
+            : result.Content.OfType<TextContentBlock>().First().Text;
 
     private static string GetTextResource(ReadResourceResult result)
         => result.Contents.OfType<TextResourceContents>().Single().Text;
@@ -392,6 +422,8 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
                 ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
                 ["mcp__workspaceStateRoot"] = workspaceStateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
+                ["localHost__stateRoot"] = Path.Combine(workspaceStateRoot, "local-host-shared"),
+                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Debug", "net10.0"),
             });
 
         McpClient client;

@@ -7,7 +7,8 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 
 public sealed class SavePointsPageViewModel : PageViewModel
 {
-    private readonly IDesktopShellService _desktopShellService;
+    private readonly IDesktopWorkspaceApplicationService _workspaceApplicationService;
+    private readonly IDesktopPlatformService _desktopPlatformService;
     private SavePointEntryViewModel? _selectedEntry;
     private WorkspaceSummaryViewModel? _selectedWorkspace;
     private IClipboardService? _clipboardService;
@@ -16,13 +17,19 @@ public sealed class SavePointsPageViewModel : PageViewModel
     private string _statusMessage;
     private int _refreshVersion;
 
-    public SavePointsPageViewModel(IDesktopShellService desktopShellService)
+    public SavePointsPageViewModel(IDesktopWorkspaceApplicationService workspaceApplicationService, IDesktopPlatformService desktopPlatformService)
         : base("Timeline", "Workspace history from Save Points and related recovery events.")
     {
-        _desktopShellService = desktopShellService;
+        _workspaceApplicationService = workspaceApplicationService;
+        _desktopPlatformService = desktopPlatformService;
         _statusMessage = "Select a workspace to inspect its timeline.";
         DetailTitle = "Timeline";
         DetailSummary = _statusMessage;
+    }
+
+    public SavePointsPageViewModel(IDesktopWorkspaceService desktopWorkspaceService)
+        : this(new LegacyDesktopWorkspaceApplicationService(desktopWorkspaceService), desktopWorkspaceService)
+    {
     }
 
     public ObservableCollection<SavePointEntryViewModel> Entries { get; } = [];
@@ -98,7 +105,7 @@ public sealed class SavePointsPageViewModel : PageViewModel
         {
             var timelinePath = workspace.Snapshot.Paths.TimelinePath;
             var historyPath = workspace.Snapshot.Paths.HistoryPath;
-            var timeline = await Task.Run(() => _desktopShellService.LoadTimeline(timelinePath), cancellationToken);
+            var timeline = await _workspaceApplicationService.LoadTimelineAsync(workspace.Snapshot, cancellationToken);
             var entries = timeline.Events
                 .OrderByDescending(item => item.OccurredUtc)
                 .Select(item => CreateEntry(item, workspace, timelinePath, historyPath))
@@ -150,8 +157,8 @@ public sealed class SavePointsPageViewModel : PageViewModel
             DetailActions.Clear();
             if (workspace?.Snapshot is not null)
             {
-                DetailActions.Add(new ActionItemViewModel("Open Timeline File", "Open the workspace history file with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(workspace.Snapshot.Paths.TimelinePath))));
-                DetailActions.Add(new ActionItemViewModel("Open History Folder", "Open the containing history folder with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(workspace.Snapshot.Paths.HistoryPath))));
+                DetailActions.Add(new ActionItemViewModel("Open Timeline File", "Open the workspace history file with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopPlatformService.OpenPathAsync(workspace.Snapshot.Paths.TimelinePath))));
+                DetailActions.Add(new ActionItemViewModel("Open History Folder", "Open the containing history folder with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopPlatformService.OpenPathAsync(workspace.Snapshot.Paths.HistoryPath))));
             }
         }
         finally
@@ -207,8 +214,8 @@ public sealed class SavePointsPageViewModel : PageViewModel
         DetailActions.Add(new ActionItemViewModel("Copy Summary", "Copy a concise summary for sharing or diagnostics.", _clipboardService is not null, _clipboardService is null ? "Clipboard is unavailable." : string.Empty, new AsyncRelayCommand(() => CopyAsync(BuildSummaryText(SelectedEntry)), () => _clipboardService is not null)));
         DetailActions.Add(new ActionItemViewModel("Copy Message", "Copy the full timeline message text.", _clipboardService is not null, _clipboardService is null ? "Clipboard is unavailable." : string.Empty, new AsyncRelayCommand(() => CopyAsync(string.IsNullOrWhiteSpace(SelectedEntry.Message) ? SelectedEntry.Summary : SelectedEntry.Message), () => _clipboardService is not null)));
         DetailActions.Add(new ActionItemViewModel("Copy Commit Id", "Copy the captured Git commit id when available.", !string.IsNullOrWhiteSpace(commitSha) && _clipboardService is not null, string.IsNullOrWhiteSpace(commitSha) ? "This timeline entry does not have a commit id available." : _clipboardService is null ? "Clipboard is unavailable." : string.Empty, new AsyncRelayCommand(() => CopyAsync(commitSha), () => !string.IsNullOrWhiteSpace(commitSha) && _clipboardService is not null)));
-        DetailActions.Add(new ActionItemViewModel("Open Timeline File", "Open the workspace history file with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(SelectedEntry.TimelinePath))));
-        DetailActions.Add(new ActionItemViewModel("Open History Folder", "Open the containing history folder with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(SelectedEntry.HistoryPath))));
+        DetailActions.Add(new ActionItemViewModel("Open Timeline File", "Open the workspace history file with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopPlatformService.OpenPathAsync(SelectedEntry.TimelinePath))));
+        DetailActions.Add(new ActionItemViewModel("Open History Folder", "Open the containing history folder with the host shell.", true, string.Empty, new AsyncRelayCommand(() => _desktopPlatformService.OpenPathAsync(SelectedEntry.HistoryPath))));
     }
 
     private static SavePointEntryViewModel CreateEntry(WorkspaceTimelineEvent item, WorkspaceSummaryViewModel workspace, string timelinePath, string historyPath)

@@ -1,22 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>opencode-workspace-cli</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenCode.Workspace.AppSupport\OpenCode.Workspace.AppSupport.csproj" />
     <ProjectReference Include="..\OpenCode.Workspace.Core\OpenCode.Workspace.Core.csproj" />
-    <ProjectReference Include="..\OpenCode.Workspace.LocalClient\OpenCode.Workspace.LocalClient.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\catalog\**\*">
-      <Link>catalog\%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
   </ItemGroup>
 
 </Project>

@@ -8,6 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenCode.Workspace.AppSupport\OpenCode.Workspace.AppSupport.csproj" />
+    <ProjectReference Include="..\OpenCode.Workspace.Core\OpenCode.Workspace.Core.csproj" />
+    <ProjectReference Include="..\OpenCode.Workspace.LocalClient\OpenCode.Workspace.LocalClient.csproj" />
     <ProjectReference Include="..\OpenCode.Workspace.Mcp\OpenCode.Workspace.Mcp.csproj" />
   </ItemGroup>
 

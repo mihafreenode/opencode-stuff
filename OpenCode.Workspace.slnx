@@ -5,6 +5,7 @@
     <Project Path="src/OpenCode.Workspace.Core/OpenCode.Workspace.Core.csproj" />
     <Project Path="src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj" />
     <Project Path="src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj" />
+    <Project Path="src/OpenCode.Workspace.LocalClient/OpenCode.Workspace.LocalClient.csproj" />
     <Project Path="src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform/OpenCode.Workspace.Platform.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.Linux/OpenCode.Workspace.Platform.Linux.csproj" />

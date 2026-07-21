@@ -137,6 +137,32 @@ public sealed class WorkspaceRemovalServiceTests
     }
 
     [Fact]
+    public async Task RemoveAsync_MissingRoot_IsRejected()
+    {
+        var appDataRoot = Path.Combine(Path.GetTempPath(), $"oc-remove-missing-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(appDataRoot);
+
+        try
+        {
+            var repository = new WorkspaceRepository(appDataRoot);
+            var service = new WorkspaceRemovalService(repository);
+            var result = await service.RemoveAsync(new WorkspaceRemovalRequest
+            {
+                WorkspaceName = "demo",
+                WorkspaceRoot = string.Empty,
+                DeleteWorkspaceFiles = false,
+            });
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("root path is required", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(appDataRoot)) Directory.Delete(appDataRoot, true);
+        }
+    }
+
+    [Fact]
     public void WorkspaceRecordPathResolver_DerivesNestedWorkspaceRootAndConfigurationPath()
     {
         var baseRoot = Path.Combine(Path.GetTempPath(), $"oc-record-root-{Guid.NewGuid():N}");

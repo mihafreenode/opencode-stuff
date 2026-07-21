@@ -14,7 +14,7 @@ namespace OpenCode.Workspace.Avalonia.Services;
 
 public sealed class AvaloniaAppBootstrapper
 {
-    public ShellViewModel CreateShellViewModel(string applicationBasePath, string applicationDataRoot, string languageCode, IThemeCoordinator themeCoordinator)
+    public AvaloniaDesktopBootstrapResult CreateShellViewModel(string applicationBasePath, string applicationDataRoot, string languageCode, IThemeCoordinator themeCoordinator)
     {
         var services = new WorkspaceDesktopServiceFactory().Create(applicationBasePath, applicationDataRoot);
         var commandProbe = new ProcessRunnerCommandProbe(services.ProcessRunner);
@@ -25,33 +25,46 @@ public sealed class AvaloniaAppBootstrapper
             .CreateForCurrentPlatform();
         var windowsHostCapabilities = new WindowsHostCapabilities(commandProbe);
         var windowsTerminalProfileSetupService = new WindowsTerminalProfileSetupService(new WindowsTerminalProfileManager(), windowsHostCapabilities);
-        var desktopShellService = new DesktopShellService(
+        var workspaceLocalHostApplicationService = new WorkspaceLocalHostApplicationService();
+        var desktopWorkspaceApplicationService = new LocalHostDesktopWorkspaceApplicationService(workspaceLocalHostApplicationService, new DesktopWorkspaceProjectionMapper());
+        var desktopInteractiveSessionApplicationService = new LocalHostDesktopInteractiveSessionApplicationService(new WindowsDesktopTerminalLauncher());
+        var desktopWorkspaceService = new DesktopWorkspaceService(
             services.WorkspaceOrchestrator,
             services.Repository,
             services.TimelineService,
             services.CheckpointService,
             services.SavePointMessageService,
-            services.BackupExportService,
-            services.BackupManifestService,
-            services.PublishAssessmentService,
-            services.RemovalService,
             services.OracleSoftwareNoticeService,
             windowsTerminalProfileSetupService);
+        var desktopPlatformService = new DesktopPlatformService();
         var doctorService = new WorkspaceDoctorService(services.PlatformDetector, services.RuntimeResolver, new WorkspaceDiscoveryService(), new WorkspaceYamlService(), new WorkspaceRuntimeStateService());
         var validationService = new PlatformValidationService(new WorkspaceDiscoveryService(), new WorkspaceYamlService(), services.PlatformDetector, services.RuntimeResolver, new WorkspaceResolver(services.CatalogProvider.LoadFeatures(), services.CatalogProvider.LoadServices(), services.CatalogProvider.LoadCapabilities(), services.CatalogProvider.LoadKnowledgePacks()), new ComposeGenerator(), new ProvisioningScriptGenerator());
         var diagnosticsShellService = new DiagnosticsShellService(doctorService, validationService, hostCapabilities, services.CatalogProvider);
         var templateShellService = new TemplateCatalogShellService(services.CatalogProvider);
-        var documentationShellService = new DocumentationShellService(services.InstallationLayout.DistributionRoot, desktopShellService);
+        var documentationShellService = new DocumentationShellService(services.InstallationLayout.DistributionRoot, desktopPlatformService);
         var appBuildInfo = new AppBuildInfoService(applicationBasePath).GetCurrent();
 
-        return ShellViewModel.Create(
-            desktopShellService,
-            diagnosticsShellService,
-            hostCapabilities,
-            templateShellService,
-            documentationShellService,
-            themeCoordinator,
-            appBuildInfo,
-            languageCode);
+        return new AvaloniaDesktopBootstrapResult
+        {
+            Shell = ShellViewModel.Create(
+                desktopWorkspaceApplicationService,
+                desktopInteractiveSessionApplicationService,
+                desktopWorkspaceService,
+                desktopPlatformService,
+                diagnosticsShellService,
+                hostCapabilities,
+                templateShellService,
+                documentationShellService,
+                themeCoordinator,
+                appBuildInfo,
+                languageCode),
+            LocalHostService = workspaceLocalHostApplicationService,
+        };
     }
+}
+
+public sealed class AvaloniaDesktopBootstrapResult
+{
+    public required ShellViewModel Shell { get; init; }
+    public required IWorkspaceLocalHostApplicationService LocalHostService { get; init; }
 }

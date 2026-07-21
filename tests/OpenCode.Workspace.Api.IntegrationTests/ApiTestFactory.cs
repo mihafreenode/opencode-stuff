@@ -62,6 +62,7 @@ internal sealed class ApiIntegrationEnvironment : IDisposable
             ["mcp:catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
             ["mcp:workspaceStateRoot"] = WorkspaceStateRoot,
             ["mcp:smokeArtifactsRoot"] = SmokeArtifactsRoot,
+            ["localHost:stateRoot"] = Path.Combine(Root, "local-host-state"),
         }, configureServices);
 
     public void Dispose()

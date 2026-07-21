@@ -11,9 +11,13 @@ public static class OpenCodeWorkspaceLocalServices
         configuration.GetSection("mcp").Bind(options);
         services.AddSingleton(options);
         services.AddSingleton<ISystemClock, SystemClock>();
-        services.AddSingleton<IOpenCodeWorkspaceMcpService, OpenCodeWorkspaceMcpService>();
-        services.AddSingleton<McpOperationStore>();
-        services.AddHostedService(sp => sp.GetRequiredService<McpOperationStore>());
+        services.AddSingleton<LocalHostClientAccessor>();
+        services.AddSingleton<McpControllerSessionContext>();
+        services.AddSingleton<LocalHostOperationStore>();
+        services.AddSingleton<OpenCodeWorkspaceMcpService>();
+        services.AddSingleton<LocalHostMcpProxyService>();
+        services.AddSingleton<IOpenCodeWorkspaceMcpService>(sp => sp.GetRequiredService<OpenCodeWorkspaceMcpService>());
+        services.AddHostedService<McpControllerSessionHostedService>();
         return services;
     }
 }

@@ -8,7 +8,7 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 public sealed class ShellViewModel : ObservableObject
 {
     private PageViewModel _currentPage;
-    private readonly IDesktopShellService _desktopShellService;
+    private readonly IDesktopWorkspaceService _desktopWorkspaceService;
     private readonly WorkspacesPageViewModel _workspacesPage;
     private readonly SavePointsPageViewModel _savePointsPage;
     private readonly DiagnosticsPageViewModel _diagnosticsPage;
@@ -18,7 +18,7 @@ public sealed class ShellViewModel : ObservableObject
 
     private ShellViewModel(
         WorkspacesPageViewModel workspacesPage,
-        IDesktopShellService desktopShellService,
+        IDesktopWorkspaceService desktopWorkspaceService,
         WorkspaceTroubleshootingPageViewModel workspaceTroubleshootingPage,
         DiagnosticsPageViewModel diagnosticsPage,
         RuntimeResourcesPageViewModel runtimeResourcesPage,
@@ -30,7 +30,7 @@ public sealed class ShellViewModel : ObservableObject
         SettingsPageViewModel settingsPage,
         AppBuildInfo appBuildInfo)
     {
-        _desktopShellService = desktopShellService;
+        _desktopWorkspaceService = desktopWorkspaceService;
         _workspacesPage = workspacesPage;
         _savePointsPage = savePointsPage;
         _diagnosticsPage = diagnosticsPage;
@@ -118,7 +118,10 @@ public sealed class ShellViewModel : ObservableObject
     public bool IsStandardPageSelected => !IsWorkspacePageSelected;
 
     public static ShellViewModel Create(
-        IDesktopShellService desktopShellService,
+        IDesktopWorkspaceApplicationService workspaceApplicationService,
+        IDesktopInteractiveSessionApplicationService interactiveSessionApplicationService,
+        IDesktopWorkspaceService desktopWorkspaceService,
+        IDesktopPlatformService desktopPlatformService,
         IDiagnosticsShellService diagnosticsShellService,
         IHostCapabilities hostCapabilities,
         ITemplateCatalogShellService templateCatalogShellService,
@@ -128,24 +131,47 @@ public sealed class ShellViewModel : ObservableObject
         string languageCode)
     {
         var templates = templateCatalogShellService.LoadTemplates();
-        var workspacesPage = new WorkspacesPageViewModel(desktopShellService, templates);
-        var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopShellService.LoadWorkspaceReferences(), () => workspacesPage.WorkspaceLoadReport);
+        var workspacesPage = new WorkspacesPageViewModel(workspaceApplicationService, desktopPlatformService, interactiveSessionApplicationService, templates);
+        var diagnosticsPage = new DiagnosticsPageViewModel(diagnosticsShellService, desktopWorkspaceService.LoadWorkspaceReferences(), () => workspacesPage.WorkspaceLoadReport);
         var shell = new ShellViewModel(
             workspacesPage,
-            desktopShellService,
+            desktopWorkspaceService,
             new WorkspaceTroubleshootingPageViewModel(),
             diagnosticsPage,
-            new RuntimeResourcesPageViewModel(desktopShellService),
+            new RuntimeResourcesPageViewModel(desktopWorkspaceService),
             new TemplatesPageViewModel(templateCatalogShellService),
-            new SavePointsPageViewModel(desktopShellService),
-            new TranscriptsPageViewModel(desktopShellService),
+            new SavePointsPageViewModel(workspaceApplicationService, desktopPlatformService),
+            new TranscriptsPageViewModel(desktopWorkspaceService),
             new RemoteTargetsPageViewModel(),
             new DocumentationPageViewModel(documentationShellService),
-            new SettingsPageViewModel(themeCoordinator, appBuildInfo, desktopShellService, hostCapabilities, () => workspacesPage.SelectedWorkspace),
+            new SettingsPageViewModel(themeCoordinator, appBuildInfo, desktopWorkspaceService, hostCapabilities, () => workspacesPage.SelectedWorkspace),
             appBuildInfo);
 
         return shell;
     }
+
+    public static ShellViewModel Create(
+        IDesktopWorkspaceService desktopWorkspaceService,
+        IDiagnosticsShellService diagnosticsShellService,
+        IHostCapabilities hostCapabilities,
+        ITemplateCatalogShellService templateCatalogShellService,
+        IDocumentationShellService documentationShellService,
+        IDesktopPlatformService desktopPlatformService,
+        IThemeCoordinator themeCoordinator,
+        AppBuildInfo appBuildInfo,
+        string languageCode)
+        => Create(
+            new LegacyDesktopWorkspaceApplicationService(desktopWorkspaceService),
+            new UnsupportedDesktopInteractiveSessionApplicationService(),
+            desktopWorkspaceService,
+            desktopPlatformService,
+            diagnosticsShellService,
+            hostCapabilities,
+            templateCatalogShellService,
+            documentationShellService,
+            themeCoordinator,
+            appBuildInfo,
+            languageCode);
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -197,7 +223,7 @@ public sealed class ShellViewModel : ObservableObject
     private async Task TroubleshootWorkspaceFromOverviewAsync(string workspacePath)
     {
         var request = BuildWorkspaceTroubleshootingRequest(workspacePath);
-        var report = await _desktopShellService.GetWorkspaceTroubleshootingReportAsync(request);
+        var report = await _desktopWorkspaceService.GetWorkspaceTroubleshootingReportAsync(request);
         ShowWorkspaceTroubleshootingReport(report, request);
     }
 
@@ -305,7 +331,7 @@ public sealed class ShellViewModel : ObservableObject
                 service.Details,
                 service.ActionLabel,
                 service.OpenUrl,
-                string.IsNullOrWhiteSpace(service.OpenUrl) ? null : new AsyncRelayCommand(() => _desktopShellService.OpenPathAsync(service.OpenUrl))))
+                string.IsNullOrWhiteSpace(service.OpenUrl) ? null : new AsyncRelayCommand(() => _desktopWorkspaceService.OpenPathAsync(service.OpenUrl))))
             .ToList();
 
     private Task KeepWaitingForWorkspaceAsync()
@@ -361,7 +387,7 @@ public sealed class ShellViewModel : ObservableObject
     private async Task RunWorkspaceInvestigationAsync(WorkspaceTroubleshootingRequest request, string actionId)
     {
         var updatedRequest = BuildWorkspaceTroubleshootingRequest(request.RootPath);
-        var report = await _desktopShellService.ExecuteWorkspaceTroubleshootingActionAsync(updatedRequest, actionId);
+        var report = await _desktopWorkspaceService.ExecuteWorkspaceTroubleshootingActionAsync(updatedRequest, actionId);
         ShowWorkspaceTroubleshootingReport(report, updatedRequest);
     }
 

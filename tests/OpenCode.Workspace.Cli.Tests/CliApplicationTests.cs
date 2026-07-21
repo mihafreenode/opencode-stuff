@@ -35,6 +35,19 @@ public sealed class CliApplicationTests
     }
 
     [Fact]
+    public async Task InteractiveSessionAttach_MissingArguments_ExitsWithUsageError()
+    {
+        var output = new StringWriter();
+        var error = new StringWriter();
+        var app = new CliApplication(output, error);
+
+        var exitCode = await app.RunAsync(["interactive-session", "attach"]);
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("Missing required option --session-id", error.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Doctor_ExitsZeroWhenDiagnosticsHaveWarnings()
     {
         var output = new StringWriter();

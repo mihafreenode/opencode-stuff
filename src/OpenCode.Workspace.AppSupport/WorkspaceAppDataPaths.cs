@@ -11,4 +11,7 @@ public static class WorkspaceAppDataPaths
 
     public static string GetWorkspaceIndexPath()
         => Path.Combine(GetWorkspaceManagerDataRoot(), "workspaces.json");
+
+    public static ILocalHostStatePathProvider CreateLocalHostStatePathProvider(string? stateRoot = null)
+        => new DefaultLocalHostStatePathProvider(new LocalHostStateOptions { StateRoot = stateRoot ?? string.Empty });
 }

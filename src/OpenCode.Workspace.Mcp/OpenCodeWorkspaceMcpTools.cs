@@ -39,7 +39,10 @@ public sealed class OpenCodeWorkspaceMcpTools
         => await ExecuteAsync(() => service.CreateWorkspaceAsync(templateId, workspaceName, destinationRoot));
 
     [McpServerTool(Name = "provision_workspace"), Description("Start a long-running local workspace provisioning operation. The result is an operation id, not completion. Poll get_operation with afterSequence until the terminal status is completed, failed, or cancelled. Do not run Docker manually or start duplicate provisioning while an operation is active.")]
-    public static CallToolResult ProvisionWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service, McpOperationStore operations)
+    public static async Task<CallToolResult> ProvisionWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service, LocalHostOperationStore operations)
+        => await ExecuteAsync(async () => await operations.StartProvisionWorkspaceAsync(workspaceId), McpResults.OperationStarted, "Provision operation started.");
+
+    public static CallToolResult ProvisionWorkspaceCompatibility([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service, McpOperationStore operations)
         => McpResults.OperationStarted(operations.Start("provision_workspace", workspaceId, "Provisioning workspace.", async (reporter, cancellationToken) =>
         {
             reporter.MarkStarted("preparing", "Preparing workspace provisioning.");
@@ -64,10 +67,24 @@ public sealed class OpenCodeWorkspaceMcpTools
         [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
         [Description("Optional artifact root")] string? artifactsRoot = null,
         IOpenCodeWorkspaceMcpService service = null!,
+        LocalHostOperationStore operations = null!)
+    {
+        return await ExecuteAsync(async () =>
+        {
+            await service.GetWorkspaceTemplateAsync(templateId);
+            return await operations.StartSmokeRunAsync(templateId, timeout, artifactsRoot);
+        }, McpResults.OperationStarted, "Smoke operation started.");
+    }
+
+    public static async Task<CallToolResult> RunSmokeCompatibility(
+        [Description("Stable template id")] string templateId,
+        [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
+        [Description("Optional artifact root")] string? artifactsRoot = null,
+        IOpenCodeWorkspaceMcpService service = null!,
         McpOperationStore operations = null!)
     {
         await service.GetWorkspaceTemplateAsync(templateId);
-        var request = new WorkspaceSmokeSingleRunRequest { TemplateId = templateId, Timeout = ParseTimeout(timeout), ArtifactsRoot = artifactsRoot ?? string.Empty };
+        var request = new WorkspaceSmokeSingleRunRequest { TemplateId = templateId, Timeout = string.IsNullOrWhiteSpace(timeout) ? null : TimeSpan.Parse(timeout), ArtifactsRoot = artifactsRoot ?? string.Empty };
         var operation = operations.Start("run_smoke", string.Empty, $"Running smoke for {templateId}.", async (reporter, token) =>
         {
             reporter.MarkStarted("queued", $"Queued smoke run for '{templateId}'.");
@@ -90,6 +107,20 @@ public sealed class OpenCodeWorkspaceMcpTools
         [Description("Select all smoke definitions")] bool all = false,
         [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
         IOpenCodeWorkspaceMcpService service = null!,
+        LocalHostOperationStore operations = null!)
+    {
+        return await ExecuteAsync(
+            async () => await operations.StartSmokeMatrixAsync(templateIds, family, all, timeout),
+            McpResults.OperationStarted,
+            "Smoke matrix operation started.");
+    }
+
+    public static async Task<CallToolResult> RunSmokeMatrixCompatibility(
+        [Description("Optional template ids")] string[]? templateIds = null,
+        [Description("Optional smoke family")] string? family = null,
+        [Description("Select all smoke definitions")] bool all = false,
+        [Description("Optional timeout as hh:mm:ss")] string? timeout = null,
+        IOpenCodeWorkspaceMcpService service = null!,
         McpOperationStore operations = null!)
     {
         var selected = await service.SelectSmokeDefinitionsAsync(new WorkspaceSmokeDefinitionSelectionRequest
@@ -98,7 +129,7 @@ public sealed class OpenCodeWorkspaceMcpTools
             Family = family,
             All = all,
         });
-        var request = new WorkspaceSmokeMatrixRunRequest { TemplateIds = selected.Select(item => item.TemplateId).ToArray(), MatrixTimeout = ParseTimeout(timeout) };
+        var request = new WorkspaceSmokeMatrixRunRequest { TemplateIds = selected.Select(item => item.TemplateId).ToArray(), MatrixTimeout = string.IsNullOrWhiteSpace(timeout) ? null : TimeSpan.Parse(timeout) };
         var operation = operations.Start("run_smoke_matrix", string.Empty, "Running smoke matrix.", async (reporter, token) =>
         {
             reporter.MarkStarted("queued", "Queued smoke matrix.");
@@ -164,15 +195,24 @@ public sealed class OpenCodeWorkspaceMcpTools
         => await ExecuteAsync(() => service.ProcessExcelArtifactAsync(sourcePath, destinationWorkspaceId, processingTemplateId, outputLogicalName));
 
     [McpServerTool(Name = "get_operation"), Description("Get a long-running local operation. Use afterSequence to receive only new incremental progress events. Terminal statuses are completed, failed, and cancelled. Cleanup may continue briefly after cancellation and detailed logs are available through artifact references.")]
-    public static Task<CallToolResult> GetOperation(string operationId, long? afterSequence = null, int? maxEvents = null, McpOperationStore operations = null!)
+    public static Task<CallToolResult> GetOperation(string operationId, long? afterSequence = null, int? maxEvents = null, LocalHostOperationStore operations = null!)
+        => ExecuteAsync(() => operations.GetAsync(operationId, afterSequence, maxEvents));
+
+    public static Task<CallToolResult> GetOperationLegacy(string operationId, long? afterSequence = null, int? maxEvents = null, McpOperationStore operations = null!)
         => ExecuteAsync(() => Task.FromResult(operations.Get(operationId, afterSequence, maxEvents)));
 
     [McpServerTool(Name = "list_operations"), Description("List in-memory MCP operations for this local process.")]
-    public static Task<CallToolResult> ListOperations(McpOperationStore operations)
+    public static Task<CallToolResult> ListOperations(LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.ListAsync());
+
+    public static Task<CallToolResult> ListOperationsLegacy(McpOperationStore operations)
         => ExecuteAsync(() => Task.FromResult(operations.List()));
 
     [McpServerTool(Name = "cancel_operation"), Description("Request cancellation for an in-memory MCP operation.")]
-    public static Task<CallToolResult> CancelOperation(string operationId, McpOperationStore operations)
+    public static Task<CallToolResult> CancelOperation(string operationId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.CancelAsync(operationId));
+
+    public static Task<CallToolResult> CancelOperationLegacy(string operationId, McpOperationStore operations)
         => ExecuteAsync(() => Task.FromResult(operations.Cancel(operationId)));
 
     private static async Task<CallToolResult> ExecuteAsync<T>(Func<Task<T>> operation)
@@ -187,8 +227,18 @@ public sealed class OpenCodeWorkspaceMcpTools
         }
     }
 
-    private static TimeSpan? ParseTimeout(string? value)
-        => string.IsNullOrWhiteSpace(value) ? null : TimeSpan.Parse(value);
+    private static async Task<CallToolResult> ExecuteAsync<T>(Func<Task<T>> operation, Func<T, string, CallToolResult> successFactory, string message)
+    {
+        try
+        {
+            return successFactory(await operation(), message);
+        }
+        catch (Exception exception)
+        {
+            return McpResults.Error(exception);
+        }
+    }
+
 }
 
 internal static class McpResults
@@ -224,6 +274,15 @@ internal static class McpResults
                 Message = mcpException.Message,
                 Recommendation = mcpException.Recommendation,
                 FailureClassification = mcpException.FailureClassification,
+            }
+            : exception is OpenCode.Workspace.LocalClient.LocalHostClientException localHostException
+            ? new McpErrorEnvelope
+            {
+                CorrelationId = correlationId,
+                Code = localHostException.Code,
+                Message = localHostException.Message,
+                Recommendation = localHostException.Recommendation,
+                FailureClassification = localHostException.GetType().Name,
             }
             : new McpErrorEnvelope
         {

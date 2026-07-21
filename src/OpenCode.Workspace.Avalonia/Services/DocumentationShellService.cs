@@ -3,12 +3,12 @@ namespace OpenCode.Workspace.Avalonia.Services;
 public sealed class DocumentationShellService : IDocumentationShellService
 {
     private readonly string _applicationBasePath;
-    private readonly IDesktopShellService _desktopShellService;
+    private readonly IDesktopPlatformService _desktopPlatformService;
 
-    public DocumentationShellService(string applicationBasePath, IDesktopShellService desktopShellService)
+    public DocumentationShellService(string applicationBasePath, IDesktopPlatformService desktopPlatformService)
     {
         _applicationBasePath = applicationBasePath;
-        _desktopShellService = desktopShellService;
+        _desktopPlatformService = desktopPlatformService;
     }
 
     public IReadOnlyList<DocumentationDocument> GetDocuments()
@@ -22,5 +22,5 @@ public sealed class DocumentationShellService : IDocumentationShellService
         ];
 
     public Task OpenDocumentAsync(string relativePath, CancellationToken cancellationToken = default)
-        => _desktopShellService.OpenPathAsync(Path.Combine(_applicationBasePath, relativePath), cancellationToken);
+        => _desktopPlatformService.OpenPathAsync(Path.Combine(_applicationBasePath, relativePath), cancellationToken);
 }

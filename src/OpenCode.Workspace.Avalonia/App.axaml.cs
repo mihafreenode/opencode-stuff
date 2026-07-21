@@ -2,10 +2,12 @@ using System;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Avalonia.Services;
+using OpenCode.Workspace.Avalonia.ViewModels;
 
 namespace OpenCode.Workspace.Avalonia;
 
@@ -40,24 +42,44 @@ public partial class App : Application
             var themeCoordinator = new ThemeCoordinator(ThemeMode.System, ApplyThemeMode);
             var bootstrapper = new AvaloniaAppBootstrapper();
             _startupLog.Write("Creating shell view model.");
-            var shell = bootstrapper.CreateShellViewModel(
+            var bootstrap = bootstrapper.CreateShellViewModel(
                 AppContext.BaseDirectory,
                 appDataRoot,
                 PoLocalizationService.DetectLanguageCode(),
                 themeCoordinator);
+            var shell = bootstrap.Shell;
             _startupLog.Write("Shell view model created.");
 
             var mainWindow = new MainWindow
             {
                 DataContext = shell,
             };
+            var windowHost = new AvaloniaDesktopWindowHost(mainWindow);
+            var trayHost = new AvaloniaDesktopTrayHost(this, OperatingSystem.IsWindows());
+            var lifecycleCoordinator = new DesktopLifecycleCoordinator(windowHost, new AvaloniaDesktopApplicationLifetime(desktop), trayHost, bootstrap.LocalHostService, message => _startupLog?.Write(message));
+            var tray = new TrayViewModel(bootstrap.LocalHostService, lifecycleCoordinator);
+            trayHost.Initialize(tray);
             shell.SetClipboardService(new AvaloniaClipboardService(mainWindow));
             shell.SetInteractionService(new AvaloniaWorkspaceInteractionService(mainWindow));
+            mainWindow.Closing += (_, eventArgs) =>
+            {
+                var outcome = lifecycleCoordinator.HandleMainWindowCloseRequested();
+                if (outcome == DesktopCloseRequestOutcome.HideToTray)
+                {
+                    eventArgs.Cancel = true;
+                }
+                else if (outcome == DesktopCloseRequestOutcome.BeginApplicationExit)
+                {
+                    eventArgs.Cancel = true;
+                    _ = lifecycleCoordinator.RequestExitAsync();
+                }
+            };
             mainWindow.Opened += async (_, _) =>
             {
                 _startupLog?.Write("MainWindow opened.");
                 try
                 {
+                    await lifecycleCoordinator.InitializeAsync();
                     _startupLog?.Write("Workspace load start.");
                     await shell.InitializeAsync();
                     _startupLog?.Write("Workspace load end.");

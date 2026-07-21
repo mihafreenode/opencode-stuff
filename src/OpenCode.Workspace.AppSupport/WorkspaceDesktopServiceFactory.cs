@@ -41,10 +41,7 @@ public sealed class WorkspaceDesktopServiceFactory
             CheckpointService = checkpointService,
             TimelineService = timelineService,
             SavePointMessageService = new WorkspaceSavePointMessageService(processRunner),
-            BackupExportService = new WorkspaceBackupExportService(ignorePolicyService),
-            BackupManifestService = new WorkspaceBackupManifestService(),
             PublishAssessmentService = new WorkspacePublishAssessmentService(processRunner),
-            RemovalService = new WorkspaceRemovalService(repository),
             OracleSoftwareNoticeService = new OracleSoftwareNoticeService(repository),
             ContainerRuntime = containerRuntime,
             PlatformDetector = platformDetector,
@@ -85,10 +82,7 @@ public sealed class WorkspaceDesktopServices
     public required WorkspaceCheckpointService CheckpointService { get; init; }
     public required WorkspaceTimelineService TimelineService { get; init; }
     public required WorkspaceSavePointMessageService SavePointMessageService { get; init; }
-    public required WorkspaceBackupExportService BackupExportService { get; init; }
-    public required WorkspaceBackupManifestService BackupManifestService { get; init; }
     public required WorkspacePublishAssessmentService PublishAssessmentService { get; init; }
-    public required WorkspaceRemovalService RemovalService { get; init; }
     public required OracleSoftwareNoticeService OracleSoftwareNoticeService { get; init; }
     public required IContainerRuntime ContainerRuntime { get; init; }
     public required PlatformDetector PlatformDetector { get; init; }

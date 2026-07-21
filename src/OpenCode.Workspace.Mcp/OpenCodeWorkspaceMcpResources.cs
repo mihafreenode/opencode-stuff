@@ -26,21 +26,35 @@ public sealed class OpenCodeWorkspaceMcpResources
     [McpServerResource(UriTemplate = "opencode://workspaces/{workspaceId}", Name = "Workspace Snapshot", MimeType = "application/json")]
     [Description("Read a local workspace snapshot.")]
     public static async Task<TextResourceContents> GetWorkspace(string workspaceId, IOpenCodeWorkspaceMcpService service)
-        => new()
+    {
+        try
         {
-            Uri = $"opencode://workspaces/{workspaceId}",
-            MimeType = "application/json",
-            Text = JsonSerializer.Serialize(await service.GetWorkspaceAsync(workspaceId), OpenCodeWorkspaceMcpContract.JsonOptions),
-        };
+            return new TextResourceContents
+            {
+                Uri = $"opencode://workspaces/{workspaceId}",
+                MimeType = "application/json",
+                Text = JsonSerializer.Serialize(await service.GetWorkspaceAsync(workspaceId), OpenCodeWorkspaceMcpContract.JsonOptions),
+            };
+        }
+        catch (Exception exception)
+        {
+            return new TextResourceContents
+            {
+                Uri = $"opencode://workspaces/{workspaceId}",
+                MimeType = "application/json",
+                Text = JsonSerializer.Serialize(new { workspaceId, error = exception.Message }, OpenCodeWorkspaceMcpContract.JsonOptions),
+            };
+        }
+    }
 
     [McpServerResource(UriTemplate = "opencode://operations/{operationId}", Name = "Operation", MimeType = "application/json")]
     [Description("Read a local in-memory operation snapshot.")]
-    public static TextResourceContents GetOperation(string operationId, McpOperationStore operations)
+    public static async Task<TextResourceContents> GetOperation(string operationId, LocalHostOperationStore operations)
         => new()
         {
             Uri = $"opencode://operations/{operationId}",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(operations.Get(operationId), OpenCodeWorkspaceMcpContract.JsonOptions),
+            Text = JsonSerializer.Serialize(await operations.GetAsync(operationId), OpenCodeWorkspaceMcpContract.JsonOptions),
         };
 
     [McpServerResource(UriTemplate = "opencode://smoke/{runId}/summary", Name = "Smoke Summary", MimeType = "application/json")]

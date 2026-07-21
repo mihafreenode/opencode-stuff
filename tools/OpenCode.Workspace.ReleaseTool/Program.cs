@@ -24,7 +24,7 @@ if (Directory.Exists(distributionRoot))
 Directory.CreateDirectory(distributionRoot);
 CopyHost(options.DesktopPublishDir, Path.Combine(distributionRoot, "bin", "desktop"));
 CopyHost(options.CliPublishDir, Path.Combine(distributionRoot, "bin", "cli"));
-CopyHost(options.ApiPublishDir, Path.Combine(distributionRoot, "bin", "api"));
+CopyHost(options.ApiPublishDir, Path.Combine(distributionRoot, "bin", "local-host"));
 CopyHost(options.McpPublishDir, Path.Combine(distributionRoot, "bin", "mcp"));
 
 CopyDirectory(Path.Combine(options.SourceRoot, "catalog"), Path.Combine(distributionRoot, "catalog"));

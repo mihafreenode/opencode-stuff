@@ -170,6 +170,8 @@ public sealed class WorkspaceApexAssistantPlanResult
     public required WorkspaceSnapshot Snapshot { get; init; }
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
+    public string PlanId { get; init; } = string.Empty;
+    public string ContextRevision { get; init; } = string.Empty;
     public required OracleApexAssistantPlanResponse Response { get; init; }
 }
 
@@ -178,6 +180,10 @@ public sealed class WorkspaceApexAssistantExecutionResult
     public required WorkspaceSnapshot Snapshot { get; init; }
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
+    public string RepairPlanId { get; init; } = string.Empty;
+    public string PlanId { get; init; } = string.Empty;
+    public string ContextRevision { get; init; } = string.Empty;
+    public string ExecutionId { get; init; } = string.Empty;
     public required OracleApexAssistantExecutionResponse Response { get; init; }
 }
 
@@ -186,6 +192,10 @@ public sealed class WorkspaceApexAssistantRepairPlanResult
     public required WorkspaceSnapshot Snapshot { get; init; }
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
+    public string RepairPlanId { get; init; } = string.Empty;
+    public string PlanId { get; init; } = string.Empty;
+    public string ExecutionId { get; init; } = string.Empty;
+    public string ContextRevision { get; init; } = string.Empty;
     public required OracleApexAssistantRepairPlanResponse Response { get; init; }
 }
 
@@ -210,6 +220,7 @@ public sealed class WorkspaceApexAssistantRollbackResult
     public required WorkspaceSnapshot Snapshot { get; init; }
     public required string Message { get; init; }
     public required OperationTranscript Transcript { get; init; }
+    public string ExecutionId { get; init; } = string.Empty;
     public required OracleApexAssistantRollbackResponse Response { get; init; }
 }
 
