@@ -1,3 +1,4 @@
+# Captures the newest visible OpenCode Workspace desktop window to a PNG file.
 param(
     [string]$OutputPath,
     [int]$TimeoutSeconds = 10
@@ -46,7 +47,7 @@ function Resolve-AbsolutePath {
 }
 
 function Get-VisibleDesktopShellProcess {
-    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
+    Get-Process OpenCode.Workspace -ErrorAction SilentlyContinue |
         Sort-Object StartTime |
         Where-Object { $_.MainWindowHandle -ne 0 } |
         Select-Object -Last 1

@@ -30,3 +30,4 @@ artifacts/opencode-stuff-linux-x64/
 artifacts/opencode-stuff-macos-arm64/
 artifacts/*.zip
 artifacts/*.tar.gz
+artifacts/release/

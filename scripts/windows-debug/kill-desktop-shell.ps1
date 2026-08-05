@@ -1,3 +1,4 @@
+# Stops repo-scoped OpenCode Workspace desktop processes for rebuild troubleshooting.
 param(
     [switch]$AllInstances
 )
@@ -5,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-$candidates = @(Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue)
+$candidates = @(Get-Process OpenCode.Workspace -ErrorAction SilentlyContinue)
 
 if ($candidates.Count -eq 0) {
     Write-Warning "No OpenCode desktop shell processes are running."

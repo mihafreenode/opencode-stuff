@@ -1,3 +1,4 @@
+# Reports running OpenCode Workspace desktop processes and window handles.
 param(
     [int]$TimeoutSeconds = 1
 )
@@ -5,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Get-DesktopShellProcesses {
-    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
+    Get-Process OpenCode.Workspace -ErrorAction SilentlyContinue |
         Sort-Object StartTime
 }
 

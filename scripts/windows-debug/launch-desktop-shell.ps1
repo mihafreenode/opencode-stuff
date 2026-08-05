@@ -1,3 +1,4 @@
+# Launches an existing desktop build and reports its visible window state.
 param(
     [string]$AppPath = "",
     [string]$WorkingDirectory = "",
@@ -18,7 +19,7 @@ function Resolve-AbsolutePath {
 }
 
 function Get-DesktopShellProcesses {
-    Get-Process opencode-workspace -ErrorAction SilentlyContinue |
+    Get-Process OpenCode.Workspace -ErrorAction SilentlyContinue |
         Sort-Object StartTime
 }
 

@@ -1,3 +1,4 @@
+# Stops repo-scoped instances, builds a configuration, then launches that exact desktop binary.
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
