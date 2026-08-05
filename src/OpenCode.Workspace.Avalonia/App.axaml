@@ -4,15 +4,15 @@
              RequestedThemeVariant="Default">
   <Application.Styles>
     <FluentTheme DensityStyle="Compact" />
-    <StyleInclude Source="avares://opencode-workspace/Resources/Controls.axaml" />
+    <StyleInclude Source="avares://OpenCode.Workspace/Resources/Controls.axaml" />
   </Application.Styles>
 
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceInclude Source="avares://opencode-workspace/Resources/Colors.axaml" />
-        <ResourceInclude Source="avares://opencode-workspace/Resources/Spacing.axaml" />
-        <ResourceInclude Source="avares://opencode-workspace/Resources/Typography.axaml" />
+        <ResourceInclude Source="avares://OpenCode.Workspace/Resources/Colors.axaml" />
+        <ResourceInclude Source="avares://OpenCode.Workspace/Resources/Spacing.axaml" />
+        <ResourceInclude Source="avares://OpenCode.Workspace/Resources/Typography.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

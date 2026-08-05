@@ -12,7 +12,7 @@ public static class WindowCapture {
 "@
 
 $repoRoot = 'C:\Users\miha.pirnat\source\repos\opencode-stuff-init'
-$exePath = Join-Path $repoRoot 'src\OpenCode.Workspace.Avalonia\bin\Debug\net10.0\OpenCode.Workspace.Avalonia.exe'
+$exePath = Join-Path $repoRoot 'src\OpenCode.Workspace.Avalonia\bin\Debug\net10.0\OpenCode.Workspace.exe'
 $outputPath = Join-Path $repoRoot 'docs\screenshots\launcher-window.png'
 
 $env:OPENCODE_WORKSPACE_MANAGER_LANGUAGE = 'en'

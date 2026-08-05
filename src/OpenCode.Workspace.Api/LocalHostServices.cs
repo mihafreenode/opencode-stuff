@@ -1609,8 +1609,8 @@ public sealed class InteractiveSessionAttachmentService(
 public sealed class InteractiveSessionLaunchDescriptorFactory
 {
     private static readonly string[] CliCandidateNames = OperatingSystem.IsWindows()
-        ? ["opencode-workspace-cli.exe", "opencode-workspace-cli.dll"]
-        : ["opencode-workspace-cli", "opencode-workspace-cli.dll"];
+        ? ["OpenCode.Workspace.Cli.exe", "OpenCode.Workspace.Cli.dll"]
+        : ["OpenCode.Workspace.Cli", "OpenCode.Workspace.Cli.dll"];
 
     public InteractiveSessionLaunchDescriptorSet Build(WorkspaceSnapshot snapshot, string stateRoot, string interactiveAgentSessionId, string attachmentId, string attachmentToken, string attachmentRecoveryId, string recoverySecret, bool resumeKnownProviderSession)
     {

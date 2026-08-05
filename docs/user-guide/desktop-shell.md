@@ -6,11 +6,11 @@
 
 Extract the published archive and run the desktop executable from the extracted folder:
 
-- Windows: `OpenCode.Workspace.Avalonia.exe`
-- Linux: `OpenCode.Workspace.Avalonia`
-- macOS: `OpenCode.Workspace.Avalonia`
+- Windows: `OpenCode.Workspace.exe`
+- Linux: `OpenCode.Workspace`
+- macOS: `OpenCode.Workspace`
 
-The packaged app does not need the repository source tree to start. It expects bundled `catalog/`, `Localization/`, `docs/`, and the normal user app-data directory.
+The packaged app does not need the repository source tree to start. The Windows package is self-contained and does not require a separately installed .NET runtime. It expects bundled `catalog/`, `Localization/`, `docs/`, and the normal user app-data directory.
 
 ## Current Recommendation
 

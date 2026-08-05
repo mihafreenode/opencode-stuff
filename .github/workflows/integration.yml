@@ -99,9 +99,9 @@ jobs:
       - name: Preflight cleanup
         run: |
           mkdir -p artifacts/ci/live/preflight
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/live/preflight/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/live/preflight/runtime-list.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime doctor --owner smoke --format json > artifacts/ci/live/preflight/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/live/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/live/preflight/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/live/preflight/runtime-doctor.json
           grep -q '"resources": \[\]' artifacts/ci/live/preflight/runtime-list.json
           grep -q '"orphans": \[\]' artifacts/ci/live/preflight/runtime-doctor.json
 
@@ -120,10 +120,10 @@ jobs:
         if: always()
         run: |
           mkdir -p artifacts/ci/live/final
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/live/final/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/live/final/runtime-list.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime doctor --owner smoke --format json > artifacts/ci/live/final/runtime-doctor.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/live/final/cleanup-dry-run.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/live/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/live/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/live/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/live/final/cleanup-dry-run.json
           grep -q '"resources": \[\]' artifacts/ci/live/final/runtime-list.json
           grep -q '"orphans": \[\]' artifacts/ci/live/final/runtime-doctor.json
           grep -q '"resources": \[\]' artifacts/ci/live/final/cleanup-dry-run.json
@@ -156,30 +156,30 @@ jobs:
       - name: Preflight cleanup
         run: |
           mkdir -p artifacts/ci/non-oracle/preflight
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/preflight/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/preflight/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/preflight/runtime-list.json
           grep -q '"resources": \[\]' artifacts/ci/non-oracle/preflight/runtime-list.json
 
       - name: Lightweight family
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run --family lightweight --format json > artifacts/ci/non-oracle/lightweight.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run --family lightweight --format json > artifacts/ci/non-oracle/lightweight.json
 
       - name: PostgreSQL family
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run --family postgresql --format json > artifacts/ci/non-oracle/postgresql.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run --family postgresql --format json > artifacts/ci/non-oracle/postgresql.json
 
       - name: Analytics family
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run --family analytics --format json > artifacts/ci/non-oracle/analytics.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run --family analytics --format json > artifacts/ci/non-oracle/analytics.json
 
       - name: Document processing family
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run --family document-processing --format json > artifacts/ci/non-oracle/document-processing.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run --family document-processing --format json > artifacts/ci/non-oracle/document-processing.json
 
       - name: Final cleanup
         if: always()
         run: |
           mkdir -p artifacts/ci/non-oracle/final
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/final/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-list.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime doctor --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-doctor.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/non-oracle/final/cleanup-dry-run.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/non-oracle/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/non-oracle/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/non-oracle/final/cleanup-dry-run.json
           grep -q '"resources": \[\]' artifacts/ci/non-oracle/final/runtime-list.json
           grep -q '"orphans": \[\]' artifacts/ci/non-oracle/final/runtime-doctor.json
           grep -q '"resources": \[\]' artifacts/ci/non-oracle/final/cleanup-dry-run.json
@@ -214,18 +214,18 @@ jobs:
       - name: Preflight cleanup
         run: |
           mkdir -p artifacts/ci/oracle/preflight
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/oracle/preflight/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle/preflight/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/oracle/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle/preflight/runtime-list.json
           grep -q '"resources": \[\]' artifacts/ci/oracle/preflight/runtime-list.json
 
       - name: Oracle PL/SQL smoke
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run oracle-plsql-demo --format json > artifacts/ci/oracle/oracle-plsql-demo.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-plsql-demo --format json > artifacts/ci/oracle/oracle-plsql-demo.json
 
       - name: Oracle APEX smoke
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run oracle-apex-demo --format json > artifacts/ci/oracle/oracle-apex-demo.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-apex-demo --format json > artifacts/ci/oracle/oracle-apex-demo.json
 
       - name: Oracle APEXlang smoke
-        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke run oracle-apexlang-demo --format json > artifacts/ci/oracle/oracle-apexlang-demo.json
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-apexlang-demo --format json > artifacts/ci/oracle/oracle-apexlang-demo.json
 
       - name: Packaged Oracle MCP validation
         env:
@@ -237,10 +237,10 @@ jobs:
         if: always()
         run: |
           mkdir -p artifacts/ci/oracle/final
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --all --format json > artifacts/ci/oracle/final/cleanup.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle/final/runtime-list.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll runtime doctor --owner smoke --format json > artifacts/ci/oracle/final/runtime-doctor.json
-          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode-workspace-cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/oracle/final/cleanup-dry-run.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/oracle/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/oracle/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/oracle/final/cleanup-dry-run.json
           grep -q '"resources": \[\]' artifacts/ci/oracle/final/runtime-list.json
           grep -q '"orphans": \[\]' artifacts/ci/oracle/final/runtime-doctor.json
           grep -q '"resources": \[\]' artifacts/ci/oracle/final/cleanup-dry-run.json

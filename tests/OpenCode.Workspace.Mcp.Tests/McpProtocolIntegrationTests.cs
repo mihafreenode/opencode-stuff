@@ -423,7 +423,7 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
                 ["mcp__workspaceStateRoot"] = workspaceStateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
                 ["localHost__stateRoot"] = Path.Combine(workspaceStateRoot, "local-host-shared"),
-                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Debug", "net10.0"),
+                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"),
             });
 
         McpClient client;

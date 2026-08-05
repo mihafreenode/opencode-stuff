@@ -173,7 +173,7 @@ This is a deterministic local workflow proof only.
 
 ## Proven Flow
 
-1. start the packaged host from `bin/mcp/opencode-workspace-mcp`
+1. start the packaged host from `bin/mcp/OpenCode.Workspace.Mcp`
 2. connect an MCP client over stdio and call `list_workspace_templates`
 3. start a lightweight smoke run with `run_smoke` for `empty-workspace`
 4. poll `get_operation` until the operation reaches a terminal state
@@ -222,13 +222,13 @@ Notes:
 Windows PowerShell:
 
 ```text
-C:\Tools\OpenCodeWorkspace\bin\mcp\opencode-workspace-mcp.exe
+C:\Tools\OpenCode Workspace\bin\mcp\OpenCode.Workspace.Mcp.exe
 ```
 
 WSL or Linux/macOS:
 
 ```text
-~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp
+~/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp
 ```
 
 OpenCode example:
@@ -237,7 +237,7 @@ OpenCode example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "C:\\Tools\\OpenCodeWorkspace\\bin\\mcp\\opencode-workspace-mcp.exe"
+      "command": "C:\\Tools\\OpenCode Workspace\\bin\\mcp\\OpenCode.Workspace.Mcp.exe"
     }
   }
 }
@@ -249,7 +249,7 @@ Claude Code example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+      "command": "~/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
     }
   }
 }
@@ -261,7 +261,7 @@ Codex example:
 {
   "mcpServers": {
     "opencode-workspace": {
-      "command": "~/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+      "command": "~/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
     }
   }
 }

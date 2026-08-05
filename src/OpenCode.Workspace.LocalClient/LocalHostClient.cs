@@ -391,9 +391,9 @@ public static class LocalHostDiscovery
     private static Process StartLocalHostProcess(LocalHostClientOptions? options)
     {
         var installationLayout = ResolveInstallationLayout(options);
-        var candidateNames = OperatingSystem.IsWindows()
-            ? new[] { "opencode-workspace-local-host.exe", "opencode-workspace-api.exe" }
-            : new[] { "opencode-workspace-local-host", "opencode-workspace-local-host.dll", "opencode-workspace-api", "opencode-workspace-api.dll" };
+        string[] candidateNames = OperatingSystem.IsWindows()
+            ? ["OpenCode.Workspace.LocalHost.exe", "OpenCode.Workspace.LocalHost.dll"]
+            : ["OpenCode.Workspace.LocalHost", "OpenCode.Workspace.LocalHost.dll"];
         var hostDirectory = ResolveHostDirectory(installationLayout, options);
         var executablePath = candidateNames.Select(name => Path.Combine(hostDirectory, name)).FirstOrDefault(File.Exists)
             ?? throw new InvalidOperationException($"Could not locate the packaged LocalHost executable under '{hostDirectory}'.");

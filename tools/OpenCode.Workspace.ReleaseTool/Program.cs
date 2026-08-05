@@ -22,7 +22,7 @@ if (Directory.Exists(distributionRoot))
 }
 
 Directory.CreateDirectory(distributionRoot);
-CopyHost(options.DesktopPublishDir, Path.Combine(distributionRoot, "bin", "desktop"));
+CopyHost(options.DesktopPublishDir, distributionRoot);
 CopyHost(options.CliPublishDir, Path.Combine(distributionRoot, "bin", "cli"));
 CopyHost(options.ApiPublishDir, Path.Combine(distributionRoot, "bin", "local-host"));
 CopyHost(options.McpPublishDir, Path.Combine(distributionRoot, "bin", "mcp"));
@@ -44,7 +44,7 @@ if (options.CreateZip)
         File.Delete(zipPath);
     }
 
-    ZipFile.CreateFromDirectory(distributionRoot, zipPath, CompressionLevel.SmallestSize, includeBaseDirectory: true);
+    ZipFile.CreateFromDirectory(distributionRoot, zipPath, CompressionLevel.SmallestSize, includeBaseDirectory: false);
 }
 
 return 0;

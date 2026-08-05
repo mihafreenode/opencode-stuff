@@ -36,9 +36,8 @@ Example layout:
 ```text
 opencode-workspace-<version>-<rid>/
   bin/
-    desktop/
     cli/
-    api/
+    local-host/
     mcp/
   catalog/
   config/
@@ -49,23 +48,23 @@ Packaged MCP executable paths:
 
 | Platform | MCP executable |
 | -------- | -------------- |
-| Windows | `bin\mcp\opencode-workspace-mcp.exe` |
-| Linux | `bin/mcp/opencode-workspace-mcp` |
-| macOS | `bin/mcp/opencode-workspace-mcp` |
+| Windows | `bin\mcp\OpenCode.Workspace.Mcp.exe` |
+| Linux | `bin/mcp/OpenCode.Workspace.Mcp` |
+| macOS | `bin/mcp/OpenCode.Workspace.Mcp` |
 
 Example extracted installation locations:
 
-- Windows: `C:\Tools\OpenCodeWorkspace\`
+- Windows: `C:\Tools\OpenCode Workspace\`
 - Linux: `/home/<user>/tools/opencode-workspace/`
 - macOS: `/Users/<user>/tools/opencode-workspace/`
 
 Example absolute MCP executable paths:
 
-- Windows: `C:\Tools\OpenCodeWorkspace\bin\mcp\opencode-workspace-mcp.exe`
-- Linux: `/home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp`
-- macOS: `/Users/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp`
+- Windows: `C:\Tools\OpenCode Workspace\bin\mcp\OpenCode.Workspace.Mcp.exe`
+- Linux: `/home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp`
+- macOS: `/Users/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp`
 
-The package already includes the required catalog and packaged configuration files. No source checkout or build is required.
+The Windows package is self-contained and already includes the required .NET runtime files, catalog, and packaged configuration files. No source checkout, Visual Studio, separately installed .NET runtime, or build is required.
 
 ## Common installation steps
 
@@ -97,7 +96,7 @@ Windows example:
 
 ```toml
 [mcp_servers.opencode_workspace]
-command = "C:\\Tools\\OpenCodeWorkspace\\bin\\mcp\\opencode-workspace-mcp.exe"
+command = "C:\\Tools\\OpenCode Workspace\\bin\\mcp\\OpenCode.Workspace.Mcp.exe"
 startup_timeout_sec = 60
 tool_timeout_sec = 14400
 enabled = true
@@ -108,7 +107,7 @@ Linux example:
 
 ```toml
 [mcp_servers.opencode_workspace]
-command = "/home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+command = "/home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
 startup_timeout_sec = 60
 tool_timeout_sec = 14400
 enabled = true
@@ -119,7 +118,7 @@ macOS example:
 
 ```toml
 [mcp_servers.opencode_workspace]
-command = "/Users/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+command = "/Users/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
 startup_timeout_sec = 60
 tool_timeout_sec = 14400
 enabled = true
@@ -129,13 +128,13 @@ required = true
 Alternative CLI registration:
 
 ```bash
-codex mcp add opencode_workspace -- "/home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+codex mcp add opencode_workspace -- "/home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
 ```
 
 Windows PowerShell:
 
 ```powershell
-codex mcp add opencode_workspace -- "C:\Tools\OpenCodeWorkspace\bin\mcp\opencode-workspace-mcp.exe"
+codex mcp add opencode_workspace -- "C:\Tools\OpenCode Workspace\bin\mcp\OpenCode.Workspace.Mcp.exe"
 ```
 
 Verification:
@@ -162,21 +161,21 @@ Windows PowerShell:
 
 ```powershell
 claude mcp add --scope user --transport stdio opencode-workspace -- `
-  "C:\Tools\OpenCodeWorkspace\bin\mcp\opencode-workspace-mcp.exe"
+  "C:\Tools\OpenCode Workspace\bin\mcp\OpenCode.Workspace.Mcp.exe"
 ```
 
 Linux:
 
 ```bash
 claude mcp add --scope user --transport stdio opencode-workspace -- \
-  /home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp
+  /home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp
 ```
 
 macOS:
 
 ```bash
 claude mcp add --scope user --transport stdio opencode-workspace -- \
-  /Users/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp
+  /Users/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp
 ```
 
 Verification:
@@ -213,7 +212,7 @@ Windows example:
     "opencode_workspace": {
       "type": "local",
       "command": [
-        "C:\\Tools\\OpenCodeWorkspace\\bin\\mcp\\opencode-workspace-mcp.exe"
+        "C:\\Tools\\OpenCode Workspace\\bin\\mcp\\OpenCode.Workspace.Mcp.exe"
       ],
       "enabled": true,
       "timeout": 14400000
@@ -231,7 +230,7 @@ Linux example:
     "opencode_workspace": {
       "type": "local",
       "command": [
-        "/home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+        "/home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
       ],
       "enabled": true,
       "timeout": 14400000
@@ -249,7 +248,7 @@ macOS example:
     "opencode_workspace": {
       "type": "local",
       "command": [
-        "/Users/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp"
+        "/Users/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp"
       ],
       "enabled": true,
       "timeout": 14400000

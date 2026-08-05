@@ -37,7 +37,7 @@ Launch an already-built specific app path:
 
 ```bash
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w scripts/windows-debug/launch-desktop-shell.ps1)" \
-  -AppPath "src/OpenCode.Workspace.Avalonia/bin/Debug/net10.0/OpenCode.Workspace.Avalonia.exe"
+   -AppPath "src/OpenCode.Workspace.Avalonia/bin/Debug/net10.0/OpenCode.Workspace.exe"
 ```
 
 Inspect the running instance:

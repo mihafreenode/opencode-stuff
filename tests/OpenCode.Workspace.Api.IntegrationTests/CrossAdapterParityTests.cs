@@ -74,7 +74,7 @@ internal sealed class ParityMcpHarness : IAsyncDisposable
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Command = "dotnet",
-            Arguments = [Path.Combine(AppContext.BaseDirectory, "mcp-host", "opencode-workspace-mcp.dll")],
+            Arguments = [Path.Combine(AppContext.BaseDirectory, "mcp-host", "OpenCode.Workspace.Mcp.dll")],
             WorkingDirectory = TestPaths.RepositoryRoot,
             EnvironmentVariables = new Dictionary<string, string?>
             {

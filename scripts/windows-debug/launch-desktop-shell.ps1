@@ -18,7 +18,7 @@ function Resolve-AbsolutePath {
 }
 
 function Get-DesktopShellProcesses {
-    Get-Process OpenCode.Workspace.Avalonia -ErrorAction SilentlyContinue |
+    Get-Process opencode-workspace -ErrorAction SilentlyContinue |
         Sort-Object StartTime
 }
 
@@ -42,8 +42,8 @@ function Get-BuildConfiguration {
 }
 
 function Resolve-DefaultAppPath {
-    $debugPath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Debug/net10.0/OpenCode.Workspace.Avalonia.exe"
-    $releasePath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Release/net10.0/OpenCode.Workspace.Avalonia.exe"
+    $debugPath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Debug/net10.0/OpenCode.Workspace.exe"
+    $releasePath = Resolve-AbsolutePath "src/OpenCode.Workspace.Avalonia/bin/Release/net10.0/OpenCode.Workspace.exe"
 
     $candidates = @()
     if (Test-Path $debugPath) {

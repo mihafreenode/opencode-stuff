@@ -13,7 +13,7 @@ The goal is simple: get the machine ready so you can create or open a workspace 
 3. Git installed with credentials configured
 4. SSH key configured for your Git hosting provider
 5. Windows Terminal installed
-6. .NET 10 Desktop Runtime installed
+6. .NET 10 Desktop Runtime installed only when running a framework-dependent development build; the portable release ZIP is self-contained
 
 ## Quick Install
 

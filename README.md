@@ -55,11 +55,11 @@ Tagged releases publish one extracted layout per RID, for example:
 
 ```text
 opencode-workspace-<version>-win-x64/
+  OpenCode.Workspace.exe
   bin/
-    desktop/opencode-workspace.exe
-    cli/opencode-workspace-cli.exe
-    api/opencode-workspace-api.exe
-    mcp/opencode-workspace-mcp.exe
+    cli/OpenCode.Workspace.Cli.exe
+    local-host/OpenCode.Workspace.LocalHost.exe
+    mcp/OpenCode.Workspace.Mcp.exe
   catalog/
   config/
   docs/
@@ -70,7 +70,7 @@ opencode-workspace-<version>-win-x64/
 
 Equivalent `bin/...` paths are produced for Linux and macOS.
 
-Run the packaged tools from the extracted folder. The release archive includes the desktop shell, CLI, local API host, local stdio MCP host, bundled catalog content, packaged docs, localization files, and release notices. A source checkout and `dotnet run` are not required.
+Run the packaged tools from the extracted folder. The Windows `win-x64` archive is self-contained: it includes the desktop shell, CLI, local host, local stdio MCP host, required .NET runtime files, bundled catalog content, packaged docs, localization files, and release notices. A source checkout, Visual Studio, `dotnet run`, or separately installed .NET runtime are not required.
 
 Packaged MCP setup examples live in `docs/local-mcp.md`.
 
@@ -84,9 +84,9 @@ Packaged executable paths:
 
 | Platform | MCP executable |
 | -------- | -------------- |
-| Windows | `bin\mcp\opencode-workspace-mcp.exe` |
-| Linux | `bin/mcp/opencode-workspace-mcp` |
-| macOS | `bin/mcp/opencode-workspace-mcp` |
+| Windows | `bin\mcp\OpenCode.Workspace.Mcp.exe` |
+| Linux | `bin/mcp/OpenCode.Workspace.Mcp` |
+| macOS | `bin/mcp/OpenCode.Workspace.Mcp` |
 
 Safe verification prompt:
 
@@ -106,7 +106,6 @@ Windows prerequisites for normal first use:
 - Git
 - Docker Desktop with Docker Compose and WSL integration
 - Windows Terminal
-- .NET 10 Desktop Runtime
 
 App-data compatibility note:
 

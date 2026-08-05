@@ -33,7 +33,7 @@ public sealed class DesktopInteractiveSessionArchitectureTests
         {
             FileName = "wt.exe",
             WorkingDirectory = "C:\\Users\\tester",
-            Arguments = ["new-tab", "--title", "Session", "--", "opencode-workspace-cli.exe", "interactive-session", "attach"],
+            Arguments = ["new-tab", "--title", "Session", "--", "OpenCode.Workspace.Cli.exe", "interactive-session", "attach"],
         };
 
         var startInfo = WindowsDesktopTerminalLauncher.CreateStartInfo(descriptor);

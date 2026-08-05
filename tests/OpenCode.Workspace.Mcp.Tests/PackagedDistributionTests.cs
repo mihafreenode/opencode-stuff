@@ -33,11 +33,18 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.True(File.Exists(Path.Combine(packageRoot, "THIRD-PARTY-NOTICES.md")));
         Assert.True(Directory.Exists(Path.Combine(packageRoot, "catalog", "templates")));
 
-        var desktopServices = new WorkspaceDesktopServiceFactory().Create(Path.Combine(packageRoot, "bin", "desktop"), Path.Combine(_root, "appdata"));
+        Assert.True(File.Exists(GetHostExecutablePath(packageRoot, "OpenCode.Workspace")));
+        Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost")));
+        Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli")));
+        Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp")));
+        Assert.False(Directory.Exists(Path.Combine(packageRoot, "bin", "api")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, GetHostFxrFileName())));
+
+        var desktopServices = new WorkspaceDesktopServiceFactory().Create(packageRoot, Path.Combine(_root, "appdata"));
         Assert.Equal(Path.Combine(packageRoot, "catalog"), desktopServices.InstallationLayout.CatalogRoot);
         Assert.NotEmpty(desktopServices.CatalogProvider.LoadTemplates());
 
-        var cliExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "opencode-workspace-cli");
+        var cliExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
         await using var cliSmoke = await PackagedProcessHarness.StartAsync("cli-smoke-list", cliExecutable, ["smoke", "list", "--format", "json"], outsideRepositoryRoot);
         await cliSmoke.WaitForExitAsync(TimeSpan.FromSeconds(60));
         Assert.Equal(0, cliSmoke.ExitCode);
@@ -50,7 +57,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.Equal(0, cliRuntime.ExitCode);
         Assert.Contains("resources", cliRuntime.StandardOutput, StringComparison.Ordinal);
 
-        var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "opencode-workspace-api");
+        var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
         var apiPort = PackagedHostValidationHelpers.GetFreeTcpPort();
         await using var api = await PackagedProcessHarness.StartAsync(
             "api",
@@ -79,7 +86,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.False(api.Report.ForcedTerminationRequired);
         Assert.Equal(0, api.ExitCode);
 
-        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "opencode-workspace-mcp");
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
         await using var mcp = await PackagedMcpHarness.StartAsync(
             mcpExecutable,
             outsideRepositoryRoot,
@@ -127,7 +134,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo smoke");
         Directory.CreateDirectory(outsideRepositoryRoot);
-        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "opencode-workspace-mcp");
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
         var smokeArtifactsRoot = Path.Combine(_root, "packaged-smoke-artifacts");
 
         await using var mcp = await PackagedMcpHarness.StartAsync(
@@ -337,7 +344,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Directory.CreateDirectory(outsideRepositoryRoot);
         var artifactRoot = EnsureArtifactDirectory("packaged-oracle-mcp");
         WriteTextArtifact(artifactRoot, "distribution-manifest.txt", BuildDistributionManifest(packageRoot));
-        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "opencode-workspace-mcp");
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
 
         await using var mcp = await PackagedMcpHarness.StartAsync(
             mcpExecutable,
@@ -520,6 +527,9 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
 
     private static string GetHostExecutablePath(string directory, string baseName)
         => Path.Combine(directory, baseName + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+
+    private static string GetHostFxrFileName()
+        => OperatingSystem.IsWindows() ? "hostfxr.dll" : OperatingSystem.IsMacOS() ? "libhostfxr.dylib" : "libhostfxr.so";
 
     private static string GetRuntimeIdentifier()
         => OperatingSystem.IsWindows() ? "win-x64" : OperatingSystem.IsMacOS() ? "osx-arm64" : "linux-x64";

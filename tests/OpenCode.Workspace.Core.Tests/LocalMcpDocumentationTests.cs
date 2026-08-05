@@ -40,9 +40,9 @@ public sealed class LocalMcpDocumentationTests
         var doc = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "docs", "local-mcp.md"));
         var textBlocks = ExtractFencedBlocks(doc, "text");
 
-        Assert.Contains("C:\\Tools\\OpenCodeWorkspace\\bin\\mcp\\opencode-workspace-mcp.exe", doc, StringComparison.Ordinal);
-        Assert.Contains("/home/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp", doc, StringComparison.Ordinal);
-        Assert.Contains("/Users/<user>/tools/opencode-workspace/bin/mcp/opencode-workspace-mcp", doc, StringComparison.Ordinal);
+        Assert.Contains("C:\\Tools\\OpenCode Workspace\\bin\\mcp\\OpenCode.Workspace.Mcp.exe", doc, StringComparison.Ordinal);
+        Assert.Contains("/home/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp", doc, StringComparison.Ordinal);
+        Assert.Contains("/Users/<user>/tools/opencode-workspace/bin/mcp/OpenCode.Workspace.Mcp", doc, StringComparison.Ordinal);
         Assert.DoesNotContain(textBlocks, block => block.Contains("dotnet run", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(textBlocks, block => block.Contains("src/OpenCode.Workspace.Mcp", StringComparison.Ordinal));
         Assert.DoesNotContain(textBlocks, block => block.Contains("bin/Debug", StringComparison.OrdinalIgnoreCase));

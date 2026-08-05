@@ -34,16 +34,16 @@ Resulting packaged MCP path:
 ```text
 artifacts\release\win-x64\package\
 opencode-workspace-<version>-win-x64\
-bin\mcp\opencode-workspace-mcp.exe
+bin\mcp\OpenCode.Workspace.Mcp.exe
 ```
 
 Use this locally assembled package when testing Codex, Claude Code, and OpenCode MCP integration before creating a GitHub release tag.
 
 ## Package Under Test
 
-- Windows package: `opencode-stuff-win-x64.zip`
-- Linux package: `opencode-stuff-linux-x64.tar.gz`
-- macOS package: `opencode-stuff-macos-arm64.tar.gz`
+- Windows package: `opencode-workspace-<version>-win-x64.zip`
+- Linux package: `opencode-workspace-linux-x64.tar.gz`
+- macOS package: `opencode-workspace-osx-arm64.tar.gz`
 
 Record:
 
@@ -55,8 +55,11 @@ Record:
 
 ## Windows Package Smoke
 
-- Extract `opencode-stuff-win-x64.zip` into a clean temp folder.
-- Verify the extracted folder contains `OpenCode.Workspace.Avalonia.exe`.
+- Extract `opencode-workspace-<version>-win-x64.zip` into `C:\Tools\OpenCode Workspace\` or another clean path containing spaces.
+- Verify the extracted folder contains `OpenCode.Workspace.exe`.
+- Verify `bin\local-host\OpenCode.Workspace.LocalHost.exe`, `bin\cli\OpenCode.Workspace.Cli.exe`, and `bin\mcp\OpenCode.Workspace.Mcp.exe` exist.
+- Verify `bin\api` does not exist.
+- Verify `hostfxr.dll` is present beside each Windows executable, confirming the package is self-contained.
 - Verify the extracted folder contains `catalog/`, `Localization/`, and `docs/`.
 - Verify required platform assemblies are present.
 - Verify debug symbol files are not included in the release package.
@@ -168,7 +171,7 @@ Status: `PASS`
 Evidence:
 
 - zip extracted into a clean Windows temp folder
-- `OpenCode.Workspace.Avalonia.exe` exists in the extracted package
+- `OpenCode.Workspace.exe` exists in the extracted package
 - `catalog/`, `Localization/`, and `docs/` are present
 - required platform assemblies are present
 - release package verified without `.pdb` files

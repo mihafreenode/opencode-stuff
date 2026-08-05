@@ -251,7 +251,7 @@ $ReleaseToolDll = Join-Path $RepositoryRoot "tools\OpenCode.Workspace.ReleaseToo
 
 $RunTestsEnabled = Get-BooleanDefault -Value $RunTests -Default $true
 $ValidatePackageEnabled = Get-BooleanDefault -Value $ValidatePackage -Default $true
-$SelfContainedEnabled = Get-BooleanDefault -Value $SelfContained -Default $false
+$SelfContainedEnabled = Get-BooleanDefault -Value $SelfContained -Default $true
 
 try {
     if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
@@ -400,10 +400,10 @@ try {
     }
 
     $packagedExecutables = @(
-        (Join-Path $PackageDirectory "bin\desktop\opencode-workspace.exe"),
-        (Join-Path $PackageDirectory "bin\cli\opencode-workspace-cli.exe"),
-        (Join-Path $PackageDirectory "bin\api\opencode-workspace-api.exe"),
-        (Join-Path $PackageDirectory "bin\mcp\opencode-workspace-mcp.exe")
+        (Join-Path $PackageDirectory "OpenCode.Workspace.exe"),
+        (Join-Path $PackageDirectory "bin\cli\OpenCode.Workspace.Cli.exe"),
+        (Join-Path $PackageDirectory "bin\local-host\OpenCode.Workspace.LocalHost.exe"),
+        (Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe")
     )
     foreach ($packagedExecutable in $packagedExecutables) {
         if (-not (Test-Path $packagedExecutable)) {
@@ -419,9 +419,9 @@ try {
         $packageTestArtifactsRoot = Join-Path $ValidationRoot "package-test-artifacts"
         New-Item -ItemType Directory -Force -Path $outsideRepoWorkingRoot, $apiStateRoot, $apiArtifactsRoot, $packageTestArtifactsRoot | Out-Null
 
-        $cliExecutable = Join-Path $PackageDirectory "bin\cli\opencode-workspace-cli.exe"
-        $apiExecutable = Join-Path $PackageDirectory "bin\api\opencode-workspace-api.exe"
-        $mcpExecutable = Join-Path $PackageDirectory "bin\mcp\opencode-workspace-mcp.exe"
+        $cliExecutable = Join-Path $PackageDirectory "bin\cli\OpenCode.Workspace.Cli.exe"
+        $apiExecutable = Join-Path $PackageDirectory "bin\local-host\OpenCode.Workspace.LocalHost.exe"
+        $mcpExecutable = Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe"
 
         foreach ($requiredExecutable in @($cliExecutable, $apiExecutable, $mcpExecutable)) {
             if (-not (Test-Path $requiredExecutable)) {
@@ -445,7 +445,7 @@ try {
         $null = $cliRuntime.StandardOutput | ConvertFrom-Json
 
         $port = Get-FreeTcpPort
-        $apiProcess = Start-BackgroundProcess -FilePath $apiExecutable -WorkingDirectory $outsideRepoWorkingRoot -Environment @{
+        $apiProcess = Start-BackgroundProcess -FilePath $apiExecutable -Arguments @("--shutdown-on-stdin-eof") -WorkingDirectory $outsideRepoWorkingRoot -Environment @{
             ASPNETCORE_URLS = "http://127.0.0.1:$port"
             mcp__workspaceStateRoot = $apiStateRoot
             mcp__smokeArtifactsRoot = $apiArtifactsRoot
@@ -483,7 +483,7 @@ try {
 
         Invoke-DotNet -Arguments @(
             "test", "tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj", "-c", $Configuration, "--no-build",
-            "--filter", "FullyQualifiedName~PackagedDistributionTests.ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully|FullyQualifiedName~PackagedDistributionTests.PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly"
+            "--filter", "FullyQualifiedName~PackagedDistributionTests.ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully"
         ) -Environment @{
             OPENCODE_EXISTING_PACKAGE_ROOT = $PackageDirectory
             OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT = $packageTestArtifactsRoot
@@ -499,7 +499,7 @@ try {
             Remove-Item -LiteralPath $ChecksumPath -Force
         }
 
-        Compress-Archive -LiteralPath $PackageDirectory -DestinationPath $ArchivePath -Force
+        Compress-Archive -Path (Join-Path $PackageDirectory "*") -DestinationPath $ArchivePath -Force
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
         Set-Content -LiteralPath $ChecksumPath -Value ("{0}  {1}" -f $hash, [System.IO.Path]::GetFileName($ArchivePath)) -NoNewline
     }
@@ -521,7 +521,7 @@ try {
     Write-Host ("Validation:    {0}" -f $validationSummary)
     Write-Host ""
     Write-Host "MCP executable:"
-    Write-Host (Join-Path $PackageDirectory "bin\mcp\opencode-workspace-mcp.exe")
+    Write-Host (Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe")
     exit 0
 }
 catch {

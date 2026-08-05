@@ -56,10 +56,13 @@ public sealed class LocalReleaseBuildScriptTests
 
         Assert.Contains("OpenCode.Workspace.ReleaseTool", script, StringComparison.Ordinal);
         Assert.Contains("assemble", script, StringComparison.Ordinal);
-        Assert.Contains("opencode-workspace.exe", script, StringComparison.Ordinal);
-        Assert.Contains("opencode-workspace-cli.exe", script, StringComparison.Ordinal);
-        Assert.Contains("opencode-workspace-api.exe", script, StringComparison.Ordinal);
-        Assert.Contains("opencode-workspace-mcp.exe", script, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.exe", script, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.Cli.exe", script, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.LocalHost.exe", script, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.Mcp.exe", script, StringComparison.Ordinal);
+        Assert.Contains("Get-BooleanDefault -Value $SelfContained -Default $true", script, StringComparison.Ordinal);
+        Assert.Contains("bin\\local-host", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("bin\\api\\", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -70,7 +73,7 @@ public sealed class LocalReleaseBuildScriptTests
         Assert.Contains("Get-BooleanDefault -Value $ValidatePackage -Default $true", script, StringComparison.Ordinal);
         Assert.Contains("OPENCODE_EXISTING_PACKAGE_ROOT", script, StringComparison.Ordinal);
         Assert.Contains("PackagedDistributionTests.ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully", script, StringComparison.Ordinal);
-        Assert.Contains("PackagedDistributionTests.PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("PackagedDistributionTests.PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly", script, StringComparison.Ordinal);
         Assert.Contains("$ArtifactsRoot", script, StringComparison.Ordinal);
         Assert.Contains("Refusing to clean path outside repository artifacts root", script, StringComparison.Ordinal);
         Assert.DoesNotContain("C:\\Users\\", script, StringComparison.OrdinalIgnoreCase);
@@ -86,6 +89,6 @@ public sealed class LocalReleaseBuildScriptTests
         Assert.Contains("./tools/build-release-from-wsl.sh -Clean", doc, StringComparison.Ordinal);
         Assert.Contains("powershell.exe -NoProfile -ExecutionPolicy Bypass", doc, StringComparison.Ordinal);
         Assert.Contains("artifacts\\release\\win-x64\\package\\", doc, StringComparison.Ordinal);
-        Assert.Contains("bin\\mcp\\opencode-workspace-mcp.exe", doc, StringComparison.Ordinal);
+        Assert.Contains("bin\\mcp\\OpenCode.Workspace.Mcp.exe", doc, StringComparison.Ordinal);
     }
 }

@@ -26,7 +26,7 @@ Confirm that you have:
 - Git credentials configured
 - SSH access configured for your Git provider
 - Windows Terminal installed
-- .NET 10 Desktop Runtime installed
+- .NET 10 Desktop Runtime installed only when using a framework-dependent development build; the portable release ZIP is self-contained
 
 If you still need setup help, use [Windows Setup](windows-prerequisites.md), especially the `Configure SSH Access` and `Docker Desktop And WSL Integration` sections.
 

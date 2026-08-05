@@ -282,9 +282,9 @@ public sealed class McpToolAdapterTests
     {
         var launch = McpHostLaunch.Resolve() with
         {
-            HostDllPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.dll"),
-            RuntimeConfigPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.runtimeconfig.json"),
-            DepsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "opencode-workspace-mcp.deps.json"),
+            HostDllPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.dll"),
+            RuntimeConfigPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.runtimeconfig.json"),
+            DepsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("n"), "OpenCode.Workspace.Mcp.deps.json"),
         };
 
         var message = Record.Exception(() => McpHostLaunch.AssertHostFilesExist(launch))!.Message;
@@ -320,7 +320,7 @@ public sealed class McpToolAdapterTests
                 ["mcp__workspaceStateRoot"] = stateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
                 ["localHost__stateRoot"] = Path.Combine(root, "local-host-shared"),
-                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Debug", "net10.0"),
+                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"),
             });
     }
 
