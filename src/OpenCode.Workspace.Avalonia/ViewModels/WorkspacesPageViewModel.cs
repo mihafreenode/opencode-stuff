@@ -1123,6 +1123,7 @@ public sealed class WorkspacesPageViewModel : PageViewModel
 
     private async Task RefreshInteractiveSessionsAsync()
     {
+        var selectedSessionId = SelectedInteractiveSession?.InteractiveAgentSessionId;
         var workspaceId = SelectedWorkspace?.Snapshot?.Definition.Workspace.Id;
         if (string.IsNullOrWhiteSpace(workspaceId) && SelectedWorkspace is not null)
         {
@@ -1145,7 +1146,8 @@ public sealed class WorkspacesPageViewModel : PageViewModel
             InteractiveSessions.Add(session);
         }
 
-        SelectedInteractiveSession = InteractiveSessions.FirstOrDefault();
+        SelectedInteractiveSession = InteractiveSessions.FirstOrDefault(item => string.Equals(item.InteractiveAgentSessionId, selectedSessionId, StringComparison.OrdinalIgnoreCase))
+            ?? InteractiveSessions.FirstOrDefault();
         RaisePropertyChanged(nameof(HasInteractiveSessions));
         RaisePropertyChanged(nameof(NoInteractiveSessions));
         RaisePropertyChanged(nameof(ShowInteractiveSessionsSection));

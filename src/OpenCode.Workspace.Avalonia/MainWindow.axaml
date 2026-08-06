@@ -45,8 +45,12 @@
                 <TextBlock Text="{Binding LoadErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
               </StackPanel>
               <StackPanel Grid.Row="1" Spacing="8" IsVisible="{Binding ShowEmptyState}">
-                <TextBlock Text="{Binding EmptyStateTitle}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding EmptyStateTitle}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
                 <TextBlock Text="{Binding EmptyStateMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+                <WrapPanel>
+                  <Button Content="Create Workspace" Command="{Binding CreateWorkspaceCommand}" Classes="accent" Margin="0,0,8,0" />
+                  <Button Content="Open Existing Repository" Command="{Binding OpenExistingRepositoryCommand}" />
+                </WrapPanel>
               </StackPanel>
               <ListBox Grid.Row="3"
                         ItemsSource="{Binding Workspaces}"
@@ -292,13 +296,16 @@
                         <Button Content="Detach" Command="{Binding DetachInteractiveSessionCommand}" Margin="0,0,8,8" />
                         <Button Content="Take over" Command="{Binding TakeOverInteractiveSessionCommand}" Margin="0,0,8,8" />
                       </WrapPanel>
-                      <TextBlock Text="Canonical LocalHost-owned exclusive session attachments. LocalHost owns state and the desktop only launches approved descriptors." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      <TextBlock Text="Create a session to work with OpenCode, then attach it in Windows Terminal. Session state is kept safe by LocalHost." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                       <StackPanel Spacing="2" IsVisible="{Binding HasSelectedInteractiveSession}">
                         <TextBlock Text="{Binding SelectedInteractiveSessionAttachmentOwner}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding SelectedInteractiveSessionHeartbeatSummary}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding SelectedInteractiveSessionLastActivitySummary}" Foreground="{DynamicResource TextMutedBrush}" />
                       </StackPanel>
-                      <TextBlock Text="No sessions yet." IsVisible="{Binding NoInteractiveSessions}" />
+                      <StackPanel Spacing="4" IsVisible="{Binding NoInteractiveSessions}">
+                        <TextBlock Text="No OpenCode sessions yet." FontWeight="SemiBold" />
+                        <TextBlock Text="Create your first OpenCode session, then select Attach to open it in Windows Terminal." Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                      </StackPanel>
                       <ListBox ItemsSource="{Binding InteractiveSessions}" SelectedItem="{Binding SelectedInteractiveSession}" IsVisible="{Binding HasInteractiveSessions}">
                         <ListBox.ItemTemplate>
                           <DataTemplate>
@@ -306,10 +313,15 @@
                               <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding InteractiveAgentSessionId}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding ActiveLease.HolderClientInstanceId}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding ActiveLease.LastHeartbeatUtc}" Foreground="{DynamicResource TextMutedBrush}" />
-                                <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Text="{Binding LastActivityUtc}" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Title}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding ActiveLease.HolderClientInstanceId, StringFormat=Attached to: {0}}" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding LastActivityUtc, StringFormat=Last activity: {0:g}}" Foreground="{DynamicResource TextMutedBrush}" />
+                                <Expander Grid.Row="4" Grid.ColumnSpan="2" Header="Session details">
+                                  <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding InteractiveAgentSessionId, StringFormat=Session: {0}}" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ActiveLease.LastHeartbeatUtc, StringFormat=Heartbeat: {0:g}}" Foreground="{DynamicResource TextMutedBrush}" />
+                                  </StackPanel>
+                                </Expander>
                               </Grid>
                             </Border>
                           </DataTemplate>

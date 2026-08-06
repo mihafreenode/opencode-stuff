@@ -125,7 +125,21 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
             return;
         }
 
-        var result = await _diagnosticsShellService.RunDoctorAsync(SelectedWorkspaceTarget.RootPath);
+        WorkspaceDoctorResult result;
+        try
+        {
+            result = await _diagnosticsShellService.RunDoctorAsync(SelectedWorkspaceTarget.RootPath);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = "Doctor could not run. Check the workspace path and Docker, then try again.";
+            LatestDoctorSummary = StatusMessage;
+            DoctorItems.Clear();
+            DoctorItems.Add(new DiagnosticItemViewModel("Doctor run", "Fail", "The workspace doctor did not complete.", "Review the detail below, then retry.", exception.Message));
+            RaisePropertyChanged(nameof(HasDoctorResults));
+            SelectedDoctorItem = DoctorItems[0];
+            return;
+        }
         var hostCapabilities = await _diagnosticsShellService.DetectHostCapabilitiesAsync();
         var templateCatalog = _diagnosticsShellService.GetTemplateCatalogStatus();
         RequiredDoctorItems.Clear();
@@ -190,7 +204,21 @@ public sealed class DiagnosticsPageViewModel : PageViewModel
             return;
         }
 
-        var report = await _diagnosticsShellService.ValidateAsync(SelectedWorkspaceTarget.RootPath, targetPlatform);
+        PlatformValidationReport report;
+        try
+        {
+            report = await _diagnosticsShellService.ValidateAsync(SelectedWorkspaceTarget.RootPath, targetPlatform);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Validation for {targetPlatform} could not run. Review the workspace and runtime prerequisites, then retry.";
+            LatestValidationSummary = StatusMessage;
+            ValidationItems.Clear();
+            ValidationItems.Add(new DiagnosticItemViewModel("Validation run", "Fail", "Platform validation did not complete.", "Review the detail below, then retry.", exception.Message));
+            RaisePropertyChanged(nameof(HasValidationResults));
+            SelectedValidationItem = ValidationItems[0];
+            return;
+        }
         ValidationItems.Clear();
         LatestValidationContext = $"Requested Target: {report.TargetPlatform}\nResolved Platform: {report.ResolvedPlatform ?? "Unavailable"}\nCompatibility: {report.CompatibilityDisplay ?? (report.ValidatedWithFallback ? "fallback" : "native")}";
         foreach (var check in report.Checks)

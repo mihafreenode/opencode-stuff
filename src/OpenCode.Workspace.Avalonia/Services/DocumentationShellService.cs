@@ -14,6 +14,7 @@ public sealed class DocumentationShellService : IDocumentationShellService
     public IReadOnlyList<DocumentationDocument> GetDocuments()
         =>
         [
+            new("Quick Tutorial", Path.Combine("docs", "walkthrough", "quick-start.md"), "A practical first workspace walkthrough for new users."),
             new("README", "README.md", "Project overview and current product direction."),
             new("Platform Compatibility", Path.Combine("docs", "testing", "platform-compatibility.md"), "Host and target platform validation guidance."),
             new("Workspace YAML", Path.Combine("docs", "workspace-yaml.md"), "Canonical workspace configuration format."),
