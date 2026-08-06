@@ -376,6 +376,7 @@ public sealed class ApiContractTests : IDisposable
     public async Task LocalHost_Remove_Route_Returns_Durable_Removal_Operation_Record_And_Defaults_Do_Not_Delete_Files()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         bool? removeOwnedRuntimeResources = null;
         bool? deleteWorkspaceFiles = null;
 
@@ -392,6 +393,7 @@ public sealed class ApiContractTests : IDisposable
                 }),
                 RemoveWorkspaceHandler = async (workspaceId, removeRuntime, deleteFiles, _, cancellationToken) =>
                 {
+                    handlerStarted.TrySetResult();
                     removeOwnedRuntimeResources = removeRuntime;
                     deleteWorkspaceFiles = deleteFiles;
                     await gate.Task.WaitAsync(cancellationToken);
@@ -432,6 +434,7 @@ public sealed class ApiContractTests : IDisposable
         Assert.NotNull(query);
         Assert.Equal(started.Data.OperationId, query!.Data.OperationId);
         Assert.Equal("remove_workspace", query.Data.OperationKind);
+        await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(removeOwnedRuntimeResources ?? true);
         Assert.False(deleteWorkspaceFiles ?? true);
 
