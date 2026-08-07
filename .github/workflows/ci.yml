@@ -151,8 +151,8 @@ jobs:
           --desktop-publish-dir artifacts/publish/${{ matrix.runtime }}/desktop
           --cli-publish-dir artifacts/publish/${{ matrix.runtime }}/cli
           --api-publish-dir artifacts/publish/${{ matrix.runtime }}/api
-           --mcp-publish-dir artifacts/publish/${{ matrix.runtime }}/mcp
-           --create-zip ${{ matrix.package_kind == 'zip' }}
+          --mcp-publish-dir artifacts/publish/${{ matrix.runtime }}/mcp
+          --create-zip ${{ matrix.package_kind == 'zip' }}
 
       - name: Verify publish output on Windows
         if: matrix.package_kind == 'zip'

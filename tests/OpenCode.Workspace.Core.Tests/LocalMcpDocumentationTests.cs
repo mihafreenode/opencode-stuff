@@ -104,7 +104,7 @@ public sealed class LocalMcpDocumentationTests
 
     private static IReadOnlyList<string> ExtractFencedBlocks(string text, string language)
     {
-        var matches = Regex.Matches(text, $"```{Regex.Escape(language)}\\n(.*?)```", RegexOptions.Singleline);
+        var matches = Regex.Matches(text, $"```{Regex.Escape(language)}\\r?\\n(.*?)```", RegexOptions.Singleline);
         return matches.Select(match => match.Groups[1].Value).ToArray();
     }
 }
