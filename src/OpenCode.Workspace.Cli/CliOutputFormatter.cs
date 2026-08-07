@@ -114,6 +114,8 @@ public static class CliOutputFormatter
             "Usage:",
             "  opencode doctor",
             "  opencode doctor --workspace <path>",
+            "  opencode mcp configure <codex|claude|opencode> [--output <path>] [--install-root <path>] [--force]",
+            "  opencode mcp doctor [--install-root <path>] [--json]",
             "  opencode debug-workspace-discovery",
             "  opencode runtime list --format json",
             "  opencode runtime doctor --owner smoke",

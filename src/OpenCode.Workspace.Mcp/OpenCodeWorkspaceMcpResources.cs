@@ -13,6 +13,21 @@ public sealed class OpenCodeWorkspaceMcpResources
     public static string GetServerHealth(IOpenCodeWorkspaceMcpService service)
         => JsonSerializer.Serialize(service.GetServerHealth(), OpenCodeWorkspaceMcpContract.JsonOptions);
 
+    [McpServerResource(UriTemplate = "opencode://workspaces", Name = "Workspace Inventory", MimeType = "application/json")]
+    [Description("Read the canonical LocalHost workspace inventory.")]
+    public static async Task<TextResourceContents> GetWorkspaces(IOpenCodeWorkspaceMcpService service)
+        => new() { Uri = "opencode://workspaces", MimeType = "application/json", Text = JsonSerializer.Serialize(await service.ListWorkspacesAsync(), OpenCodeWorkspaceMcpContract.JsonOptions) };
+
+    [McpServerResource(UriTemplate = "opencode://operations", Name = "Operation Inventory", MimeType = "application/json")]
+    [Description("Read canonical LocalHost operations shared by desktop and MCP clients.")]
+    public static async Task<TextResourceContents> GetOperations(LocalHostOperationStore operations)
+        => new() { Uri = "opencode://operations", MimeType = "application/json", Text = JsonSerializer.Serialize(await operations.ListAsync(), OpenCodeWorkspaceMcpContract.JsonOptions) };
+
+    [McpServerResource(UriTemplate = "opencode://runtime/doctor", Name = "Runtime Doctor", MimeType = "application/json")]
+    [Description("Read the safe runtime ownership doctor view.")]
+    public static async Task<TextResourceContents> GetRuntimeDoctor(IOpenCodeWorkspaceMcpService service)
+        => new() { Uri = "opencode://runtime/doctor", MimeType = "application/json", Text = JsonSerializer.Serialize(await service.RunRuntimeDoctorAsync(new OpenCode.Workspace.Core.Runtime.RuntimeOwnershipQuery()), OpenCodeWorkspaceMcpContract.JsonOptions) };
+
     [McpServerResource(UriTemplate = "opencode://templates/{templateId}", Name = "Workspace Template", MimeType = "application/json")]
     [Description("Read a resolved workspace template definition.")]
     public static async Task<TextResourceContents> GetTemplate(string templateId, IOpenCodeWorkspaceMcpService service)

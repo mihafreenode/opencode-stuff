@@ -52,10 +52,10 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             Directory.CreateDirectory(publishRoot);
             await File.AppendAllTextAsync(BuildLogPathValue, $"[{DateTimeOffset.UtcNow:O}] cache-miss buildRoot={buildRoot}{Environment.NewLine}");
 
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-o", Path.Combine(publishRoot, "desktop")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-o", Path.Combine(publishRoot, "cli")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-o", Path.Combine(publishRoot, "api")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-o", Path.Combine(publishRoot, "mcp")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "desktop")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "cli")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "api")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "mcp")], TestPaths.RepositoryRoot);
             await RunSetupCommandAsync("dotnet", ["run", "--project", "tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj", "--", "assemble", "--source-root", TestPaths.RepositoryRoot, "--output-root", outputRoot, "--runtime", runtime, "--version", "0.0.0-test", "--desktop-publish-dir", Path.Combine(publishRoot, "desktop"), "--cli-publish-dir", Path.Combine(publishRoot, "cli"), "--api-publish-dir", Path.Combine(publishRoot, "api"), "--mcp-publish-dir", Path.Combine(publishRoot, "mcp"), "--create-zip", OperatingSystem.IsWindows() ? "true" : "false"], TestPaths.RepositoryRoot);
 
             var finalPackageRoot = OperatingSystem.IsWindows()
@@ -107,10 +107,13 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.LocalClient", "LocalHostContracts.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "LocalHostMcpProxyServices.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "McpCompatibilityMapper.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "Program.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Cli", "McpCliCommands.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Smoke", "WorkspaceSmokeRunner.cs")),
             GetRuntimeIdentifier(),
             "Release",
             "self-contained",
-            "package-layout-v4",
+            "package-layout-v5",
         };
 
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("\n---\n", inputs)))).ToLowerInvariant();

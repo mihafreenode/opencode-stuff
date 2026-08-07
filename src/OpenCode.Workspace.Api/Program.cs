@@ -19,7 +19,7 @@ var server = app.Services.GetRequiredService<IServer>();
 var shutdownOnStdinEof = args.Any(argument => string.Equals(argument, "--shutdown-on-stdin-eof", StringComparison.OrdinalIgnoreCase));
 if (shutdownOnStdinEof && !string.Equals(server.GetType().FullName, "Microsoft.AspNetCore.TestHost.TestServer", StringComparison.Ordinal))
 {
-    StartStandardInputShutdownMonitor(app.Lifetime, app.Logger);
+    StartStandardInputShutdownMonitor(app.Lifetime, app.Services, app.Logger);
 }
 
 app.Use(async (context, next) =>
@@ -40,7 +40,7 @@ app.Use(async (context, next) =>
 var api = app.MapGroup("/api/v1");
 
 api.MapGet("/health/live", () => Results.Ok(new ApiHealthResponse { Status = "live", Message = "LocalHost is running." }));
-api.MapGet("/local-host/health", () => Results.Ok(new LocalHostEnvelope<LocalHostHealthResponse> { Data = new LocalHostHealthResponse { Status = "live", Message = "LocalHost is running." } }));
+api.MapGet("/local-host/health", ([FromServices] LocalHostDescriptorHostedService descriptor) => Results.Ok(new LocalHostEnvelope<LocalHostHealthResponse> { Data = new LocalHostHealthResponse { Status = "live", Message = "LocalHost is running.", HostInstanceId = descriptor.InstanceId } }));
 api.MapGet("/server/health", ([FromServices] LocalHostApplicationService service) => Results.Ok(new ApiEnvelope<ServerHealthModel> { Data = service.GetServerHealth() }));
 api.MapGet("/health/ready", async ([FromServices] LocalHostApplicationService service) => Results.Ok(new ApiHealthResponse { Status = "ready", Message = "Runtime diagnostics completed.", RuntimeInventory = await service.RunRuntimeDoctorAsync(new RuntimeOwnershipQuery()) }));
 api.MapGet("/local-host/readiness", async ([FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<LocalHostReadinessResponse> { Data = new LocalHostReadinessResponse { Status = "ready", Message = "Runtime diagnostics completed.", RuntimeInventory = await service.RunRuntimeDoctorAsync(new RuntimeOwnershipQuery()) } }));
@@ -187,6 +187,8 @@ api.MapPost("/operations/{operationId}/cancel", async (string operationId, [From
 
 api.MapGet("/controller-sessions", async ([FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<IReadOnlyList<ControllerSessionRecord>> { Data = await service.ListControllerSessionsAsync() }));
 api.MapPost("/controller-sessions", async (ControllerSessionUpsertRequest request, [FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<ControllerSessionRecord> { Data = await service.UpsertControllerSessionAsync(request) }));
+api.MapPost("/controller-sessions/{controllerSessionId}/disconnect", async (string controllerSessionId, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<ControllerSessionRecord> { Data = await service.DisconnectControllerSessionAsync(controllerSessionId) }));
 api.MapGet("/interactive-agent-sessions", async (string? workspaceId, [FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<IReadOnlyList<InteractiveAgentSessionRecord>> { Data = await service.ListInteractiveAgentSessionsAsync(workspaceId: workspaceId) }));
 api.MapGet("/interactive-agent-sessions/{interactiveAgentSessionId}", async (string interactiveAgentSessionId, [FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<InteractiveAgentSessionRecord> { Data = await service.GetInteractiveAgentSessionAsync(interactiveAgentSessionId) }));
 api.MapGet("/interactive-agent-sessions/{interactiveAgentSessionId}/attachments", async (string interactiveAgentSessionId, [FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<IReadOnlyList<InteractiveSessionAttachmentRecord>> { Data = await service.GetInteractiveAttachmentsAsync(interactiveAgentSessionId) }));
@@ -215,7 +217,7 @@ api.MapHub<LocalHostEventHub>("/hubs/events");
 
 app.Run();
 
-static void StartStandardInputShutdownMonitor(IHostApplicationLifetime lifetime, ILogger logger)
+static void StartStandardInputShutdownMonitor(IHostApplicationLifetime lifetime, IServiceProvider services, ILogger logger)
 {
     if (!Console.IsInputRedirected)
     {
@@ -233,8 +235,20 @@ static void StartStandardInputShutdownMonitor(IHostApplicationLifetime lifetime,
                 var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), CancellationToken.None);
                 if (read == 0)
                 {
-                    logger.LogInformation("Standard input reached EOF. Requesting host shutdown.");
-                    lifetime.StopApplication();
+                    logger.LogInformation("Standard input reached EOF. Waiting for controllers and durable operations before shutdown.");
+                    var service = services.GetRequiredService<LocalHostApplicationService>();
+                    while (!lifetime.ApplicationStopping.IsCancellationRequested)
+                    {
+                        var controllers = await service.ListControllerSessionsAsync();
+                        var hasActiveOperation = service.ListOperations().Any(item => item.Status is WorkspaceOperationStatus.Pending or WorkspaceOperationStatus.Running);
+                        if (controllers.All(item => item.Status != ControllerSessionStatus.Connected) && !hasActiveOperation)
+                        {
+                            lifetime.StopApplication();
+                            return;
+                        }
+
+                        await Task.Delay(100, CancellationToken.None);
+                    }
                     return;
                 }
             }

@@ -14,7 +14,8 @@ public static class Program
         builder.Configuration.AddJsonFile("mcp.appsettings.json", optional: true, reloadOnChange: false);
         TryAddPackagedConfiguration(builder.Configuration, "mcp");
         builder.Logging.ClearProviders();
-        builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+        // Stdio is reserved exclusively for MCP frames. The caller owns diagnostics capture.
+        builder.Logging.SetMinimumLevel(LogLevel.None);
         builder.Services.AddOpenCodeWorkspaceLocalServices(builder.Configuration);
         builder.Services
             .AddMcpServer()

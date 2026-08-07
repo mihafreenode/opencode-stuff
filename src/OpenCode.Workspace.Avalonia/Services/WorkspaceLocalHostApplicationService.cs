@@ -94,6 +94,16 @@ public sealed class WorkspaceLocalHostApplicationService : IWorkspaceLocalHostAp
     public async Task<WorkspaceOperationRecord> CancelOperationAsync(string operationId, CancellationToken cancellationToken = default)
         => await (await RequireClientAsync(cancellationToken)).CancelOperationAsync(operationId, new OperationCommandRequest { CommandId = Guid.NewGuid().ToString("n"), RequestedBy = new OperationInitiator { Kind = "avalonia" } }, cancellationToken);
 
+    public async Task<WorkspaceOperationRecord> StartSmokeRunAsync(string templateId, string? timeout = null, string? artifactsRoot = null, CancellationToken cancellationToken = default)
+        => await (await RequireClientAsync(cancellationToken)).StartSmokeRunAsync(new SmokeRunOperationRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            TemplateId = templateId,
+            Timeout = timeout,
+            ArtifactsRoot = artifactsRoot,
+            RequestedBy = new OperationInitiator { Kind = "avalonia" },
+        }, cancellationToken);
+
     public async Task<WorkspaceOperationRecord> PrepareWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
         => await (await RequireClientAsync(cancellationToken)).StartPrepareWorkspaceAsync(new WorkspaceLifecycleRequest { CommandId = Guid.NewGuid().ToString("n"), WorkspaceId = workspaceId, RequestedBy = new OperationInitiator { Kind = "avalonia" } }, cancellationToken);
 

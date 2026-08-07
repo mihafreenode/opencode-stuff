@@ -49,17 +49,29 @@ public sealed class OpenCodeWorkspaceMcpTools
             return await service.ProvisionWorkspaceAsync(workspaceId, reporter.ReportProgress, cancellationToken);
         }), "Provision operation started.");
 
+    [McpServerTool(Name = "prepare_workspace"), Description("Start durable workspace preparation. Poll get_operation until it reaches a terminal status.")]
+    public static Task<CallToolResult> PrepareWorkspace(string workspaceId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.StartWorkspaceLifecycleAsync(workspaceId, "prepare"), McpResults.OperationStarted, "Prepare operation started.");
+
+    [McpServerTool(Name = "start_workspace"), Description("Start durable workspace runtime preparation and startup. Poll get_operation until it reaches a terminal status.")]
+    public static Task<CallToolResult> StartWorkspace(string workspaceId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.StartWorkspaceLifecycleAsync(workspaceId, "start"), McpResults.OperationStarted, "Start operation started.");
+
+    [McpServerTool(Name = "recover_workspace"), Description("Start durable workspace recovery. Poll get_operation until it reaches a terminal status.")]
+    public static Task<CallToolResult> RecoverWorkspace(string workspaceId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.StartWorkspaceLifecycleAsync(workspaceId, "recover"), McpResults.OperationStarted, "Recovery operation started.");
+
     [McpServerTool(Name = "validate_workspace"), Description("Validate a local workspace and return readiness and health details.")]
     public static async Task<CallToolResult> ValidateWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service)
         => await ExecuteAsync(() => service.ValidateWorkspaceAsync(workspaceId));
 
     [McpServerTool(Name = "stop_workspace"), Description("Stop local workspace runtime services.")]
-    public static async Task<CallToolResult> StopWorkspace([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service)
-        => await ExecuteAsync(() => service.StopWorkspaceAsync(workspaceId));
+    public static Task<CallToolResult> StopWorkspace([Description("Workspace id")] string workspaceId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.StartWorkspaceLifecycleAsync(workspaceId, "stop"), McpResults.OperationStarted, "Stop operation started.");
 
     [McpServerTool(Name = "remove_workspace_runtime"), Description("Remove local workspace runtime resources while preserving durable files.")]
-    public static async Task<CallToolResult> RemoveWorkspaceRuntime([Description("Workspace id")] string workspaceId, IOpenCodeWorkspaceMcpService service)
-        => await ExecuteAsync(() => service.RemoveWorkspaceRuntimeAsync(workspaceId));
+    public static Task<CallToolResult> RemoveWorkspaceRuntime([Description("Workspace id")] string workspaceId, LocalHostOperationStore operations)
+        => ExecuteAsync(() => operations.StartWorkspaceLifecycleAsync(workspaceId, "reset-runtime"), McpResults.OperationStarted, "Runtime reset operation started.");
 
     [McpServerTool(Name = "run_smoke"), Description("Start a long-running local smoke run. The tool returns an operation immediately. Poll get_operation with afterSequence for incremental progress until the terminal status is completed, failed, or cancelled. Do not assume success from the initial response.")]
     public static async Task<CallToolResult> RunSmoke(
@@ -201,14 +213,14 @@ public sealed class OpenCodeWorkspaceMcpTools
     public static Task<CallToolResult> GetOperationLegacy(string operationId, long? afterSequence = null, int? maxEvents = null, McpOperationStore operations = null!)
         => ExecuteAsync(() => Task.FromResult(operations.Get(operationId, afterSequence, maxEvents)));
 
-    [McpServerTool(Name = "list_operations"), Description("List in-memory MCP operations for this local process.")]
+    [McpServerTool(Name = "list_operations"), Description("List canonical LocalHost operations shared by all MCP and desktop clients.")]
     public static Task<CallToolResult> ListOperations(LocalHostOperationStore operations)
         => ExecuteAsync(() => operations.ListAsync());
 
     public static Task<CallToolResult> ListOperationsLegacy(McpOperationStore operations)
         => ExecuteAsync(() => Task.FromResult(operations.List()));
 
-    [McpServerTool(Name = "cancel_operation"), Description("Request cancellation for an in-memory MCP operation.")]
+    [McpServerTool(Name = "cancel_operation"), Description("Request cancellation for a canonical LocalHost operation. Cancellation never deletes workspace or interactive sessions.")]
     public static Task<CallToolResult> CancelOperation(string operationId, LocalHostOperationStore operations)
         => ExecuteAsync(() => operations.CancelAsync(operationId));
 

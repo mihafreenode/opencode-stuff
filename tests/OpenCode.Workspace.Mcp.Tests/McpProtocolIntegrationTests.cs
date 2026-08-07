@@ -10,6 +10,7 @@ using Xunit;
 
 namespace OpenCode.Workspace.Mcp.Tests;
 
+[Trait("Category", "LocalHostIntegration")]
 public sealed class McpProtocolIntegrationTests : IAsyncLifetime
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode-mcp-protocol", Guid.NewGuid().ToString("n"));
@@ -28,14 +29,26 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (Directory.Exists(_root) && DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+                break;
+            }
+            catch (IOException)
+            {
+                await Task.Delay(100);
+            }
+        }
+
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
         }
-
-        return Task.CompletedTask;
     }
 
     [Fact]
@@ -65,12 +78,15 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             "list_workspace_artifacts",
             "list_workspace_templates",
             "list_workspaces",
+            "prepare_workspace",
             "process_excel_artifact",
             "provision_workspace",
+            "recover_workspace",
             "remove_workspace_runtime",
             "run_runtime_doctor",
             "run_smoke",
             "run_smoke_matrix",
+            "start_workspace",
             "stop_workspace",
             "validate_workspace",
         }, names);
@@ -85,6 +101,9 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         var resourceTemplates = await harness.Client.ListResourceTemplatesAsync();
         Assert.Contains(resourceTemplates, item => item.UriTemplate == "opencode://templates/{templateId}");
         Assert.Contains(resourceTemplates, item => item.UriTemplate == "opencode://operations/{operationId}");
+        var resources = await harness.Client.ListResourcesAsync();
+        Assert.Contains(resources, item => item.Uri == "opencode://workspaces");
+        Assert.Contains(resources, item => item.Uri == "opencode://operations");
     }
 
     [Fact]
@@ -105,7 +124,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         Assert.NotEmpty(operation.OperationResourceUri);
 
         var completed = await harness.WaitForOperationAsync(operation.OperationId, TimeSpan.FromMinutes(4));
-        Assert.Equal(McpOperationStatus.Succeeded, completed.Status);
+        Assert.True(completed.Status == McpOperationStatus.Succeeded, JsonSerializer.Serialize(completed, OpenCodeWorkspaceMcpContract.JsonOptions));
         Assert.NotEmpty(completed.SmokeRunId);
         Assert.NotEmpty(completed.ArtifactDirectory);
         Assert.True(completed.Result.HasValue);
@@ -119,7 +138,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         Assert.NotNull(smokeResult);
         Assert.Equal("empty-workspace", smokeResult!.TemplateId);
         Assert.Equal(OpenCode.Workspace.Core.Smoke.WorkspaceSmokeStatus.Passed, smokeResult.Status);
-        Assert.True(smokeResult.CleanupVerificationSucceeded);
+        Assert.True(smokeResult.CleanupVerificationSucceeded, JsonSerializer.Serialize(smokeResult, OpenCodeWorkspaceMcpContract.JsonOptions));
         Assert.NotEmpty(smokeResult.SummaryJsonPath);
         Assert.NotEmpty(smokeResult.SummaryTextPath);
         Assert.NotEmpty(smokeResult.Validators);
@@ -166,7 +185,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         Assert.DoesNotContain(second.RecentEvents, item => item.Sequence <= first.LastEventSequence);
 
         var completed = await harness.WaitForOperationAsync(operation.OperationId, TimeSpan.FromMinutes(4));
-        Assert.Equal(McpOperationStatus.Succeeded, completed.Status);
+        Assert.True(completed.Status == McpOperationStatus.Succeeded, JsonSerializer.Serialize(completed, OpenCodeWorkspaceMcpContract.JsonOptions));
         Assert.True(completed.LastEventSequence >= first.LastEventSequence);
     }
 
@@ -201,15 +220,21 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         var smokeResult = completed.Result!.Value.Deserialize<OpenCode.Workspace.Core.Smoke.WorkspaceSmokeResult>();
         Assert.NotNull(smokeResult);
         Assert.Equal(OpenCode.Workspace.Core.Smoke.WorkspaceSmokeStatus.Cancelled, smokeResult!.Status);
-        Assert.True(smokeResult.CleanupVerificationSucceeded);
+        Assert.True(smokeResult.CleanupVerificationSucceeded, JsonSerializer.Serialize(smokeResult, OpenCodeWorkspaceMcpContract.JsonOptions));
         Assert.NotNull(smokeResult.CleanupResult);
         Assert.True(smokeResult.CleanupResult!.VerificationSucceeded);
 
-        var listSmoke = await harness.Client.CallToolAsync("list_smoke_resources");
+        // The canonical run id is the narrow ownership boundary. Other smoke resources may
+        // belong to a separate test process or a manually initiated smoke run.
+        var listSmoke = await harness.Client.CallToolAsync("list_runtime_resources", new Dictionary<string, object?>
+        {
+            ["owner"] = "smoke",
+            ["runId"] = smokeResult.RunId,
+        });
         var smokeInventory = ReadEnvelope<RuntimeResourceInventory>(listSmoke);
         Assert.Empty(smokeInventory.Data.Resources);
 
-        var doctor = await harness.Client.CallToolAsync("run_runtime_doctor", new Dictionary<string, object?> { ["owner"] = "smoke" });
+        var doctor = await harness.Client.CallToolAsync("run_runtime_doctor", new Dictionary<string, object?> { ["owner"] = "smoke", ["runId"] = smokeResult.RunId });
         var doctorInventory = ReadEnvelope<RuntimeResourceInventory>(doctor);
         Assert.Empty(doctorInventory.Data.Resources);
         Assert.Empty(doctorInventory.Data.Orphans);
@@ -323,10 +348,10 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(validate).Data.WorkspaceId);
 
         var stop = await harness.Client.CallToolAsync("stop_workspace", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
-        Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(stop).Data.WorkspaceId);
+        Assert.Equal(created.WorkspaceId, ReadOperationResult(stop).WorkspaceId);
 
         var remove = await harness.Client.CallToolAsync("remove_workspace_runtime", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
-        Assert.Equal(created.WorkspaceId, ReadEnvelope<WorkspaceRecordModel>(remove).Data.WorkspaceId);
+        Assert.Equal(created.WorkspaceId, ReadOperationResult(remove).WorkspaceId);
     }
 
     private static McpToolEnvelope<T> ReadEnvelope<T>(CallToolResult result)
@@ -405,7 +430,10 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
     public McpClient Client { get; }
     public IReadOnlyList<string> StandardErrorLines => _stderr;
 
-    public static async Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot)
+    public static Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot)
+        => StartAsync(workspaceStateRoot, smokeArtifactsRoot, Path.Combine(workspaceStateRoot, "local-host-shared"), Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"));
+
+    public static async Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot, string localHostStateRoot, string localHostExecutableDirectory)
     {
         var stderr = new List<string>();
         var launch = McpHostLaunch.Resolve();
@@ -422,8 +450,8 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
                 ["mcp__catalogRoot"] = Path.Combine(TestPaths.RepositoryRoot, "catalog"),
                 ["mcp__workspaceStateRoot"] = workspaceStateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
-                ["localHost__stateRoot"] = Path.Combine(workspaceStateRoot, "local-host-shared"),
-                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"),
+                ["localHost__stateRoot"] = localHostStateRoot,
+                ["localHost__executableDirectory"] = localHostExecutableDirectory,
             });
 
         McpClient client;
@@ -442,9 +470,11 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
     public async Task<McpOperationModel> WaitForOperationAsync(string operationId, TimeSpan timeout, Action<McpOperationModel>? progress = null)
     {
         var started = DateTimeOffset.UtcNow;
+        McpOperationModel? last = null;
         while (DateTimeOffset.UtcNow - started < timeout)
         {
             var operation = await GetOperationAsync(operationId);
+            last = operation;
             progress?.Invoke(operation);
             if (operation.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
             {
@@ -454,15 +484,17 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
             await Task.Delay(1000);
         }
 
-        throw new TimeoutException($"Operation '{operationId}' did not complete within {timeout}.");
+        throw new TimeoutException($"Operation '{operationId}' did not complete within {timeout}. Last state: {JsonSerializer.Serialize(last)}. MCP stderr: {string.Join(" | ", StandardErrorLines.TakeLast(20))}");
     }
 
     public async Task<McpOperationModel> WaitForOperationConditionAsync(string operationId, TimeSpan timeout, Func<McpOperationModel, bool> predicate)
     {
         var started = DateTimeOffset.UtcNow;
+        McpOperationModel? last = null;
         while (DateTimeOffset.UtcNow - started < timeout)
         {
             var operation = await GetOperationAsync(operationId);
+            last = operation;
             if (predicate(operation))
             {
                 return operation;
@@ -476,7 +508,7 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
             await Task.Delay(1000);
         }
 
-        throw new TimeoutException($"Operation '{operationId}' did not reach the expected condition.");
+        throw new TimeoutException($"Operation '{operationId}' did not reach the expected condition. Last state: {JsonSerializer.Serialize(last)}. MCP stderr: {string.Join(" | ", StandardErrorLines.TakeLast(20))}");
     }
 
     public async Task<McpOperationModel> GetOperationAsync(string operationId, long? afterSequence = null)
@@ -496,4 +528,5 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
         await Client.DisposeAsync();
         await TransportDisposal.TryDisposeAsync(Transport);
     }
+
 }

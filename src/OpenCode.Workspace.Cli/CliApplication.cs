@@ -70,6 +70,7 @@ public sealed class CliApplication
                 "validate-platform" => await RunValidatePlatformCommandAsync(args[1..], cancellationToken),
                 "debug-workspace-discovery" => await RunWorkspaceDiscoveryCommandAsync(cancellationToken),
                 "interactive-session" => await RunInteractiveSessionCommandAsync(args[1..], cancellationToken),
+                "mcp" => await McpCliCommands.RunAsync(args[1..], _output, cancellationToken),
                 "smoke" => await RunSmokeCommandAsync(args[1..], cancellationToken),
                 "runtime" => await RunRuntimeCommandAsync(args[1..], cancellationToken),
                 _ => await FailWithHelpAsync($"Unknown command '{args[0]}'."),

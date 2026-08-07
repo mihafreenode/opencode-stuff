@@ -11,7 +11,7 @@ using System.Text.Json;
 
 namespace OpenCode.Workspace.Mcp;
 
-public sealed class LocalHostClientAccessor
+public sealed class LocalHostClientAccessor : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private LocalHostClient? _client;
@@ -46,6 +46,16 @@ public sealed class LocalHostClientAccessor
             _gate.Release();
         }
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_client is not null)
+        {
+            await _client.DisposeAsync();
+            _client = null;
+        }
+
+    }
 }
 
 public sealed class McpControllerSessionContext
@@ -61,6 +71,21 @@ public sealed class McpControllerSessionContext
             ClientKind = "mcp",
             ClientInstanceId = ClientInstanceId,
         };
+
+    public ControllerSessionUpsertRequest ToRegistration()
+        => new()
+        {
+            ControllerSessionId = ControllerSessionId,
+            ClientKind = "mcp",
+            ClientName = Environment.GetEnvironmentVariable("MCP_CLIENT_NAME") ?? "OpenCode Workspace MCP",
+            ClientVersion = Environment.GetEnvironmentVariable("MCP_CLIENT_VERSION") ?? "1",
+            ClientInstanceId = ClientInstanceId,
+            Metadata = new Dictionary<string, string>
+            {
+                ["mcpProtocolVersion"] = Environment.GetEnvironmentVariable("MCP_PROTOCOL_VERSION") ?? "2025-03-26",
+                ["processId"] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            },
+        };
 }
 
 public sealed class McpControllerSessionHostedService(LocalHostClientAccessor clients, McpControllerSessionContext session, ILogger<McpControllerSessionHostedService> logger) : IHostedService
@@ -70,14 +95,7 @@ public sealed class McpControllerSessionHostedService(LocalHostClientAccessor cl
         try
         {
             var client = await clients.GetAsync(cancellationToken);
-            await client.UpsertControllerSessionAsync(new ControllerSessionUpsertRequest
-            {
-                ControllerSessionId = session.ControllerSessionId,
-                ClientKind = "mcp",
-                ClientName = "OpenCode Workspace MCP",
-                ClientVersion = "1",
-                ClientInstanceId = session.ClientInstanceId,
-            }, cancellationToken);
+            await client.UpsertControllerSessionAsync(session.ToRegistration(), cancellationToken);
         }
         catch (Exception exception)
         {
@@ -90,24 +108,30 @@ public sealed class McpControllerSessionHostedService(LocalHostClientAccessor cl
         try
         {
             var client = await clients.GetAsync(cancellationToken);
-            await client.DisconnectControllerSessionAsync(session.ControllerSessionId, new ControllerSessionUpsertRequest
-            {
-                ControllerSessionId = session.ControllerSessionId,
-                ClientKind = "mcp",
-                ClientName = "OpenCode Workspace MCP",
-                ClientVersion = "1",
-                ClientInstanceId = session.ClientInstanceId,
-            }, cancellationToken);
+            await client.DisconnectControllerSessionAsync(session.ControllerSessionId, session.ToRegistration(), cancellationToken);
         }
         catch (Exception exception)
         {
             logger.LogDebug(exception, "Could not disconnect MCP controller session cleanly.");
+        }
+        finally
+        {
+            // Closing an MCP connection must not affect durable work, but it must release a
+            // LocalHost sidecar this stdio process started through its stdin ownership pipe.
+            await clients.DisposeAsync();
         }
     }
 }
 
 public sealed class LocalHostOperationStore(LocalHostClientAccessor clients, McpControllerSessionContext session)
 {
+    public async Task<McpOperationModel> StartWorkspaceLifecycleAsync(string workspaceId, string action, CancellationToken cancellationToken = default)
+        => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartWorkspaceLifecycleAsync(action, new WorkspaceLifecycleRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            WorkspaceId = workspaceId,
+            RequestedBy = session.ToInitiator(),
+        }, cancellationToken));
     public async Task<McpOperationModel> StartProvisionWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
         => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartProvisionWorkspaceAsync(new WorkspaceProvisionRequest
         {

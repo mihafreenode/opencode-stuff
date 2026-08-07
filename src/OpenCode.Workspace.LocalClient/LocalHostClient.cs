@@ -364,6 +364,13 @@ public static class LocalHostDiscovery
             return new LocalHostDiscoveryResult { Descriptor = descriptor, Ownership = LocalHostOwnership.External };
         }
 
+        await using var startupGate = await AcquireStartupGateAsync(options, cancellationToken);
+        descriptor = await TryReadHealthyDescriptorAsync(options, cancellationToken);
+        if (descriptor is not null)
+        {
+            return new LocalHostDiscoveryResult { Descriptor = descriptor, Ownership = LocalHostOwnership.External };
+        }
+
         var ownedProcess = StartLocalHostProcess(options);
 
         var startedAt = DateTimeOffset.UtcNow;
@@ -404,6 +411,8 @@ public static class LocalHostDiscovery
             UseShellExecute = false,
             WorkingDirectory = hostDirectory,
             RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
 
         if (executablePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -417,7 +426,10 @@ public static class LocalHostDiscovery
         var stateRoot = LocalHostClient.ResolveStatePathProvider(options).StateRoot;
         startInfo.Environment["localHost__stateRoot"] = stateRoot;
         startInfo.Environment["mcp__workspaceStateRoot"] = stateRoot;
-        return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start LocalHost process.");
+        var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start LocalHost process.");
+        _ = process.StandardOutput.ReadToEndAsync();
+        _ = process.StandardError.ReadToEndAsync();
+        return process;
     }
 
     private static void TryRequestOwnedProcessShutdown(Process process)
@@ -450,10 +462,30 @@ public static class LocalHostDiscovery
                 return null;
             }
 
-            using var httpClient = new HttpClient { BaseAddress = new Uri(descriptor.BaseUrl, UriKind.Absolute) };
+            if (!string.Equals(descriptor.ContractVersion, LocalHostContract.ContractVersion, StringComparison.Ordinal)
+                || !Uri.TryCreate(descriptor.BaseUrl, UriKind.Absolute, out var baseUri)
+                || !IPAddress.TryParse(baseUri.Host, out var address)
+                || !IPAddress.IsLoopback(address))
+            {
+                TryRemoveStaleDescriptor(descriptorPath);
+                return null;
+            }
+
+            using var httpClient = new HttpClient { BaseAddress = baseUri };
             using var response = await httpClient.GetAsync("/api/v1/local-host/health", cancellationToken);
             if (response.StatusCode != HttpStatusCode.OK)
             {
+                TryRemoveStaleDescriptor(descriptorPath);
+                return null;
+            }
+
+            var envelope = await response.Content.ReadFromJsonAsync<LocalHostEnvelope<LocalHostHealthResponse>>(JsonOptions, cancellationToken);
+            if (envelope?.Data is null
+                || !string.Equals(envelope.Data.ContractVersion, descriptor.ContractVersion, StringComparison.Ordinal)
+                || (!string.IsNullOrWhiteSpace(envelope.Data.HostInstanceId)
+                    && !string.Equals(envelope.Data.HostInstanceId, descriptor.InstanceId, StringComparison.Ordinal)))
+            {
+                TryRemoveStaleDescriptor(descriptorPath);
                 return null;
             }
 
@@ -483,8 +515,36 @@ public static class LocalHostDiscovery
             return localHostDirectory;
         }
 
-        return Path.Combine(layout.DistributionRoot, "bin", "api");
+        return localHostDirectory;
     }
+
+    private static void TryRemoveStaleDescriptor(string descriptorPath)
+    {
+        try { File.Delete(descriptorPath); } catch { }
+    }
+
+    private static async Task<FileStream> AcquireStartupGateAsync(LocalHostClientOptions? options, CancellationToken cancellationToken)
+    {
+        var stateRoot = LocalHostClient.ResolveStatePathProvider(options).StateRoot;
+        var path = Path.Combine(stateRoot, "local-host", "startup.lock");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var started = Stopwatch.StartNew();
+        while (started.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+            }
+            catch (IOException)
+            {
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+
+        throw new TimeoutException($"Timed out waiting for the LocalHost startup gate '{path}'.");
+    }
+
 
     private static int AllocateLoopbackPort()
     {

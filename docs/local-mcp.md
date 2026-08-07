@@ -78,6 +78,17 @@ The Windows package is self-contained and already includes the required .NET run
 
 The packaged distribution is the supported end-user installation path for local MCP integration.
 
+Generate configuration from the extracted package instead of editing example paths:
+
+```powershell
+bin\cli\OpenCode.Workspace.Cli.exe mcp configure codex --install-root "C:\path\to\extracted-package"
+bin\cli\OpenCode.Workspace.Cli.exe mcp configure claude --install-root "C:\path\to\extracted-package"
+bin\cli\OpenCode.Workspace.Cli.exe mcp configure opencode --install-root "C:\path\to\extracted-package" --output "$HOME\.config\opencode\opencode-mcp.json"
+bin\cli\OpenCode.Workspace.Cli.exe mcp doctor --install-root "C:\path\to\extracted-package" --json
+```
+
+`mcp configure` prints copy-ready configuration unless `--output` is supplied. It never overwrites an existing file without `--force`.
+
 Do not point clients at:
 
 - `dotnet run`
@@ -340,6 +351,21 @@ If your workflow requires a custom destination root, provide it explicitly when 
 
 ## Long-running operations
 
+### Durable mutation contract
+
+Every MCP mutation returns a durable operation immediately. This applies to `prepare_workspace`, `start_workspace`, `stop_workspace`, `recover_workspace`, `remove_workspace_runtime`, `provision_workspace`, `run_smoke`, and `cancel_operation`. The immediate payload is an `McpOperationModel` with a non-empty operation id, initial queued or running status, phase, timestamps, controller attribution, and artifact references. Call `get_operation` with `afterSequence` until a terminal status is returned; the structured domain result is then in `result`.
+
+| Tool | Operation kind | Terminal result | Cancellation |
+| --- | --- | --- | --- |
+| `prepare_workspace` | `prepare` | workspace lifecycle result | `cancel_operation` |
+| `start_workspace` | `start` | workspace lifecycle result | `cancel_operation` |
+| `stop_workspace` | `stop` | workspace lifecycle result | `cancel_operation` |
+| `recover_workspace` | `recover` | workspace lifecycle result | `cancel_operation` |
+| `remove_workspace_runtime` | `reset-runtime` | workspace lifecycle result | `cancel_operation` |
+| `provision_workspace` | `provision` | workspace lifecycle result | `cancel_operation` |
+| `run_smoke` | `run_smoke` | `WorkspaceSmokeResult` | `cancel_operation` |
+| `cancel_operation` | existing operation | updated operation record | marks cancellation requested; terminal cleanup remains visible through polling |
+
 Canonical flow:
 
 1. call a tool such as `provision_workspace` or `run_smoke`
@@ -376,6 +402,16 @@ Important notes:
 - Oracle, APEX, and APEXlang setup may take significant time
 - agents must not start a second operation merely because no new event appeared briefly
 - detailed logs remain available through artifact references
+
+## Controller sessions and LocalHost
+
+Each stdio MCP process registers a distinct controller session with LocalHost. The session records safe client metadata and attributes operations, but it does not own workspace lifetime. Closing Codex, Claude Code, or OpenCode does not cancel an operation, stop LocalHost, or delete any workspace or interactive session.
+
+MCP clients and Avalonia observe the same canonical LocalHost operation records. Any controller may inspect or request cancellation of a permitted operation; original controller attribution remains unchanged. Restarting an MCP client creates a new controller session and does not duplicate an existing operation.
+
+MCP controller sessions are intentionally separate from interactive OpenCode sessions used by Windows Terminal. MCP does not attach to, stream, take over, or expose the terminal conversation.
+
+The MCP executable discovers `bin/local-host/OpenCode.Workspace.LocalHost.exe` from its own extracted installation root. LocalHost binds loopback only and uses a descriptor with a dynamic loopback port. Stale descriptors are discarded and stdout remains MCP JSON-RPC only; diagnostics are written to stderr or LocalHost logs.
 
 ## Main capabilities
 

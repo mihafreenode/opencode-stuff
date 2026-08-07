@@ -12,6 +12,7 @@ using Xunit;
 
 namespace OpenCode.Workspace.Mcp.Tests;
 
+[Trait("Category", "FastProtocol")]
 public sealed class McpToolAdapterTests
 {
     [Fact]

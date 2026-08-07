@@ -209,12 +209,22 @@ public sealed class WorkspaceSmokeRunner
                 using var cleanupSource = new CancellationTokenSource(WorkspaceSmokeTimeouts.CleanupTimeout);
                 if (!shouldRetainRuntime)
                 {
-                    cleanupResult = await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
-                        token => _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: runId, OutputFormat: "json"), token),
-                        WorkspaceSmokeTimeouts.CleanupTimeout,
-                        WorkspaceSmokeFailureClassification.CleanupTimeout,
-                        $"Smoke cleanup timed out after {WorkspaceSmokeTimeouts.CleanupTimeout}.",
-                        CancellationToken.None);
+                    for (var attempt = 1; attempt <= 3; attempt++)
+                    {
+                        cleanupResult = await WorkspaceSmokeTimeouts.RunWithTimeoutAsync(
+                            token => _smokeOwnershipService.CleanupAsync(new global::OpenCode.Workspace.Core.Runtime.SmokeCleanupOptions(DryRun: false, IncludeAll: false, RunId: runId, OutputFormat: "json"), token),
+                            WorkspaceSmokeTimeouts.CleanupTimeout,
+                            WorkspaceSmokeFailureClassification.CleanupTimeout,
+                            $"Smoke cleanup timed out after {WorkspaceSmokeTimeouts.CleanupTimeout}.",
+                            cleanupSource.Token);
+                        if (cleanupResult.VerificationSucceeded || attempt == 3)
+                        {
+                            break;
+                        }
+
+                        warnings.Add($"Cleanup verification for run '{runId}' was incomplete on attempt {attempt}; retrying the same run-scoped cleanup.");
+                        await Task.Delay(TimeSpan.FromMilliseconds(500), cleanupSource.Token);
+                    }
                 }
                 else
                 {

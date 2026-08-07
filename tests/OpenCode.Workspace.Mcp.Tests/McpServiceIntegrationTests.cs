@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OpenCode.Workspace.Mcp.Tests;
 
+[Trait("Category", "FastProtocol")]
 public sealed class McpServiceIntegrationTests : IDisposable
 {
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), "opencode-mcp-tests", Guid.NewGuid().ToString("n"));

@@ -16,6 +16,7 @@ internal sealed class PackagedProcessHarness : IAsyncDisposable
     private readonly BoundedLineBuffer _stderrTail = new(80);
     private readonly StringBuilder _stdout = new();
     private readonly StringBuilder _stderr = new();
+    private readonly List<string> _stdoutLines = [];
     private readonly Task _stdoutTask;
     private readonly Task _stderrTask;
     private bool _stdinClosed;
@@ -38,13 +39,15 @@ internal sealed class PackagedProcessHarness : IAsyncDisposable
             RedirectsStandardOutput = process.StartInfo.RedirectStandardOutput,
             RedirectsStandardError = process.StartInfo.RedirectStandardError,
         };
-        _stdoutTask = CaptureAsync(process.StandardOutput, _stdout, _stdoutTail);
+        _stdoutTask = CaptureAsync(process.StandardOutput, _stdout, _stdoutTail, _stdoutLines);
         _stderrTask = CaptureAsync(process.StandardError, _stderr, _stderrTail);
     }
 
     public PackagedProcessLifecycleReport Report { get; }
     public string StandardOutput => _stdout.ToString();
     public string StandardError => _stderr.ToString();
+    public IReadOnlyList<string> StandardErrorLines => _stderr.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+    public IReadOnlyList<string> StandardOutputLines { get { lock (_stdoutLines) return _stdoutLines.ToArray(); } }
     public bool HasExited => _process.HasExited;
     public int? ExitCode => _process.HasExited ? _process.ExitCode : null;
 
@@ -123,6 +126,12 @@ internal sealed class PackagedProcessHarness : IAsyncDisposable
         await WaitForExitAsync(timeout);
     }
 
+    public async Task WriteStandardInputAsync(string value)
+    {
+        await _process.StandardInput.WriteLineAsync(value);
+        await _process.StandardInput.FlushAsync();
+    }
+
     public async Task ForceKillAsync(TimeSpan timeout)
     {
         _forcedKillRequired = true;
@@ -155,7 +164,7 @@ internal sealed class PackagedProcessHarness : IAsyncDisposable
         Report.ForcedTerminationRequired = _forcedKillRequired;
     }
 
-    private static async Task CaptureAsync(StreamReader reader, StringBuilder target, BoundedLineBuffer tail)
+    private static async Task CaptureAsync(StreamReader reader, StringBuilder target, BoundedLineBuffer tail, List<string>? lines = null)
     {
         while (true)
         {
@@ -167,6 +176,10 @@ internal sealed class PackagedProcessHarness : IAsyncDisposable
 
             target.AppendLine(line);
             tail.Add(line);
+            if (lines is not null)
+            {
+                lock (lines) lines.Add(line);
+            }
         }
     }
 

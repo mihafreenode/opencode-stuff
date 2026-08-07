@@ -5,6 +5,7 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
+using OpenCode.Workspace.LocalClient;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Json;
@@ -14,6 +15,7 @@ using Xunit;
 namespace OpenCode.Workspace.Mcp.Tests;
 
 [Collection("Packaged distribution")]
+[Trait("Category", "PackageIntegration")]
 public sealed class PackagedDistributionTests(PackagedDistributionFixture fixture) : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode package tests", Guid.NewGuid().ToString("n"));
@@ -21,7 +23,6 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     private readonly string? _existingPackageRoot = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ROOT");
 
     [Fact]
-    [Trait("Category", "PackageIntegration")]
     public async Task ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully()
     {
         var packageRoot = CreateExtractedDistribution();
@@ -122,7 +123,188 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     }
 
     [Fact]
-    [Trait("Category", "PackageIntegration")]
+    public async Task ExtractedDistribution_McpConfigureAndDoctor_UsePackagedPaths()
+    {
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "doctor path with spaces");
+        Directory.CreateDirectory(workingDirectory);
+        var cli = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
+        var expectedMcp = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
+
+        foreach (var client in new[] { "codex", "claude", "opencode" })
+        {
+            await using var configure = await PackagedProcessHarness.StartAsync($"configure-{client}", cli, ["mcp", "configure", client, "--print", "--install-root", packageRoot], workingDirectory);
+            await configure.WaitForExitAsync(TimeSpan.FromSeconds(60));
+            Assert.Equal(0, configure.ExitCode);
+            Assert.Contains(expectedMcp, configure.StandardOutput, StringComparison.Ordinal);
+            Assert.DoesNotContain(TestPaths.RepositoryRoot, configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("dotnet run", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("bin/api", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
+        }
+
+        await using var doctor = await PackagedProcessHarness.StartAsync("mcp-doctor", cli, ["mcp", "doctor", "--install-root", packageRoot, "--json"], workingDirectory);
+        await doctor.WaitForExitAsync(TimeSpan.FromSeconds(90));
+        Assert.True(doctor.ExitCode == 0, $"doctor stdout:{Environment.NewLine}{doctor.StandardOutput}{Environment.NewLine}doctor stderr:{Environment.NewLine}{doctor.StandardError}");
+        using var document = JsonDocument.Parse(doctor.StandardOutput);
+        var checks = document.RootElement.EnumerateArray().ToArray();
+        Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "McpInitialize" && item.GetProperty("Status").GetString() == "Passed");
+        Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "McpToolsList" && item.GetProperty("Status").GetString() == "Passed");
+        Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "McpResourcesList" && item.GetProperty("Status").GetString() == "Passed");
+        Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "ControllerDisconnected" && item.GetProperty("Status").GetString() == "Passed");
+    }
+
+    [Fact]
+    public async Task PackagedMcp_SimultaneousStartup_UsesOneCanonicalLocalHost_AndProtocolOnlyStdout()
+    {
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "packaged startup race with spaces");
+        var stateRoot = Path.Combine(_root, "packaged-race-state");
+        var identity = LocalHostProcessIdentity.ForStateRoot(stateRoot);
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
+        var hostExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
+        Directory.CreateDirectory(workingDirectory);
+        TeardownAssert.AssertNoLiveState(identity);
+
+        await using var launches = new PackagedLocalHostLaunchRecorder(hostExecutable);
+        await using var a = await StartPackagedRawMcpAsync("race-a", mcpExecutable, packageRoot, workingDirectory, stateRoot);
+        await using var b = await StartPackagedRawMcpAsync("race-b", mcpExecutable, packageRoot, workingDirectory, stateRoot);
+        await Task.WhenAll(InitializeRawMcpAsync(a, 1, "race-a"), InitializeRawMcpAsync(b, 1, "race-b"));
+
+        var host = await WaitForPackagedHostAsync(identity, a.StandardErrorLines.Concat(b.StandardErrorLines).ToArray());
+        var controllerA = await WaitForPackagedControllerAsync(host, a.Report.ProcessId, a.StandardErrorLines);
+        var controllerB = await WaitForPackagedControllerAsync(host, b.Report.ProcessId, b.StandardErrorLines);
+        await Task.Delay(250);
+        var launched = launches.Launched;
+
+        Assert.Single(launched);
+        Assert.Equal(host.ProcessId, launched.Single().ProcessId);
+        Assert.Equal(1, launched.Count(item => item.ProcessId == host.ProcessId));
+        Assert.DoesNotContain(launched, item => item.ProcessId != host.ProcessId && item.IsRunning());
+        Assert.NotEqual(a.Report.ProcessId, b.Report.ProcessId);
+        Assert.NotEqual(controllerA.ControllerSessionId, controllerB.ControllerSessionId);
+        Assert.NotEqual(controllerA.ClientInstanceId, controllerB.ClientInstanceId);
+        Assert.True(Uri.TryCreate(host.BaseUrl, UriKind.Absolute, out var baseUri) && System.Net.IPAddress.TryParse(baseUri.Host, out var address) && System.Net.IPAddress.IsLoopback(address) && baseUri.Port > 0);
+        Assert.Equal(host.InstanceId, ReadDescriptor(identity).InstanceId);
+        TeardownAssert.AssertHostLockHeld(identity);
+        AssertProtocolOnly(a.StandardOutputLines, a.StandardErrorLines);
+        AssertProtocolOnly(b.StandardOutputLines, b.StandardErrorLines);
+
+        await b.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+        await TeardownAssert.AssertControllerDisconnectedAsync(CreateLocalClient(host), controllerB.ControllerSessionId, identity, b.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertProcessStillRunningAsync(host, a.StandardErrorLines, b.StandardErrorLines, TimeSpan.FromSeconds(30), CancellationToken.None);
+        await using (var client = CreateLocalClient(host))
+        {
+            Assert.Equal(ControllerSessionStatus.Connected, (await client.ListControllerSessionsAsync()).Single(item => item.ControllerSessionId == controllerA.ControllerSessionId).Status);
+        }
+
+        await a.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+        await TeardownAssert.AssertControllerDisconnectedAsync(CreateLocalClient(host), controllerA.ControllerSessionId, identity, a.StandardErrorLines, b.StandardErrorLines, TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertProcessExitedAsync(host, a.StandardErrorLines, b.StandardErrorLines, TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertDescriptorNotLiveAsync(identity, a.StandardErrorLines, b.StandardErrorLines, TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertHostLockReleasedAsync(identity, a.StandardErrorLines, b.StandardErrorLines, TimeSpan.FromSeconds(30), CancellationToken.None);
+        Assert.False(ProcessStillRunning(a.Report.ProcessId, mcpExecutable));
+        Assert.False(ProcessStillRunning(b.Report.ProcessId, mcpExecutable));
+    }
+
+    [Fact]
+    public async Task PackagedMcp_OperationMatchesCanonicalLocalClient_AndCancellationConverges()
+    {
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "packaged parity with spaces");
+        var stateRoot = Path.Combine(_root, "packaged-parity-state");
+        var identity = LocalHostProcessIdentity.ForStateRoot(stateRoot);
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
+        Directory.CreateDirectory(workingDirectory);
+        await using var mcp = await StartPackagedRawMcpAsync("packaged-parity", mcpExecutable, packageRoot, workingDirectory, stateRoot);
+        await InitializeRawMcpAsync(mcp, 1, "packaged-parity");
+        var host = await WaitForPackagedHostAsync(identity, mcp.StandardErrorLines);
+        var controller = await WaitForPackagedControllerAsync(host, mcp.Report.ProcessId, mcp.StandardErrorLines);
+        var started = await CallRawOperationAsync(mcp, 2, "run_smoke", new { templateId = "empty-workspace" });
+        await using var client = CreateLocalClient(host);
+        var canonical = await client.GetOperationAsync(started.OperationId);
+
+        Assert.Equal(started.OperationId, canonical.OperationId);
+        Assert.Equal(started.WorkspaceId, canonical.WorkspaceId);
+        Assert.Equal(started.Kind, canonical.OperationKind);
+        Assert.Equal(started.CreatedUtc, canonical.CreatedUtc);
+        Assert.Equal(controller.ControllerSessionId, canonical.InitiatedBy.ControllerSessionId);
+
+        await client.CancelOperationAsync(started.OperationId, new OperationCommandRequest { CommandId = Guid.NewGuid().ToString("n"), RequestedBy = new OperationInitiator { Kind = "package-test" } });
+        var terminal = await WaitForRawTerminalAsync(mcp, started.OperationId, 3);
+        var canonicalTerminal = await WaitForCanonicalTerminalAsync(client, started.OperationId);
+        Assert.Equal(McpOperationStatus.Cancelled, terminal.Status);
+        Assert.Equal(canonicalTerminal.LastEventSequence, terminal.LastEventSequence);
+        Assert.Equal(canonicalTerminal.Result.HasValue, terminal.Result.HasValue);
+        Assert.Equal(canonicalTerminal.OriginalFailure?.Classification ?? "cancelled", terminal.FailureClassification);
+        Assert.Equal(canonicalTerminal.OriginalFailure?.Message ?? string.Empty, terminal.FailureMessage);
+        Assert.Equal(canonicalTerminal.CleanupFailure?.Classification ?? string.Empty, terminal.CleanupFailureClassification);
+        Assert.Equal(canonicalTerminal.CleanupFailure?.Message ?? string.Empty, terminal.CleanupFailureMessage);
+        Assert.Equal(canonicalTerminal.ArtifactReferences.Select(item => item.SafeLocalReference).Where(item => !string.IsNullOrWhiteSpace(item)), terminal.ArtifactReferences);
+        Assert.Equal(controller.ControllerSessionId, canonicalTerminal.InitiatedBy.ControllerSessionId);
+
+        await mcp.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+        await TeardownAssert.AssertControllerDisconnectedAsync(CreateLocalClient(host), controller.ControllerSessionId, identity, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertProcessExitedAsync(host, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertHostLockReleasedAsync(identity, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PackagedMcp_RawStdoutContainsOnlyProtocolFrames()
+    {
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "packaged raw protocol with spaces");
+        var stateRoot = Path.Combine(_root, "packaged-raw-state");
+        var identity = LocalHostProcessIdentity.ForStateRoot(stateRoot);
+        var mcpExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp");
+        Directory.CreateDirectory(workingDirectory);
+        await using var mcp = await StartPackagedRawMcpAsync("raw-protocol", mcpExecutable, packageRoot, workingDirectory, stateRoot);
+        await InitializeRawMcpAsync(mcp, 1, "raw-protocol");
+        await CallRawJsonAsync(mcp, 2, "tools/list", new { });
+        await CallRawJsonAsync(mcp, 3, "resources/list", new { });
+        var started = await CallRawOperationAsync(mcp, 4, "run_smoke", new { templateId = "empty-workspace" });
+        await CallRawOperationAsync(mcp, 5, "get_operation", new { operationId = started.OperationId });
+        await CallRawOperationAsync(mcp, 6, "cancel_operation", new { operationId = started.OperationId });
+        await WaitForRawTerminalAsync(mcp, started.OperationId, 7);
+        AssertProtocolOnly(mcp.StandardOutputLines, mcp.StandardErrorLines);
+
+        var host = await WaitForPackagedHostAsync(identity, mcp.StandardErrorLines);
+        var controller = await WaitForPackagedControllerAsync(host, mcp.Report.ProcessId, mcp.StandardErrorLines);
+        await mcp.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+        await TeardownAssert.AssertControllerDisconnectedAsync(CreateLocalClient(host), controller.ControllerSessionId, identity, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertProcessExitedAsync(host, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+        await TeardownAssert.AssertHostLockReleasedAsync(identity, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
+    }
+
+    [Fact]
+    [Trait("Category", "LocalHostIntegration")]
+    public async Task PackagedDoctor_ReusesExternalLocalHostWithoutStoppingIt()
+    {
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "external doctor path with spaces");
+        var stateRoot = Path.Combine(_root, "external-doctor-state");
+        Directory.CreateDirectory(workingDirectory);
+        var hostExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
+        var cli = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
+        var port = PackagedHostValidationHelpers.GetFreeTcpPort();
+        await using var host = await PackagedProcessHarness.StartAsync("external-doctor-host", hostExecutable, ["--shutdown-on-stdin-eof"], workingDirectory, new Dictionary<string, string?>
+        {
+            ["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}",
+            ["localHost__stateRoot"] = stateRoot,
+        });
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/") };
+        await PackagedHostValidationHelpers.WaitForApiHealthyAsync(http, TimeSpan.FromSeconds(60));
+        var before = JsonDocument.Parse(await http.GetStringAsync("api/v1/local-host/health")).RootElement.GetProperty("data").GetProperty("hostInstanceId").GetString();
+
+        await using var doctor = await PackagedProcessHarness.StartAsync("external-doctor", cli, ["mcp", "doctor", "--install-root", packageRoot, "--state-root", stateRoot, "--json"], workingDirectory);
+        await doctor.WaitForExitAsync(TimeSpan.FromSeconds(90));
+        Assert.Equal(0, doctor.ExitCode);
+        Assert.False(host.HasExited);
+        var after = JsonDocument.Parse(await http.GetStringAsync("api/v1/local-host/health")).RootElement.GetProperty("data").GetProperty("hostInstanceId").GetString();
+        Assert.Equal(before, after);
+        await host.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
     [Trait("Category", "LiveDockerIntegration")]
     public async Task PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly()
     {
@@ -586,8 +768,282 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         }
     }
 
+    private static async Task<PackagedProcessHarness> StartPackagedRawMcpAsync(string clientName, string executablePath, string packageRoot, string workingDirectory, string stateRoot)
+        => await PackagedProcessHarness.StartAsync("packaged-mcp-" + clientName, executablePath, [], workingDirectory, new Dictionary<string, string?>
+        {
+            ["mcp__catalogRoot"] = null,
+            ["mcp__workspaceStateRoot"] = Path.Combine(stateRoot, "workspace-state"),
+            ["mcp__smokeArtifactsRoot"] = Path.Combine(stateRoot, "artifacts"),
+            ["localHost__stateRoot"] = stateRoot,
+            ["localHost__executableDirectory"] = Path.Combine(packageRoot, "bin", "local-host"),
+            ["localHost__useTestOperation"] = "true",
+            ["MCP_CLIENT_NAME"] = clientName,
+            ["Logging__LogLevel__Microsoft.Hosting.Lifetime"] = "None",
+            ["Logging__LogLevel__Default"] = "None",
+        });
+
+    private static Task InitializeRawMcpAsync(PackagedProcessHarness mcp, int requestId, string clientName)
+        => CallRawJsonAsync(mcp, requestId, "initialize", new { protocolVersion = "2025-03-26", capabilities = new { }, clientInfo = new { name = clientName, version = "1" } });
+
+    private static async Task<JsonElement> CallRawJsonAsync(PackagedProcessHarness mcp, int requestId, string method, object parameters)
+    {
+        await mcp.WriteStandardInputAsync(JsonSerializer.Serialize(new { jsonrpc = "2.0", id = requestId, method, @params = parameters }));
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            foreach (var line in mcp.StandardOutputLines)
+            {
+                if (!TryReadRawResult(line, requestId, out var result))
+                {
+                    continue;
+                }
+                return result;
+            }
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"Raw MCP request '{method}' did not return. stdout={FormatRawFrames(mcp.StandardOutputLines, mcp.StandardErrorLines)}");
+    }
+
+    private static async Task<McpOperationModel> CallRawOperationAsync(PackagedProcessHarness mcp, int requestId, string toolName, object arguments)
+    {
+        var result = await CallRawJsonAsync(mcp, requestId, "tools/call", new { name = toolName, arguments });
+        var payload = result.TryGetProperty("structuredContent", out var structured)
+            ? structured
+            : result.GetProperty("content")[0].GetProperty("text");
+        if (payload.TryGetProperty("Data", out var data))
+        {
+            payload = data;
+        }
+        return JsonSerializer.Deserialize<McpOperationModel>(payload.GetRawText())
+            ?? throw new InvalidOperationException($"MCP tool '{toolName}' did not return an operation record.");
+    }
+
+    private static async Task<McpOperationModel> WaitForRawTerminalAsync(PackagedProcessHarness mcp, string operationId, int requestId)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var current = await CallRawOperationAsync(mcp, requestId++, "get_operation", new { operationId });
+            if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+            {
+                return current;
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"MCP operation '{operationId}' did not terminate through raw stdio.");
+    }
+
+    private static async Task<WorkspaceOperationRecord> WaitForCanonicalTerminalAsync(LocalHostClient client, string operationId)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var current = await client.GetOperationAsync(operationId);
+            if (current.Status is WorkspaceOperationStatus.Succeeded or WorkspaceOperationStatus.Failed or WorkspaceOperationStatus.Cancelled)
+            {
+                return current;
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"Canonical operation '{operationId}' did not terminate.");
+    }
+
+    private static bool TryReadRawResult(string line, int requestId, out JsonElement result)
+    {
+        result = default;
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            if (!document.RootElement.TryGetProperty("id", out var id)
+                || id.ValueKind != JsonValueKind.Number
+                || id.GetInt32() != requestId
+                || !document.RootElement.TryGetProperty("result", out var response))
+            {
+                return false;
+            }
+            result = response.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static void AssertProtocolOnly(IReadOnlyList<string> frames, IReadOnlyList<string> stderr)
+    {
+        Assert.NotEmpty(frames);
+        for (var index = 0; index < frames.Count; index++)
+        {
+            var frame = frames[index];
+            try
+            {
+                using var document = JsonDocument.Parse(frame);
+                Assert.Equal("2.0", document.RootElement.GetProperty("jsonrpc").GetString());
+                Assert.True(document.RootElement.TryGetProperty("result", out _) || document.RootElement.TryGetProperty("error", out _) || document.RootElement.TryGetProperty("method", out _));
+            }
+            catch (Exception exception) when (exception is JsonException or Xunit.Sdk.XunitException)
+            {
+                throw new Xunit.Sdk.XunitException($"stdout frame {index} is not MCP protocol traffic. {FormatRawFrames(frames, stderr, index)}", exception);
+            }
+        }
+    }
+
+    private static string FormatRawFrames(IReadOnlyList<string> frames, IReadOnlyList<string> stderr, int? focus = null)
+    {
+        var start = Math.Max(0, (focus ?? Math.Max(0, frames.Count - 1)) - 1);
+        var end = Math.Min(frames.Count, start + 3);
+        var selected = Enumerable.Range(start, end - start).Select(index => $"frame={index} bytes={System.Text.Encoding.UTF8.GetByteCount(frames[index])} escaped={JsonSerializer.Serialize(frames[index])}");
+        return $"{string.Join(Environment.NewLine, selected)}{Environment.NewLine}stderr={string.Join(" | ", stderr.TakeLast(20))}";
+    }
+
+    private static async Task<LocalHostProcessIdentity> WaitForPackagedHostAsync(LocalHostProcessIdentity identity, IReadOnlyList<string> stderr)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (File.Exists(identity.DescriptorPath))
+            {
+                var descriptor = ReadDescriptor(identity);
+                if (descriptor is { ProcessId: > 0, InstanceId.Length: > 0 })
+                {
+                    try
+                    {
+                        using var process = Process.GetProcessById(descriptor.ProcessId);
+                        return identity with { ProcessId = descriptor.ProcessId, ProcessStartedUtc = process.StartTime.ToUniversalTime(), ExecutablePath = descriptor.ExecutablePath, InstanceId = descriptor.InstanceId, BaseUrl = descriptor.BaseUrl };
+                    }
+                    catch (ArgumentException)
+                    {
+                    }
+                }
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException(TeardownAssert.Diagnostics(identity, null, stderr, [], "Packaged LocalHost descriptor did not become available."));
+    }
+
+    private static async Task<ControllerSessionRecord> WaitForPackagedControllerAsync(LocalHostProcessIdentity host, int processId, IReadOnlyList<string> stderr)
+    {
+        await using var client = CreateLocalClient(host);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var controller = (await client.ListControllerSessionsAsync()).SingleOrDefault(item => item.ClientKind == "mcp" && item.Status == ControllerSessionStatus.Connected && item.Metadata.TryGetValue("processId", out var id) && id == processId.ToString());
+            if (controller is not null)
+            {
+                return controller;
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException(TeardownAssert.Diagnostics(host, null, stderr, [], "Packaged MCP controller did not register."));
+    }
+
+    private static LocalHostDescriptor ReadDescriptor(LocalHostProcessIdentity identity)
+        => JsonSerializer.Deserialize<LocalHostDescriptor>(File.ReadAllText(identity.DescriptorPath), LocalHostContract.JsonOptions)
+            ?? throw new InvalidOperationException("LocalHost descriptor was invalid.");
+
+    private static LocalHostClient CreateLocalClient(LocalHostProcessIdentity host)
+        => new(new HttpClient { BaseAddress = new Uri(host.BaseUrl) }, host.BaseUrl);
+
     private static string GetStructuredOrTextPayload(CallToolResult result)
         => result.StructuredContent is JsonElement structured
             ? structured.GetRawText()
             : result.Content.OfType<TextContentBlock>().First().Text;
+}
+
+internal sealed class PackagedLocalHostLaunchRecorder : IAsyncDisposable
+{
+    private readonly string _executablePath;
+    private readonly HashSet<int> _knownProcessIds;
+    private readonly List<PackagedLocalHostLaunch> _launched = [];
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly Task _monitor;
+
+    public PackagedLocalHostLaunchRecorder(string executablePath)
+    {
+        _executablePath = executablePath;
+        _knownProcessIds = Snapshot(executablePath).Select(item => item.ProcessId).ToHashSet();
+        _monitor = MonitorAsync();
+    }
+
+    public IReadOnlyList<PackagedLocalHostLaunch> Launched
+    {
+        get
+        {
+            lock (_launched)
+            {
+                return _launched.ToArray();
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cancellation.CancelAsync();
+        await _monitor;
+        _cancellation.Dispose();
+    }
+
+    private async Task MonitorAsync()
+    {
+        while (!_cancellation.IsCancellationRequested)
+        {
+            foreach (var process in Snapshot(_executablePath))
+            {
+                lock (_launched)
+                {
+                    if (_knownProcessIds.Add(process.ProcessId))
+                    {
+                        _launched.Add(process);
+                    }
+                }
+            }
+            try
+            {
+                await Task.Delay(20, _cancellation.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
+    private static IReadOnlyList<PackagedLocalHostLaunch> Snapshot(string executablePath)
+    {
+        var results = new List<PackagedLocalHostLaunch>();
+        foreach (var process in Process.GetProcesses())
+        {
+            try
+            {
+                if (string.Equals(process.MainModule?.FileName, executablePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    results.Add(new PackagedLocalHostLaunch(process.Id, process.StartTime.ToUniversalTime()));
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+        return results;
+    }
+}
+
+internal sealed record PackagedLocalHostLaunch(int ProcessId, DateTime StartedUtc)
+{
+    public bool IsRunning()
+    {
+        try
+        {
+            using var process = Process.GetProcessById(ProcessId);
+            return !process.HasExited && process.StartTime.ToUniversalTime() == StartedUtc;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
 }

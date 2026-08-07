@@ -16,7 +16,9 @@ public static class OpenCodeWorkspaceLocalServices
         services.AddSingleton<LocalHostOperationStore>();
         services.AddSingleton<OpenCodeWorkspaceMcpService>();
         services.AddSingleton<LocalHostMcpProxyService>();
-        services.AddSingleton<IOpenCodeWorkspaceMcpService>(sp => sp.GetRequiredService<OpenCodeWorkspaceMcpService>());
+        // MCP is an adapter over LocalHost. The in-process service remains only as a fallback
+        // for read-only startup diagnostics when LocalHost cannot yet be reached.
+        services.AddSingleton<IOpenCodeWorkspaceMcpService>(sp => sp.GetRequiredService<LocalHostMcpProxyService>());
         services.AddHostedService<McpControllerSessionHostedService>();
         return services;
     }

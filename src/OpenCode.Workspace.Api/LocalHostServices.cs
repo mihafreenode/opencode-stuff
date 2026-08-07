@@ -48,7 +48,8 @@ public static class LocalHostServiceCollectionExtensions
         services.AddSingleton<InteractiveSessionLaunchDescriptorFactory>();
         services.AddSingleton<InteractiveSessionAttachmentService>();
         services.AddSingleton<LocalHostApplicationService>();
-        services.AddHostedService<LocalHostDescriptorHostedService>();
+        services.AddSingleton<LocalHostDescriptorHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<LocalHostDescriptorHostedService>());
         services.AddHostedService(sp => (WorkspaceOperationService)sp.GetRequiredService<IWorkspaceOperationService>());
         return services;
     }
@@ -1859,7 +1860,8 @@ public sealed class LocalHostApplicationService(
     WorkspaceInstanceService workspaceInstances,
     ControllerSessionService controllerSessions,
     InteractiveAgentSessionService interactiveSessions,
-    InteractiveSessionAttachmentService interactiveAttachments)
+    InteractiveSessionAttachmentService interactiveAttachments,
+    IConfiguration configuration)
 {
     public ServerHealthModel GetServerHealth() => service.GetServerHealth();
     public async Task<IReadOnlyList<LocalTemplateSummaryModel>> ListWorkspaceTemplatesAsync(CancellationToken cancellationToken = default)
@@ -2678,6 +2680,30 @@ public sealed class LocalHostApplicationService(
 
     public async Task<WorkspaceOperationRecord> StartSmokeRunAsync(SmokeRunOperationRequest request, CancellationToken cancellationToken = default)
     {
+        if (string.Equals(configuration["localHost:useTestOperation"], "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return await operations.StartAsync(
+                "run_smoke",
+                WorkspaceOperationScope.Host,
+                string.Empty,
+                string.Empty,
+                request.RequestedBy,
+                async (reporter, token) =>
+                {
+                    reporter.MarkStarted("running", "Test operation is running.");
+                    for (var step = 1; step <= 200; step++)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        reporter.ReportProgress(new CommandLogEntry { Phase = "running", Message = $"Test operation step {step}.", CurrentStep = step, TotalSteps = 200, Source = "test" });
+                        await Task.Delay(100, token);
+                    }
+
+                    return new { kind = "test", completed = true };
+                },
+                $"run_smoke::test::{request.TemplateId}",
+                cancellationToken);
+        }
+
         await service.GetWorkspaceTemplateAsync(request.TemplateId, cancellationToken);
         return await operations.StartAsync(
             "run_smoke",
@@ -2764,6 +2790,7 @@ public sealed class LocalHostDescriptorHostedService : IHostedService, IDisposab
     private readonly ILogger<LocalHostDescriptorHostedService> _logger;
     private FileStream? _lockStream;
     private LocalHostDescriptor? _descriptor;
+    public string InstanceId { get; } = Guid.NewGuid().ToString("n");
 
     public LocalHostDescriptorHostedService(LocalHostStateStore stateStore, IConfiguration configuration, IHostEnvironment hostEnvironment, ILogger<LocalHostDescriptorHostedService> logger)
     {
@@ -2791,7 +2818,7 @@ public sealed class LocalHostDescriptorHostedService : IHostedService, IDisposab
         var baseUrl = _configuration["ASPNETCORE_URLS"] ?? _configuration["urls"] ?? "http://127.0.0.1:43127";
         _descriptor = new LocalHostDescriptor
         {
-            InstanceId = Guid.NewGuid().ToString("n"),
+            InstanceId = InstanceId,
             ProcessId = Environment.ProcessId,
             BaseUrl = baseUrl.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0],
             StartedUtc = DateTimeOffset.UtcNow,

@@ -158,12 +158,14 @@ public sealed class McpOperationModel
     public string Kind { get; init; } = string.Empty;
     public McpOperationStatus Status { get; init; }
     public DateTimeOffset CreatedUtc { get; init; }
+    public DateTimeOffset UpdatedUtc { get; init; }
     public DateTimeOffset? StartedUtc { get; init; }
     public DateTimeOffset? CompletedUtc { get; init; }
     public string CurrentPhase { get; init; } = string.Empty;
     public IReadOnlyList<string> PhaseHistory { get; init; } = Array.Empty<string>();
     public string ProgressMessage { get; init; } = string.Empty;
     public string WorkspaceId { get; init; } = string.Empty;
+    public string ControllerSessionId { get; init; } = string.Empty;
     public string SmokeRunId { get; init; } = string.Empty;
     public string SmokeMatrixRunId { get; init; } = string.Empty;
     public string ArtifactDirectory { get; init; } = string.Empty;
