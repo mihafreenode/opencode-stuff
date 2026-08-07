@@ -47,7 +47,7 @@ jobs:
             runs_on: windows-latest
             runtime: win-x64
             dist_dir: artifacts/dist/win-x64
-            package_path: artifacts/dist/opencode-workspace-win-x64.zip
+            package_path: artifacts/dist/win-x64/opencode-workspace-ci-win-x64.zip
             artifact_name: opencode-workspace-win-x64
             executable_path: artifacts/dist/win-x64/opencode-workspace-ci-win-x64/OpenCode.Workspace.exe
             self_contained: true
