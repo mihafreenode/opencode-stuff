@@ -1241,7 +1241,10 @@ public sealed class WorkspacesPageViewModel : PageViewModel
         try
         {
             var refreshedSnapshot = await _refreshVolatileWorkspaceStateAsync(SelectedWorkspace.Snapshot!, CancellationToken.None);
-            ReplaceSelectedWorkspace(refreshedSnapshot);
+            if (refreshedSnapshot is not null)
+            {
+                ReplaceSelectedWorkspace(refreshedSnapshot);
+            }
         }
         catch (WorkspaceProvisioningException)
         {

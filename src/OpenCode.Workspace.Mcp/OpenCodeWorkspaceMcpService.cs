@@ -145,7 +145,6 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
         _workspacePublishAssessmentService = new WorkspacePublishAssessmentService(_processRunner);
         _workspaceRemovalService = new WorkspaceRemovalService(_workspaceRepository);
         _oracleApexValidationFeedbackService = new OracleApexValidationFeedbackService();
-        _oracleApexAssistantService = new OracleApexAssistantService(new McpOracleApexAssistantSynchronizationService(_workspaceOrchestrator));
         _workspaceOrchestrator = new WorkspaceOrchestrator(
             _yamlService,
             _discoveryService,
@@ -168,6 +167,7 @@ public sealed class OpenCodeWorkspaceMcpService : IOpenCodeWorkspaceMcpService
             new PlatformDetector(_processRunner),
             new RuntimeResolver(),
             new NullTerminalLauncher());
+        _oracleApexAssistantService = new OracleApexAssistantService(new McpOracleApexAssistantSynchronizationService(_workspaceOrchestrator));
         _workspaceSmokeApplicationService = new WorkspaceSmokeApplicationService(_catalogRoot, Path.Combine(Path.GetTempPath(), "opencode-workspace-smoke-state"), containerRuntime);
     }
 

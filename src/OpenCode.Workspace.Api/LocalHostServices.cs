@@ -754,7 +754,7 @@ public sealed class InteractiveAgentSessionService(
                         RecoveryBlockedByCleanShutdown = false,
                     };
                     _sessions[interactiveAgentSessionId] = updated;
-                    var runtime = AttachmentRuntimeState.CreateCurrent(interactiveAgentSessionId, attachmentId, request.ClientInstanceId, attachmentToken, attachmentRecoveryId, recoverySecret, launchCorrelationId, descriptors.ProcessLaunchDescriptor, descriptors.ProviderSessionProbeDescriptor) with
+                    var runtime = AttachmentRuntimeState.CreateCurrent(interactiveAgentSessionId, attachmentId, request.ClientInstanceId, attachmentToken, attachmentRecoveryId, recoverySecret, launchCorrelationId, descriptors.ProcessLaunchDescriptor, descriptors.ProviderSessionProbeDescriptor ?? new ApprovedProcessLaunchDescriptor()) with
                     {
                         RecoveryEligibleUntilUtc = updated.RecoveryEligibleUntilUtc,
                     };
@@ -1134,7 +1134,7 @@ public sealed class InteractiveAgentSessionService(
             {
                 Session = updated,
                 Attachment = attachment,
-                RequestedAction = runtime.RequestedAction,
+                RequestedAction = runtime!.RequestedAction,
                 HeartbeatIntervalSeconds = (int)Math.Max(1, leasePolicy.HeartbeatInterval.TotalSeconds),
                 TokenGeneration = lease.TokenGeneration,
             };
@@ -1474,13 +1474,14 @@ public sealed class InteractiveAgentSessionService(
     {
         var latest = GetLatestAttachmentUnsafe(session);
 
+        var activeLease = session.ActiveLease!;
         return latest with
         {
             Status = status,
             LastActivityUtc = clock.UtcNow,
-            LastHeartbeatUtc = session.ActiveLease.LastHeartbeatUtc,
-            LeaseExpiresUtc = session.ActiveLease.LeaseExpiresUtc,
-            LeaseVersion = session.ActiveLease.Version,
+            LastHeartbeatUtc = activeLease.LastHeartbeatUtc,
+            LeaseExpiresUtc = activeLease.LeaseExpiresUtc,
+            LeaseVersion = activeLease.Version,
             ProviderSessionId = session.ProviderSessionId ?? string.Empty,
             ProviderSessionIdentitySource = session.ProviderSessionIdentitySource,
             ProviderSessionIdentityVerifiedUtc = session.ProviderSessionIdentityVerifiedUtc,

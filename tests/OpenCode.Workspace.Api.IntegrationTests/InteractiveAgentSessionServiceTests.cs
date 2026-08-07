@@ -89,8 +89,8 @@ public sealed class InteractiveAgentSessionServiceTests
 
         var results = await Task.WhenAll(Wrap(first), Wrap(second));
 
-        Assert.Single(results.Where(item => item.Success));
-        Assert.Single(results.Where(item => !item.Success && item.ErrorCode == "already_attached"));
+        Assert.Single(results, item => item.Success);
+        Assert.Single(results, item => !item.Success && item.ErrorCode == "already_attached");
     }
 
     [Fact]

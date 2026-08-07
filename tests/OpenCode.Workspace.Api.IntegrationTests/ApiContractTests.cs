@@ -718,7 +718,7 @@ public sealed class ApiContractTests : IDisposable
                         DefaultEnvironment = new WorkspaceSynchronizationEnvironmentSnapshot
                         {
                             EnvironmentName = environmentName ?? "dev",
-                            ActiveDeploymentProfile = deploymentProfileOverride == string.Empty ? "default" : deploymentProfileOverride,
+                            ActiveDeploymentProfile = string.IsNullOrEmpty(deploymentProfileOverride) ? "default" : deploymentProfileOverride,
                             AvailableDeploymentProfiles = ["default"],
                             State = WorkspaceSynchronizationState.InSync,
                             Summary = "In sync",
