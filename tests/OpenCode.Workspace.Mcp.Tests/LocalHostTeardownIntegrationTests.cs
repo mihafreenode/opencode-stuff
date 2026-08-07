@@ -109,7 +109,7 @@ internal sealed class LocalHostTeardownScope : IAsyncDisposable
         WorkspaceStateRoot = Path.Combine(_root, "workspace-state");
         ArtifactsRoot = Path.Combine(_root, "artifacts");
         Identity = LocalHostProcessIdentity.ForStateRoot(Path.Combine(_root, "local-host-state"));
-        LocalHostExecutableDirectory = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Debug", "net10.0");
+        LocalHostExecutableDirectory = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0");
         Directory.CreateDirectory(WorkspaceStateRoot);
         Directory.CreateDirectory(ArtifactsRoot);
     }
