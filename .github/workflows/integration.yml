@@ -74,7 +74,7 @@ jobs:
 
       - name: Upload fast test artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: fast-validation-artifacts
           path: artifacts/ci/test-results
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload live integration artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: lightweight-live-artifacts
           path: artifacts/ci/live
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload non-oracle artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: non-oracle-smoke-artifacts
           path: artifacts/ci/non-oracle
@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload oracle artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: oracle-smoke-artifacts
           path: artifacts/ci/oracle

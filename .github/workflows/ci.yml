@@ -208,7 +208,7 @@ jobs:
           Set-Content -LiteralPath "${{ matrix.package_path }}.sha256" -Value ("{0}  {1}" -f $hash, [System.IO.Path]::GetFileName("${{ matrix.package_path }}")) -NoNewline
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: |

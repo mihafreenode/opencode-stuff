@@ -34,7 +34,7 @@ public sealed class CiWorkflowTests
     {
         var workflow = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "integration.yml"));
 
-        Assert.Contains("uses: actions/upload-artifact@v5", workflow, StringComparison.Ordinal);
+        Assert.Contains("uses: actions/upload-artifact@v6", workflow, StringComparison.Ordinal);
         Assert.Contains("smoke run --family lightweight", workflow, StringComparison.Ordinal);
         Assert.Contains("smoke run --family postgresql", workflow, StringComparison.Ordinal);
         Assert.Contains("smoke run --family analytics", workflow, StringComparison.Ordinal);
