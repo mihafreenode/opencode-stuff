@@ -69,6 +69,8 @@ public sealed class CiWorkflowTests
         Assert.Contains("name: OpenCode Stuff ${{ needs.release-metadata.outputs.version }}", ci, StringComparison.Ordinal);
         Assert.Contains("pattern: opencode-workspace-${{ needs.release-metadata.outputs.version }}-*", ci, StringComparison.Ordinal);
         Assert.Equal(6, Regex.Matches(ci, "^\\s+release-artifacts/opencode-workspace-\\$\\{\\{ needs\\.release-metadata\\.outputs\\.version \\}\\}", RegexOptions.Multiline).Count);
+        Assert.Contains("gh api --paginate \"repos/${{ github.repository }}/releases?per_page=100\"", ci, StringComparison.Ordinal);
+        Assert.DoesNotContain("releases/tags/${{ github.ref_name }}", ci, StringComparison.Ordinal);
         Assert.Contains("Refuse to mutate an already published release", ci, StringComparison.Ordinal);
         Assert.Contains("Refusing to replace assets on a public release", ci, StringComparison.Ordinal);
         Assert.Contains("Verify staged GitHub Release assets", ci, StringComparison.Ordinal);

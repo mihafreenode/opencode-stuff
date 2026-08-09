@@ -295,14 +295,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $existingJson = gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" 2>&1
-          if ($LASTEXITCODE -eq 0) {
+          $existingJson = gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" `
+            --jq '.[] | select(.tag_name == "${{ github.ref_name }}")'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to inspect releases for '${{ github.ref_name }}'."
+          }
+          if ($existingJson) {
             $existing = $existingJson | ConvertFrom-Json
+            if (@($existing).Count -ne 1) {
+              throw "Found multiple releases for '${{ github.ref_name }}'."
+            }
             if (-not $existing.draft) {
               throw "Release '${{ github.ref_name }}' is already published. Refusing to replace assets on a public release."
             }
-          } elseif (($existingJson | Out-String) -notmatch 'HTTP 404') {
-            throw "Unable to determine whether release '${{ github.ref_name }}' already exists:`n$($existingJson | Out-String)"
           }
 
       - name: Stage draft release and assets
