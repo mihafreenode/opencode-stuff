@@ -168,7 +168,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         var smokeDefinitions = await apiClient.GetStringAsync("api/v1/smoke/definitions");
         Assert.Contains("empty-workspace", smokeDefinitions, StringComparison.Ordinal);
         var apiHealth = await apiClient.GetFromJsonAsync<ApiEnvelope<ServerHealthModel>>("api/v1/server/health");
-        Assert.Equal(Path.Combine(packageRoot, "catalog"), apiHealth!.Data.CatalogRoot);
+        Assert.Equal(UnixPackageArchive.ResolvePhysicalPath(Path.Combine(packageRoot, "catalog")), UnixPackageArchive.ResolvePhysicalPath(apiHealth!.Data.CatalogRoot));
         Assert.True((await apiClient.GetAsync("terminal/vendor/xterm.js")).IsSuccessStatusCode);
         Assert.True((await apiClient.GetAsync("terminal/vendor/xterm.css")).IsSuccessStatusCode);
         Assert.True(File.Exists(Path.Combine(packageRoot, "bin", "local-host", "wwwroot", "terminal", "terminal.js")));
@@ -202,7 +202,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         var serverHealth = await mcp.Client.ReadResourceAsync("opencode://server/health");
         var serverHealthText = serverHealth.Contents.OfType<TextResourceContents>().Single().Text;
         var mcpHealth = JsonSerializer.Deserialize<ServerHealthModel>(serverHealthText, OpenCodeWorkspaceMcpContract.JsonOptions)!;
-        Assert.Equal(Path.Combine(packageRoot, "catalog"), mcpHealth.CatalogRoot);
+        Assert.Equal(UnixPackageArchive.ResolvePhysicalPath(Path.Combine(packageRoot, "catalog")), UnixPackageArchive.ResolvePhysicalPath(mcpHealth.CatalogRoot));
         await mcp.DisposeClientAndTransportAsync(TimeSpan.FromSeconds(30));
         Assert.False(mcp.Report.ForcedTerminationRequired);
         Assert.NotNull(mcp.Report.ExitedUtc);

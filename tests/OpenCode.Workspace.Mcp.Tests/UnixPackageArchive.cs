@@ -57,6 +57,23 @@ internal static class UnixPackageArchive
         await RunTarAsync("extract-unix-package", ["-xzf", archivePath, "-C", destinationRoot], workingDirectory);
     }
 
+    public static string ResolvePhysicalPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath) ?? string.Empty;
+        var current = root;
+        foreach (var component in fullPath[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, component);
+            FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+            if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+            {
+                current = target.FullName;
+            }
+        }
+        return Path.GetFullPath(current);
+    }
+
     private static async Task RunTarAsync(string name, IReadOnlyList<string> arguments, string workingDirectory)
     {
         await using var harness = await PackagedProcessHarness.StartAsync(name, "tar", arguments, workingDirectory);

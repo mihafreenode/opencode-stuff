@@ -51,6 +51,20 @@ public sealed class UnixPackageArchiveTests : IDisposable
         Assert.Contains(entryName, exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ResolvePhysicalPath_NormalizesSymlinkedParentDirectory()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var physicalRoot = Path.Combine(_root, "physical");
+        var nested = Path.Combine(physicalRoot, "nested");
+        var alias = Path.Combine(_root, "alias");
+        Directory.CreateDirectory(nested);
+        Directory.CreateSymbolicLink(alias, physicalRoot);
+
+        Assert.Equal(nested, UnixPackageArchive.ResolvePhysicalPath(Path.Combine(alias, "nested")));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
