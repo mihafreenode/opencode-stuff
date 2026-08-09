@@ -231,8 +231,8 @@ jobs:
 
       - name: Validate downloaded package on native runner
         env:
-          OPENCODE_EXISTING_PACKAGE_ARCHIVE: artifacts/downloaded/${{ matrix.runtime }}/opencode-workspace-${{ env.RELEASE_VERSION }}-${{ matrix.runtime }}.${{ matrix.archive_kind }}
-          OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: artifacts/native-package-validation/${{ matrix.runtime }}
+          OPENCODE_EXISTING_PACKAGE_ARCHIVE: ${{ github.workspace }}/artifacts/downloaded/${{ matrix.runtime }}/opencode-workspace-${{ env.RELEASE_VERSION }}-${{ matrix.runtime }}.${{ matrix.archive_kind }}
+          OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: ${{ github.workspace }}/artifacts/native-package-validation/${{ matrix.runtime }}
         run: >-
           dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj
           -c Release --no-build

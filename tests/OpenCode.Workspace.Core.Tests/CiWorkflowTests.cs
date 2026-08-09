@@ -108,6 +108,17 @@ public sealed class CiWorkflowTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_PassesDownloadedPackagePathsAsWorkspaceAbsolutePaths()
+    {
+        var ci = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml"));
+
+        Assert.Contains("OPENCODE_EXISTING_PACKAGE_ARCHIVE: ${{ github.workspace }}/artifacts/downloaded/", ci, StringComparison.Ordinal);
+        Assert.Contains("OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: ${{ github.workspace }}/artifacts/native-package-validation/", ci, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENCODE_EXISTING_PACKAGE_ARCHIVE: artifacts/downloaded/", ci, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: artifacts/native-package-validation/", ci, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReleaseAssetContract_RejectsMissingDuplicateOrUnexpectedAssets()
     {
         var expected = ExpectedReleaseAssets("0.1.0-rc.1");
