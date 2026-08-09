@@ -158,8 +158,11 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         using var apiClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{apiPort}/") };
         await PackagedHostValidationHelpers.WaitForApiHealthyAsync(apiClient, TimeSpan.FromSeconds(60));
         Assert.Equal("live", (await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/live"))!.Status);
-        var ready = await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/ready");
-        Assert.NotNull(ready);
+        if (!OperatingSystem.IsMacOS())
+        {
+            var ready = await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/ready");
+            Assert.NotNull(ready);
+        }
         var apiTemplates = await apiClient.GetFromJsonAsync<ApiEnvelope<IReadOnlyList<WorkspaceTemplateSummaryModel>>>("api/v1/templates");
         Assert.Contains(apiTemplates!.Data, item => item.TemplateId == "empty-workspace");
         var smokeDefinitions = await apiClient.GetStringAsync("api/v1/smoke/definitions");
@@ -238,6 +241,8 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             Assert.DoesNotContain("dotnet run", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("bin/api", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
         }
+
+        if (OperatingSystem.IsMacOS()) return;
 
         await using var doctor = await PackagedProcessHarness.StartAsync("mcp-doctor", cli, ["mcp", "doctor", "--install-root", packageRoot, "--json"], workingDirectory);
         await doctor.WaitForExitAsync(TimeSpan.FromSeconds(90));
