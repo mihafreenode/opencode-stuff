@@ -390,6 +390,7 @@ internal sealed class PackagedMcpHarness : IAsyncDisposable
 
     private static async Task<Process> DetectNewProcessAsync(string executablePath, IReadOnlyDictionary<int, DateTimeOffset?> before, TimeSpan timeout)
     {
+        var physicalExecutablePath = UnixPackageArchive.ResolvePhysicalPath(executablePath);
         var started = DateTimeOffset.UtcNow;
         while (DateTimeOffset.UtcNow - started < timeout)
         {
@@ -404,7 +405,7 @@ internal sealed class PackagedMcpHarness : IAsyncDisposable
                     }
 
                     var path = process.MainModule?.FileName;
-                    if (string.Equals(path, executablePath, StringComparison.OrdinalIgnoreCase))
+                    if (path is not null && string.Equals(UnixPackageArchive.ResolvePhysicalPath(path), physicalExecutablePath, StringComparison.OrdinalIgnoreCase))
                     {
                         return process;
                     }
@@ -423,12 +424,14 @@ internal sealed class PackagedMcpHarness : IAsyncDisposable
 
     private static IReadOnlyDictionary<int, DateTimeOffset?> SnapshotProcesses(string executablePath)
     {
+        var physicalExecutablePath = UnixPackageArchive.ResolvePhysicalPath(executablePath);
         var results = new Dictionary<int, DateTimeOffset?>();
         foreach (var process in Process.GetProcesses())
         {
             try
             {
-                if (string.Equals(process.MainModule?.FileName, executablePath, StringComparison.OrdinalIgnoreCase))
+                var path = process.MainModule?.FileName;
+                if (path is not null && string.Equals(UnixPackageArchive.ResolvePhysicalPath(path), physicalExecutablePath, StringComparison.OrdinalIgnoreCase))
                 {
                     results[process.Id] = TryGetStartTime(process);
                 }
