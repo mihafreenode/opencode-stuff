@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -35,7 +34,7 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             var externalArchive = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ARCHIVE");
             if (!string.IsNullOrWhiteSpace(externalArchive))
             {
-                PackageRoot = ExtractExternalPackage(Path.GetFullPath(externalArchive));
+                PackageRoot = await ExtractExternalPackageAsync(Path.GetFullPath(externalArchive));
                 IsExternalPackage = true;
                 return;
             }
@@ -85,7 +84,7 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             var archiveKind = OperatingSystem.IsWindows() ? "zip" : "tar.gz";
             await RunSetupCommandAsync("dotnet", ["run", "--project", "tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj", "--", "assemble", "--source-root", TestPaths.RepositoryRoot, "--output-root", outputRoot, "--runtime", runtime, "--version", "0.0.0-test", "--desktop-publish-dir", Path.Combine(publishRoot, "desktop"), "--cli-publish-dir", Path.Combine(publishRoot, "cli"), "--api-publish-dir", Path.Combine(publishRoot, "api"), "--mcp-publish-dir", Path.Combine(publishRoot, "mcp"), "--remote-bridge-publish-dir", Path.Combine(publishRoot, "remote-bridge"), "--archive-kind", archiveKind, "--git-commit", "0000000000000000000000000000000000000000", "--build-timestamp", "2000-01-01T00:00:00Z", "--self-contained", "true"], TestPaths.RepositoryRoot);
 
-            var finalPackageRoot = ExtractPackage(outputRoot, runtime, buildRoot, archiveKind);
+            var finalPackageRoot = await ExtractPackageAsync(outputRoot, runtime, buildRoot, archiveKind);
             if (OperatingSystem.IsWindows())
             {
                 CopyDirectory(Path.Combine(publishRoot, "conpty-test-child"), Path.Combine(finalPackageRoot, "bin", "local-host", "test-assets", "conpty-child"));
@@ -202,13 +201,13 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
         File.Move(tempPath, ManifestPath, overwrite: true);
     }
 
-    private static string ExtractPackage(string outputRoot, string runtime, string buildRoot, string archiveKind)
+    private static Task<string> ExtractPackageAsync(string outputRoot, string runtime, string buildRoot, string archiveKind)
     {
         var archivePath = Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}.{archiveKind}");
-        return ExtractArchive(archivePath, runtime, buildRoot);
+        return ExtractArchiveAsync(archivePath, runtime, buildRoot);
     }
 
-    private static string ExtractExternalPackage(string archivePath)
+    private static async Task<string> ExtractExternalPackageAsync(string archivePath)
     {
         Assert.True(File.Exists(archivePath), $"Existing package archive was not found: '{archivePath}'.");
         var fileName = Path.GetFileName(archivePath);
@@ -226,10 +225,10 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             Directory.Delete(extractRoot, recursive: true);
         }
 
-        return ExtractArchive(archivePath, runtime, Path.GetDirectoryName(extractRoot)!, extractRoot);
+        return await ExtractArchiveAsync(archivePath, runtime, Path.GetDirectoryName(extractRoot)!, extractRoot);
     }
 
-    private static string ExtractArchive(string archivePath, string runtime, string buildRoot, string? extractRoot = null)
+    private static async Task<string> ExtractArchiveAsync(string archivePath, string runtime, string buildRoot, string? extractRoot = null)
     {
         var checksumPath = archivePath + ".sha256";
         Assert.True(File.Exists(checksumPath), $"Package checksum was not found: '{checksumPath}'.");
@@ -249,14 +248,7 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
         }
         else
         {
-            var tarPath = Path.Combine(buildRoot, "package.tar");
-            using (var archive = File.OpenRead(archivePath))
-            using (var gzip = new GZipStream(archive, CompressionMode.Decompress))
-            using (var tar = File.Create(tarPath))
-            {
-                gzip.CopyTo(tar);
-            }
-            TarFile.ExtractToDirectory(tarPath, extractRoot, overwriteFiles: true);
+            await UnixPackageArchive.ExtractAsync(archivePath, extractRoot, buildRoot);
         }
 
         Assert.True(File.Exists(Path.Combine(extractRoot, OperatingSystem.IsWindows() ? "OpenCode.Workspace.exe" : "OpenCode.Workspace")), "Archive must extract package contents directly at the selected root.");
