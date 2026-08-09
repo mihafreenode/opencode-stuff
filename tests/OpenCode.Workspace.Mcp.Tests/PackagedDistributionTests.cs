@@ -5,10 +5,12 @@ using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Smoke;
+using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.LocalClient;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Json;
+using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
 
@@ -32,20 +34,98 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
 
         Assert.True(File.Exists(Path.Combine(packageRoot, "LICENSE")));
         Assert.True(File.Exists(Path.Combine(packageRoot, "THIRD-PARTY-NOTICES.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "README.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "release-manifest.json")));
         Assert.True(Directory.Exists(Path.Combine(packageRoot, "catalog", "templates")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "docs", "getting-started.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "docs", "integrations", "mcp.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "docs", "integrations", "local-browser-terminal.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "docs", "integrations", "cloudflare-remote-access.md")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "docs", "reference", "configuration.md")));
+        Assert.False(Directory.Exists(Path.Combine(packageRoot, "docs", "development")));
+        Assert.False(Directory.Exists(Path.Combine(packageRoot, "docs", "history")));
+        Assert.False(Directory.Exists(Path.Combine(packageRoot, "docs", "reference", "agent-onboarding")));
 
         Assert.True(File.Exists(GetHostExecutablePath(packageRoot, "OpenCode.Workspace")));
         Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost")));
         Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli")));
         Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp")));
+        Assert.True(File.Exists(GetHostExecutablePath(Path.Combine(packageRoot, "bin", "remote-bridge"), "OpenCode.Workspace.RemoteBridge")));
+        var remoteBridgeConfigPath = Path.Combine(packageRoot, "config", "remote-bridge", "appsettings.json");
+        Assert.True(File.Exists(remoteBridgeConfigPath));
+        var remoteBridgeConfigText = File.ReadAllText(remoteBridgeConfigPath);
+        using (var remoteBridgeConfig = JsonDocument.Parse(remoteBridgeConfigText))
+        {
+            var remoteAccess = remoteBridgeConfig.RootElement.GetProperty("RemoteAccess");
+            var cloudflare = remoteBridgeConfig.RootElement.GetProperty("Cloudflare");
+            Assert.False(remoteAccess.GetProperty("Enabled").GetBoolean());
+            Assert.Equal(string.Empty, remoteAccess.GetProperty("PublicOrigin").GetString());
+            Assert.Equal(string.Empty, cloudflare.GetProperty("TeamDomain").GetString());
+            Assert.Equal(string.Empty, cloudflare.GetProperty("Issuer").GetString());
+            Assert.Equal(string.Empty, cloudflare.GetProperty("Audience").GetString());
+        }
+        Assert.DoesNotContain("token", remoteBridgeConfigText, StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(Path.Combine(packageRoot, "bin", "api")));
-        Assert.True(File.Exists(Path.Combine(packageRoot, GetHostFxrFileName())));
+        Assert.False(Directory.Exists(Path.Combine(packageRoot, "bin", "desktop")));
+        foreach (var hostDirectory in new[]
+        {
+            packageRoot,
+            Path.Combine(packageRoot, "bin", "local-host"),
+            Path.Combine(packageRoot, "bin", "cli"),
+            Path.Combine(packageRoot, "bin", "mcp"),
+            Path.Combine(packageRoot, "bin", "remote-bridge"),
+        })
+        {
+            Assert.True(File.Exists(Path.Combine(hostDirectory, GetHostFxrFileName())), $"Self-contained runtime missing from '{hostDirectory}'.");
+        }
+
+        Assert.Empty(FindHostPayloadOutside(packageRoot, "OpenCode.Workspace.Mcp", Path.Combine("bin", "mcp"), "mcp.appsettings.json"));
+        Assert.Empty(FindHostPayloadOutside(packageRoot, "OpenCode.Workspace.RemoteBridge", Path.Combine("bin", "remote-bridge")));
+        Assert.DoesNotContain(Directory.EnumerateFiles(packageRoot, "*.pdb", SearchOption.AllDirectories), _ => true);
+
+        using (var releaseManifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(packageRoot, "release-manifest.json"))))
+        {
+            var manifestVersion = releaseManifest.RootElement.GetProperty("version").GetString();
+            if (!fixture.IsExternalPackage)
+            {
+                Assert.Equal("0.0.0-test", manifestVersion);
+            }
+            else
+            {
+                Assert.Matches("^[0-9A-Za-z][0-9A-Za-z._+-]*$", manifestVersion!);
+            }
+            Assert.Equal(GetRuntimeIdentifier(), releaseManifest.RootElement.GetProperty("runtimeIdentifier").GetString());
+            Assert.True(releaseManifest.RootElement.GetProperty("selfContained").GetBoolean());
+            Assert.Equal(40, releaseManifest.RootElement.GetProperty("gitCommit").GetString()!.Length);
+            Assert.NotEqual(default, releaseManifest.RootElement.GetProperty("buildTimestamp").GetDateTimeOffset());
+            AssertAssemblyMetadataVersion(packageRoot, releaseManifest.RootElement.GetProperty("version").GetString()!);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            foreach (var executable in new[]
+            {
+                GetHostExecutablePath(packageRoot, "OpenCode.Workspace"),
+                GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost"),
+                GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli"),
+                GetHostExecutablePath(Path.Combine(packageRoot, "bin", "mcp"), "OpenCode.Workspace.Mcp"),
+                GetHostExecutablePath(Path.Combine(packageRoot, "bin", "remote-bridge"), "OpenCode.Workspace.RemoteBridge"),
+            })
+            {
+                Assert.True((File.GetUnixFileMode(executable) & UnixFileMode.UserExecute) != 0, $"Package host is not user-executable: '{executable}'.");
+            }
+        }
 
         var desktopServices = new WorkspaceDesktopServiceFactory().Create(packageRoot, Path.Combine(_root, "appdata"));
         Assert.Equal(Path.Combine(packageRoot, "catalog"), desktopServices.InstallationLayout.CatalogRoot);
         Assert.NotEmpty(desktopServices.CatalogProvider.LoadTemplates());
 
         var cliExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
+        await using (var cliHelp = await PackagedProcessHarness.StartAsync("cli-help", cliExecutable, ["--help"], outsideRepositoryRoot))
+        {
+            await cliHelp.WaitForExitAsync(TimeSpan.FromSeconds(60));
+            Assert.Equal(0, cliHelp.ExitCode);
+        }
         await using var cliSmoke = await PackagedProcessHarness.StartAsync("cli-smoke-list", cliExecutable, ["smoke", "list", "--format", "json"], outsideRepositoryRoot);
         await cliSmoke.WaitForExitAsync(TimeSpan.FromSeconds(60));
         Assert.Equal(0, cliSmoke.ExitCode);
@@ -83,6 +163,10 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.Contains("empty-workspace", smokeDefinitions, StringComparison.Ordinal);
         var apiHealth = await apiClient.GetFromJsonAsync<ApiEnvelope<ServerHealthModel>>("api/v1/server/health");
         Assert.Equal(Path.Combine(packageRoot, "catalog"), apiHealth!.Data.CatalogRoot);
+        Assert.True((await apiClient.GetAsync("terminal/vendor/xterm.js")).IsSuccessStatusCode);
+        Assert.True((await apiClient.GetAsync("terminal/vendor/xterm.css")).IsSuccessStatusCode);
+        Assert.True(File.Exists(Path.Combine(packageRoot, "bin", "local-host", "wwwroot", "terminal", "terminal.js")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "bin", "local-host", "wwwroot", "terminal", "terminal.css")));
         await api.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
         Assert.False(api.Report.ForcedTerminationRequired);
         Assert.Equal(0, api.ExitCode);
@@ -118,6 +202,16 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.NotNull(mcp.Report.ExitedUtc);
         Assert.False(ProcessStillRunning(mcp.Report.ProcessId, mcp.Report.ExecutablePath));
 
+        var remoteBridgeExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "remote-bridge"), "OpenCode.Workspace.RemoteBridge");
+        await using var remoteBridge = await PackagedProcessHarness.StartAsync(
+            "remote-bridge-disabled",
+            remoteBridgeExecutable,
+            ["--RemoteAccess:Enabled=false"],
+            outsideRepositoryRoot);
+        await remoteBridge.WaitForExitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(0, remoteBridge.ExitCode);
+        Assert.False(remoteBridge.Report.ForcedTerminationRequired);
+
         Directory.Delete(packageRoot, recursive: true);
         Assert.False(Directory.Exists(packageRoot));
     }
@@ -136,7 +230,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             await using var configure = await PackagedProcessHarness.StartAsync($"configure-{client}", cli, ["mcp", "configure", client, "--print", "--install-root", packageRoot], workingDirectory);
             await configure.WaitForExitAsync(TimeSpan.FromSeconds(60));
             Assert.Equal(0, configure.ExitCode);
-            Assert.Contains(expectedMcp, configure.StandardOutput, StringComparison.Ordinal);
+            Assert.Contains(expectedMcp, configure.StandardOutput.Replace("\\\\", "\\", StringComparison.Ordinal), StringComparison.Ordinal);
             Assert.DoesNotContain(TestPaths.RepositoryRoot, configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("dotnet run", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("bin/api", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
@@ -151,6 +245,110 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "McpToolsList" && item.GetProperty("Status").GetString() == "Passed");
         Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "McpResourcesList" && item.GetProperty("Status").GetString() == "Passed");
         Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "ControllerDisconnected" && item.GetProperty("Status").GetString() == "Passed");
+    }
+
+    [Fact]
+    public async Task PackagedLocalHost_ConPtyHelper_Detaches_Reattaches_And_Stops_Cleanly()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "packaged pty acceptance with spaces");
+        var stateRoot = Path.Combine(_root, "packaged pty state");
+        Directory.CreateDirectory(workingDirectory);
+        var workspaceId = $"pty-package-{Guid.NewGuid():N}";
+        var hostExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
+        var cliExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
+        var childExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host", "test-assets", "conpty-child"), "OpenCode.Workspace.ConPtyTestChild");
+        Assert.True(File.Exists(childExecutable));
+        var port = PackagedHostValidationHelpers.GetFreeTcpPort();
+        await using var host = await PackagedProcessHarness.StartAsync("packaged-pty-host", hostExecutable, ["--shutdown-on-stdin-eof"], workingDirectory, new Dictionary<string, string?>
+        {
+            ["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}",
+            ["localHost__stateRoot"] = stateRoot,
+            ["mcp__workspaceStateRoot"] = stateRoot,
+            ["OPENCODE_LOCALHOST_ENABLE_TERMINAL_TEST_RUNTIME"] = "1",
+            ["OPENCODE_LOCALHOST_TERMINAL_TEST_EXECUTABLE"] = childExecutable,
+        });
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/") };
+        await PackagedHostValidationHelpers.WaitForApiHealthyAsync(http, TimeSpan.FromSeconds(60));
+        await using var client = new LocalHostClient(new HttpClient { BaseAddress = http.BaseAddress }, http.BaseAddress!.ToString());
+        var session = await client.CreateInteractiveAgentSessionAsync(workspaceId, new CreateInteractiveAgentSessionRequest { CommandId = "package-pty-session", WorkspaceId = workspaceId, Title = "Package PTY" });
+        var runtime = await client.StartInteractiveTerminalAsync(session.InteractiveAgentSessionId, new StartInteractiveTerminalRequest());
+        Assert.Equal(InteractiveTerminalRuntimeStatus.Running, runtime.Status);
+        Assert.True(runtime.ProcessId > 0);
+        using (var provider = Process.GetProcessById(runtime.ProcessId!.Value))
+        {
+            Assert.Equal(Path.GetFullPath(childExecutable), Path.GetFullPath(provider.MainModule!.FileName), ignoreCase: true);
+        }
+
+        var firstAttachment = await client.AttachInteractiveSessionAsync(session.InteractiveAgentSessionId, new AttachInteractiveSessionRequest { SessionId = session.InteractiveAgentSessionId, CommandId = "package-attach-a", ClientInstanceId = "package-helper-a" });
+        await client.ReportInteractiveSessionProviderSessionAsync(session.InteractiveAgentSessionId, firstAttachment.Attachment.AttachmentId, new InteractiveSessionAttachmentProviderSessionRequest { AttachmentToken = firstAttachment.AttachmentToken, ProviderSessionId = "package-provider-session", IdentitySource = ProviderSessionIdentitySource.DirectHandshake });
+        AssertNoLegacyTerminalDependency(packageRoot, firstAttachment);
+        await using var firstHelper = await StartPackagedHelperAsync("packaged-helper-a", cliExecutable, workingDirectory, stateRoot, firstAttachment);
+        await WaitForAttachmentStatusAsync(client, session.InteractiveAgentSessionId, firstAttachment.Attachment.AttachmentId, InteractiveAttachmentStatus.Active, TimeSpan.FromSeconds(15));
+        await firstHelper.WriteStandardInputAsync("package-first");
+        await WaitForHarnessOutputAsync(firstHelper, "ECHO:package-first", TimeSpan.FromSeconds(15));
+
+        await client.DetachInteractiveSessionAttachmentAsync(session.InteractiveAgentSessionId, firstAttachment.Attachment.AttachmentId, new DetachInteractiveSessionAttachmentRequest { ClientInstanceId = "package-helper-a", Reason = "package_detach" });
+        await firstHelper.WaitForExitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(0, firstHelper.ExitCode);
+        var detachedRuntime = await client.GetInteractiveTerminalAsync(session.InteractiveAgentSessionId);
+        Assert.Equal(InteractiveTerminalRuntimeStatus.Running, detachedRuntime.Status);
+        Assert.Equal(runtime.RuntimeId, detachedRuntime.RuntimeId);
+        Assert.Equal(runtime.ProcessId, detachedRuntime.ProcessId);
+
+        var browserPage = await http.GetAsync($"terminal/{session.InteractiveAgentSessionId}");
+        Assert.True(browserPage.IsSuccessStatusCode, $"Browser page returned {(int)browserPage.StatusCode}: {await browserPage.Content.ReadAsStringAsync()}");
+        Assert.Contains("default-src 'none'", browserPage.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.True(File.Exists(Path.Combine(packageRoot, "bin", "local-host", "wwwroot", "terminal", "terminal.js")));
+        Assert.True(File.Exists(Path.Combine(packageRoot, "bin", "local-host", "wwwroot", "terminal", "terminal.css")));
+        Assert.True((await http.GetAsync("terminal/vendor/xterm.js")).IsSuccessStatusCode);
+
+        var browserAttachment = await client.AttachInteractiveSessionAsync(session.InteractiveAgentSessionId, new AttachInteractiveSessionRequest { SessionId = session.InteractiveAgentSessionId, CommandId = "package-browser-attach", ClientInstanceId = "package-browser", AttachmentKind = InteractiveAttachmentKind.WebTerminal });
+        using (var browserSocket = new ClientWebSocket())
+        {
+            browserSocket.Options.AddSubProtocol(InteractiveTerminalWebSocketService.SubProtocol);
+            browserSocket.Options.SetRequestHeader("Origin", http.BaseAddress!.GetLeftPart(UriPartial.Authority));
+            await browserSocket.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/api/v1/local-host/interactive-agent-sessions/{session.InteractiveAgentSessionId}/terminal/ws"), CancellationToken.None);
+            await SendWebSocketJsonAsync(browserSocket, new InteractiveTerminalWebSocketHello
+            {
+                InteractiveAgentSessionId = session.InteractiveAgentSessionId,
+                TerminalRuntimeId = runtime.RuntimeId,
+                AttachmentId = browserAttachment.Attachment.AttachmentId,
+                AttachmentToken = browserAttachment.AttachmentToken,
+                AfterSequence = detachedRuntime.LatestSequence,
+            });
+            Assert.Equal("attached", (await ReceiveWebSocketControlAsync(browserSocket)).Type);
+            await browserSocket.SendAsync(System.Text.Encoding.ASCII.GetBytes("package-browser\r"), WebSocketMessageType.Binary, true, CancellationToken.None);
+            Assert.Equal("ack", (await ReceiveWebSocketControlAsync(browserSocket)).Type);
+            Assert.Contains("ECHO:package-browser", await WaitForWebSocketOutputAsync(browserSocket, "ECHO:package-browser"), StringComparison.Ordinal);
+            await browserSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "browser handoff", CancellationToken.None);
+        }
+        await WaitForSessionDetachedAsync(client, session.InteractiveAgentSessionId, TimeSpan.FromSeconds(15));
+        var afterBrowser = await client.GetInteractiveTerminalAsync(session.InteractiveAgentSessionId);
+        Assert.Equal(runtime.RuntimeId, afterBrowser.RuntimeId);
+        Assert.Equal(runtime.ProcessId, afterBrowser.ProcessId);
+        Assert.Equal("package-provider-session", (await client.GetInteractiveAgentSessionAsync(session.InteractiveAgentSessionId)).ProviderSessionId);
+
+        var secondAttachment = await client.AttachInteractiveSessionAsync(session.InteractiveAgentSessionId, new AttachInteractiveSessionRequest { SessionId = session.InteractiveAgentSessionId, CommandId = "package-attach-b", ClientInstanceId = "package-helper-b" });
+        await using var secondHelper = await StartPackagedHelperAsync("packaged-helper-b", cliExecutable, workingDirectory, stateRoot, secondAttachment);
+        await WaitForAttachmentStatusAsync(client, session.InteractiveAgentSessionId, secondAttachment.Attachment.AttachmentId, InteractiveAttachmentStatus.Active, TimeSpan.FromSeconds(15));
+        await secondHelper.WriteStandardInputAsync("package-second");
+        await WaitForHarnessOutputAsync(secondHelper, "ECHO:package-second", TimeSpan.FromSeconds(15));
+        var resized = await client.ResizeInteractiveTerminalAsync(session.InteractiveAgentSessionId, new TerminalResizeRequest { AttachmentId = secondAttachment.Attachment.AttachmentId, AttachmentToken = secondAttachment.AttachmentToken, Columns = 151, Rows = 47 });
+        Assert.Equal(new InteractiveTerminalDimensions { Columns = 151, Rows = 47 }, resized.Dimensions);
+        Assert.Equal(runtime.RuntimeId, resized.RuntimeId);
+        Assert.Equal(runtime.ProcessId, resized.ProcessId);
+        Assert.Equal("package-provider-session", (await client.GetInteractiveAgentSessionAsync(session.InteractiveAgentSessionId)).ProviderSessionId);
+
+        var stopped = await client.StopInteractiveTerminalAsync(session.InteractiveAgentSessionId);
+        Assert.Equal(InteractiveTerminalRuntimeStatus.Exited, stopped.Status);
+        await secondHelper.WaitForExitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(0, secondHelper.ExitCode);
+        Assert.False(ProcessStillRunning(runtime.ProcessId.Value, childExecutable));
+        await host.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+        Assert.False(host.Report.ForcedTerminationRequired);
+        AssertFileIsNotLocked(Path.Combine(stateRoot, "local-host", "host.lock"));
     }
 
     [Fact]
@@ -340,10 +538,24 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             ["dryRun"] = false,
             ["includeAll"] = true,
         });
-        var preflightCleanupEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<SmokeCleanupResult>>(GetStructuredOrTextPayload(preflightCleanup))!;
-        Assert.True(preflightCleanupEnvelope.Data.Succeeded);
-        Assert.True(preflightCleanupEnvelope.Data.VerificationSucceeded);
-        WriteJsonArtifact(packageArtifactRoot, "preflight-cleanup.json", preflightCleanupEnvelope.Data);
+        var cleanupOperation = JsonSerializer.Deserialize<McpOperationModel>(GetStructuredOrTextPayload(preflightCleanup))!;
+        McpOperationModel cleanupCurrent = cleanupOperation;
+        var cleanupDeadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(2);
+        while (DateTimeOffset.UtcNow < cleanupDeadline)
+        {
+            var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = cleanupOperation.OperationId });
+            cleanupCurrent = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(GetStructuredOrTextPayload(polled))!.Data;
+            if (cleanupCurrent.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+            {
+                break;
+            }
+            await Task.Delay(250);
+        }
+        Assert.Equal(McpOperationStatus.Succeeded, cleanupCurrent.Status);
+        var cleanupResult = cleanupCurrent.Result!.Value.Deserialize<SmokeCleanupResult>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
+        Assert.True(cleanupResult.Succeeded);
+        Assert.True(cleanupResult.VerificationSucceeded);
+        WriteJsonArtifact(packageArtifactRoot, "preflight-cleanup.json", cleanupResult);
 
         var start = await mcp.Client.CallToolAsync("run_smoke", new Dictionary<string, object?>
         {
@@ -548,7 +760,21 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             ["workspaceName"] = "packaged-oracle-apexlang",
             ["destinationRoot"] = outsideRepositoryRoot,
         });
-        var workspace = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceRecordModel>>(create.StructuredContent!.Value.GetRawText())!.Data;
+        var createOperation = JsonSerializer.Deserialize<McpOperationModel>(create.StructuredContent!.Value.GetRawText())!;
+        McpOperationModel createCurrent = createOperation;
+        var createDeadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(2);
+        while (DateTimeOffset.UtcNow < createDeadline)
+        {
+            var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = createOperation.OperationId });
+            createCurrent = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(polled.StructuredContent!.Value.GetRawText())!.Data;
+            if (createCurrent.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+            {
+                break;
+            }
+            await Task.Delay(250);
+        }
+        Assert.Equal(McpOperationStatus.Succeeded, createCurrent.Status);
+        var workspace = createCurrent.Result!.Value.Deserialize<WorkspaceRecordModel>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
         WriteJsonArtifact(artifactRoot, "workspace-created.json", workspace);
 
         var provision = await mcp.Client.CallToolAsync("provision_workspace", new Dictionary<string, object?>
@@ -658,6 +884,27 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         return fixture.CopyPackageTo(_root);
     }
 
+    private static void AssertAssemblyMetadataVersion(string packageRoot, string version)
+    {
+        foreach (var relativePath in new[]
+        {
+            "OpenCode.Workspace.dll",
+            Path.Combine("bin", "cli", "OpenCode.Workspace.Cli.dll"),
+            Path.Combine("bin", "local-host", "OpenCode.Workspace.LocalHost.dll"),
+            Path.Combine("bin", "mcp", "OpenCode.Workspace.Mcp.dll"),
+            Path.Combine("bin", "remote-bridge", "OpenCode.Workspace.RemoteBridge.dll"),
+        })
+        {
+            var productVersion = FileVersionInfo.GetVersionInfo(Path.Combine(packageRoot, relativePath)).ProductVersion;
+            Assert.StartsWith(version, productVersion, StringComparison.Ordinal);
+            if (version.Contains("-rc.", StringComparison.Ordinal))
+            {
+                Assert.DoesNotContain("-ci.", productVersion, StringComparison.Ordinal);
+                Assert.DoesNotContain("-local.", productVersion, StringComparison.Ordinal);
+            }
+        }
+    }
+
     private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
     {
         Directory.CreateDirectory(destinationDirectory);
@@ -716,6 +963,24 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     private static string GetRuntimeIdentifier()
         => OperatingSystem.IsWindows() ? "win-x64" : OperatingSystem.IsMacOS() ? "osx-arm64" : "linux-x64";
 
+    private static IReadOnlyList<string> FindHostPayloadOutside(string packageRoot, string hostName, string canonicalDirectory, params string[] additionalPayloadNames)
+    {
+        var payloadNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            hostName,
+            hostName + ".exe",
+            hostName + ".deps.json",
+            hostName + ".runtimeconfig.json",
+        };
+        payloadNames.UnionWith(additionalPayloadNames);
+
+        return Directory.EnumerateFiles(packageRoot, "*", SearchOption.AllDirectories)
+            .Where(path => payloadNames.Contains(Path.GetFileName(path)))
+            .Select(path => Path.GetRelativePath(packageRoot, path))
+            .Where(path => !path.StartsWith(canonicalDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
     private static async Task<bool> DockerIsAvailableAsync()
     {
         try
@@ -728,6 +993,108 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         {
             return false;
         }
+    }
+
+
+    private static async Task<PackagedProcessHarness> StartPackagedHelperAsync(string name, string cliExecutable, string workingDirectory, string stateRoot, InteractiveSessionAttachResult attachment)
+        => await PackagedProcessHarness.StartAsync(name, cliExecutable,
+        [
+            "interactive-session", "attach",
+            "--state-root", stateRoot,
+            "--session-id", attachment.Session.InteractiveAgentSessionId,
+            "--attachment-id", attachment.Attachment.AttachmentId,
+            "--attachment-token", attachment.AttachmentToken,
+        ], workingDirectory);
+
+    private static async Task WaitForAttachmentStatusAsync(LocalHostClient client, string sessionId, string attachmentId, InteractiveAttachmentStatus status, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if ((await client.GetInteractiveAttachmentsAsync(sessionId)).Any(item => item.AttachmentId == attachmentId && item.Status == status)) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"Attachment '{attachmentId}' did not reach {status}.");
+    }
+
+    private static async Task WaitForSessionDetachedAsync(LocalHostClient client, string sessionId, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (string.IsNullOrWhiteSpace((await client.GetInteractiveAgentSessionAsync(sessionId)).ActiveAttachmentId)) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"Interactive session '{sessionId}' did not detach its presentation.");
+    }
+
+    private static Task SendWebSocketJsonAsync<T>(ClientWebSocket socket, T value)
+        => socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(value, LocalHostContract.JsonOptions), WebSocketMessageType.Text, true, CancellationToken.None);
+
+    private static async Task<InteractiveTerminalWebSocketControl> ReceiveWebSocketControlAsync(ClientWebSocket socket)
+        => JsonSerializer.Deserialize<InteractiveTerminalWebSocketControl>(await ReceiveWebSocketMessageAsync(socket, WebSocketMessageType.Text), LocalHostContract.JsonOptions)!;
+
+    private static Task<byte[]> ReceiveWebSocketBinaryAsync(ClientWebSocket socket)
+        => ReceiveWebSocketMessageAsync(socket, WebSocketMessageType.Binary);
+
+    private static async Task<string> WaitForWebSocketOutputAsync(ClientWebSocket socket, string expected)
+    {
+        var output = new System.Text.StringBuilder();
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var control = await ReceiveWebSocketControlAsync(socket);
+            Assert.Equal("output", control.Type);
+            output.Append(System.Text.Encoding.UTF8.GetString(await ReceiveWebSocketBinaryAsync(socket)));
+            await SendWebSocketJsonAsync(socket, new InteractiveTerminalWebSocketControl { Type = "ack", Sequence = control.Sequence });
+            if (output.ToString().Contains(expected, StringComparison.Ordinal)) return output.ToString();
+        }
+        throw new TimeoutException($"WebSocket output did not contain '{expected}'. Output: {output}");
+    }
+
+    private static async Task<byte[]> ReceiveWebSocketMessageAsync(ClientWebSocket socket, WebSocketMessageType expectedType)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var content = new MemoryStream();
+        var buffer = new byte[8192];
+        WebSocketReceiveResult result;
+        do
+        {
+            result = await socket.ReceiveAsync(buffer, timeout.Token);
+            Assert.Equal(expectedType, result.MessageType);
+            content.Write(buffer, 0, result.Count);
+        } while (!result.EndOfMessage);
+        return content.ToArray();
+    }
+
+    private static async Task WaitForHarnessOutputAsync(PackagedProcessHarness harness, string expected, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (harness.StandardOutput.Contains(expected, StringComparison.Ordinal)) return;
+            if (harness.HasExited) break;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"Packaged helper output did not contain '{expected}'. stdout={harness.StandardOutput} stderr={harness.StandardError}");
+    }
+
+    private static void AssertNoLegacyTerminalDependency(string packageRoot, InteractiveSessionAttachResult attachment)
+    {
+        var command = string.Join(' ', attachment.LaunchDescriptor.Arguments);
+        Assert.Contains(Path.Combine(packageRoot, "bin", "cli"), command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(TestPaths.RepositoryRoot, command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("scripts/windows-debug", command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("attach-workspace.ps1", command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".ps1", command, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dotnet run", command, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertFileIsNotLocked(string path)
+    {
+        if (!File.Exists(path)) return;
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.True(stream.CanWrite);
     }
 
     private string EnsureArtifactDirectory(string name)

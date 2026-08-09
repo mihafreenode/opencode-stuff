@@ -31,7 +31,7 @@ Run Tutorial
 Recommended order:
 
 1. read `README.md`
-2. review `docs/team-onboarding.md`
+2. review `docs/oracle/team-onboarding.md`
 3. read [Practical Git for Oracle Developers](oracle/practical-git-for-oracle-developers.md)
 4. review [From Oracle Demo to Oracle Onboarding](articles/oracle-onboarding.md)
 5. review [Repository Workflows](capabilities/repository.md)

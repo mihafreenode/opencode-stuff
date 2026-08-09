@@ -244,7 +244,19 @@ internal sealed class LocalHostTeardownScope : IAsyncDisposable
 
         if (Directory.Exists(_root))
         {
-            Directory.Delete(_root, recursive: true);
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+            while (true)
+            {
+                try
+                {
+                    Directory.Delete(_root, recursive: true);
+                    break;
+                }
+                catch (IOException) when (DateTimeOffset.UtcNow < deadline)
+                {
+                    await Task.Delay(100);
+                }
+            }
         }
     }
 

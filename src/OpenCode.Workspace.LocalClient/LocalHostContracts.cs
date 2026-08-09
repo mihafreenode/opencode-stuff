@@ -116,6 +116,111 @@ public enum InteractiveAgentSessionStatus
     Unavailable,
 }
 
+// A terminal runtime is an ephemeral LocalHost execution resource, not the durable conversation.
+public enum InteractiveTerminalRuntimeStatus
+{
+    Starting,
+    Running,
+    Stopping,
+    Exited,
+    Failed,
+    Unavailable,
+}
+
+public sealed record InteractiveTerminalDimensions
+{
+    public int Columns { get; init; } = 120;
+    public int Rows { get; init; } = 30;
+}
+
+public sealed record InteractiveTerminalRuntimeRecord
+{
+    public string RuntimeId { get; init; } = string.Empty;
+    public string InteractiveAgentSessionId { get; init; } = string.Empty;
+    public string WorkspaceId { get; init; } = string.Empty;
+    public string? ProviderSessionId { get; init; }
+    public int? ProcessId { get; init; }
+    public DateTimeOffset? ProcessStartedUtc { get; init; }
+    public InteractiveTerminalRuntimeStatus Status { get; init; }
+    public DateTimeOffset CreatedUtc { get; init; }
+    public DateTimeOffset UpdatedUtc { get; init; }
+    public DateTimeOffset LastActivityUtc { get; init; }
+    public int? ExitCode { get; init; }
+    public InteractiveTerminalDimensions Dimensions { get; init; } = new();
+    public string FailureSummary { get; init; } = string.Empty;
+    public string ActiveAttachmentId { get; init; } = string.Empty;
+    public long EarliestSequence { get; init; }
+    public long LatestSequence { get; init; }
+}
+
+public sealed record TerminalOutputChunk
+{
+    public long Sequence { get; init; }
+    public DateTimeOffset TimestampUtc { get; init; }
+    // Base64 makes the contract binary-safe; terminal transport does not impose text framing.
+    public string DataBase64 { get; init; } = string.Empty;
+}
+
+public sealed record TerminalOutputReadResult
+{
+    public long EarliestSequence { get; init; }
+    public long LatestSequence { get; init; }
+    public bool GapDetected { get; init; }
+    public long RequestedAfterSequence { get; init; }
+    public IReadOnlyList<TerminalOutputChunk> Chunks { get; init; } = Array.Empty<TerminalOutputChunk>();
+}
+
+public sealed record StartInteractiveTerminalRequest
+{
+    public InteractiveTerminalDimensions Dimensions { get; init; } = new();
+}
+
+public sealed record TerminalInputRequest
+{
+    public string AttachmentId { get; init; } = string.Empty;
+    public string AttachmentToken { get; init; } = string.Empty;
+    public string DataBase64 { get; init; } = string.Empty;
+}
+
+public sealed record TerminalResizeRequest
+{
+    // Resize changes the shared terminal presentation and therefore requires the active lease.
+    public string AttachmentId { get; init; } = string.Empty;
+    public string AttachmentToken { get; init; } = string.Empty;
+    public int Columns { get; init; }
+    public int Rows { get; init; }
+}
+
+// WebSocket control messages are JSON. Terminal input and output remain raw binary frames.
+public sealed record InteractiveTerminalWebSocketHello
+{
+    public string Type { get; init; } = "hello";
+    public string InteractiveAgentSessionId { get; init; } = string.Empty;
+    public string TerminalRuntimeId { get; init; } = string.Empty;
+    public string AttachmentId { get; init; } = string.Empty;
+    public string AttachmentToken { get; init; } = string.Empty;
+    public long AfterSequence { get; init; }
+}
+
+public sealed record InteractiveTerminalWebSocketControl
+{
+    public string Type { get; init; } = string.Empty;
+    public string Code { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string InteractiveAgentSessionId { get; init; } = string.Empty;
+    public string TerminalRuntimeId { get; init; } = string.Empty;
+    public string AttachmentId { get; init; } = string.Empty;
+    public InteractiveTerminalRuntimeStatus? RuntimeStatus { get; init; }
+    public long Sequence { get; init; }
+    public int ByteLength { get; init; }
+    public DateTimeOffset? TimestampUtc { get; init; }
+    public long RequestedAfterSequence { get; init; }
+    public long EarliestAvailableSequence { get; init; }
+    public long LatestAvailableSequence { get; init; }
+    public int Columns { get; init; }
+    public int Rows { get; init; }
+}
+
 public enum InteractiveAttachmentKind
 {
     WindowsTerminal,
@@ -427,6 +532,9 @@ public sealed record InteractiveSessionAttachResult
 {
     public InteractiveAgentSessionRecord Session { get; init; } = new();
     public InteractiveSessionAttachmentRecord Attachment { get; init; } = new();
+    public InteractiveTerminalRuntimeRecord TerminalRuntime { get; init; } = new();
+    public string AttachmentToken { get; init; } = string.Empty;
+    public int HeartbeatIntervalSeconds { get; init; }
     public ApprovedTerminalLaunchDescriptor LaunchDescriptor { get; init; } = new();
 }
 
@@ -434,8 +542,7 @@ public sealed record InteractiveSessionAttachmentActivationResult
 {
     public InteractiveAgentSessionRecord Session { get; init; } = new();
     public InteractiveSessionAttachmentRecord Attachment { get; init; } = new();
-    public ApprovedProcessLaunchDescriptor ProcessLaunchDescriptor { get; init; } = new();
-    public ApprovedProcessLaunchDescriptor? ProviderSessionProbeDescriptor { get; init; }
+    public InteractiveTerminalRuntimeRecord TerminalRuntime { get; init; } = new();
     public InteractiveAttachmentControlAction RequestedAction { get; init; }
     public int HeartbeatIntervalSeconds { get; init; }
     public int TokenGeneration { get; init; }
@@ -505,6 +612,43 @@ public sealed record ControllerSessionUpsertRequest
 public sealed record OperationCommandRequest
 {
     public string CommandId { get; init; } = string.Empty;
+    public OperationInitiator RequestedBy { get; init; } = new();
+}
+
+public sealed record HostOperationRequest
+{
+    public string CommandId { get; init; } = string.Empty;
+    public OperationInitiator RequestedBy { get; init; } = new();
+}
+
+public sealed record RuntimeResourceInspectRequest
+{
+    public string ResourceType { get; init; } = string.Empty;
+    public string RuntimeIdentifier { get; init; } = string.Empty;
+    public string WorkspaceRootPath { get; init; } = string.Empty;
+}
+
+public sealed record ArtifactResourceRequest
+{
+    public string ResourceUri { get; init; } = string.Empty;
+}
+
+public sealed record SmokeCleanupOperationRequest
+{
+    public string CommandId { get; init; } = string.Empty;
+    public bool DryRun { get; init; }
+    public bool IncludeAll { get; init; }
+    public string? RunId { get; init; }
+    public OperationInitiator RequestedBy { get; init; } = new();
+}
+
+public sealed record ExcelProcessOperationRequest
+{
+    public string CommandId { get; init; } = string.Empty;
+    public string SourcePath { get; init; } = string.Empty;
+    public string? DestinationWorkspaceId { get; init; }
+    public string? ProcessingTemplateId { get; init; }
+    public string? OutputLogicalName { get; init; }
     public OperationInitiator RequestedBy { get; init; } = new();
 }
 
@@ -891,6 +1035,15 @@ public sealed record WorkspaceCreateRequest
     public string TemplateId { get; init; } = string.Empty;
     public string WorkspaceName { get; init; } = string.Empty;
     public string WorkspaceRootPath { get; init; } = string.Empty;
+}
+
+public sealed record WorkspaceCreateOperationRequest
+{
+    public string CommandId { get; init; } = string.Empty;
+    public string TemplateId { get; init; } = string.Empty;
+    public string WorkspaceName { get; init; } = string.Empty;
+    public string DestinationRoot { get; init; } = string.Empty;
+    public OperationInitiator RequestedBy { get; init; } = new();
 }
 
 public sealed record ExistingGitCheckoutInspectionRequest

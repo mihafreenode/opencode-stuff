@@ -10,7 +10,7 @@ Oracle now uses `APEXlang` as the name for the Open Application Specification La
 
 - export scripts for APEX application definitions
 - import scripts for repeatable local re-apply flows
-- validation scripts for exported artifacts
+- a lightweight shape-check script for exported artifacts
 - repository assets for Git review and team onboarding
 
 APEXlang is not a replacement for APEX Builder.
@@ -40,9 +40,12 @@ Oracle APEX media is user-provided for local runtime provisioning. Place the off
 ## Try It Yourself
 
 1. export the sample application with `scripts/export-apex.sh`
-2. validate the exported artifact with `scripts/validate-apex.sh`
+2. use `scripts/validate-apex.sh` only as a file-presence and shape check
 3. review the change in Git
-4. import the application back into the local environment
+4. run version-matched SQLcl/APEXlang validation against the target environment
+5. import the application back into the local environment
+
+The standalone `scripts/validate-apex.sh` helper is not authoritative semantic validation. It checks that the file exists and contains expected APEX-like text; it does not run SQLcl `apex validate`, compile application code, or prove that Oracle APEX can import the artifact.
 
 ## Related Topics
 

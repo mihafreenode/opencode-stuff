@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace OpenCode.Workspace.Mcp.Tests;
@@ -20,6 +23,7 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
     public string BuildLogPath => BuildLogPathValue;
     public int InitializationCount => _initializationCount;
     public int BuildCount => _buildCount;
+    public bool IsExternalPackage { get; private set; }
 
     public async Task InitializeAsync()
     {
@@ -28,6 +32,23 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
         {
             Interlocked.Increment(ref _initializationCount);
             Directory.CreateDirectory(CacheRoot);
+            var externalArchive = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ARCHIVE");
+            if (!string.IsNullOrWhiteSpace(externalArchive))
+            {
+                PackageRoot = ExtractExternalPackage(Path.GetFullPath(externalArchive));
+                IsExternalPackage = true;
+                return;
+            }
+
+            var externalRoot = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ROOT");
+            if (!string.IsNullOrWhiteSpace(externalRoot))
+            {
+                PackageRoot = Path.GetFullPath(externalRoot);
+                Assert.True(Directory.Exists(PackageRoot), $"Existing package root was not found: '{PackageRoot}'.");
+                IsExternalPackage = true;
+                return;
+            }
+
             Fingerprint = BuildFingerprint();
             await File.AppendAllTextAsync(BuildLogPathValue, $"[{DateTimeOffset.UtcNow:O}] initialize fingerprint={Fingerprint}{Environment.NewLine}");
 
@@ -52,15 +73,23 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             Directory.CreateDirectory(publishRoot);
             await File.AppendAllTextAsync(BuildLogPathValue, $"[{DateTimeOffset.UtcNow:O}] cache-miss buildRoot={buildRoot}{Environment.NewLine}");
 
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "desktop")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "cli")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "api")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-m:1", "-o", Path.Combine(publishRoot, "mcp")], TestPaths.RepositoryRoot);
-            await RunSetupCommandAsync("dotnet", ["run", "--project", "tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj", "--", "assemble", "--source-root", TestPaths.RepositoryRoot, "--output-root", outputRoot, "--runtime", runtime, "--version", "0.0.0-test", "--desktop-publish-dir", Path.Combine(publishRoot, "desktop"), "--cli-publish-dir", Path.Combine(publishRoot, "cli"), "--api-publish-dir", Path.Combine(publishRoot, "api"), "--mcp-publish-dir", Path.Combine(publishRoot, "mcp"), "--create-zip", OperatingSystem.IsWindows() ? "true" : "false"], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:Version=0.0.0-test", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "desktop")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:Version=0.0.0-test", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "cli")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:Version=0.0.0-test", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "api")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:Version=0.0.0-test", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "mcp")], TestPaths.RepositoryRoot);
+            await RunSetupCommandAsync("dotnet", ["publish", "src/OpenCode.Workspace.RemoteBridge/OpenCode.Workspace.RemoteBridge.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:Version=0.0.0-test", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "remote-bridge")], TestPaths.RepositoryRoot);
+            if (OperatingSystem.IsWindows())
+            {
+                await RunSetupCommandAsync("dotnet", ["publish", "tests/OpenCode.Workspace.ConPtyTestChild/OpenCode.Workspace.ConPtyTestChild.csproj", "-c", "Release", "-r", runtime, "--self-contained", "true", "-p:DebugSymbols=false", "-p:DebugType=None", "-m:1", "-o", Path.Combine(publishRoot, "conpty-test-child")], TestPaths.RepositoryRoot);
+            }
+            var archiveKind = OperatingSystem.IsWindows() ? "zip" : "tar.gz";
+            await RunSetupCommandAsync("dotnet", ["run", "--project", "tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj", "--", "assemble", "--source-root", TestPaths.RepositoryRoot, "--output-root", outputRoot, "--runtime", runtime, "--version", "0.0.0-test", "--desktop-publish-dir", Path.Combine(publishRoot, "desktop"), "--cli-publish-dir", Path.Combine(publishRoot, "cli"), "--api-publish-dir", Path.Combine(publishRoot, "api"), "--mcp-publish-dir", Path.Combine(publishRoot, "mcp"), "--remote-bridge-publish-dir", Path.Combine(publishRoot, "remote-bridge"), "--archive-kind", archiveKind, "--git-commit", "0000000000000000000000000000000000000000", "--build-timestamp", "2000-01-01T00:00:00Z", "--self-contained", "true"], TestPaths.RepositoryRoot);
 
-            var finalPackageRoot = OperatingSystem.IsWindows()
-                ? ExtractWindowsPackage(outputRoot, runtime, buildRoot)
-                : Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}");
+            var finalPackageRoot = ExtractPackage(outputRoot, runtime, buildRoot, archiveKind);
+            if (OperatingSystem.IsWindows())
+            {
+                CopyDirectory(Path.Combine(publishRoot, "conpty-test-child"), Path.Combine(finalPackageRoot, "bin", "local-host", "test-assets", "conpty-child"));
+            }
 
             var cachePackageRoot = Path.Combine(CacheRoot, $"package-{Fingerprint}");
             if (Directory.Exists(cachePackageRoot))
@@ -101,8 +130,20 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Cli", "InteractiveSessionAttachHelper.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "OpenCode.Workspace.Api.csproj")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "OpenCode.Workspace.Mcp.csproj")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "OpenCode.Workspace.RemoteBridge.csproj")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "RemoteBridgeApplication.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "RemoteBridgeOptions.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "CloudflareAccessJwtValidator.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "RemoteBridgeBackend.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "BridgeGrantStore.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "RemoteTerminalProxy.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "RemoteTerminalAssets.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "Program.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.RemoteBridge", "appsettings.json")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "Program.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "LocalHostServices.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "InteractiveTerminalRuntimeService.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.ConPtyTestChild", "Program.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.LocalClient", "LocalHostClient.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.LocalClient", "LocalHostContracts.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "LocalHostMcpProxyServices.cs")),
@@ -110,13 +151,29 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp", "Program.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Cli", "McpCliCommands.cs")),
             File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Smoke", "WorkspaceSmokeRunner.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Runtime", "ProcessRunner.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Workspaces", "GitWorkspaceProvider.cs")),
+            File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Core", "Workspaces", "GitRepositoryService.cs")),
             GetRuntimeIdentifier(),
             "Release",
             "self-contained",
-            "package-layout-v5",
+            "package-layout-v10-no-symbols",
         };
 
-        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("\n---\n", inputs)))).ToLowerInvariant();
+        var packageContentFiles = new[] { "catalog", "docs", "Localization" }
+            .SelectMany(directory => Directory.EnumerateFiles(Path.Combine(TestPaths.RepositoryRoot, directory), "*", SearchOption.AllDirectories))
+            .Concat(new[]
+            {
+                Path.Combine(TestPaths.RepositoryRoot, "README.md"),
+                Path.Combine(TestPaths.RepositoryRoot, "LICENSE"),
+                Path.Combine(TestPaths.RepositoryRoot, "THIRD-PARTY-NOTICES.md"),
+                Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PackagedDistributionFixture.cs"),
+                Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PackagedDistributionTests.cs"),
+            })
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .Select(path => $"{Path.GetRelativePath(TestPaths.RepositoryRoot, path)}\n{File.ReadAllText(path)}");
+
+        return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("\n---\n", inputs.Concat(packageContentFiles))))).ToLowerInvariant();
     }
 
     private static async Task RunSetupCommandAsync(string fileName, IReadOnlyList<string> arguments, string workingDirectory)
@@ -145,11 +202,65 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
         File.Move(tempPath, ManifestPath, overwrite: true);
     }
 
-    private static string ExtractWindowsPackage(string outputRoot, string runtime, string buildRoot)
+    private static string ExtractPackage(string outputRoot, string runtime, string buildRoot, string archiveKind)
     {
-        var zipPath = Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}.zip");
-        var extractRoot = Path.Combine(buildRoot, "extracted");
-        ZipFile.ExtractToDirectory(zipPath, extractRoot, overwriteFiles: true);
+        var archivePath = Path.Combine(outputRoot, $"opencode-workspace-0.0.0-test-{runtime}.{archiveKind}");
+        return ExtractArchive(archivePath, runtime, buildRoot);
+    }
+
+    private static string ExtractExternalPackage(string archivePath)
+    {
+        Assert.True(File.Exists(archivePath), $"Existing package archive was not found: '{archivePath}'.");
+        var fileName = Path.GetFileName(archivePath);
+        var match = Regex.Match(fileName, "^opencode-workspace-(?<version>[0-9A-Za-z][0-9A-Za-z._+-]*)-(?<rid>win-x64|linux-x64|osx-arm64)\\.(?<kind>zip|tar\\.gz)$", RegexOptions.CultureInvariant);
+        Assert.True(match.Success, $"Package archive name is not canonical: '{fileName}'.");
+        var runtime = match.Groups["rid"].Value;
+        Assert.Equal(GetRuntimeIdentifier(), runtime);
+        Assert.Equal(OperatingSystem.IsWindows() ? "zip" : "tar.gz", match.Groups["kind"].Value);
+
+        using var archive = File.OpenRead(archivePath);
+        var fingerprint = Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant();
+        var extractRoot = Path.Combine(CacheRoot, $"downloaded-{fingerprint}", "extracted package with spaces");
+        if (Directory.Exists(extractRoot))
+        {
+            Directory.Delete(extractRoot, recursive: true);
+        }
+
+        return ExtractArchive(archivePath, runtime, Path.GetDirectoryName(extractRoot)!, extractRoot);
+    }
+
+    private static string ExtractArchive(string archivePath, string runtime, string buildRoot, string? extractRoot = null)
+    {
+        var checksumPath = archivePath + ".sha256";
+        Assert.True(File.Exists(checksumPath), $"Package checksum was not found: '{checksumPath}'.");
+        var checksumParts = File.ReadAllText(checksumPath).Trim().Split("  ", 2, StringSplitOptions.None);
+        Assert.Equal(2, checksumParts.Length);
+        Assert.Equal(Path.GetFileName(archivePath), checksumParts[1]);
+        using (var archive = File.OpenRead(archivePath))
+        {
+            Assert.Equal(checksumParts[0], Convert.ToHexString(SHA256.HashData(archive)).ToLowerInvariant());
+        }
+
+        extractRoot ??= Path.Combine(buildRoot, "extracted");
+        Directory.CreateDirectory(extractRoot);
+        if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            ZipFile.ExtractToDirectory(archivePath, extractRoot, overwriteFiles: true);
+        }
+        else
+        {
+            var tarPath = Path.Combine(buildRoot, "package.tar");
+            using (var archive = File.OpenRead(archivePath))
+            using (var gzip = new GZipStream(archive, CompressionMode.Decompress))
+            using (var tar = File.Create(tarPath))
+            {
+                gzip.CopyTo(tar);
+            }
+            TarFile.ExtractToDirectory(tarPath, extractRoot, overwriteFiles: true);
+        }
+
+        Assert.True(File.Exists(Path.Combine(extractRoot, OperatingSystem.IsWindows() ? "OpenCode.Workspace.exe" : "OpenCode.Workspace")), "Archive must extract package contents directly at the selected root.");
+        Assert.DoesNotContain(Directory.EnumerateDirectories(extractRoot), path => Path.GetFileName(path).StartsWith("opencode-workspace-", StringComparison.OrdinalIgnoreCase));
         return extractRoot;
     }
 

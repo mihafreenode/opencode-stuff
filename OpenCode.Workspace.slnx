@@ -11,16 +11,19 @@
     <Project Path="src/OpenCode.Workspace.Platform.Linux/OpenCode.Workspace.Platform.Linux.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.MacOS/OpenCode.Workspace.Platform.MacOS.csproj" />
     <Project Path="src/OpenCode.Workspace.Platform.Windows/OpenCode.Workspace.Platform.Windows.csproj" />
+    <Project Path="src/OpenCode.Workspace.RemoteBridge/OpenCode.Workspace.RemoteBridge.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Cli.Tests/OpenCode.Workspace.Cli.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Api.IntegrationTests/OpenCode.Workspace.Api.IntegrationTests.csproj" />
+    <Project Path="tests/OpenCode.Workspace.ConPtyTestChild/OpenCode.Workspace.ConPtyTestChild.csproj" />
     <Project Path="tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.Linux.Tests/OpenCode.Workspace.Platform.Linux.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.MacOS.Tests/OpenCode.Workspace.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/OpenCode.Workspace.Platform.Windows.Tests/OpenCode.Workspace.Platform.Windows.Tests.csproj" />
+    <Project Path="tests/OpenCode.Workspace.RemoteBridge.Tests/OpenCode.Workspace.RemoteBridge.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/OpenCode.Workspace.ReleaseTool/OpenCode.Workspace.ReleaseTool.csproj" />

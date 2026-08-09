@@ -3,6 +3,9 @@
 Purpose:
 Curated starting points for Oracle APEX Builder, administration, and deployment workflows.
 
+Version note:
+The links in this index target Oracle APEX 24.2. They remain useful versioned references, but 24.2 is not asserted to be universally current. Start with `docs/reference/oracle-knowledge-map.yaml`, identify the deployed APEX version, and use matching Oracle documentation when behavior or installation is version-sensitive.
+
 Intended use:
 - onboarding to Oracle APEX workspaces
 - locating official Builder and admin guidance quickly

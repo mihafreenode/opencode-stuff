@@ -3,6 +3,9 @@
 Purpose:
 Curated official entry points for Oracle APEX workspace, instance, and security administration.
 
+Version note:
+The APEX links target 24.2 and the Database Security link targets Database 23. Use them as versioned references. Start with `docs/reference/oracle-knowledge-map.yaml` and confirm the versions deployed in the target environment before applying administration or security guidance.
+
 When to use:
 - workspace creation and instance administration tasks
 - authentication, authorization, and security policy questions

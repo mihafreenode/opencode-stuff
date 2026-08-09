@@ -213,7 +213,7 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         Assert.True(cancelPayload.Data.CancellationRequested);
 
         var completed = await harness.WaitForOperationAsync(operation.OperationId, TimeSpan.FromMinutes(3));
-        Assert.Equal(McpOperationStatus.Cancelled, completed.Status);
+        Assert.True(completed.Status == McpOperationStatus.Cancelled, JsonSerializer.Serialize(completed, OpenCodeWorkspaceMcpContract.JsonOptions));
         Assert.True(completed.CancellationRequested);
         Assert.Equal("cancelled", completed.FailureClassification, ignoreCase: true);
 
@@ -265,19 +265,24 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
         {
             throw new InvalidOperationException(string.Join(Environment.NewLine, harness.StandardErrorLines), exception);
         }
-        var payload = ReadEnvelope<ExcelProcessResultModel>(result);
+        var started = ReadOperationResult(result);
+        Assert.Equal("process_excel_artifact", started.Kind);
+        var completed = await harness.WaitForOperationAsync(started.OperationId, TimeSpan.FromSeconds(30));
+        Assert.Equal(McpOperationStatus.Succeeded, completed.Status);
+        var processed = completed.Result!.Value.Deserialize<ExcelProcessResultModel>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
 
-        Assert.NotEmpty(payload.Data.OutputPath);
-        Assert.NotEmpty(payload.Data.OutputChecksumSha256);
-        Assert.NotEmpty(payload.Data.SourceChecksumSha256);
-        Assert.Equal(sourceChecksumBefore, payload.Data.SourceChecksumSha256);
+        Assert.NotEmpty(processed.OutputPath);
+        Assert.NotEmpty(processed.OutputChecksumSha256);
+        Assert.NotEmpty(processed.SourceChecksumSha256);
+        Assert.Equal(sourceChecksumBefore, processed.SourceChecksumSha256);
         Assert.Equal(sourceChecksumBefore, ComputeSha256(sourcePath));
+        Assert.Contains(processed.OutputPath, completed.ArtifactReferences);
 
-        var outputResource = await harness.Client.ReadResourceAsync(new Uri(payload.Data.ResourceUri).ToString());
+        var outputResource = await harness.Client.ReadResourceAsync(new Uri(processed.ResourceUri).ToString());
         var blob = outputResource.Contents.OfType<BlobResourceContents>().Single();
         Assert.True(blob.Blob.Length > 0);
 
-        using var outputDocument = SpreadsheetDocument.Open(payload.Data.OutputPath, false);
+        using var outputDocument = SpreadsheetDocument.Open(processed.OutputPath, false);
         var sheetNames = outputDocument.WorkbookPart!.Workbook.Sheets!.Elements<Sheet>().Select(item => item.Name!.Value).ToArray();
         Assert.Contains("OpenCode Result", sheetNames);
     }
@@ -341,7 +346,11 @@ public sealed class McpProtocolIntegrationTests : IAsyncLifetime
             ["workspaceName"] = "mcp-api-parity",
             ["destinationRoot"] = workspaceParent,
         });
-        var created = ReadEnvelope<WorkspaceRecordModel>(create).Data;
+        var createOperation = ReadOperationResult(create);
+        Assert.Equal("create_workspace", createOperation.Kind);
+        var createCompleted = await harness.WaitForOperationAsync(createOperation.OperationId, TimeSpan.FromSeconds(30));
+        Assert.Equal(McpOperationStatus.Succeeded, createCompleted.Status);
+        var created = createCompleted.Result!.Value.Deserialize<WorkspaceRecordModel>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
         Assert.True(Directory.Exists(created.WorkspaceRoot));
 
         var validate = await harness.Client.CallToolAsync("validate_workspace", new Dictionary<string, object?> { ["workspaceId"] = created.WorkspaceId });
@@ -431,7 +440,7 @@ internal sealed class McpProtocolHarness : IAsyncDisposable
     public IReadOnlyList<string> StandardErrorLines => _stderr;
 
     public static Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot)
-        => StartAsync(workspaceStateRoot, smokeArtifactsRoot, Path.Combine(workspaceStateRoot, "local-host-shared"), Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"));
+        => StartAsync(workspaceStateRoot, smokeArtifactsRoot, Path.Combine(workspaceStateRoot, "local-host-shared"), Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0"));
 
     public static async Task<McpProtocolHarness> StartAsync(string workspaceStateRoot, string smokeArtifactsRoot, string localHostStateRoot, string localHostExecutableDirectory)
     {

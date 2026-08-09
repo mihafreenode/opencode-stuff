@@ -14,6 +14,9 @@ using System.Text;
 using System.Text.Json;
 
 using LocalProgressLevel = OpenCode.Workspace.LocalClient.WorkspaceOperationProgressLevel;
+using LocalArtifactListItem = OpenCode.Workspace.LocalClient.ArtifactListItem;
+using LocalArtifactReadModel = OpenCode.Workspace.LocalClient.ArtifactReadModel;
+using LocalArtifactResourceReadModel = OpenCode.Workspace.LocalClient.ArtifactResourceReadModel;
 using LocalTemplateDetailModel = OpenCode.Workspace.LocalClient.WorkspaceTemplateDetailModel;
 using LocalTemplateSummaryModel = OpenCode.Workspace.LocalClient.WorkspaceTemplateSummaryModel;
 using LocalWorkspaceRecordModel = OpenCode.Workspace.LocalClient.WorkspaceRecordModel;
@@ -36,6 +39,9 @@ public static class LocalHostServiceCollectionExtensions
         services.AddSingleton(localHostStateOptions);
         services.AddSingleton<ILocalHostStatePathProvider>(sp => new DefaultLocalHostStatePathProvider(sp.GetRequiredService<LocalHostStateOptions>()));
         services.AddSingleton<ISystemClock, SystemClock>();
+        services.AddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton<OpenCodeSessionService>();
+        services.AddSingleton<IProviderSessionDiscovery, OpenCodeProviderSessionDiscovery>();
         services.AddSingleton<IOpenCodeWorkspaceMcpService, OpenCodeWorkspaceMcpService>();
         services.AddSignalR();
         services.AddSingleton<LocalHostStateStore>();
@@ -44,15 +50,60 @@ public static class LocalHostServiceCollectionExtensions
         services.AddSingleton<ControllerSessionService>();
         services.AddSingleton<WorkspaceInstanceService>();
         services.AddSingleton<InteractiveAgentSessionService>();
+        services.AddSingleton<InteractiveTerminalRuntimeService>();
+        services.AddSingleton<InteractiveTerminalWebSocketService>();
         services.AddSingleton<InteractiveAttachmentLeasePolicy>();
         services.AddSingleton<InteractiveSessionLaunchDescriptorFactory>();
         services.AddSingleton<InteractiveSessionAttachmentService>();
+        services.AddSingleton<RuntimeResourcesLocalHostService>();
         services.AddSingleton<LocalHostApplicationService>();
         services.AddSingleton<LocalHostDescriptorHostedService>();
         services.AddHostedService(sp => sp.GetRequiredService<LocalHostDescriptorHostedService>());
         services.AddHostedService(sp => (WorkspaceOperationService)sp.GetRequiredService<IWorkspaceOperationService>());
         return services;
     }
+}
+
+public sealed class RuntimeResourcesLocalHostService
+{
+    private readonly WorkspaceRuntimeExplorerService _explorer;
+
+    public RuntimeResourcesLocalHostService(OpenCodeWorkspaceMcpOptions options, IProcessRunner processRunner)
+    {
+        var workspaceStateRoot = string.IsNullOrWhiteSpace(options.WorkspaceStateRoot)
+            ? WorkspaceAppDataPaths.GetWorkspaceManagerDataRoot()
+            : Path.GetFullPath(options.WorkspaceStateRoot);
+        var repository = new WorkspaceRepository(workspaceStateRoot);
+        _explorer = new WorkspaceRuntimeExplorerService(
+            repository,
+            new WorkspaceRuntimeStateService(),
+            new WorkspaceYamlService(),
+            new WorkspaceTimelineService(),
+            processRunner);
+    }
+
+    public Task<WorkspaceRuntimeExplorerReport> BuildAsync(CancellationToken cancellationToken = default)
+        => _explorer.BuildAsync(cancellationToken);
+
+    public async Task<WorkspaceRuntimeInspectResult> InspectAsync(RuntimeResourceInspectRequest request, CancellationToken cancellationToken = default)
+    {
+        var report = await _explorer.BuildAsync(cancellationToken);
+        var matches = report.Resources
+            .Concat(report.OrphanedResources)
+            .Where(item => string.Equals(item.ResourceType, request.ResourceType, StringComparison.OrdinalIgnoreCase))
+            .Where(item => string.Equals(item.RuntimeIdentifier, request.RuntimeIdentifier, StringComparison.Ordinal))
+            .Where(item => string.Equals(item.WorkspaceRootPath, request.WorkspaceRootPath, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new OpenCodeWorkspaceMcpException("runtime_resource_not_found", "The runtime resource was not found in the current LocalHost inventory.", "Refresh Runtime Resources and retry.");
+        }
+
+        return await _explorer.InspectResourceAsync(matches[0], cancellationToken);
+    }
+
+    public Task CleanOrphansAsync(CancellationToken cancellationToken = default)
+        => _explorer.CleanOrphanedResourcesAsync(cancellationToken);
 }
 
 public sealed class LocalHostEventHub : Hub;
@@ -370,6 +421,7 @@ public sealed class WorkspaceOperationReporter
 
     public void ApplyResult(object result)
     {
+        var resultArtifacts = BuildResultArtifacts(result);
         _state.Record = _state.Record with
         {
             Version = _state.Record.Version + 1,
@@ -378,8 +430,37 @@ public sealed class WorkspaceOperationReporter
             CompletedUtc = DateTimeOffset.UtcNow,
             LastUpdatedUtc = DateTimeOffset.UtcNow,
             Result = JsonSerializer.SerializeToElement(result, LocalHostContract.JsonOptions),
+            ArtifactReferences = _state.Record.ArtifactReferences.Concat(resultArtifacts).ToArray(),
         };
         PersistAndPublishAsync("operationCompleted").GetAwaiter().GetResult();
+    }
+
+    private IReadOnlyList<WorkspaceOperationArtifactReference> BuildResultArtifacts(object result)
+    {
+        var references = result switch
+        {
+            WorkspaceSmokeResult smoke when !string.IsNullOrWhiteSpace(smoke.ArtifactDirectory)
+                => new[] { (Kind: "smoke-artifacts", Path: smoke.ArtifactDirectory, ContentType: "inode/directory") },
+            WorkspaceSmokeMatrixResult matrix when !string.IsNullOrWhiteSpace(matrix.ArtifactDirectory)
+                => new[] { (Kind: "smoke-matrix-artifacts", Path: matrix.ArtifactDirectory, ContentType: "inode/directory") },
+            OpenCode.Workspace.Mcp.ExcelProcessResultModel excel when !string.IsNullOrWhiteSpace(excel.OutputPath)
+                => new[] { (Kind: "excel-workbook", Path: excel.OutputPath, ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") },
+            _ => Array.Empty<(string Kind, string Path, string ContentType)>(),
+        };
+
+        return references.Select(item => new WorkspaceOperationArtifactReference
+        {
+            ArtifactId = Guid.NewGuid().ToString("n"),
+            Kind = item.Kind,
+            DisplayName = Path.GetFileName(item.Path),
+            CreatedUtc = DateTimeOffset.UtcNow,
+            OperationId = _state.Record.OperationId,
+            WorkspaceInstanceId = _state.Record.WorkspaceInstanceId,
+            ContentType = item.ContentType,
+            Size = File.Exists(item.Path) ? new FileInfo(item.Path).Length : null,
+            Durability = "durable",
+            SafeLocalReference = item.Path,
+        }).ToArray();
     }
 
     public void MarkCancelled()
@@ -632,7 +713,11 @@ public sealed class InteractiveAgentSessionService(
     public async Task<InteractiveAgentSessionRecord> CreateAsync(CreateInteractiveAgentSessionRequest request, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken);
-        _ = await service.GetWorkspaceAsync(request.WorkspaceId, cancellationToken);
+        OpenCode.Workspace.Mcp.WorkspaceRecordModel? workspace = null;
+        if (!InteractiveTerminalRuntimeService.IsDeterministicTestRuntimeEnabled)
+        {
+            workspace = await service.GetWorkspaceAsync(request.WorkspaceId, cancellationToken);
+        }
         var existing = _sessions.Values.FirstOrDefault(item => string.Equals(item.WorkspaceId, request.WorkspaceId, StringComparison.OrdinalIgnoreCase)
             && string.Equals(item.CreateCommandId, request.CommandId, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -643,9 +728,8 @@ public sealed class InteractiveAgentSessionService(
         var workspaceInstanceId = WorkspaceInstanceService.BuildWorkspaceInstanceId(request.WorkspaceId);
         var now = DateTimeOffset.UtcNow;
         var sessionId = $"interactive-{request.WorkspaceId}-{Guid.NewGuid():n}";
-        var workspace = await service.GetWorkspaceAsync(request.WorkspaceId, cancellationToken);
         var title = string.IsNullOrWhiteSpace(request.Title)
-            ? $"OpenCode session - {workspace.Name}"
+            ? $"OpenCode session - {workspace?.Name ?? request.WorkspaceId}"
             : request.Title.Trim();
         var record = new InteractiveAgentSessionRecord
         {
@@ -674,6 +758,63 @@ public sealed class InteractiveAgentSessionService(
             : throw new OpenCodeWorkspaceMcpException("interactive_session_not_found", $"Interactive session '{interactiveAgentSessionId}' was not found.", "Refresh interactive sessions and retry.");
     }
 
+    internal async Task<InteractiveAgentSessionRecord> RecordProviderSessionIdentityAsync(string interactiveAgentSessionId, string providerSessionId, ProviderSessionIdentitySource source, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var session = RequireSession(interactiveAgentSessionId);
+            if (!string.IsNullOrWhiteSpace(session.ProviderSessionId)
+                && !string.Equals(session.ProviderSessionId, providerSessionId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new OpenCodeWorkspaceMcpException("provider_session_mismatch", $"Interactive session '{interactiveAgentSessionId}' already recorded provider session '{session.ProviderSessionId}'.", "Review provider session recovery before retrying.");
+            }
+
+            var now = clock.UtcNow;
+            var updated = session with
+            {
+                Version = session.Version + 1,
+                ProviderSessionId = providerSessionId,
+                ProviderSessionIdentitySource = source,
+                ProviderSessionIdentityVerifiedUtc = now,
+                UpdatedUtc = now,
+                LastActivityUtc = now,
+            };
+            _sessions[interactiveAgentSessionId] = updated;
+            await PersistAsync(updated, cancellationToken);
+            return updated;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    // Terminal bytes are accepted only from the currently leased attachment. Input is never logged.
+    public async Task ValidateTerminalInputAuthorityAsync(string interactiveAgentSessionId, string attachmentId, string attachmentToken, CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            _ = RequireCurrentRuntime(interactiveAgentSessionId, attachmentId, attachmentToken);
+            var session = await ExpireLeaseIfNeededUnsafeAsync(RequireSession(interactiveAgentSessionId), cancellationToken);
+            if (!string.Equals(session.ActiveAttachmentId, attachmentId, StringComparison.OrdinalIgnoreCase) || session.ActiveLease is null)
+            {
+                throw new OpenCodeWorkspaceMcpException("attachment_not_active", $"Attachment '{attachmentId}' is not active for interactive session '{interactiveAgentSessionId}'.", "Attach to the terminal runtime again.");
+            }
+            if (GetLatestAttachmentUnsafe(session).Status == InteractiveAttachmentStatus.Detaching)
+            {
+                throw new OpenCodeWorkspaceMcpException("attachment_not_active", $"Attachment '{attachmentId}' is detaching from interactive session '{interactiveAgentSessionId}'.", "Wait for takeover and attach again if needed.");
+            }
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<InteractiveSessionAttachmentRecord>> GetAttachmentsAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken);
@@ -691,7 +832,9 @@ public sealed class InteractiveAgentSessionService(
         }
 
         var session = await GetAsync(interactiveAgentSessionId, cancellationToken);
-        var workspace = await service.GetWorkspaceAsync(session.WorkspaceId, cancellationToken);
+        var workspace = InteractiveTerminalRuntimeService.IsDeterministicTestRuntimeEnabled
+            ? null
+            : await service.GetWorkspaceAsync(session.WorkspaceId, cancellationToken);
 
         while (true)
         {
@@ -708,7 +851,9 @@ public sealed class InteractiveAgentSessionService(
                     var attachmentRecoveryId = Guid.NewGuid().ToString("n");
                     var recoverySecret = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant() + Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
                     var launchCorrelationId = Guid.NewGuid().ToString("n");
-                    var descriptors = launchDescriptorFactory.Build(workspace.Snapshot, stateStore.StateRoot, interactiveAgentSessionId, attachmentId, attachmentToken, attachmentRecoveryId, recoverySecret, !string.IsNullOrWhiteSpace(session.ProviderSessionId));
+                    var descriptors = workspace is null
+                        ? launchDescriptorFactory.Build(session.WorkspaceId, stateStore.StateRoot, interactiveAgentSessionId, attachmentId, attachmentToken, attachmentRecoveryId, recoverySecret)
+                        : launchDescriptorFactory.Build(workspace.Snapshot, stateStore.StateRoot, interactiveAgentSessionId, attachmentId, attachmentToken, attachmentRecoveryId, recoverySecret);
                     var attachment = new InteractiveSessionAttachmentRecord
                     {
                         AttachmentId = attachmentId,
@@ -716,7 +861,7 @@ public sealed class InteractiveAgentSessionService(
                         Kind = request.AttachmentKind,
                         Status = InteractiveAttachmentStatus.Pending,
                         ClientInstanceId = request.ClientInstanceId,
-                        WindowIdentity = $"OpenCode Stuff - {workspace.Snapshot.Definition.Workspace.Name}",
+                        WindowIdentity = $"OpenCode Stuff - {workspace?.Snapshot.Definition.Workspace.Name ?? session.WorkspaceId}",
                         CreatedUtc = now,
                         AttachedUtc = now,
                         LastActivityUtc = now,
@@ -754,7 +899,7 @@ public sealed class InteractiveAgentSessionService(
                         RecoveryBlockedByCleanShutdown = false,
                     };
                     _sessions[interactiveAgentSessionId] = updated;
-                    var runtime = AttachmentRuntimeState.CreateCurrent(interactiveAgentSessionId, attachmentId, request.ClientInstanceId, attachmentToken, attachmentRecoveryId, recoverySecret, launchCorrelationId, descriptors.ProcessLaunchDescriptor, descriptors.ProviderSessionProbeDescriptor ?? new ApprovedProcessLaunchDescriptor()) with
+                    var runtime = AttachmentRuntimeState.CreateCurrent(interactiveAgentSessionId, attachmentId, request.ClientInstanceId, attachmentToken, attachmentRecoveryId, recoverySecret, launchCorrelationId) with
                     {
                         RecoveryEligibleUntilUtc = updated.RecoveryEligibleUntilUtc,
                     };
@@ -768,6 +913,8 @@ public sealed class InteractiveAgentSessionService(
                     {
                         Session = updated,
                         Attachment = attachment,
+                        AttachmentToken = attachmentToken,
+                        HeartbeatIntervalSeconds = (int)Math.Max(1, leasePolicy.HeartbeatInterval.TotalSeconds),
                         LaunchDescriptor = descriptors.TerminalLaunchDescriptor,
                     };
                 }
@@ -840,9 +987,9 @@ public sealed class InteractiveAgentSessionService(
             }
 
             var now = clock.UtcNow;
-            var attachment = BuildCurrentAttachmentSnapshot(session, InteractiveAttachmentStatus.Starting) with
+            var attachment = BuildCurrentAttachmentSnapshot(session, InteractiveAttachmentStatus.Active) with
             {
-                Version = BuildCurrentAttachmentSnapshot(session, InteractiveAttachmentStatus.Starting).Version + 1,
+                Version = BuildCurrentAttachmentSnapshot(session, InteractiveAttachmentStatus.Active).Version + 1,
                 ProcessId = request.HelperProcessId,
                 LastActivityUtc = now,
                 LastHeartbeatUtc = now,
@@ -858,7 +1005,7 @@ public sealed class InteractiveAgentSessionService(
             var updated = session with
             {
                 Version = session.Version + 1,
-                Status = InteractiveAgentSessionStatus.Starting,
+                Status = InteractiveAgentSessionStatus.Attached,
                 UpdatedUtc = now,
                 LastActivityUtc = now,
                 ActiveLease = lease,
@@ -874,8 +1021,6 @@ public sealed class InteractiveAgentSessionService(
             {
                 Session = updated,
                 Attachment = attachment,
-                ProcessLaunchDescriptor = updatedRuntime.ProcessLaunchDescriptor,
-                ProviderSessionProbeDescriptor = updatedRuntime.ProviderSessionProbeDescriptor,
                 RequestedAction = updatedRuntime.RequestedAction,
                 HeartbeatIntervalSeconds = (int)Math.Max(1, leasePolicy.HeartbeatInterval.TotalSeconds),
                 TokenGeneration = lease.TokenGeneration,
@@ -1215,6 +1360,7 @@ public sealed class InteractiveAgentSessionService(
             }
 
             var status = string.Equals(request.Outcome, "detach_requested", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(request.Outcome, "presentation_closed", StringComparison.OrdinalIgnoreCase)
                 ? InteractiveAttachmentStatus.Detached
                 : string.Equals(request.Outcome, "normal_exit", StringComparison.OrdinalIgnoreCase)
                     ? InteractiveAttachmentStatus.Detached
@@ -1279,6 +1425,23 @@ public sealed class InteractiveAgentSessionService(
         }
     }
 
+    internal async Task<InteractiveAgentSessionRecord> DetachForRuntimeStopAsync(string interactiveAgentSessionId, CancellationToken cancellationToken)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var session = RequireSession(interactiveAgentSessionId);
+            return string.IsNullOrWhiteSpace(session.ActiveAttachmentId) || session.ActiveLease is null
+                ? session
+                : await ClearActiveAttachmentUnsafeAsync(session, "runtime_stopped", InteractiveAttachmentStatus.Detached, string.Empty, null, null, cancellationToken);
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
     private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _loaded, 1) == 1)
@@ -1313,31 +1476,33 @@ public sealed class InteractiveAgentSessionService(
                     .Select(item => item!)
                     .OrderBy(item => item.AttachedUtc)
                     .ToList();
+                var active = items.LastOrDefault(item => string.Equals(item.AttachmentId, session.ActiveAttachmentId, StringComparison.OrdinalIgnoreCase));
+                if (active?.Status is InteractiveAttachmentStatus.Pending or InteractiveAttachmentStatus.Starting or InteractiveAttachmentStatus.Active or InteractiveAttachmentStatus.Detaching)
+                {
+                    var detached = active with
+                    {
+                        Version = active.Version + 1,
+                        Status = InteractiveAttachmentStatus.Detached,
+                        LastActivityUtc = clock.UtcNow,
+                        DetachedUtc = clock.UtcNow,
+                        DetachReason = "local_host_restarted",
+                        LeaseExpiresUtc = null,
+                    };
+                    items.Add(detached);
+                    await PersistAttachmentAsync(normalized.InteractiveAgentSessionId, detached, cancellationToken);
+                }
                 _attachmentHistory[normalized.InteractiveAgentSessionId] = items;
             }
 
+            // Attachment authority is process-local. Persisted credentials describe the old host only
+            // and must never authorize input or resize after a LocalHost restart.
             var runtimePath = GetAttachmentRuntimePath(stateStore, normalized.InteractiveAgentSessionId);
-            var persistedRuntime = stateStore.ReadJson<PersistedAttachmentRuntimeState>(runtimePath);
-            if (persistedRuntime is not null)
-            {
-                var restored = persistedRuntime.ToRuntime() with { AttachmentTokenHash = string.Empty };
-                if (!string.IsNullOrWhiteSpace(normalized.RecoveryEligibleAttachmentId))
-                {
-                    _completedAttachmentRuntime[normalized.RecoveryEligibleAttachmentId] = restored with
-                    {
-                        CompletedSession = normalized,
-                        CompletedAttachment = _attachmentHistory.TryGetValue(normalized.InteractiveAgentSessionId, out var items)
-                            ? items.LastOrDefault(item => string.Equals(item.AttachmentId, normalized.RecoveryEligibleAttachmentId, StringComparison.OrdinalIgnoreCase))
-                            : null,
-                    };
-                }
-            }
+            if (File.Exists(runtimePath)) File.Delete(runtimePath);
         }
     }
 
     private InteractiveAgentSessionRecord NormalizeRecoveredSession(InteractiveAgentSessionRecord session)
     {
-        var hadActiveAttachment = !string.IsNullOrWhiteSpace(session.ActiveAttachmentId);
         var hadPendingDetach = session.Status == InteractiveAgentSessionStatus.Stopping;
         var status = session.Status switch
         {
@@ -1352,10 +1517,6 @@ public sealed class InteractiveAgentSessionService(
             return session;
         }
 
-        var recoveryEligible = hadActiveAttachment && !stateStore.WasPreviousShutdownClean;
-        var recoveryAttachmentId = recoveryEligible ? session.ActiveAttachmentId : string.Empty;
-        DateTimeOffset? recoveryEligibleUntilUtc = recoveryEligible ? clock.UtcNow + leasePolicy.RecoveryWindow : null;
-
         return session with
         {
             Version = session.Version + 1,
@@ -1363,9 +1524,9 @@ public sealed class InteractiveAgentSessionService(
             UpdatedUtc = clock.UtcNow,
             ActiveAttachmentId = string.Empty,
             ActiveLease = null,
-            RecoveryEligibleAttachmentId = recoveryAttachmentId,
-            RecoveryEligibleUntilUtc = recoveryEligibleUntilUtc,
-            RecoveryBlockedByCleanShutdown = stateStore.WasPreviousShutdownClean,
+            RecoveryEligibleAttachmentId = string.Empty,
+            RecoveryEligibleUntilUtc = null,
+            RecoveryBlockedByCleanShutdown = true,
             LastFailureSummary = hadPendingDetach ? session.LastFailureSummary : session.LastFailureSummary,
         };
     }
@@ -1401,14 +1562,23 @@ public sealed class InteractiveAgentSessionService(
 
     private AttachmentRuntimeState RequireCurrentRuntime(string interactiveAgentSessionId, string attachmentId, string attachmentToken)
     {
-        if (!_attachmentRuntime.TryGetValue(attachmentId, out var runtime)
-            || !string.Equals(runtime.InteractiveAgentSessionId, interactiveAgentSessionId, StringComparison.OrdinalIgnoreCase)
-            || !runtime.TokenMatches(attachmentToken))
+        if (_attachmentRuntime.TryGetValue(attachmentId, out var runtime))
         {
-            throw new OpenCodeWorkspaceMcpException("invalid_attachment_credential", $"Attachment '{attachmentId}' is no longer authorized for interactive session '{interactiveAgentSessionId}'.", "Request a new attachment and retry.");
+            if (!string.Equals(runtime.InteractiveAgentSessionId, interactiveAgentSessionId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new OpenCodeWorkspaceMcpException("attachment_mismatch", $"Attachment '{attachmentId}' does not belong to interactive session '{interactiveAgentSessionId}'.", "Use the matching session and attachment identifiers.");
+            }
+            if (!runtime.TokenMatches(attachmentToken))
+            {
+                throw new OpenCodeWorkspaceMcpException("invalid_attachment_credential", $"Attachment '{attachmentId}' credential was rejected.", "Request a new attachment and retry.");
+            }
+            return runtime;
         }
-
-        return runtime;
+        if (_completedAttachmentRuntime.ContainsKey(attachmentId))
+        {
+            throw new OpenCodeWorkspaceMcpException("attachment_not_active", $"Attachment '{attachmentId}' is no longer active for interactive session '{interactiveAgentSessionId}'.", "Request a new attachment and retry.");
+        }
+        throw new OpenCodeWorkspaceMcpException("attachment_not_active", $"Attachment '{attachmentId}' is not active for interactive session '{interactiveAgentSessionId}'.", "Request a new attachment and retry.");
     }
 
     private AttachmentRuntimeState RequireCurrentOrCompletedRuntime(string interactiveAgentSessionId, string attachmentId, string attachmentToken)
@@ -1614,9 +1784,12 @@ public sealed class InteractiveSessionLaunchDescriptorFactory
         ? ["OpenCode.Workspace.Cli.exe", "OpenCode.Workspace.Cli.dll"]
         : ["OpenCode.Workspace.Cli", "OpenCode.Workspace.Cli.dll"];
 
-    public InteractiveSessionLaunchDescriptorSet Build(WorkspaceSnapshot snapshot, string stateRoot, string interactiveAgentSessionId, string attachmentId, string attachmentToken, string attachmentRecoveryId, string recoverySecret, bool resumeKnownProviderSession)
+    public InteractiveSessionLaunchDescriptorSet Build(WorkspaceSnapshot snapshot, string stateRoot, string interactiveAgentSessionId, string attachmentId, string attachmentToken, string attachmentRecoveryId, string recoverySecret)
+        => Build(snapshot.Definition.Workspace.Name, stateRoot, interactiveAgentSessionId, attachmentId, attachmentToken, attachmentRecoveryId, recoverySecret);
+
+    internal InteractiveSessionLaunchDescriptorSet Build(string workspaceName, string stateRoot, string interactiveAgentSessionId, string attachmentId, string attachmentToken, string attachmentRecoveryId, string recoverySecret)
     {
-        var title = $"OpenCode Stuff - {snapshot.Definition.Workspace.Name}";
+        var title = $"OpenCode Stuff - {workspaceName}";
         var helperHost = ResolveCliHostCommand();
         return new InteractiveSessionLaunchDescriptorSet
         {
@@ -1651,26 +1824,6 @@ public sealed class InteractiveSessionLaunchDescriptorFactory
                     recoverySecret,
                 ],
             },
-            ProcessLaunchDescriptor = new ApprovedProcessLaunchDescriptor
-            {
-                LaunchKind = "workspace-attach-wrapper",
-                FileName = "powershell.exe",
-                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                CommandText = $"powershell.exe -ExecutionPolicy Bypass -File \"{snapshot.Paths.AttachWrapperScriptPath}\"",
-                FallbackCommandText = $"powershell.exe -ExecutionPolicy Bypass -File \"{snapshot.Paths.AttachWrapperScriptPath}\"",
-                Arguments = ["-ExecutionPolicy", "Bypass", "-File", snapshot.Paths.AttachWrapperScriptPath],
-            },
-            ProviderSessionProbeDescriptor = resumeKnownProviderSession
-                ? null
-                : new ApprovedProcessLaunchDescriptor
-                {
-                    LaunchKind = "workspace-provider-session-probe",
-                    FileName = "powershell.exe",
-                    WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    CommandText = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command <approved-provider-session-probe>",
-                    FallbackCommandText = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command <approved-provider-session-probe>",
-                    Arguments = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", BuildProviderProbeCommand(snapshot)],
-                },
         };
     }
 
@@ -1719,23 +1872,6 @@ public sealed class InteractiveSessionLaunchDescriptorFactory
         }
     }
 
-    private static string BuildProviderProbeCommand(WorkspaceSnapshot snapshot)
-    {
-        var containerName = $"{WorkspacePathBuilder.Slugify(snapshot.Definition.Workspace.Name)}-workspace";
-        return string.Join(' ',
-            "$ErrorActionPreference='Stop';",
-            "$sessionOutput = & docker.exe exec --user opencode -w /workspace",
-            containerName,
-            "bash -lc 'export HOME=/home/opencode; opencode session list 2>/dev/null || true';",
-            "$lines = @($sessionOutput) | Select-Object -Skip 2;",
-            "$ids = $lines | ForEach-Object { ($_ -split '\\s+')[0] } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) };",
-            "foreach ($id in $ids) {",
-            "$json = & docker.exe exec --user opencode -w /workspace",
-            containerName,
-            "bash -lc \"export HOME=/home/opencode; opencode export '$id' 2>/dev/null\";",
-            "if (-not [string]::IsNullOrWhiteSpace($json)) { try { $obj = $json | ConvertFrom-Json; if ($obj.info.directory -eq '/workspace') { [Console]::Out.WriteLine($id) } } catch { } }",
-            "}");
-    }
 
     private sealed record ResolvedCliHostCommand(IReadOnlyList<string> FileAndArguments, string RedactedCommandText);
 }
@@ -1743,8 +1879,6 @@ public sealed class InteractiveSessionLaunchDescriptorFactory
 public sealed record InteractiveSessionLaunchDescriptorSet
 {
     public ApprovedTerminalLaunchDescriptor TerminalLaunchDescriptor { get; init; } = new();
-    public ApprovedProcessLaunchDescriptor ProcessLaunchDescriptor { get; init; } = new();
-    public ApprovedProcessLaunchDescriptor? ProviderSessionProbeDescriptor { get; init; }
 }
 
 internal sealed record AttachmentRuntimeState
@@ -1761,8 +1895,6 @@ internal sealed record AttachmentRuntimeState
     public DateTimeOffset? ChildStartedUtc { get; init; }
     public DateTimeOffset? RecoveryEligibleUntilUtc { get; init; }
     public bool RecoveryBlockedByCleanShutdown { get; init; }
-    public ApprovedProcessLaunchDescriptor ProcessLaunchDescriptor { get; init; } = new();
-    public ApprovedProcessLaunchDescriptor ProviderSessionProbeDescriptor { get; init; } = new();
     public InteractiveAttachmentControlAction RequestedAction { get; init; }
     public int? HelperProcessId { get; init; }
     public int? ChildProcessId { get; init; }
@@ -1778,7 +1910,7 @@ internal sealed record AttachmentRuntimeState
     public static string CreateTokenHash(string token)
         => HashToken(token);
 
-    public static AttachmentRuntimeState CreateCurrent(string interactiveAgentSessionId, string attachmentId, string ownerClientInstanceId, string attachmentToken, string attachmentRecoveryId, string recoverySecret, string launchCorrelationId, ApprovedProcessLaunchDescriptor processLaunchDescriptor, ApprovedProcessLaunchDescriptor providerSessionProbeDescriptor)
+    public static AttachmentRuntimeState CreateCurrent(string interactiveAgentSessionId, string attachmentId, string ownerClientInstanceId, string attachmentToken, string attachmentRecoveryId, string recoverySecret, string launchCorrelationId)
         => new()
         {
             InteractiveAgentSessionId = interactiveAgentSessionId,
@@ -1788,8 +1920,6 @@ internal sealed record AttachmentRuntimeState
             AttachmentRecoveryId = attachmentRecoveryId,
             RecoverySecretHash = HashToken(recoverySecret),
             LaunchCorrelationId = launchCorrelationId,
-            ProcessLaunchDescriptor = processLaunchDescriptor,
-            ProviderSessionProbeDescriptor = providerSessionProbeDescriptor,
         };
 
     private static string HashToken(string attachmentToken)
@@ -1862,6 +1992,8 @@ public sealed class LocalHostApplicationService(
     ControllerSessionService controllerSessions,
     InteractiveAgentSessionService interactiveSessions,
     InteractiveSessionAttachmentService interactiveAttachments,
+    InteractiveTerminalRuntimeService terminals,
+    RuntimeResourcesLocalHostService runtimeResources,
     IConfiguration configuration)
 {
     public ServerHealthModel GetServerHealth() => service.GetServerHealth();
@@ -1895,6 +2027,14 @@ public sealed class LocalHostApplicationService(
     public Task<RuntimeResourceInventory> ListRuntimeResourcesAsync(RuntimeOwnershipQuery query, CancellationToken cancellationToken = default) => service.ListRuntimeResourcesAsync(query, cancellationToken);
     public Task<RuntimeResourceInventory> RunRuntimeDoctorAsync(RuntimeOwnershipQuery query, CancellationToken cancellationToken = default) => service.RunRuntimeDoctorAsync(query, cancellationToken);
     public Task<SmokeCleanupResult> CleanupSmokeResourcesAsync(SmokeCleanupOptions options, CancellationToken cancellationToken = default) => service.CleanupSmokeResourcesAsync(options, cancellationToken);
+    public async Task<IReadOnlyList<LocalArtifactListItem>> ListWorkspaceArtifactsAsync(string workspaceId, string? relativePath, bool recursive, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<List<LocalArtifactListItem>>(await service.ListWorkspaceArtifactsAsync(workspaceId, relativePath, recursive, cancellationToken));
+    public async Task<LocalArtifactReadModel> GetWorkspaceArtifactAsync(string workspaceId, string relativePath, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<LocalArtifactReadModel>(await service.GetWorkspaceArtifactAsync(workspaceId, relativePath, cancellationToken));
+    public async Task<IReadOnlyList<LocalArtifactListItem>> ListSmokeArtifactsAsync(string runId, string? relativePath, bool recursive, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<List<LocalArtifactListItem>>(await service.ListSmokeArtifactsAsync(runId, relativePath, recursive, cancellationToken));
+    public async Task<LocalArtifactReadModel> GetSmokeArtifactAsync(string runId, string relativePath, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<LocalArtifactReadModel>(await service.GetSmokeArtifactAsync(runId, relativePath, cancellationToken));
+    public async Task<LocalArtifactReadModel> ReadArtifactByResourceUriAsync(string resourceUri, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<LocalArtifactReadModel>(await service.ReadArtifactByResourceUriAsync(resourceUri, cancellationToken));
+    public async Task<LocalArtifactResourceReadModel> ReadArtifactResourceAsync(string resourceUri, CancellationToken cancellationToken = default) => LocalHostModelMapper.MapToLocal<LocalArtifactResourceReadModel>(await service.ReadArtifactResourceAsync(resourceUri, cancellationToken));
+    public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default) => runtimeResources.BuildAsync(cancellationToken);
+    public Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(RuntimeResourceInspectRequest request, CancellationToken cancellationToken = default) => runtimeResources.InspectAsync(request, cancellationToken);
 
     public Task<IReadOnlyList<WorkspaceInstanceRecord>> ListWorkspaceInstancesAsync(CancellationToken cancellationToken = default) => workspaceInstances.ListAsync(cancellationToken);
     public Task<WorkspaceInstanceRecord> GetWorkspaceInstanceAsync(string workspaceInstanceId, CancellationToken cancellationToken = default) => workspaceInstances.GetAsync(workspaceInstanceId, cancellationToken);
@@ -1908,15 +2048,57 @@ public sealed class LocalHostApplicationService(
     public Task<InteractiveAgentSessionRecord> GetInteractiveAgentSessionAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default) => interactiveSessions.GetAsync(interactiveAgentSessionId, cancellationToken);
     public Task<InteractiveAgentSessionRecord> CreateInteractiveAgentSessionAsync(CreateInteractiveAgentSessionRequest request, CancellationToken cancellationToken = default) => interactiveSessions.CreateAsync(request, cancellationToken);
     public Task<IReadOnlyList<InteractiveSessionAttachmentRecord>> GetInteractiveAttachmentsAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default) => interactiveSessions.GetAttachmentsAsync(interactiveAgentSessionId, cancellationToken);
-    public Task<InteractiveSessionAttachResult> AttachInteractiveSessionAsync(string interactiveAgentSessionId, AttachInteractiveSessionRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.AttachAsync(interactiveAgentSessionId, request, cancellationToken);
-    public Task<InteractiveSessionAttachmentActivationResult> ActivateInteractiveSessionAttachmentAsync(string interactiveAgentSessionId, string attachmentId, ActivateInteractiveSessionAttachmentRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.ActivateAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
+    public async Task<InteractiveSessionAttachResult> AttachInteractiveSessionAsync(string interactiveAgentSessionId, AttachInteractiveSessionRequest request, CancellationToken cancellationToken = default)
+    {
+        var attached = await interactiveAttachments.AttachAsync(interactiveAgentSessionId, request, cancellationToken);
+        try
+        {
+            terminals.SetActiveAttachment(interactiveAgentSessionId, attached.Attachment.AttachmentId);
+            return attached with { TerminalRuntime = await terminals.GetAsync(interactiveAgentSessionId, cancellationToken) };
+        }
+        catch (OpenCodeWorkspaceMcpException exception) when (exception.Code == "terminal_runtime_not_found")
+        {
+            // Non-terminal API callers can grant attachment authority; desktop ensures the runtime first.
+            return attached;
+        }
+    }
+    public async Task<InteractiveSessionAttachmentActivationResult> ActivateInteractiveSessionAttachmentAsync(string interactiveAgentSessionId, string attachmentId, ActivateInteractiveSessionAttachmentRequest request, CancellationToken cancellationToken = default)
+    {
+        var activated = await interactiveAttachments.ActivateAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
+        try
+        {
+            return activated with { TerminalRuntime = await terminals.GetAsync(interactiveAgentSessionId, cancellationToken) };
+        }
+        catch (OpenCodeWorkspaceMcpException exception) when (exception.Code == "terminal_runtime_not_found")
+        {
+            return activated;
+        }
+    }
     public Task<InteractiveSessionAttachmentRecoveryResult> RecoverInteractiveSessionAttachmentAsync(string interactiveAgentSessionId, string attachmentId, RecoverInteractiveSessionAttachmentRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.RecoverAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
     public Task<InteractiveSessionAttachmentRecord> ReportInteractiveSessionAttachmentProcessStartedAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentProcessStartedRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.ReportProcessStartedAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
     public Task<InteractiveSessionAttachmentHeartbeatResult> HeartbeatInteractiveSessionAttachmentAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentHeartbeatRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.HeartbeatAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
     public Task<InteractiveAgentSessionRecord> ReportInteractiveSessionProviderSessionAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentProviderSessionRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.ReportProviderSessionAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
-    public Task<InteractiveAgentSessionRecord> ReportInteractiveSessionAttachmentProcessExitAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentProcessExitRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.ReportProcessExitAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
+    public async Task<InteractiveAgentSessionRecord> ReportInteractiveSessionAttachmentProcessExitAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentProcessExitRequest request, CancellationToken cancellationToken = default)
+    {
+        var session = await interactiveAttachments.ReportProcessExitAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
+        try { if (string.IsNullOrWhiteSpace(session.ActiveAttachmentId)) terminals.SetActiveAttachment(interactiveAgentSessionId, string.Empty); }
+        catch (OpenCodeWorkspaceMcpException exception) when (exception.Code == "terminal_runtime_not_found") { }
+        return session;
+    }
     public Task<InteractiveAgentSessionRecord> ReportInteractiveSessionAttachmentLaunchFailureAsync(string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentLaunchFailureRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.ReportLaunchFailureAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
     public Task<InteractiveAgentSessionRecord> DetachInteractiveSessionAsync(string interactiveAgentSessionId, string attachmentId, DetachInteractiveSessionAttachmentRequest request, CancellationToken cancellationToken = default) => interactiveAttachments.DetachAsync(interactiveAgentSessionId, attachmentId, request, cancellationToken);
+    public Task<InteractiveTerminalRuntimeRecord> StartInteractiveTerminalAsync(string interactiveAgentSessionId, StartInteractiveTerminalRequest request, CancellationToken cancellationToken = default) => terminals.StartAsync(interactiveAgentSessionId, request, cancellationToken);
+    public Task<InteractiveTerminalRuntimeRecord> GetInteractiveTerminalAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default) => terminals.GetAsync(interactiveAgentSessionId, cancellationToken);
+    public Task<TerminalOutputReadResult> GetInteractiveTerminalOutputAsync(string interactiveAgentSessionId, long afterSequence, CancellationToken cancellationToken = default) => terminals.ReadOutputAsync(interactiveAgentSessionId, afterSequence, cancellationToken);
+    public Task<InteractiveTerminalRuntimeRecord> SendInteractiveTerminalInputAsync(string interactiveAgentSessionId, TerminalInputRequest request, CancellationToken cancellationToken = default) => terminals.InputAsync(interactiveAgentSessionId, request, cancellationToken);
+    public Task<InteractiveTerminalRuntimeRecord> ResizeInteractiveTerminalAsync(string interactiveAgentSessionId, TerminalResizeRequest request, CancellationToken cancellationToken = default) => terminals.ResizeAsync(interactiveAgentSessionId, request, cancellationToken);
+    public async Task<InteractiveTerminalRuntimeRecord> StopInteractiveTerminalAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
+    {
+        var runtime = await terminals.StopAsync(interactiveAgentSessionId, cancellationToken);
+        await interactiveSessions.DetachForRuntimeStopAsync(interactiveAgentSessionId, cancellationToken);
+        terminals.SetActiveAttachment(interactiveAgentSessionId, string.Empty);
+        return runtime;
+    }
 
     public async Task<OracleApexApplicationDiscoveryResult> DiscoverOracleApexApplicationsAsync(OracleApexApplicationDiscoveryQuery request, CancellationToken cancellationToken = default)
         => await service.DiscoverOracleApexApplicationsAsync(request.WorkspaceId, request.EnvironmentName, request.WorkspaceName, request.ParsingSchema, request.SqlclProfile, request.SourcePath, cancellationToken);
@@ -1972,6 +2154,21 @@ public sealed class LocalHostApplicationService(
             cancellationToken);
     }
 
+    public Task<WorkspaceOperationRecord> StartCreateWorkspaceAsync(WorkspaceCreateOperationRequest request, CancellationToken cancellationToken = default)
+        => operations.StartAsync(
+            "create_workspace",
+            WorkspaceOperationScope.Host,
+            string.Empty,
+            string.Empty,
+            request.RequestedBy,
+            async (reporter, token) =>
+            {
+                reporter.MarkStarted("creatingWorkspace", "Creating workspace files and registration.");
+                return await CreateWorkspaceAsync(request.TemplateId, request.WorkspaceName, request.DestinationRoot, token);
+            },
+            $"create_workspace::{Path.GetFullPath(request.DestinationRoot)}:{request.WorkspaceName}",
+            cancellationToken);
+
     public Task<WorkspaceOperationRecord> StartPrepareWorkspaceAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("prepare_workspace", "preparing", "Preparing workspace.", request, (service, workspaceId, reporter, token) => service.PrepareWorkspaceAsync(workspaceId, reporter.ReportProgress, token), cancellationToken);
 
@@ -1981,11 +2178,27 @@ public sealed class LocalHostApplicationService(
     public Task<WorkspaceOperationRecord> StartStopWorkspaceAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("stop_workspace", "stopping", "Stopping workspace.", request, async (service, workspaceId, reporter, token) => await service.StopWorkspaceAsync(workspaceId, token), cancellationToken);
 
+    public Task<WorkspaceOperationRecord> StartReleaseRuntimeResourcesAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
+        => StartWorkspaceLifecycleAsync("release_runtime_resources", "releasingRuntimeResources", "Releasing managed runtime resources.", request, async (service, workspaceId, reporter, token) => await service.RemoveWorkspaceRuntimeAsync(workspaceId, token), cancellationToken);
+
     public Task<WorkspaceOperationRecord> StartRecoverWorkspaceAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("recover_workspace", "recovering", "Recovering workspace.", request, (service, workspaceId, reporter, token) => service.RecoverWorkspaceAsync(workspaceId, reporter.ReportProgress, token), cancellationToken);
 
     public Task<WorkspaceOperationRecord> StartResetRuntimeAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("reset_workspace_runtime", "resettingRuntime", "Resetting runtime.", request, (service, workspaceId, reporter, token) => service.ResetWorkspaceRuntimeAsync(workspaceId, reporter.ReportProgress, token), cancellationToken);
+
+    public Task<WorkspaceOperationRecord> StartRebuildWorkspaceRuntimeAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
+        => StartWorkspaceLifecycleAsync(
+            "rebuild_workspace_runtime",
+            "rebuildingRuntime",
+            "Rebuilding workspace runtime.",
+            request,
+            async (service, workspaceId, reporter, token) =>
+            {
+                await service.ResetWorkspaceRuntimeAsync(workspaceId, reporter.ReportProgress, token);
+                return await service.ProvisionWorkspaceAsync(workspaceId, reporter.ReportProgress, token);
+            },
+            cancellationToken);
 
     public async Task<WorkspaceOperationRecord> StartValidateSynchronizationAsync(WorkspaceSynchronizationValidationRequest request, CancellationToken cancellationToken = default)
     {
@@ -2590,6 +2803,22 @@ public sealed class LocalHostApplicationService(
     public Task<WorkspaceOperationRecord> StartReprovisionWorkspaceAsync(WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("reprovision_workspace", "reprovisioning", "Reprovisioning workspace.", request, (service, workspaceId, reporter, token) => service.ReprovisionWorkspaceAsync(workspaceId, reporter.ReportProgress, token), cancellationToken);
 
+    public Task<WorkspaceOperationRecord> StartCleanOrphanedRuntimeResourcesAsync(HostOperationRequest request, CancellationToken cancellationToken = default)
+        => operations.StartAsync(
+            "clean_orphaned_runtime_resources",
+            WorkspaceOperationScope.Host,
+            string.Empty,
+            string.Empty,
+            request.RequestedBy,
+            async (reporter, token) =>
+            {
+                reporter.MarkStarted("cleaningOrphanedRuntimeResources", "Cleaning orphaned managed runtime resources.");
+                await runtimeResources.CleanOrphansAsync(token);
+                return new { message = "Cleaned orphaned managed runtime resources." };
+            },
+            "clean_orphaned_runtime_resources",
+            cancellationToken);
+
     public Task<WorkspaceOperationRecord> StartCreateSavePointAsync(WorkspaceSavePointCreateRequest request, CancellationToken cancellationToken = default)
         => StartWorkspaceLifecycleAsync("create_save_point", "creatingSavePoint", "Creating Save Point.", new WorkspaceLifecycleRequest { CommandId = request.CommandId, WorkspaceId = request.WorkspaceId, RequestedBy = request.RequestedBy }, (service, workspaceId, reporter, token) => service.CreateSavePointAsync(workspaceId, request.Message, reporter.ReportProgress, token), cancellationToken);
 
@@ -2747,6 +2976,47 @@ public sealed class LocalHostApplicationService(
                 return await service.RunSmokeMatrixAsync(matrixRequest, token);
             },
             $"run_smoke_matrix::{string.Join(",", selected.Select(item => item.TemplateId))}",
+            cancellationToken);
+    }
+
+    public Task<WorkspaceOperationRecord> StartCleanupSmokeResourcesAsync(SmokeCleanupOperationRequest request, CancellationToken cancellationToken = default)
+        => operations.StartAsync(
+            "cleanup_smoke_resources",
+            WorkspaceOperationScope.Host,
+            string.Empty,
+            string.Empty,
+            request.RequestedBy,
+            async (reporter, token) =>
+            {
+                reporter.MarkStarted("cleaningSmokeResources", "Cleaning labeled smoke resources.");
+                return await service.CleanupSmokeResourcesAsync(new SmokeCleanupOptions(request.DryRun, request.IncludeAll, request.RunId, "json"), token);
+            },
+            $"cleanup_smoke_resources::{request.DryRun}:{request.IncludeAll}:{request.RunId}",
+            cancellationToken);
+
+    public async Task<WorkspaceOperationRecord> StartProcessExcelArtifactAsync(ExcelProcessOperationRequest request, CancellationToken cancellationToken = default)
+    {
+        var workspaceId = request.DestinationWorkspaceId ?? string.Empty;
+        var workspaceInstanceId = string.Empty;
+        if (!string.IsNullOrWhiteSpace(workspaceId))
+        {
+            var workspace = await service.GetWorkspaceAsync(workspaceId, cancellationToken);
+            workspaceId = workspace.WorkspaceId;
+            workspaceInstanceId = WorkspaceInstanceService.BuildWorkspaceInstanceId(workspaceId);
+        }
+
+        return await operations.StartAsync(
+            "process_excel_artifact",
+            string.IsNullOrWhiteSpace(workspaceId) ? WorkspaceOperationScope.Host : WorkspaceOperationScope.Workspace,
+            workspaceId,
+            workspaceInstanceId,
+            request.RequestedBy,
+            async (reporter, token) =>
+            {
+                reporter.MarkStarted("processingExcelArtifact", "Processing Excel artifact.");
+                return await service.ProcessExcelArtifactAsync(request.SourcePath, request.DestinationWorkspaceId, request.ProcessingTemplateId, request.OutputLogicalName, token);
+            },
+            $"process_excel_artifact::{workspaceId}:{request.ProcessingTemplateId}:{request.SourcePath}:{request.OutputLogicalName}",
             cancellationToken);
     }
 

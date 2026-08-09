@@ -33,7 +33,6 @@ public sealed class DesktopWorkspaceService : IDesktopWorkspaceService
     private readonly OracleSoftwareNoticeService _oracleSoftwareNoticeService;
     private readonly WindowsTerminalProfileSetupService _windowsTerminalProfileSetupService;
     private readonly WorkspaceLaunchPlanResolver _workspaceLaunchPlanResolver;
-    private readonly WorkspaceRuntimeExplorerService _workspaceRuntimeExplorerService;
     private readonly OracleApexAssistantService _oracleApexAssistantService;
     private readonly IProcessRunner _processRunner;
 
@@ -57,7 +56,6 @@ public sealed class DesktopWorkspaceService : IDesktopWorkspaceService
         _oracleSoftwareNoticeService = oracleSoftwareNoticeService;
         _windowsTerminalProfileSetupService = windowsTerminalProfileSetupService;
         _workspaceLaunchPlanResolver = new WorkspaceLaunchPlanResolver();
-        _workspaceRuntimeExplorerService = new WorkspaceRuntimeExplorerService(workspaceRepository, new WorkspaceRuntimeStateService(), new WorkspaceYamlService(), timelineService, _processRunner);
         _oracleApexAssistantService = new OracleApexAssistantService(new DesktopOracleApexAssistantSynchronizationService(workspaceOrchestrator));
     }
 
@@ -677,39 +675,6 @@ public sealed class DesktopWorkspaceService : IDesktopWorkspaceService
         }
     }
 
-    public async Task<WorkspaceOperationResult> ReleaseRuntimeResourcesAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
-    {
-        var transcript = CreateTranscript("Release Resources", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
-        var snapshot = currentSnapshot;
-        try
-        {
-            append(OperationTranscriptLineKind.Status, "Loading current workspace state...");
-            snapshot ??= await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
-            append(OperationTranscriptLineKind.Comment, $"Selected workspace '{snapshot.Definition.Workspace.Name}'.");
-            append(OperationTranscriptLineKind.Status, "Releasing managed runtime resources...");
-            await _workspaceOrchestrator.RemoveDockerResourcesAsync(snapshot, log, cancellationToken);
-            snapshot = await _workspaceOrchestrator.LoadSnapshotAsync(rootPath, cancellationToken, includeRuntimeInspection: true, includeSessionInspection: false);
-            await PersistWorkspaceRecordAsync(snapshot, "Release Resources", "Released managed Docker resources for this workspace.", true, cancellationToken);
-            _timelineService.Append(snapshot.Paths.TimelinePath, "resource-release", "Released runtime resources", "Released managed Docker resources for the workspace runtime.");
-            append(OperationTranscriptLineKind.Result, "Completed.");
-            transcript.CompletedUtc = DateTimeOffset.UtcNow;
-            transcript.Succeeded = true;
-            return new WorkspaceOperationResult { Snapshot = snapshot, Message = $"Released managed runtime resources for '{snapshot.Definition.Workspace.Name}'.", Transcript = transcript };
-        }
-        catch (Exception exception)
-        {
-            if (snapshot is not null)
-            {
-                await PersistWorkspaceRecordFailureAsync(snapshot.Record, exception.Message, cancellationToken, "Release Resources");
-            }
-
-            AppendFailureTranscript(exception, append);
-            transcript.CompletedUtc = DateTimeOffset.UtcNow;
-            transcript.Succeeded = false;
-            throw;
-        }
-    }
-
     public async Task<WorkspaceOperationResult> AttachWorkspaceAsync(string rootPath, WorkspaceSnapshot? currentSnapshot = null, IOperationLogSink? logSink = null, CancellationToken cancellationToken = default)
     {
         var transcript = CreateTranscript("Attach", currentSnapshot?.Definition.Workspace.Name, rootPath, logSink, out var append, out var log);
@@ -897,32 +862,6 @@ public sealed class DesktopWorkspaceService : IDesktopWorkspaceService
             Message = $"Opened '{path}'. Requested location: line {line}, column {column}.",
             UsedFallback = true,
         };
-    }
-
-    public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)
-        => _workspaceRuntimeExplorerService.BuildAsync(cancellationToken);
-
-    public Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default)
-        => _workspaceRuntimeExplorerService.InspectResourceAsync(resource, cancellationToken);
-
-    public async Task<RuntimeResourceCleanupResult> CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default)
-    {
-        var transcript = CreateTranscript("Clean Orphaned Resources", string.Empty, string.Empty, null, out var append, out _);
-        append(OperationTranscriptLineKind.Status, "Scanning for orphaned runtime resources...");
-        await _workspaceRuntimeExplorerService.CleanOrphanedResourcesAsync(cancellationToken);
-        foreach (var record in _workspaceRepository.LoadAll())
-        {
-            var paths = WorkspacePathBuilder.Build(record.RootPath, record.ConfigurationPath);
-            if (File.Exists(paths.TimelinePath))
-            {
-                _timelineService.Append(paths.TimelinePath, "orphan-cleaned", "Cleaned orphaned resources", "Removed orphaned managed Docker resources from the host runtime.");
-            }
-        }
-
-        append(OperationTranscriptLineKind.Result, "Completed.");
-        transcript.CompletedUtc = DateTimeOffset.UtcNow;
-        transcript.Succeeded = true;
-        return new RuntimeResourceCleanupResult { Message = "Cleaned orphaned runtime resources.", Transcript = transcript };
     }
 
     public async Task<WorkspaceTroubleshootingReport> GetWorkspaceTroubleshootingReportAsync(WorkspaceTroubleshootingRequest request, CancellationToken cancellationToken = default)

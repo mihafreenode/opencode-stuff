@@ -45,7 +45,7 @@ The Git workspace provider is responsible for:
 
 ## Working Copy Convention
 
-The V1 Safe Working Copy maps internally to a local Git branch.
+A Safe Working Copy maps internally to a local Git branch.
 
 Naming convention:
 
@@ -60,7 +60,7 @@ Examples:
 
 Normal UI should call this a Working Copy, not a branch.
 
-Protected or mainline branches such as `main`, `master`, `staging`, `production`, and `release/*` are advanced Git operations outside the normal V1 workflow.
+Protected or mainline branches such as `main`, `master`, `staging`, `production`, and `release/*` are advanced Git operations outside the normal workspace flow.
 
 ## Safety Rules
 
@@ -81,7 +81,7 @@ Before Publish:
 
 If the remote has not changed, the Working Copy can be published normally.
 
-If the remote changed, V1 may attempt a safe update only when the Working Copy is clean and the operation completes without conflicts.
+If the remote changed, the provider may attempt a safe update only when the Working Copy is clean and the operation completes without conflicts.
 
 If that safe update succeeds, the app must stop and ask for confirmation before publishing.
 
@@ -93,7 +93,7 @@ Needs Review message:
 
 ## Advanced Recovery
 
-Advanced Git View remains diagnostic-only in V1.
+Advanced Git View is diagnostic-only.
 
 It can expose:
 
@@ -142,3 +142,5 @@ Bad example:
 Reason:
 
 It may hide important workspace content such as `.opencode/`, `.github/`, or project-level configuration that should be preserved.
+
+Shared Git mutations are canonical LocalHost operations; presentations must not maintain an independent Git state model. See [Architecture Overview](overview.md), [LocalHost](local-host.md), and [Recovery Model](recovery-model.md).

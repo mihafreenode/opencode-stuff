@@ -1,13 +1,13 @@
 # Oracle APEX Development Loop
 
-The Oracle APEX development loop is local only.
+The Oracle APEX development-loop wrapper is a local configuration and integration-test gate. It does not execute the complete development workflow shown below.
 
 - configuration stays on your machine
 - credentials are never committed
 - repositories remain portable
 - SQLcl profiles are referenced by name, not stored in the repository
 
-## Workflow
+## Target Manual Workflow
 
 Configure once
 
@@ -17,7 +17,7 @@ Run Doctor
 
 ↓
 
-Run development-loop script
+Run configuration/test wrapper
 
 ↓
 
@@ -43,9 +43,11 @@ Preview
 
 Rollback if required
 
+After validating all required environment variables, `scripts/testing/oracle-apex-development-loop.ps1` runs the `OracleApexAssistantIntegrationTests` filter. It does not run Doctor, prompt OpenCode, create or execute an Assistant plan, validate with SQLcl, import an application, open a preview, detect a Builder change, or roll back source. Perform and verify those steps separately through the product and the target Oracle environment.
+
 ## Required variables
 
-All variables are local-only environment variables.
+All variables are local-only environment variables. The wrapper checks that the required values are present; it does not use them to connect, validate, import, export, or open either URL.
 
 - `OPENCODE_APEX_DEVLOOP_ENABLED`
   Why: enables the local smoke workflow intentionally.
@@ -115,7 +117,7 @@ $env:OPENCODE_APEX_DEVLOOP_BUILDER_URL = "https://example.test/ords/r/apex/app-b
 $env:OPENCODE_APEX_DEVLOOP_APPLICATION_URL = "https://example.test/ords/r/demo/home"
 ```
 
-Run Doctor and the wrapper:
+Run the relevant tests and the wrapper:
 
 ```powershell
 dotnet test tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj --filter "OracleApexEnvironmentDoctorServiceTests|OracleApexAssistantIntegrationTests"
@@ -142,14 +144,16 @@ Run the wrapper:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\testing\oracle-apex-development-loop.ps1
 ```
 
-## Expected first run
+## Expected First Manual Run
 
 1. Set the local-only environment variables.
-2. Run Oracle APEX Doctor.
+2. Run Oracle APEX Doctor separately.
 3. Fix any missing configuration or deployment-profile issues.
-4. Run the development-loop wrapper.
-5. Prompt OpenCode for a small reversible semantic change.
+4. Run the wrapper to validate environment-variable presence and the Assistant integration-test filter.
+5. Open the product and prompt OpenCode for a small reversible semantic change.
 6. Review the semantic plan.
 7. Validate and import.
 8. Preview the application.
 9. Roll back the generated change if you want to restore the original source.
+
+Completion of the wrapper proves only that its configuration gate and selected integration tests passed. It is not evidence that the target Oracle profile connected or that the application was validated, imported, previewed, or rolled back.

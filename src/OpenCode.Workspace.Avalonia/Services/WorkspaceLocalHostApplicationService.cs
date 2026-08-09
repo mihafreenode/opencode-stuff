@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.LocalClient;
 
 namespace OpenCode.Workspace.Avalonia.Services;
@@ -43,7 +44,18 @@ public interface IWorkspaceLocalHostApplicationService : IAsyncDisposable
     Task<bool> StopOwnedLocalHostAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed class WorkspaceLocalHostApplicationService : IWorkspaceLocalHostApplicationService
+public interface IRuntimeResourcesApplicationService
+{
+    Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default);
+    Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default);
+    Task StartRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default);
+    Task StopRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default);
+    Task ReleaseRuntimeResourcesAsync(string workspaceRootPath, CancellationToken cancellationToken = default);
+    Task RebuildRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default);
+    Task CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class WorkspaceLocalHostApplicationService : IWorkspaceLocalHostApplicationService, IRuntimeResourcesApplicationService
 {
     private readonly LocalHostClientOptions _options;
     private LocalHostClient? _client;
@@ -125,6 +137,40 @@ public sealed class WorkspaceLocalHostApplicationService : IWorkspaceLocalHostAp
     public async Task<WorkspaceOperationRecord> ReprovisionWorkspaceAsync(string workspaceId, CancellationToken cancellationToken = default)
         => await (await RequireClientAsync(cancellationToken)).StartWorkspaceLifecycleAsync("reprovision", new WorkspaceLifecycleRequest { CommandId = Guid.NewGuid().ToString("n"), WorkspaceId = workspaceId, RequestedBy = new OperationInitiator { Kind = "avalonia" } }, cancellationToken);
 
+    public async Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)
+        => await (await RequireClientAsync(cancellationToken)).GetRuntimeResourceExplorerAsync(cancellationToken);
+
+    public async Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default)
+        => await (await RequireClientAsync(cancellationToken)).InspectRuntimeResourceAsync(new RuntimeResourceInspectRequest
+        {
+            ResourceType = resource.ResourceType,
+            RuntimeIdentifier = resource.RuntimeIdentifier,
+            WorkspaceRootPath = resource.WorkspaceRootPath,
+        }, cancellationToken);
+
+    public Task StartRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default)
+        => RunWorkspaceRuntimeOperationAsync(workspaceRootPath, "start", cancellationToken);
+
+    public Task StopRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default)
+        => RunWorkspaceRuntimeOperationAsync(workspaceRootPath, "stop", cancellationToken);
+
+    public Task ReleaseRuntimeResourcesAsync(string workspaceRootPath, CancellationToken cancellationToken = default)
+        => RunWorkspaceRuntimeOperationAsync(workspaceRootPath, "release-runtime", cancellationToken);
+
+    public Task RebuildRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default)
+        => RunWorkspaceRuntimeOperationAsync(workspaceRootPath, "rebuild-runtime", cancellationToken);
+
+    public async Task CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default)
+    {
+        var client = await RequireClientAsync(cancellationToken);
+        var started = await client.StartCleanOrphanedRuntimeResourcesAsync(new HostOperationRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            RequestedBy = new OperationInitiator { Kind = "avalonia" },
+        }, cancellationToken);
+        await WaitForOperationAsync(client, started, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<InteractiveAgentSessionRecord>> GetInteractiveSessionsAsync(string? workspaceId = null, CancellationToken cancellationToken = default)
         => await (await RequireClientAsync(cancellationToken)).ListInteractiveAgentSessionsAsync(workspaceId, cancellationToken);
 
@@ -162,6 +208,49 @@ public sealed class WorkspaceLocalHostApplicationService : IWorkspaceLocalHostAp
             ConnectionState = LocalHostConnectionState.DegradedPolling;
             StatusMessage = "Connected to LocalHost with polling fallback.";
             return null;
+        }
+    }
+
+    private async Task RunWorkspaceRuntimeOperationAsync(string workspaceRootPath, string action, CancellationToken cancellationToken)
+    {
+        var client = await RequireClientAsync(cancellationToken);
+        var workspaceId = await ResolveWorkspaceIdAsync(client, workspaceRootPath, cancellationToken);
+        var started = await client.StartWorkspaceLifecycleAsync(action, new WorkspaceLifecycleRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            WorkspaceId = workspaceId,
+            RequestedBy = new OperationInitiator { Kind = "avalonia" },
+        }, cancellationToken);
+        await WaitForOperationAsync(client, started, cancellationToken);
+    }
+
+    private static async Task<string> ResolveWorkspaceIdAsync(LocalHostClient client, string workspaceRootPath, CancellationToken cancellationToken)
+    {
+        var instances = await client.ListWorkspaceInstancesAsync(cancellationToken);
+        var workspace = instances.FirstOrDefault(item =>
+            string.Equals(item.Workspace?.WorkspaceRoot, workspaceRootPath, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Workspace?.Snapshot?.Paths.RootPath, workspaceRootPath, StringComparison.OrdinalIgnoreCase));
+        return workspace?.WorkspaceId
+            ?? throw new InvalidOperationException($"The workspace rooted at '{workspaceRootPath}' was not found in LocalHost.");
+    }
+
+    private static async Task WaitForOperationAsync(LocalHostClient client, WorkspaceOperationRecord operation, CancellationToken cancellationToken)
+    {
+        var current = operation;
+        while (current.Status is WorkspaceOperationStatus.Pending or WorkspaceOperationStatus.Running)
+        {
+            await Task.Delay(250, cancellationToken);
+            current = await client.GetOperationAsync(current.OperationId, current.LastEventSequence, cancellationToken: cancellationToken);
+        }
+
+        if (current.Status != WorkspaceOperationStatus.Succeeded)
+        {
+            var message = current.OriginalFailure?.Message
+                ?? current.CleanupFailure?.Message
+                ?? current.ProgressMessage;
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message)
+                ? $"LocalHost operation '{current.OperationKind}' ended with status {current.Status}."
+                : message);
         }
     }
 

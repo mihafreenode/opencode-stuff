@@ -27,17 +27,17 @@ run_live() {
 
 run_non_oracle() {
   dotnet build "OpenCode.Workspace.slnx" -c Release
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run --family lightweight --format json
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run --family postgresql --format json
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run --family analytics --format json
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run --family document-processing --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run --family lightweight --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run --family postgresql --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run --family analytics --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run --family document-processing --format json
 }
 
 run_oracle() {
   dotnet build "OpenCode.Workspace.slnx" -c Release
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run oracle-plsql-demo --format json
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run oracle-apex-demo --format json
-  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/opencode.dll" smoke run oracle-apexlang-demo --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run oracle-plsql-demo --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run oracle-apex-demo --format json
+  dotnet "src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll" smoke run oracle-apexlang-demo --format json
 }
 
 case "$suite" in

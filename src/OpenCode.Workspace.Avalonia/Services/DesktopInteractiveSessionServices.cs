@@ -107,6 +107,8 @@ public sealed class LocalHostDesktopInteractiveSessionApplicationService : IDesk
     private async Task<InteractiveSessionAttachResult> AttachInternalAsync(string interactiveAgentSessionId, bool requestTransfer, CancellationToken cancellationToken)
     {
         await using var client = await LocalHostClient.ConnectAsync(cancellationToken);
+        // LocalHost starts or reuses the provider runtime before granting a presentation attachment.
+        _ = await client.StartInteractiveTerminalAsync(interactiveAgentSessionId, new StartInteractiveTerminalRequest(), cancellationToken);
         var attached = await client.AttachInteractiveSessionAsync(interactiveAgentSessionId, new AttachInteractiveSessionRequest
         {
             SessionId = interactiveAgentSessionId,

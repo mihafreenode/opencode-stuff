@@ -49,6 +49,7 @@ public sealed class AvaloniaAppBootstrapper
             Shell = ShellViewModel.Create(
                 desktopWorkspaceApplicationService,
                 desktopInteractiveSessionApplicationService,
+                workspaceLocalHostApplicationService,
                 desktopWorkspaceService,
                 desktopPlatformService,
                 diagnosticsShellService,

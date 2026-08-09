@@ -8,9 +8,9 @@ OpenCode keeps the repository durable and portable while resolving runtime detai
 - runtime resolution happens at execution time
 - `.opencode/local/` stores machine-local cache data only
 
-## `opencode doctor`
+## Local Diagnostic Commands
 
-`opencode doctor` explains the current host and runtime situation without depending on the Windows UI.
+`opencode doctor` explains the current host and runtime situation without depending on the Windows UI. Diagnostic and smoke CLI commands may execute Core locally when they do not mutate canonical shared state; this is an intentional exception to presentation/controller use of LocalHost.
 
 It reports:
 
@@ -20,11 +20,11 @@ It reports:
 - resolved runtime plan when `workspace.yaml` is present
 - whether `.opencode/local/runtime-state.yaml` exists
 
-## `opencode validate-platform`
+## Platform Validation
 
 `opencode validate-platform --target <platform>` validates whether a workspace can be generated and plausibly executed for a requested Linux target.
 
-The first phase checks:
+Validation checks:
 
 - target support
 - workspace configuration loading
@@ -59,3 +59,5 @@ Final validation still belongs on:
 - Windows ARM64
 - Linux ARM64
 - Apple Silicon
+
+Runtime choices remain machine-local and must not become terminal-runtime or workspace identity. Canonical shared mutations use [LocalHost](local-host.md); see the [Architecture Overview](overview.md) for the CLI exception.

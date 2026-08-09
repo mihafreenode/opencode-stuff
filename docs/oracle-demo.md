@@ -2,6 +2,8 @@
 
 OpenCode provides a reproducible Oracle development workspace containing the database, tools, tutorials, knowledge, and AI assistance required to become productive quickly and safely.
 
+For the authoritative capability and maturity map, see [Oracle and Oracle APEX Integration](integrations/oracle-apex.md).
+
 The Oracle demo database is local to the workspace. Staging setup is optional and is not part of the first tutorial.
 
 Provision a local Oracle environment, explore a realistic schema, and understand existing PL/SQL before connecting to customer systems.
@@ -165,8 +167,6 @@ The helper actions `Test Connection` and `Run Tutorial Query` prefer SQL*Plus wh
 
 ## Explain Existing PL/SQL Code
 
-![OpenCode PL/SQL Analysis](../artifacts/screenshots/opencode-plsql-analysis.png)
-
 In this example OpenCode explains the `demo_show_customer` procedure, identifies the tables involved, describes the generated output, and explains the relationship between customers and orders.
 
 OpenCode can inspect existing Oracle PL/SQL and explain:
@@ -190,8 +190,6 @@ Use the connection details listed in the Oracle Demo Database section.
 
 ### Connect Using SQL Developer
 
-![SQL Developer Connection](../artifacts/screenshots/sql-developer-connection-success.png)
-
 SQL Developer connected successfully to the local Oracle Free database running inside the workspace.
 
 Use the connection details listed in the Oracle Demo Database section.
@@ -199,8 +197,6 @@ Use the connection details listed in the Oracle Demo Database section.
 This verifies that standard Oracle tooling can connect to the same database used by the workspace.
 
 ### Querying the Demo Schema
-
-![SQL Developer Query](../artifacts/screenshots/sql-developer-order-query.png)
 
 The demo workspace provisions a sample Oracle schema containing customers, orders, and products.
 
@@ -284,7 +280,7 @@ When present, the workspace shell exports `TNS_ADMIN` to that directory automati
 
 ## MCP Integration Notes
 
-Prefer Oracle SQLcl MCP support using `sql -mcp` when available. The user-facing value is that the workspace can safely query Oracle.
+The OpenCode Workspace MCP server is the implemented workspace lifecycle and Oracle Assistant integration. Oracle SQLcl MCP through `sql -mcp` is a separate catalog entry and remains experimental/environment-dependent; its availability does not imply that it is installed, configured, or the MCP server used by the workspace manager.
 
 ## Presenter Demo Script
 

@@ -30,7 +30,6 @@ public sealed class ShellViewModelTests
         var repoRoot = GetRepositoryRoot();
         var axaml = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "MainWindow.axaml"));
         var project = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "OpenCode.Workspace.Avalonia.csproj"));
-        var readme = File.ReadAllText(Path.Combine(repoRoot, "README.md"));
         var brandingReadme = File.ReadAllText(Path.Combine(repoRoot, "branding", "README.md"));
         var brandGuidelines = File.ReadAllText(Path.Combine(repoRoot, "branding", "BRAND_GUIDELINES.md"));
         var headerImageStart = axaml.IndexOf("<Image Source=\"avares://opencode-workspace/Assets/opencode-stuff-header-brand-ui.png\"", StringComparison.Ordinal);
@@ -60,8 +59,6 @@ public sealed class ShellViewModelTests
         Assert.DoesNotContain("Assets\\opencode-stuff-header-brand.png", project, StringComparison.Ordinal);
         Assert.DoesNotContain("opencode-stuff-header-brand-trimmed.png", project, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-satchel-icon.png", project, StringComparison.Ordinal);
-        Assert.Contains("opencode-stuff-header-brand-ui.png", readme, StringComparison.Ordinal);
-        Assert.Contains("ImageMagick trim", readme, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-header-brand-ui.png", brandingReadme, StringComparison.Ordinal);
         Assert.Contains("ImageMagick trim", brandingReadme, StringComparison.Ordinal);
         Assert.Contains("opencode-stuff-header-brand-ui.png", brandGuidelines, StringComparison.Ordinal);
@@ -247,6 +244,7 @@ public sealed class ShellViewModelTests
 
         _ = ShellViewModel.Create(
             desktop,
+            new FakeRuntimeResourcesApplicationService(),
             new FakeDiagnosticsShellService(),
             new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
@@ -6528,6 +6526,29 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public void RuntimeResources_MigrationGuard_UsesLocalHostAndKeepsOnlyUrlOpeningLocal()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var pageSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "ViewModels", "RuntimeResourcesPageViewModel.cs"));
+        var desktopServiceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopWorkspaceService.cs"));
+        var desktopInterfaceSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "IDesktopWorkspaceService.cs"));
+        var bootstrapperSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Avalonia", "Services", "AvaloniaAppBootstrapper.cs"));
+        var localHostSource = File.ReadAllText(Path.Combine(repoRoot, "src", "OpenCode.Workspace.Api", "LocalHostServices.cs"));
+        var rebuildStart = localHostSource.IndexOf("StartRebuildWorkspaceRuntimeAsync", StringComparison.Ordinal);
+        var rebuildEnd = localHostSource.IndexOf("StartValidateSynchronizationAsync", rebuildStart, StringComparison.Ordinal);
+        var rebuildSource = localHostSource[rebuildStart..rebuildEnd];
+
+        Assert.Contains("IRuntimeResourcesApplicationService", pageSource, StringComparison.Ordinal);
+        Assert.Contains("_desktopPlatformService.OpenPathAsync(url)", pageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("IDesktopWorkspaceService", pageSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("WorkspaceRuntimeExplorerService", desktopServiceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleaseRuntimeResourcesAsync", desktopInterfaceSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetRuntimeResourceExplorerAsync", desktopInterfaceSource, StringComparison.Ordinal);
+        Assert.Contains("workspaceLocalHostApplicationService,", bootstrapperSource, StringComparison.Ordinal);
+        Assert.True(rebuildSource.IndexOf("ResetWorkspaceRuntimeAsync", StringComparison.Ordinal) < rebuildSource.IndexOf("ProvisionWorkspaceAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AvaloniaAssembly_DoesNotReferenceWpfAssemblies()
     {
         var references = typeof(ShellViewModel).Assembly.GetReferencedAssemblies().Select(item => item.Name).ToArray();
@@ -6546,6 +6567,7 @@ public sealed class ShellViewModelTests
     {
         return ShellViewModel.Create(
             desktop,
+            desktop is IRuntimeResourcesApplicationService runtimeResources ? runtimeResources : new FakeRuntimeResourcesApplicationService(),
             new FakeDiagnosticsShellService(),
             new FakeHostCapabilities(),
             new FakeTemplateCatalogShellService(),
@@ -7591,7 +7613,22 @@ public sealed class ShellViewModelTests
             .ToArray();
     }
 
-    private sealed class FakeDesktopWorkspaceService : IDesktopWorkspaceService
+    private sealed class FakeRuntimeResourcesApplicationService : IRuntimeResourcesApplicationService
+    {
+        public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceRuntimeExplorerReport());
+
+        public Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(WorkspaceRuntimeResourceEntry resource, CancellationToken cancellationToken = default)
+            => Task.FromResult(new WorkspaceRuntimeInspectResult());
+
+        public Task StartRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task StopRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task ReleaseRuntimeResourcesAsync(string workspaceRootPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RebuildRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeDesktopWorkspaceService : IDesktopWorkspaceService, IRuntimeResourcesApplicationService
     {
         private readonly IReadOnlyList<WorkspaceSnapshot> _snapshots;
         private readonly IReadOnlyList<WorkspaceShellItem> _extraItems;
@@ -8379,6 +8416,21 @@ public sealed class ShellViewModelTests
 
         public Task<RuntimeResourceCleanupResult> CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(new RuntimeResourceCleanupResult { Message = "cleaned", Transcript = new OperationTranscript() });
+
+        Task IRuntimeResourcesApplicationService.StartRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken)
+            => StartWorkspaceAsync(workspaceRootPath, cancellationToken: cancellationToken);
+
+        Task IRuntimeResourcesApplicationService.StopRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken)
+            => StopWorkspaceAsync(workspaceRootPath, cancellationToken: cancellationToken);
+
+        Task IRuntimeResourcesApplicationService.ReleaseRuntimeResourcesAsync(string workspaceRootPath, CancellationToken cancellationToken)
+            => ReleaseRuntimeResourcesAsync(workspaceRootPath, cancellationToken: cancellationToken);
+
+        Task IRuntimeResourcesApplicationService.RebuildRuntimeAsync(string workspaceRootPath, CancellationToken cancellationToken)
+            => ResetRuntimeAsync(workspaceRootPath, cancellationToken: cancellationToken);
+
+        async Task IRuntimeResourcesApplicationService.CleanOrphanedRuntimeResourcesAsync(CancellationToken cancellationToken)
+            => await CleanOrphanedRuntimeResourcesAsync(cancellationToken);
 
         public WorkspaceTimeline LoadTimeline(string timelinePath)
         {

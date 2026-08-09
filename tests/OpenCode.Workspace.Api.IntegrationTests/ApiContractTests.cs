@@ -120,6 +120,42 @@ public sealed class ApiContractTests : IDisposable
     [Fact]
     [Trait("Category", "ApiIntegration")]
     [Trait("Category", "FastIntegration")]
+    public async Task LocalHost_Runtime_Resources_ExposeExplorerAndRejectForgedInspectTargets()
+    {
+        await using var factory = _environment.CreateFactory(services =>
+        {
+            services.ReplaceSingleton<IProcessRunner>(new EmptyProcessRunner());
+        });
+        using var client = factory.CreateClient();
+
+        var explorer = await client.GetFromJsonAsync<OpenCode.Workspace.LocalClient.LocalHostEnvelope<WorkspaceRuntimeExplorerReport>>("/api/v1/local-host/runtime-resources");
+        Assert.NotNull(explorer);
+
+        var inspectResponse = await client.PostAsJsonAsync("/api/v1/local-host/runtime-resources/inspect", new OpenCode.Workspace.LocalClient.RuntimeResourceInspectRequest
+        {
+            ResourceType = "Runtime State",
+            RuntimeIdentifier = "/tmp/not-in-inventory",
+        });
+        var error = await inspectResponse.Content.ReadFromJsonAsync<ApiErrorEnvelope>();
+
+        Assert.Equal(HttpStatusCode.NotFound, inspectResponse.StatusCode);
+        Assert.Equal("runtime_resource_not_found", error!.Code);
+
+        var cleanupResponse = await client.PostAsJsonAsync("/api/v1/local-host/runtime-resources/cleanup-orphans", new OpenCode.Workspace.LocalClient.HostOperationRequest
+        {
+            CommandId = "cleanup-orphans",
+            RequestedBy = new OpenCode.Workspace.LocalClient.OperationInitiator { Kind = "test" },
+        });
+        var cleanup = await cleanupResponse.Content.ReadFromJsonAsync<OpenCode.Workspace.LocalClient.LocalHostEnvelope<OpenCode.Workspace.LocalClient.WorkspaceOperationRecord>>();
+
+        Assert.Equal(HttpStatusCode.OK, cleanupResponse.StatusCode);
+        Assert.Equal("clean_orphaned_runtime_resources", cleanup!.Data.OperationKind);
+        Assert.Equal(OpenCode.Workspace.LocalClient.WorkspaceOperationScope.Host, cleanup.Data.OperationScope);
+    }
+
+    [Fact]
+    [Trait("Category", "ApiIntegration")]
+    [Trait("Category", "FastIntegration")]
     public async Task Smoke_Operation_Endpoints_Start_Poll_And_Cancel_Using_Real_Http_Pipeline()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2284,6 +2320,21 @@ public sealed class ApiContractTests : IDisposable
         }
 
         throw new TimeoutException($"Operation '{operationId}' did not reach the expected state in time.");
+    }
+
+    private sealed class EmptyProcessRunner : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(string fileName, IEnumerable<string> arguments, string? workingDirectory = null, Action<bool, string>? onOutput = null, CancellationToken cancellationToken = default, TimeSpan? timeout = null, Action<string>? onDiagnostic = null)
+            => Task.FromResult(new ProcessResult
+            {
+                Command = fileName,
+                ExitCode = 1,
+                StandardOutput = string.Empty,
+                StandardError = "Unavailable in test.",
+                StandardOutputLines = [],
+                StandardErrorLines = ["Unavailable in test."],
+                Duration = TimeSpan.Zero,
+            });
     }
 }
 

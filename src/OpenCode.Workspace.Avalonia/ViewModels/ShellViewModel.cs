@@ -120,6 +120,7 @@ public sealed class ShellViewModel : ObservableObject
     public static ShellViewModel Create(
         IDesktopWorkspaceApplicationService workspaceApplicationService,
         IDesktopInteractiveSessionApplicationService interactiveSessionApplicationService,
+        IRuntimeResourcesApplicationService runtimeResourcesApplicationService,
         IDesktopWorkspaceService desktopWorkspaceService,
         IDesktopPlatformService desktopPlatformService,
         IDiagnosticsShellService diagnosticsShellService,
@@ -138,7 +139,7 @@ public sealed class ShellViewModel : ObservableObject
             desktopWorkspaceService,
             new WorkspaceTroubleshootingPageViewModel(),
             diagnosticsPage,
-            new RuntimeResourcesPageViewModel(desktopWorkspaceService),
+            new RuntimeResourcesPageViewModel(runtimeResourcesApplicationService, desktopPlatformService),
             new TemplatesPageViewModel(templateCatalogShellService),
             new SavePointsPageViewModel(workspaceApplicationService, desktopPlatformService),
             new TranscriptsPageViewModel(desktopWorkspaceService),
@@ -152,6 +153,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public static ShellViewModel Create(
         IDesktopWorkspaceService desktopWorkspaceService,
+        IRuntimeResourcesApplicationService runtimeResourcesApplicationService,
         IDiagnosticsShellService diagnosticsShellService,
         IHostCapabilities hostCapabilities,
         ITemplateCatalogShellService templateCatalogShellService,
@@ -163,6 +165,7 @@ public sealed class ShellViewModel : ObservableObject
         => Create(
             new LegacyDesktopWorkspaceApplicationService(desktopWorkspaceService),
             new UnsupportedDesktopInteractiveSessionApplicationService(),
+            runtimeResourcesApplicationService,
             desktopWorkspaceService,
             desktopPlatformService,
             diagnosticsShellService,

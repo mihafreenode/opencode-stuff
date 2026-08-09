@@ -14,12 +14,12 @@ public sealed class DocumentationShellService : IDocumentationShellService
     public IReadOnlyList<DocumentationDocument> GetDocuments()
         =>
         [
-            new("Quick Tutorial", Path.Combine("docs", "walkthrough", "quick-start.md"), "A practical first workspace walkthrough for new users."),
+            new("Getting Started", Path.Combine("docs", "getting-started.md"), "Install the package and create a first workspace."),
             new("README", "README.md", "Project overview and current product direction."),
-            new("Platform Compatibility", Path.Combine("docs", "testing", "platform-compatibility.md"), "Host and target platform validation guidance."),
-            new("Workspace YAML", Path.Combine("docs", "workspace-yaml.md"), "Canonical workspace configuration format."),
-            new("Architecture", Path.Combine("docs", "architecture.md"), "Current product architecture and project split."),
-            new("Troubleshooting", Path.Combine("docs", "troubleshooting.md"), "Known troubleshooting and recovery guidance."),
+            new("Package Layout", Path.Combine("docs", "reference", "package-layout.md"), "Supported platforms and installed host layout."),
+            new("Workspace YAML", Path.Combine("docs", "reference", "workspace-yaml.md"), "Canonical workspace configuration format."),
+            new("Configuration", Path.Combine("docs", "reference", "configuration.md"), "Workspace manager and host configuration reference."),
+            new("Troubleshooting", Path.Combine("docs", "user", "troubleshooting.md"), "Known troubleshooting and recovery guidance."),
         ];
 
     public Task OpenDocumentAsync(string relativePath, CancellationToken cancellationToken = default)

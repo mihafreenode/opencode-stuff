@@ -3,6 +3,9 @@
 Purpose:
 Curated entry points for Oracle APEX installation, upgrade, and runtime setup topics.
 
+Version note:
+The installation link targets APEX 24.2 and the ORDS link targets 25.1. These are versioned references, not a compatible pair for every environment and not claims of universal currency. Resolve both deployed versions through `docs/reference/oracle-knowledge-map.yaml` before following installation or upgrade steps.
+
 When to use:
 - local runtime provisioning questions
 - installation and upgrade planning

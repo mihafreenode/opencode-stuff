@@ -99,6 +99,51 @@ public sealed class WorkspaceSmokeSummaryTests
         Assert.Equal(WorkspaceSmokeAutomationOutcome.CleanupFailure, WorkspaceSmokeAutomationOutcomeClassifier.Classify(result));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TerminalClassifier_PreservesCancellation_SeparatelyFromCleanup(bool cleanupVerificationSucceeded)
+    {
+        Assert.Equal(WorkspaceSmokeStatus.Cancelled, WorkspaceSmokeExecutionOutcomeClassifier.ResolveTerminalStatus(WorkspaceSmokeStatus.Cancelled, cleanupVerificationSucceeded));
+    }
+
+    [Fact]
+    public void TerminalClassifier_PreservesCancellation_WhenCleanupRetryEventuallySucceeds()
+    {
+        Assert.Equal(WorkspaceSmokeStatus.Cancelled, WorkspaceSmokeExecutionOutcomeClassifier.ResolveTerminalStatus(WorkspaceSmokeStatus.Cancelled, cleanupVerificationSucceeded: true));
+    }
+
+    [Fact]
+    public void TerminalClassifier_LeavesExecutionFailureFailed_WhenCancellationArrivesLater()
+    {
+        using var source = new CancellationTokenSource();
+        source.Cancel();
+        Assert.Equal(WorkspaceSmokeStatus.Failed, WorkspaceSmokeExecutionOutcomeClassifier.ClassifyException(new InvalidOperationException("execution failed"), source.Token));
+        Assert.Equal(WorkspaceSmokeStatus.Failed, WorkspaceSmokeExecutionOutcomeClassifier.ResolveTerminalStatus(WorkspaceSmokeStatus.Failed, cleanupVerificationSucceeded: true));
+    }
+
+    [Fact]
+    public void ExceptionClassifier_RecognizesOnlyObservedOperationCancellation()
+    {
+        using var operation = new CancellationTokenSource();
+        operation.Cancel();
+        Assert.Equal(WorkspaceSmokeStatus.Cancelled, WorkspaceSmokeExecutionOutcomeClassifier.ClassifyException(new OperationCanceledException(operation.Token), operation.Token));
+
+        using var unrelated = new CancellationTokenSource();
+        unrelated.Cancel();
+        Assert.Equal(WorkspaceSmokeStatus.Failed, WorkspaceSmokeExecutionOutcomeClassifier.ClassifyException(new OperationCanceledException(unrelated.Token), CancellationToken.None));
+    }
+
+    [Fact]
+    public void ExceptionClassifier_RecognizesWrappedOperationCancellation()
+    {
+        using var operation = new CancellationTokenSource();
+        operation.Cancel();
+        var wrapped = new InvalidOperationException("Docker is not reachable.", new TaskCanceledException());
+
+        Assert.Equal(WorkspaceSmokeStatus.Cancelled, WorkspaceSmokeExecutionOutcomeClassifier.ClassifyException(wrapped, operation.Token));
+    }
+
     [Fact]
     public void ApplicationService_HasNoConsoleDependency()
     {

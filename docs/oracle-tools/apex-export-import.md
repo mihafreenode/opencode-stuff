@@ -10,7 +10,7 @@ Use it when you want to:
 
 - back up the current application definition
 - move an application between local environments
-- validate changes before deployment
+- prepare changes for validation before deployment
 - hand the application to another teammate or environment
 
 ## How It Fits The Demo
@@ -26,6 +26,8 @@ scripts/validate-apex.sh
 scripts/import-apex.sh
 ```
 
+The generated standalone `scripts/validate-apex.sh` helper only checks that an artifact exists and has an expected textual shape. It is not authoritative APEXlang semantic validation, SQLcl validation, compilation, or import verification.
+
 ## Relationship To Other Tools
 
 - APEX Export / Import moves the application definition
@@ -40,7 +42,8 @@ scripts/import-apex.sh
 
 ## Beginner Exercise
 
-1. export the `Customer Orders Demo` application
-2. validate the exported artifact
-3. review the artifact in Git
-4. re-import it into the same local environment
+1. build or connect a `Customer Orders Demo` application; the generated source file is only a tutorial placeholder
+2. export the application
+3. run the local shape check and version-matched SQLcl/APEX validation
+4. review the artifact in Git
+5. re-import it into the same local environment and verify runtime behavior

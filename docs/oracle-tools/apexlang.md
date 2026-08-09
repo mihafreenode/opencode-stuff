@@ -9,7 +9,7 @@ APEXlang is Oracle's Open Application Specification Language for Oracle APEX app
 Use it when you want to:
 
 - review application changes in Git
-- validate exported application definitions
+- make exported application definitions available for review and authoritative validation
 - make onboarding repositories more self-describing
 - support AI-assisted work with readable application definitions
 
@@ -20,7 +20,7 @@ See [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-dev
 ## How It Fits The Demo
 
 - Oracle APEXlang Demo: advanced stage after PL/SQL and APEX basics
-- uses the same `Customer Orders Demo` application as the Builder-based APEX workflow
+- targets the same `Customer Orders Demo` tutorial goal as the Builder-based APEX workflow; the generated application source is a placeholder, not a complete shipped app
 
 ## Example Commands
 
@@ -29,6 +29,8 @@ scripts/export-apexlang.sh
 scripts/validate-apex.sh apex/application.apx
 scripts/import-apex.sh apex/application.apx
 ```
+
+The generated `scripts/validate-apex.sh` command is only a file-presence and text-shape check. Use version-matched SQLcl `apex validate` and target-environment import or runtime checks for authoritative semantic validation.
 
 ## Relationship To Other Tools
 
@@ -45,6 +47,6 @@ scripts/import-apex.sh apex/application.apx
 
 1. add a field or label change in the sample APEX application
 2. export the application definition
-3. validate the export
+3. run the shape check, then validate through version-matched SQLcl and the target environment
 4. review the diff in Git
 5. import the application definition back locally

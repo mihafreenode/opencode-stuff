@@ -367,66 +367,28 @@ public sealed class OracleApexStaticValidationTests
     }
 
     [Fact]
-    public void OracleDocs_ContainExpectedMessagingAndAvoidUnsupportedClaims()
+    public void OracleRepositoryDocs_PointToTeamOnboardingAndDocumentationStrategy()
     {
         var repoRoot = TestPaths.RepositoryRoot;
-        var plsqlDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-plsql-demo.md"));
-        var apexDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-apex-demo.md"));
-        var apexLangDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-apexlang-demo.md"));
-        var onboardingArticle = File.ReadAllText(Path.Combine(repoRoot, "docs", "articles", "oracle-onboarding.md"));
-        var beyondPlsqlArticle = File.ReadAllText(Path.Combine(repoRoot, "docs", "articles", "beyond-plsql-oracle-apex.md"));
-        var lifecycleDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-lifecycle-workflows.md"));
-        var sharingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "sharing-oracle-workspaces.md"));
-        var teamOnboardingDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "team-onboarding.md"));
-        var agentsGuideDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "agents-guide.md"));
-        var samplesDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-samples.md"));
-        var toolsIndexDoc = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-tools", "README.md"));
+        var integration = File.ReadAllText(Path.Combine(repoRoot, "docs", "integrations", "oracle-apex.md"));
+        var onboarding = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle", "team-onboarding.md"));
+        var strategy = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-documentation-strategy.md"));
 
-        Assert.Contains("Oracle PL/SQL Demo", plsqlDoc);
-        Assert.Contains("Try It Yourself", plsqlDoc);
-        Assert.Contains("Oracle APEX Demo", apexDoc);
-        Assert.Contains("Oracle APEX Demo extends the Oracle PL/SQL path", apexDoc);
-        Assert.Contains(".local/oracle/downloads/apex/", apexDoc);
-        Assert.Contains("does not redistribute Oracle APEX ZIP files", apexDoc);
-        Assert.Contains("Interactive Report", apexDoc);
-        Assert.Contains("Oracle APEXlang Demo", apexLangDoc);
-        Assert.Contains(".local/oracle/downloads/apex/", apexLangDoc);
-        Assert.Contains("source-controlled Oracle APEX workflow", apexLangDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Open Application Specification Language", apexLangDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Try It Yourself", apexLangDoc);
-        Assert.Contains("From Oracle Demo to Oracle Onboarding", onboardingArticle);
-        Assert.Contains("Try It Yourself", onboardingArticle);
-        Assert.Contains("Beyond PL/SQL", beyondPlsqlArticle);
-        Assert.Contains("Export", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Validate", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Git Review", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Import", lifecycleDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("source of truth", onboardingArticle, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Run Tutorial", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("AGENTS.md Guide", agentsGuideDoc);
-        Assert.Contains("Workspace Discovered", teamOnboardingDoc, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("DEMO_ORDER_SUMMARY_V", samplesDoc);
-        Assert.Contains("DEMO_CUSTOMER_API", samplesDoc);
-        Assert.Contains("SQLcl", toolsIndexDoc);
-        Assert.Contains("Data Pump", toolsIndexDoc);
-        Assert.Contains("ORDS", toolsIndexDoc);
-        Assert.Contains("APEX Export / Import", toolsIndexDoc);
-        Assert.Contains("APEXlang", toolsIndexDoc);
-        Assert.Contains("SQL Developer", toolsIndexDoc);
-        Assert.Contains("University of Maribor", apexDoc);
-        Assert.DoesNotContain("University of Maribor", plsqlDoc);
-        Assert.DoesNotContain("University of Maribor", apexLangDoc);
-        Assert.Contains("oracle-tools/sqlcl.md", plsqlDoc);
-        Assert.Contains("oracle-tools/ords.md", apexDoc);
-        Assert.Contains("oracle-tools/apexlang.md", apexLangDoc);
+        Assert.Contains("[Oracle Documentation Strategy](../oracle-documentation-strategy.md)", integration, StringComparison.Ordinal);
+        Assert.Contains("docs/reference/oracle-knowledge-map.yaml", integration, StringComparison.Ordinal);
 
-        foreach (var content in new[] { plsqlDoc, apexDoc, apexLangDoc, onboardingArticle, beyondPlsqlArticle, lifecycleDoc, sharingDoc, teamOnboardingDoc, agentsGuideDoc, samplesDoc, toolsIndexDoc })
-        {
-            Assert.DoesNotContain("already verified", content, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("runtime validation is complete", content, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("accepts Oracle license", content, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("redistribute Oracle binaries", content, StringComparison.OrdinalIgnoreCase);
-        }
+        Assert.Contains("# Oracle Team Onboarding", onboarding, StringComparison.Ordinal);
+        Assert.Contains("## Primary Flow", onboarding, StringComparison.Ordinal);
+        Assert.Contains("## Sharing A Workspace", onboarding, StringComparison.Ordinal);
+        Assert.Contains("Safe Working Copy and Save Points", onboarding, StringComparison.Ordinal);
+        Assert.Contains("local credentials, wallets, Oracle media, and generated runtime state stay local", onboarding, StringComparison.Ordinal);
+
+        Assert.Contains("# Oracle Documentation Strategy", strategy, StringComparison.Ordinal);
+        Assert.Contains("Official Oracle documentation is the normative source", strategy, StringComparison.Ordinal);
+        Assert.Contains("## Copy And Retrieval Policy", strategy, StringComparison.Ordinal);
+        Assert.Contains("## Documentation Discovery", strategy, StringComparison.Ordinal);
+        Assert.Contains("Determine the deployed product version", strategy, StringComparison.Ordinal);
+        Assert.Contains("Use version-matched Oracle documentation", strategy, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -459,6 +421,7 @@ public sealed class OracleApexStaticValidationTests
         var repoRoot = TestPaths.RepositoryRoot;
         var referenceDocs = new[]
         {
+            Path.Combine(repoRoot, "docs", "oracle", "team-onboarding.md"),
             Path.Combine(repoRoot, "docs", "reference", "oracle-apex-index.md"),
             Path.Combine(repoRoot, "docs", "reference", "oracle-apex-books.md"),
             Path.Combine(repoRoot, "docs", "reference", "oracle-apex-api-reference.md"),
@@ -475,7 +438,6 @@ public sealed class OracleApexStaticValidationTests
             Path.Combine(repoRoot, "docs", "reference", "oracle-apex-api-packages.md"),
             Path.Combine(repoRoot, "docs", "reference", "oracle-knowledge-map.yaml"),
             Path.Combine(repoRoot, "docs", "oracle-documentation-strategy.md"),
-            Path.Combine(repoRoot, "docs", "oracle-documentation-discovery.md"),
         };
 
         var skillDocs = new[]
@@ -494,11 +456,13 @@ public sealed class OracleApexStaticValidationTests
 
         var apexLangIndex = File.ReadAllText(Path.Combine(repoRoot, "docs", "reference", "oracle-apexlang-index.md"));
         var strategy = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle-documentation-strategy.md"));
+        var onboarding = File.ReadAllText(Path.Combine(repoRoot, "docs", "oracle", "team-onboarding.md"));
         var knowledgeMap = File.ReadAllText(Path.Combine(repoRoot, "docs", "reference", "oracle-knowledge-map.yaml"));
         var apexSkill = File.ReadAllText(Path.Combine(repoRoot, "skills", "oracle", "apex.md"));
 
         Assert.Contains("https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/", apexLangIndex);
-        Assert.Contains("references, not Oracle documentation copies", strategy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Official Oracle documentation is the normative source", strategy, StringComparison.Ordinal);
+        Assert.Contains("Oracle workspaces are designed to be shared as repositories", onboarding, StringComparison.Ordinal);
         Assert.Contains("id: oracle-knowledge-pack", knowledgeMap);
         Assert.Contains("title: Oracle Knowledge Pack", knowledgeMap);
         Assert.Contains("oracle-apex-api-reference.md", knowledgeMap);
@@ -506,7 +470,7 @@ public sealed class OracleApexStaticValidationTests
     }
 
     [Fact]
-    public void OracleAgentsGuidance_AndPlaceholderScripts_DescribeReferenceOnlyPolicy()
+    public void OracleAgentsGuidance_AndPlaceholderScripts_PointToCanonicalOracleSources()
     {
         var repoRoot = TestPaths.RepositoryRoot;
         var agents = File.ReadAllText(Path.Combine(repoRoot, "AGENTS.md"));
@@ -515,11 +479,9 @@ public sealed class OracleApexStaticValidationTests
         var navPs1 = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-navigation-index.ps1"));
         var navSh = File.ReadAllText(Path.Combine(repoRoot, "scripts", "update-oracle-navigation-index.sh"));
 
-        Assert.Contains("## Oracle Documentation Strategy", agents);
-        Assert.Contains("### Oracle Documentation Discovery", agents);
-        Assert.Contains("docs/reference", agents);
-        Assert.Contains("Use official Oracle documentation as the authoritative source.", agents);
         Assert.Contains("docs/reference/oracle-knowledge-map.yaml", agents);
+        Assert.Contains("version-matched official Oracle documentation as authority", agents);
+        Assert.Contains("Do not substitute blogs or forums", agents);
         Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", ps1);
         Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", sh);
         Assert.Contains("Forbidden: downloading, mirroring, caching, or redistributing Oracle documentation content.", navPs1);

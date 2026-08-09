@@ -98,6 +98,24 @@ public sealed class LocalHostClient : IAsyncDisposable
     public Task<InteractiveSessionAttachResult> AttachInteractiveSessionAsync(string interactiveAgentSessionId, AttachInteractiveSessionRequest request, CancellationToken cancellationToken = default)
         => PostAsync<InteractiveSessionAttachResult>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/attachments", request, cancellationToken);
 
+    public Task<InteractiveTerminalRuntimeRecord> StartInteractiveTerminalAsync(string interactiveAgentSessionId, StartInteractiveTerminalRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<InteractiveTerminalRuntimeRecord>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal/start", request, cancellationToken);
+
+    public Task<InteractiveTerminalRuntimeRecord> GetInteractiveTerminalAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
+        => GetAsync<InteractiveTerminalRuntimeRecord>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal", cancellationToken);
+
+    public Task<TerminalOutputReadResult> GetInteractiveTerminalOutputAsync(string interactiveAgentSessionId, long afterSequence, CancellationToken cancellationToken = default)
+        => GetAsync<TerminalOutputReadResult>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal/output?afterSequence={afterSequence}", cancellationToken);
+
+    public Task<InteractiveTerminalRuntimeRecord> SendInteractiveTerminalInputAsync(string interactiveAgentSessionId, TerminalInputRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<InteractiveTerminalRuntimeRecord>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal/input", request, cancellationToken);
+
+    public Task<InteractiveTerminalRuntimeRecord> ResizeInteractiveTerminalAsync(string interactiveAgentSessionId, TerminalResizeRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<InteractiveTerminalRuntimeRecord>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal/resize", request, cancellationToken);
+
+    public Task<InteractiveTerminalRuntimeRecord> StopInteractiveTerminalAsync(string interactiveAgentSessionId, CancellationToken cancellationToken = default)
+        => PostAsync<InteractiveTerminalRuntimeRecord>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/terminal/stop", new { }, cancellationToken);
+
     public Task<InteractiveSessionAttachmentActivationResult> ActivateInteractiveSessionAttachmentAsync(string interactiveAgentSessionId, string attachmentId, ActivateInteractiveSessionAttachmentRequest request, CancellationToken cancellationToken = default)
         => PostAsync<InteractiveSessionAttachmentActivationResult>($"/api/v1/local-host/interactive-agent-sessions/{Uri.EscapeDataString(interactiveAgentSessionId)}/attachments/{Uri.EscapeDataString(attachmentId)}/activate", request, cancellationToken);
 
@@ -131,8 +149,20 @@ public sealed class LocalHostClient : IAsyncDisposable
     public Task<WorkspaceOperationRecord> StartWorkspaceLifecycleAsync(string action, WorkspaceLifecycleRequest request, CancellationToken cancellationToken = default)
         => PostAsync<WorkspaceOperationRecord>($"/api/v1/local-host/workspaces/{Uri.EscapeDataString(request.WorkspaceId)}/{Uri.EscapeDataString(action)}", request, cancellationToken);
 
+    public Task<WorkspaceRuntimeExplorerReport> GetRuntimeResourceExplorerAsync(CancellationToken cancellationToken = default)
+        => GetAsync<WorkspaceRuntimeExplorerReport>("/api/v1/local-host/runtime-resources", cancellationToken);
+
+    public Task<WorkspaceRuntimeInspectResult> InspectRuntimeResourceAsync(RuntimeResourceInspectRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<WorkspaceRuntimeInspectResult>("/api/v1/local-host/runtime-resources/inspect", request, cancellationToken);
+
+    public Task<WorkspaceOperationRecord> StartCleanOrphanedRuntimeResourcesAsync(HostOperationRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<WorkspaceOperationRecord>("/api/v1/local-host/runtime-resources/cleanup-orphans", request, cancellationToken);
+
     public Task<WorkspaceRecordModel> CreateWorkspaceCanonicalAsync(WorkspaceCreateRequest request, CancellationToken cancellationToken = default)
         => PostAsync<WorkspaceRecordModel>("/api/v1/local-host/workspaces/create", request, cancellationToken);
+
+    public Task<WorkspaceOperationRecord> StartCreateWorkspaceAsync(WorkspaceCreateOperationRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<WorkspaceOperationRecord>("/api/v1/local-host/workspaces/create-operation", request, cancellationToken);
 
     public Task<ExistingGitCheckoutPlan> InspectExistingGitCheckoutAsync(ExistingGitCheckoutInspectionRequest request, CancellationToken cancellationToken = default)
         => PostAsync<ExistingGitCheckoutPlan>("/api/v1/local-host/workspaces/import/inspect-git-checkout", request, cancellationToken);
@@ -262,6 +292,30 @@ public sealed class LocalHostClient : IAsyncDisposable
 
     public Task<RuntimeResourceInventory> RunRuntimeDoctorAsync(string? owner, string? runId, string? project, string? workspaceRoot, CancellationToken cancellationToken = default)
         => GetAsync<RuntimeResourceInventory>($"/api/v1/runtime/doctor?owner={Uri.EscapeDataString(owner ?? string.Empty)}&runId={Uri.EscapeDataString(runId ?? string.Empty)}&project={Uri.EscapeDataString(project ?? string.Empty)}&workspaceRoot={Uri.EscapeDataString(workspaceRoot ?? string.Empty)}", cancellationToken);
+
+    public Task<IReadOnlyList<ArtifactListItem>> ListWorkspaceArtifactsAsync(string workspaceId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
+        => GetAsync<IReadOnlyList<ArtifactListItem>>($"/api/v1/local-host/workspaces/{Uri.EscapeDataString(workspaceId)}/artifacts{BuildQuery(("relativePath", relativePath), ("recursive", recursive.ToString()))}", cancellationToken);
+
+    public Task<ArtifactReadModel> GetWorkspaceArtifactAsync(string workspaceId, string relativePath, CancellationToken cancellationToken = default)
+        => GetAsync<ArtifactReadModel>($"/api/v1/local-host/workspaces/{Uri.EscapeDataString(workspaceId)}/artifacts/read{BuildQuery(("relativePath", relativePath))}", cancellationToken);
+
+    public Task<IReadOnlyList<ArtifactListItem>> ListSmokeArtifactsAsync(string runId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
+        => GetAsync<IReadOnlyList<ArtifactListItem>>($"/api/v1/local-host/smoke/{Uri.EscapeDataString(runId)}/artifacts{BuildQuery(("relativePath", relativePath), ("recursive", recursive.ToString()))}", cancellationToken);
+
+    public Task<ArtifactReadModel> GetSmokeArtifactAsync(string runId, string relativePath, CancellationToken cancellationToken = default)
+        => GetAsync<ArtifactReadModel>($"/api/v1/local-host/smoke/{Uri.EscapeDataString(runId)}/artifacts/read{BuildQuery(("relativePath", relativePath))}", cancellationToken);
+
+    public Task<ArtifactReadModel> ReadArtifactByResourceUriAsync(string resourceUri, CancellationToken cancellationToken = default)
+        => PostAsync<ArtifactReadModel>("/api/v1/local-host/artifacts/read", new ArtifactResourceRequest { ResourceUri = resourceUri }, cancellationToken);
+
+    public Task<ArtifactResourceReadModel> ReadArtifactResourceAsync(string resourceUri, CancellationToken cancellationToken = default)
+        => PostAsync<ArtifactResourceReadModel>("/api/v1/local-host/artifacts/read-content", new ArtifactResourceRequest { ResourceUri = resourceUri }, cancellationToken);
+
+    public Task<WorkspaceOperationRecord> StartCleanupSmokeResourcesAsync(SmokeCleanupOperationRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<WorkspaceOperationRecord>("/api/v1/local-host/smoke/cleanup", request, cancellationToken);
+
+    public Task<WorkspaceOperationRecord> StartProcessExcelArtifactAsync(ExcelProcessOperationRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<WorkspaceOperationRecord>("/api/v1/local-host/artifacts/excel/process", request, cancellationToken);
 
     public async Task<HubConnection> ConnectEventsAsync(Func<WorkspaceEventEnvelope, Task> onEvent)
     {

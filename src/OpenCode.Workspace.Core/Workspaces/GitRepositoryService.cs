@@ -345,7 +345,7 @@ public sealed class GitRepositoryService
     private async Task<ProcessResult> RunGitAsync(string repositoryRoot, IReadOnlyList<string> arguments, Action<CommandLogEntry>? log, CancellationToken cancellationToken)
     {
         log?.Invoke(new CommandLogEntry { Source = "git", Message = $"git {string.Join(' ', arguments)}" });
-        var result = await _processRunner.RunAsync("git", arguments, repositoryRoot, cancellationToken: cancellationToken);
+        var result = await _processRunner.RunAsync("git", arguments, repositoryRoot, cancellationToken: cancellationToken, timeout: TimeSpan.FromSeconds(30));
         if (!result.IsSuccess)
         {
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(result.StandardError) ? "Git command failed." : result.StandardError.Trim());
@@ -355,7 +355,7 @@ public sealed class GitRepositoryService
     }
 
     private async Task<ProcessResult> TryRunGitAsync(string repositoryRoot, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
-        => await _processRunner.RunAsync("git", arguments, repositoryRoot, cancellationToken: cancellationToken);
+        => await _processRunner.RunAsync("git", arguments, repositoryRoot, cancellationToken: cancellationToken, timeout: TimeSpan.FromSeconds(30));
 }
 
 public sealed record GitRepositoryInspection(

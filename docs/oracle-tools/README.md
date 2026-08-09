@@ -2,6 +2,8 @@
 
 This index catalogs Oracle tooling that is included directly or documented for onboarding.
 
+Start with the [Oracle and Oracle APEX Integration map](../integrations/oracle-apex.md) for implemented, optional, and experimental status. An item in this tool index does not by itself mean that every workflow is fully automated.
+
 ## Included Or Documented Tools
 
 - [SQLcl](sqlcl.md)
@@ -9,7 +11,7 @@ This index catalogs Oracle tooling that is included directly or documented for o
   - onboarding relevance: first tool to learn in Oracle PL/SQL Demo
 - [Data Pump](data-pump.md)
   - Oracle schema and data export/import workflow
-  - onboarding relevance: useful after schema basics are understood
+  - onboarding relevance: conceptual generated helpers only; operational commands require DBA review and environment setup
 - [ORDS](ords.md)
   - Oracle REST Data Services for APEX and HTTP access
   - onboarding relevance: required for Oracle APEX Demo and Oracle APEXlang Demo

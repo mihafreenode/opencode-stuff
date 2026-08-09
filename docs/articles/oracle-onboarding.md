@@ -1,5 +1,7 @@
 # From Oracle Demo to Oracle Onboarding
 
+> Historical context: this article explains the repository-first onboarding rationale. For current product behavior and capability status, use [Oracle and Oracle APEX Integration](../integrations/oracle-apex.md) and [Oracle Team Onboarding](../oracle/team-onboarding.md).
+
 Templates create workspaces, but repositories teach teams how to use them.
 
 This Oracle workspace family treats the repository as executable onboarding knowledge:
@@ -15,7 +17,7 @@ This Oracle workspace family treats the repository as executable onboarding know
 Many Oracle developers are already experienced in enterprise systems but may be less familiar with Git-based workflows. Before continuing, review the practical Git guidance and the repository safety model:
 
 - [Practical Git for Oracle Developers](../oracle/practical-git-for-oracle-developers.md)
-- [Save Point](../concepts/save-point.md)
+- [Backup And Publish](../user/backup-and-publish.md)
 - [Repository Workflows](../capabilities/repository.md)
 
 Typical onboarding flow:

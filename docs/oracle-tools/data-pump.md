@@ -19,6 +19,12 @@ Use Data Pump when you want to:
 - Oracle APEX Demo: move schema/data separately from the application definition
 - Oracle APEXlang Demo: keep schema/data migration separate from source-controlled app export
 
+## Current Workspace Support
+
+The generated `scripts/export-datapump.sh` and `scripts/import-datapump.sh` files are conceptual scaffolding. They print recommended `expdp` or `impdp` command lines; they do not connect to Oracle, create a dump, copy dump files, execute an import, or verify the result.
+
+Treat the commands below as starting points that a DBA or workspace owner must adapt for directory objects, container execution, credentials, file ownership, storage, and the target environment. Do not describe the generated helpers as a working backup or restore workflow.
+
 ## Example Commands
 
 ```bash
@@ -40,6 +46,7 @@ impdp demo_user/demo_password@FREEPDB1 schemas=DEMO_USER directory=DATA_PUMP_DIR
 ## Beginner Exercise
 
 1. review the generated `export-datapump` and `import-datapump` scripts
-2. export the demo schema
-3. simulate a disposable restore scenario
-4. re-import and verify the sample tables are present
+2. confirm that they only print conceptual commands
+3. design a disposable test that supplies the required Oracle directory and file-transfer behavior
+4. run reviewed Data Pump commands directly in that test environment
+5. verify dump creation, import logs, expected objects, and row counts before calling the workflow complete

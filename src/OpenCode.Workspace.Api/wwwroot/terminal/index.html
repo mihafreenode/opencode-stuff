@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenCode Local Terminal</title>
+  <link rel="stylesheet" href="/terminal/vendor/xterm.css">
+  <link rel="stylesheet" href="/terminal/terminal.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">LOCALHOST TERMINAL</p>
+        <h1 id="title">Interactive session</h1>
+      </div>
+      <div id="state" class="state" data-state="idle"><span></span>Idle</div>
+    </header>
+    <section class="toolbar" aria-label="Terminal controls">
+      <button id="attach">Attach</button>
+      <button id="takeover" class="secondary" hidden>Take over</button>
+      <button id="detach" class="secondary" disabled>Detach</button>
+      <button id="stop" class="danger" disabled>Stop runtime</button>
+      <span id="runtime"></span>
+    </section>
+    <section id="terminal" class="terminal" aria-label="Interactive terminal"></section>
+    <p id="message" class="message">Attach to the existing LocalHost-owned runtime. Closing this page does not stop OpenCode.</p>
+  </main>
+  <script src="/terminal/vendor/xterm.js"></script>
+  <script src="/terminal/terminal.js"></script>
+</body>
+</html>

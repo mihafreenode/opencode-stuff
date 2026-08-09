@@ -9,6 +9,7 @@ When to use:
 - mapping Builder concepts to APEXlang sections
 
 Recommended documentation indexes:
+- `docs/reference/oracle-knowledge-map.yaml`
 - `docs/reference/oracle-apexlang-index.md`
 - `docs/reference/oracle-apexlang-navigation.md`
 - `docs/reference/oracle-apex-index.md` for Builder concepts outside the specification format
@@ -29,11 +30,10 @@ Package lookup workflow:
 
 Version compatibility guidance:
 - use version-matched APEXlang and APEX docs whenever the runtime version is known
-- check `docs/reference/oracle-apex-version-archives.md` if exported structures differ from the latest examples
+- check `docs/reference/oracle-apex-version-archives.md` if exported structures differ from the indexed examples
 
 Troubleshooting guidance:
 - if a concept is hard to place, map it back to Builder terminology with `docs/reference/oracle-apex-index.md`
 - use release notes when structure or naming appears version-specific
 
-Official documentation:
-- https://docs.oracle.com/en/database/oracle/apex/26.1/apxln/
+Do not duplicate a fixed official-URL list here. Follow the knowledge map and APEXlang index, then use official Oracle documentation matching the source and toolchain version.

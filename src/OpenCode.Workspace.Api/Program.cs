@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Hosting.Server;
+using System.Net;
 using OpenCode.Workspace.AppSupport;
 using OpenCode.Workspace.Api;
 using OpenCode.Workspace.Core.Models;
@@ -9,8 +10,14 @@ using OpenCode.Workspace.Core.Workspaces;
 using OpenCode.Workspace.LocalClient;
 using OpenCode.Workspace.Mcp;
 
-var builder = WebApplication.CreateBuilder(args);
+var packagedWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    WebRootPath = Directory.Exists(packagedWebRoot) ? packagedWebRoot : null,
+});
 TryAddPackagedConfiguration(builder.Configuration, "api");
+ConfigureLoopbackListener(builder);
 builder.Logging.AddSimpleConsole();
 builder.Services.AddOpenCodeWorkspaceLocalHostServices(builder.Configuration);
 
@@ -37,6 +44,33 @@ app.Use(async (context, next) =>
     }
 });
 
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api/v1/local-host/interactive-agent-sessions")
+        && !string.IsNullOrWhiteSpace(context.Request.Headers.Origin)
+        && (!InteractiveTerminalWebSocketService.TryGetLoopbackHost(context.Request.Host.Host, out _)
+            || !InteractiveTerminalWebSocketService.IsSameOrigin(context.Request, context.Request.Headers.Origin.ToString())))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    if (context.Request.Path.StartsWithSegments("/terminal"))
+    {
+        context.Response.Headers.ContentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:* ws://[::1]:*; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+    await next();
+});
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = item => item.Context.Response.Headers.CacheControl = "no-store" });
+
+app.MapGet("/terminal/vendor/xterm.js", () => EmbeddedWebAsset("OpenCode.Workspace.LocalHost.WebAssets.xterm.js", "text/javascript; charset=utf-8"));
+app.MapGet("/terminal/vendor/xterm.css", () => EmbeddedWebAsset("OpenCode.Workspace.LocalHost.WebAssets.xterm.css", "text/css; charset=utf-8"));
+app.MapGet("/terminal/{interactiveAgentSessionId}", (string interactiveAgentSessionId) => Results.File(Path.Combine(app.Environment.WebRootPath, "terminal", "index.html"), "text/html; charset=utf-8"));
+
 var api = app.MapGroup("/api/v1");
 
 api.MapGet("/health/live", () => Results.Ok(new ApiHealthResponse { Status = "live", Message = "LocalHost is running." }));
@@ -46,6 +80,8 @@ api.MapGet("/health/ready", async ([FromServices] LocalHostApplicationService se
 api.MapGet("/local-host/readiness", async ([FromServices] LocalHostApplicationService service) => Results.Ok(new LocalHostEnvelope<LocalHostReadinessResponse> { Data = new LocalHostReadinessResponse { Status = "ready", Message = "Runtime diagnostics completed.", RuntimeInventory = await service.RunRuntimeDoctorAsync(new RuntimeOwnershipQuery()) } }));
 api.MapPost("/local-host/workspaces/create", async (WorkspaceCreateRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<OpenCode.Workspace.LocalClient.WorkspaceRecordModel> { Data = await service.CreateWorkspaceAsync(request) }));
+api.MapPost("/local-host/workspaces/create-operation", async (WorkspaceCreateOperationRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartCreateWorkspaceAsync(request) }));
 api.MapPost("/local-host/workspaces/import/inspect-git-checkout", async (ExistingGitCheckoutInspectionRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<ExistingGitCheckoutPlan> { Data = await service.InspectExistingGitCheckoutAsync(request) }));
 api.MapPost("/local-host/workspaces/import/validate-branch", async (ExistingGitCheckoutBranchValidationRequest request, [FromServices] LocalHostApplicationService service)
@@ -120,18 +156,44 @@ api.MapPost("/local-host/workspaces/{workspaceId}/start", async (string workspac
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartStartWorkspaceAsync(request with { WorkspaceId = workspaceId }) }));
 api.MapPost("/local-host/workspaces/{workspaceId}/stop", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartStopWorkspaceAsync(request with { WorkspaceId = workspaceId }) }));
+api.MapPost("/local-host/workspaces/{workspaceId}/release-runtime", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartReleaseRuntimeResourcesAsync(request with { WorkspaceId = workspaceId }) }));
 api.MapPost("/local-host/workspaces/{workspaceId}/recover", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartRecoverWorkspaceAsync(request with { WorkspaceId = workspaceId }) }));
 api.MapPost("/local-host/workspaces/{workspaceId}/reset-runtime", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartResetRuntimeAsync(request with { WorkspaceId = workspaceId }) }));
+api.MapPost("/local-host/workspaces/{workspaceId}/rebuild-runtime", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartRebuildWorkspaceRuntimeAsync(request with { WorkspaceId = workspaceId }) }));
 api.MapPost("/local-host/workspaces/{workspaceId}/attach", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartAttachWorkspaceAsync(request with { WorkspaceId = workspaceId }) }));
 api.MapPost("/local-host/workspaces/{workspaceId}/reprovision", async (string workspaceId, WorkspaceLifecycleRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartReprovisionWorkspaceAsync(request with { WorkspaceId = workspaceId }) }));
+api.MapGet("/local-host/runtime-resources", async ([FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceRuntimeExplorerReport> { Data = await service.GetRuntimeResourceExplorerAsync() }));
+api.MapPost("/local-host/runtime-resources/inspect", async (RuntimeResourceInspectRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceRuntimeInspectResult> { Data = await service.InspectRuntimeResourceAsync(request) }));
+api.MapPost("/local-host/runtime-resources/cleanup-orphans", async (HostOperationRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartCleanOrphanedRuntimeResourcesAsync(request) }));
 api.MapPost("/local-host/smoke/runs", async (SmokeRunOperationRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartSmokeRunAsync(request) }));
 api.MapPost("/local-host/smoke/matrices", async (SmokeMatrixOperationRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartSmokeMatrixAsync(request) }));
+api.MapPost("/local-host/smoke/cleanup", async (SmokeCleanupOperationRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartCleanupSmokeResourcesAsync(request) }));
+api.MapGet("/local-host/workspaces/{workspaceId}/artifacts", async (string workspaceId, string? relativePath, bool recursive, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<IReadOnlyList<OpenCode.Workspace.LocalClient.ArtifactListItem>> { Data = await service.ListWorkspaceArtifactsAsync(workspaceId, relativePath, recursive) }));
+api.MapGet("/local-host/workspaces/{workspaceId}/artifacts/read", async (string workspaceId, string relativePath, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<OpenCode.Workspace.LocalClient.ArtifactReadModel> { Data = await service.GetWorkspaceArtifactAsync(workspaceId, relativePath) }));
+api.MapGet("/local-host/smoke/{runId}/artifacts", async (string runId, string? relativePath, bool recursive, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<IReadOnlyList<OpenCode.Workspace.LocalClient.ArtifactListItem>> { Data = await service.ListSmokeArtifactsAsync(runId, relativePath, recursive) }));
+api.MapGet("/local-host/smoke/{runId}/artifacts/read", async (string runId, string relativePath, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<OpenCode.Workspace.LocalClient.ArtifactReadModel> { Data = await service.GetSmokeArtifactAsync(runId, relativePath) }));
+api.MapPost("/local-host/artifacts/read", async (ArtifactResourceRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<OpenCode.Workspace.LocalClient.ArtifactReadModel> { Data = await service.ReadArtifactByResourceUriAsync(request.ResourceUri) }));
+api.MapPost("/local-host/artifacts/read-content", async (ArtifactResourceRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<OpenCode.Workspace.LocalClient.ArtifactResourceReadModel> { Data = await service.ReadArtifactResourceAsync(request.ResourceUri) }));
+api.MapPost("/local-host/artifacts/excel/process", async (ExcelProcessOperationRequest request, [FromServices] LocalHostApplicationService service)
+    => Results.Ok(new LocalHostEnvelope<WorkspaceOperationRecord> { Data = await service.StartProcessExcelArtifactAsync(request) }));
 
 api.MapGet("/templates", async ([FromServices] LocalHostApplicationService service) => Results.Ok(new ApiEnvelope<IReadOnlyList<OpenCode.Workspace.LocalClient.WorkspaceTemplateSummaryModel>> { Data = await service.ListWorkspaceTemplatesAsync() }));
 api.MapGet("/templates/{templateId}", async (string templateId, [FromServices] LocalHostApplicationService service) => Results.Ok(new ApiEnvelope<OpenCode.Workspace.LocalClient.WorkspaceTemplateDetailModel> { Data = await service.GetWorkspaceTemplateAsync(templateId) }));
@@ -210,8 +272,22 @@ api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/
     => Results.Ok(new LocalHostEnvelope<InteractiveAgentSessionRecord> { Data = await service.ReportInteractiveSessionAttachmentProcessExitAsync(interactiveAgentSessionId, attachmentId, request) }));
 api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/attachments/{attachmentId}/launch-failed", async (string interactiveAgentSessionId, string attachmentId, InteractiveSessionAttachmentLaunchFailureRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<InteractiveAgentSessionRecord> { Data = await service.ReportInteractiveSessionAttachmentLaunchFailureAsync(interactiveAgentSessionId, attachmentId, request) }));
-api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/attachments/{attachmentId}/detach", async (string interactiveAgentSessionId, string attachmentId, DetachInteractiveSessionAttachmentRequest request, [FromServices] LocalHostApplicationService service)
+    api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/attachments/{attachmentId}/detach", async (string interactiveAgentSessionId, string attachmentId, DetachInteractiveSessionAttachmentRequest request, [FromServices] LocalHostApplicationService service)
     => Results.Ok(new LocalHostEnvelope<InteractiveAgentSessionRecord> { Data = await service.DetachInteractiveSessionAsync(interactiveAgentSessionId, attachmentId, request) }));
+    api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/start", async (string interactiveAgentSessionId, StartInteractiveTerminalRequest request, [FromServices] LocalHostApplicationService service)
+        => Results.Ok(new LocalHostEnvelope<InteractiveTerminalRuntimeRecord> { Data = await service.StartInteractiveTerminalAsync(interactiveAgentSessionId, request) }));
+    api.MapGet("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal", async (string interactiveAgentSessionId, [FromServices] LocalHostApplicationService service)
+        => Results.Ok(new LocalHostEnvelope<InteractiveTerminalRuntimeRecord> { Data = await service.GetInteractiveTerminalAsync(interactiveAgentSessionId) }));
+    api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/input", async (string interactiveAgentSessionId, TerminalInputRequest request, [FromServices] LocalHostApplicationService service)
+        => Results.Ok(new LocalHostEnvelope<InteractiveTerminalRuntimeRecord> { Data = await service.SendInteractiveTerminalInputAsync(interactiveAgentSessionId, request) }));
+    api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/resize", async (string interactiveAgentSessionId, TerminalResizeRequest request, [FromServices] LocalHostApplicationService service)
+        => Results.Ok(new LocalHostEnvelope<InteractiveTerminalRuntimeRecord> { Data = await service.ResizeInteractiveTerminalAsync(interactiveAgentSessionId, request) }));
+    api.MapGet("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/output", async (string interactiveAgentSessionId, long afterSequence, [FromServices] LocalHostApplicationService service)
+        => Results.Ok(new LocalHostEnvelope<TerminalOutputReadResult> { Data = await service.GetInteractiveTerminalOutputAsync(interactiveAgentSessionId, afterSequence) }));
+    api.MapPost("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/stop", async (string interactiveAgentSessionId, [FromServices] LocalHostApplicationService service)
+         => Results.Ok(new LocalHostEnvelope<InteractiveTerminalRuntimeRecord> { Data = await service.StopInteractiveTerminalAsync(interactiveAgentSessionId) }));
+    api.Map("/local-host/interactive-agent-sessions/{interactiveAgentSessionId}/terminal/ws", async (HttpContext context, string interactiveAgentSessionId, [FromServices] InteractiveTerminalWebSocketService service)
+        => await service.HandleAsync(context, interactiveAgentSessionId));
 
 api.MapHub<LocalHostEventHub>("/hubs/events");
 
@@ -281,6 +357,36 @@ static void TryAddPackagedConfiguration(ConfigurationManager configuration, stri
     catch (InvalidOperationException)
     {
     }
+}
+
+static void ConfigureLoopbackListener(WebApplicationBuilder builder)
+{
+    if (builder.Configuration.GetSection("Kestrel:Endpoints").GetChildren().Any())
+        throw new InvalidOperationException("LocalHost Kestrel endpoints must be configured through one explicit loopback URL.");
+
+    var configured = builder.Configuration["urls"];
+    if (string.IsNullOrWhiteSpace(configured))
+    {
+        builder.WebHost.UseUrls("http://127.0.0.1:43127");
+        return;
+    }
+
+    foreach (var value in configured.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !IPAddress.TryParse(uri.Host, out var address)
+            || !IPAddress.IsLoopback(address))
+        {
+            throw new InvalidOperationException("LocalHost listeners must bind to an explicit loopback IP address.");
+        }
+    }
+}
+
+static IResult EmbeddedWebAsset(string resourceName, string contentType)
+{
+    var stream = typeof(InteractiveTerminalWebSocketService).Assembly.GetManifestResourceStream(resourceName)
+        ?? throw new InvalidOperationException($"Embedded LocalHost web asset '{resourceName}' was not found.");
+    return Results.Stream(stream, contentType);
 }
 
 static WorkspacePublishRequest ValidateWorkspaceScopedRequest(string workspaceId, WorkspacePublishRequest request)
@@ -501,6 +607,8 @@ static int MapStatusCode(string code)
         "workspace_not_found" => 404,
         "interactive_session_not_found" => 404,
         "attachment_not_found" => 404,
+        "terminal_runtime_not_found" => 404,
+        "runtime_resource_not_found" => 404,
         "operation_not_found" => 404,
         "artifact_not_found" => 404,
         "operation_not_cancellable" => 409,
@@ -508,6 +616,12 @@ static int MapStatusCode(string code)
         "transfer_rejected" => 409,
         "attachment_owner_mismatch" => 409,
         "provider_session_mismatch" => 409,
+        "terminal_runtime_unavailable" => 409,
+        "terminal_runtime_exited" => 409,
+        "attachment_not_active" => 409,
+        "attachment_mismatch" => 409,
+        "input_after_exit" => 409,
+        "resize_after_exit" => 409,
         "invalid_attachment_credential" => 401,
         "invalid_recovery_proof" => 401,
         "recovery_not_allowed" => 409,

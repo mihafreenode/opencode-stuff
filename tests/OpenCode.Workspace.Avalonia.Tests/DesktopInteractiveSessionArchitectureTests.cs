@@ -44,6 +44,16 @@ public sealed class DesktopInteractiveSessionArchitectureTests
         Assert.Equal("interactive-session", startInfo.ArgumentList[5]);
     }
 
+    [Fact]
+    public void ArchitectureGuard_Desktop_Attach_Starts_LocalHost_Runtime_Before_Granting_Attachment()
+    {
+        var source = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "src", "OpenCode.Workspace.Avalonia", "Services", "DesktopInteractiveSessionServices.cs"));
+        var start = source.IndexOf("private async Task<InteractiveSessionAttachResult> AttachInternalAsync", StringComparison.Ordinal);
+        var block = source[start..source.IndexOf("public sealed class Unsupported", StringComparison.Ordinal)];
+
+        Assert.True(block.IndexOf("StartInteractiveTerminalAsync", StringComparison.Ordinal) < block.IndexOf("AttachInteractiveSessionAsync", StringComparison.Ordinal));
+    }
+
     private static string GetRepositoryRoot()
         => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 }

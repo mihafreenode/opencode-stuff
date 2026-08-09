@@ -35,5 +35,5 @@ This keeps onboarding coherent across:
 ## Progression
 
 - Oracle PL/SQL Demo teaches the schema, view, package, procedure calls, and verification workflow.
-- Oracle APEX Demo uses the same domain for a small `Customer Orders Demo` application with reports, grids, charts, and dashboard-style KPIs.
-- Oracle APEXlang Demo keeps the same application but adds export, validate, review, and import workflow in Git.
+- Oracle APEX Demo supplies the schema and placeholder from which the tutorial builds a `Customer Orders Demo` with reports, grids, charts, and dashboard-style KPIs; that complete application is not shipped by the template.
+- Oracle APEXlang Demo targets the same tutorial application and adds export, shape check, version-matched validation, review, and import workflow in Git.

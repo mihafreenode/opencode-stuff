@@ -2,6 +2,8 @@
 
 This smoke validation is manual and optional.
 
+For the implemented, environment-dependent, and experimental capability map, see [Oracle and Oracle APEX Integration](../integrations/oracle-apex.md).
+
 It is not part of the default CI or unit-test suite because Oracle and APEX provisioning is slow, network-dependent, and requires Docker plus Oracle-provided downloads.
 
 ## Requirements

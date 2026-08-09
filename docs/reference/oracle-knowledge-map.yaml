@@ -2,6 +2,9 @@ id: oracle-knowledge-pack
 title: Oracle Knowledge Pack
 category: knowledge-pack
 lifecycle: stable
+entryPoint: docs/integrations/oracle-apex.md
+sourceStrategy: docs/oracle-documentation-strategy.md
+versionPolicy: Identify the deployed product version and use version-matched official Oracle documentation; indexed versions are references, not universally current releases.
 packs:
   - id: oracle-apex-documentation-pack
     title: Oracle APEX Documentation Pack
@@ -20,6 +23,7 @@ skillRefs:
   - skills/oracle/ords.md
   - skills/oracle/plsql.md
 outputs:
+  - docs/integrations/oracle-apex.md
   - docs/reference/oracle-apex-api-map.yaml
   - docs/reference/oracle-apex-api-packages.md
   - docs/reference/oracle-apex-api-reference.md

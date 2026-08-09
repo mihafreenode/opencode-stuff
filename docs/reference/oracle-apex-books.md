@@ -3,6 +3,9 @@
 Purpose:
 Curated entry points into Oracle APEX book-style documentation so users and agents can choose the right official guide quickly.
 
+Version note:
+The book links below preserve an Oracle APEX 24.2 documentation index. They do not assert that 24.2 is the newest release. Start with `docs/reference/oracle-knowledge-map.yaml` and switch to the documentation set matching the deployed APEX version.
+
 When to use:
 - starting from a broad Oracle APEX topic instead of a specific package or page feature
 - selecting between Builder, administration, installation, API, and release-note guides

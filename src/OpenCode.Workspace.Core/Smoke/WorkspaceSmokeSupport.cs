@@ -463,6 +463,23 @@ public static class WorkspaceSmokeTimeouts
     }
 }
 
+public static class WorkspaceSmokeExecutionOutcomeClassifier
+{
+    public static WorkspaceSmokeStatus ClassifyException(Exception exception, CancellationToken operationToken)
+        => ContainsCancellation(exception) && operationToken.IsCancellationRequested
+            ? WorkspaceSmokeStatus.Cancelled
+            : WorkspaceSmokeStatus.Failed;
+
+    private static bool ContainsCancellation(Exception exception)
+        => exception is OperationCanceledException
+            || (exception.InnerException is not null && ContainsCancellation(exception.InnerException));
+
+    public static WorkspaceSmokeStatus ResolveTerminalStatus(WorkspaceSmokeStatus executionStatus, bool cleanupVerificationSucceeded)
+        => executionStatus == WorkspaceSmokeStatus.Passed && !cleanupVerificationSucceeded
+            ? WorkspaceSmokeStatus.Failed
+            : executionStatus;
+}
+
 public enum WorkspaceSmokeAutomationOutcome
 {
     Success,

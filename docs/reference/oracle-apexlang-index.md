@@ -3,6 +3,9 @@
 Purpose:
 Structured entry point for Oracle APEXlang, Oracle's Open Application Specification Language for Oracle APEX.
 
+Version note:
+The primary link targets APEXlang 26.1. Treat it as a versioned reference and confirm that the local SQLcl/APEX toolchain supports the same specification version through `docs/reference/oracle-knowledge-map.yaml`.
+
 Intended use:
 - reviewing source-controlled Oracle APEX application definitions
 - helping agents navigate APEXlang structure before editing `.apx` files

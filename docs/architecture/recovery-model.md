@@ -4,7 +4,7 @@ The recovery model prefers preservation over convenience.
 
 ## Runtime Repair
 
-Runtime repair recreates generated or ephemeral state such as compose files, provisioning scripts, attach helpers, and disposable runtime infrastructure.
+Runtime repair recreates generated or ephemeral state such as compose files, provisioning scripts, compatibility helpers, and disposable runtime infrastructure.
 
 The user-facing `Repair Runtime` action repairs generated/runtime state. It does not restore durable user-authored work.
 
@@ -68,3 +68,5 @@ Git experts should be able to inspect and recover workspace state using standard
 - `git restore`
 
 The workspace abstraction should simplify common operations without hiding the underlying repository.
+
+Shared recovery mutations run as canonical LocalHost operations. Terminal-runtime loss is not workspace-data loss: after a LocalHost restart, a new terminal runtime may continue a known provider session while Git, Save Points, and workspace files remain governed by this recovery model. See [LocalHost](local-host.md), [Interactive Sessions](interactive-sessions.md), and [Terminal Runtime](terminal-runtime.md).

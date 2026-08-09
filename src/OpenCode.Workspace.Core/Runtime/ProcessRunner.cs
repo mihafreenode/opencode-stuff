@@ -40,6 +40,7 @@ public sealed class ProcessRunner : IProcessRunner
             {
                 FileName = fileName,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
+                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -97,6 +98,7 @@ public sealed class ProcessRunner : IProcessRunner
         try
         {
             process.Start();
+            process.StandardInput.Close();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             onDiagnostic?.Invoke($"[process] started pid={process.Id}: {commandText}");
@@ -125,6 +127,19 @@ public sealed class ProcessRunner : IProcessRunner
             {
                 var timeoutSeconds = effectiveTimeout.GetValueOrDefault().TotalSeconds;
                 onDiagnostic?.Invoke($"[process] timeout after {timeoutSeconds:F0}s: {commandText}");
+                throw new TimeoutException($"Process timed out after {timeoutSeconds:F0} seconds: {commandText}");
+            }
+
+            // Process exit can win the race with token observation after the cancellation
+            // callback kills the child. Preserve the initiating outcome instead of returning
+            // the kill exit code as an ordinary command failure.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+            if (timeoutCts is not null && timeoutCts.IsCancellationRequested)
+            {
+                var timeoutSeconds = effectiveTimeout.GetValueOrDefault().TotalSeconds;
                 throw new TimeoutException($"Process timed out after {timeoutSeconds:F0} seconds: {commandText}");
             }
 

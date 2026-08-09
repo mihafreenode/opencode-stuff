@@ -5,6 +5,8 @@ Quick package discovery catalog for Oracle APEX runtime development without copy
 
 Use this catalog to identify likely package families, then open the official Oracle package page.
 
+All package deep links in this catalog target the APEX 24.2 API Reference. Treat them as a versioned discovery index, not as proof that a package or member exists in another runtime. Start with `docs/reference/oracle-knowledge-map.yaml` and confirm behavior in documentation matching the deployed APEX version.
+
 Package: `APEX_APPLICATION`
 
 Use when:

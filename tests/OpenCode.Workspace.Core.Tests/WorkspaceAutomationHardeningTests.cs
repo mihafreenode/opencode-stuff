@@ -232,30 +232,18 @@ public sealed class WorkspaceAutomationHardeningTests
     }
 
     [Fact]
-    public void NavigationChain_FromReadmeToFeaturedWorkspaceDocsCapabilitiesAndSkills_HasNoDeadEnds()
+    public void DocumentationNavigation_RunsFromReadmeThroughIndexToCapabilitiesAndSpecializedWorkspaces()
     {
         var root = TestPaths.RepositoryRoot;
         var readme = File.ReadAllText(Path.Combine(root, "README.md"));
-        var educationDemoDoc = Path.Combine(root, "docs", "education-stem-demo.md");
-        var analyticsWorkspaceDoc = Path.Combine(root, "docs", "analytics-workspace.md");
-        var educationWorkspaceDoc = Path.Combine(root, "docs", "education-stem-workspace.md");
-        var capabilitiesDoc = Path.Combine(root, "docs", "capabilities", "analytics.md");
-        var skillPackDoc = Path.Combine(root, "docs", "skill-packs.md");
+        var index = File.ReadAllText(Path.Combine(root, "docs", "index.md"));
 
-        Assert.Contains("docs/education-stem-demo.md", readme);
-        Assert.Contains("docs/analytics-workspace.md", readme);
-        Assert.Contains("docs/education-stem-workspace.md", readme);
-
-        Assert.True(File.Exists(educationDemoDoc));
-        Assert.True(File.Exists(analyticsWorkspaceDoc));
-        Assert.True(File.Exists(educationWorkspaceDoc));
-        Assert.True(File.Exists(capabilitiesDoc));
-        Assert.True(File.Exists(skillPackDoc));
-
-        Assert.Contains("Analytics Capability", File.ReadAllText(analyticsWorkspaceDoc));
-        Assert.Contains("Analytics Capability", File.ReadAllText(educationWorkspaceDoc));
-        Assert.Contains("skills/analytics/", File.ReadAllText(skillPackDoc));
-        Assert.Contains("Marimo", File.ReadAllText(capabilitiesDoc));
+        Assert.Contains("[Documentation index](docs/index.md)", readme, StringComparison.Ordinal);
+        Assert.Contains("[Capability Catalog](capabilities/README.md)", index, StringComparison.Ordinal);
+        Assert.Contains("[Analytics And Reporting](analytics-workspace.md)", index, StringComparison.Ordinal);
+        Assert.Contains("[Education And STEM](education-stem-workspace.md)", index, StringComparison.Ordinal);
+        Assert.Contains("[Skill Packs](skill-packs.md)", index, StringComparison.Ordinal);
+        Assert.Contains("[Oracle And Oracle APEX Integration](integrations/oracle-apex.md)", index, StringComparison.Ordinal);
     }
 
     private static string ExtractGeneratedOnboardingBlock(string agents)

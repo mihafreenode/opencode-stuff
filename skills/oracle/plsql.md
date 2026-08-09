@@ -9,6 +9,7 @@ When to use:
 - investigating `ORA-` errors in procedural code
 
 Recommended documentation indexes:
+- `docs/reference/oracle-knowledge-map.yaml`
 - `docs/reference/oracle-plsql-index.md`
 - `docs/reference/oracle-database-index.md`
 
@@ -17,7 +18,4 @@ Common workflows:
 - confirm built-in package behavior in the Packages and Types Reference
 - cross-check `ORA-` messages in the Error Messages reference
 
-Official documentation:
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/lnpls/
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/arpls/
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/errmg/
+Resolve the deployed database version first. Follow the knowledge map and PL/SQL index to version-matched official Oracle documentation rather than duplicating fixed URLs here.

@@ -288,7 +288,17 @@ try {
     }
 
     $SelectedVersion = Resolve-Version -ExplicitVersion $Version
-    $SelectedVersion = $SelectedVersion -replace '[^0-9A-Za-z._-]', '-'
+    $SelectedVersion = $SelectedVersion -replace '[^0-9A-Za-z._+-]', '-'
+    $BuildTimestamp = [DateTimeOffset]::UtcNow.ToString("O")
+    $gitRevision = Invoke-Native -FilePath "git.exe" -Arguments @("rev-parse", "HEAD") -WorkingDirectory $RepositoryRoot -RedirectOutput -TimeoutSeconds 30
+    if ($gitRevision.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($gitRevision.StandardOutput)) {
+        Fail "Unable to resolve the Git commit SHA for release provenance."
+    }
+    $GitCommit = $gitRevision.StandardOutput.Trim()
+
+    if (-not $SelfContainedEnabled) {
+        Fail "Release artifacts must be self-contained. Framework-dependent release packaging is not supported."
+    }
 
     $ResolvedOutputRoot = if ([System.IO.Path]::IsPathRooted($OutputRoot)) {
         [System.IO.Path]::GetFullPath($OutputRoot)
@@ -357,9 +367,10 @@ try {
         Invoke-DotNet -Arguments @("test", "tests/OpenCode.Workspace.Cli.Tests/OpenCode.Workspace.Cli.Tests.csproj", "-c", $Configuration, "--no-build")
         Invoke-DotNet -Arguments @("test", "tests/OpenCode.Workspace.Avalonia.Tests/OpenCode.Workspace.Avalonia.Tests.csproj", "-c", $Configuration, "--no-build")
         Invoke-DotNet -Arguments @("test", "tests/OpenCode.Workspace.Api.IntegrationTests/OpenCode.Workspace.Api.IntegrationTests.csproj", "-c", $Configuration, "--no-build", "--filter", "Category=FastIntegration")
+        Invoke-DotNet -Arguments @("test", "tests/OpenCode.Workspace.RemoteBridge.Tests/OpenCode.Workspace.RemoteBridge.Tests.csproj", "-c", $Configuration, "--no-build")
         Invoke-DotNet -Arguments @(
             "test", "tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj", "-c", $Configuration, "--no-build",
-            "--filter", "FullyQualifiedName~McpToolAdapterTests.ToolRegistration_ExposesStableToolNames_OverStdio|FullyQualifiedName~McpToolAdapterTests.OperationStore_BoundsRecentEvents_AndReportsTruncation|FullyQualifiedName~McpToolAdapterTests.OperationStore_WritesStructuredProgressLog_AndSanitizesSecrets|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolDiscovery_ExposesStableToolsAndSchemas|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolErrors_AreStable_And_DoNotCrashServer|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolWorkspaceAndTemplateResources_AreReadable"
+            "--filter", "FullyQualifiedName~McpToolAdapterTests.ToolRegistration_ExposesStableToolNames_OverStdio|FullyQualifiedName~McpToolAdapterTests.ToolRegistration_DoesNotExposeTerminalControl|FullyQualifiedName~McpToolAdapterTests.OperationStore_BoundsRecentEvents_AndReportsTruncation|FullyQualifiedName~McpToolAdapterTests.OperationStore_WritesStructuredProgressLog_AndSanitizesSecrets|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolDiscovery_ExposesStableToolsAndSchemas|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolErrors_AreStable_And_DoNotCrashServer|FullyQualifiedName~McpProtocolIntegrationTests.ProtocolWorkspaceAndTemplateResources_AreReadable"
         )
     }
 
@@ -369,6 +380,7 @@ try {
         "-c", $Configuration,
         "-r", $RuntimeIdentifier,
         "--self-contained", $selfContainedValue,
+        "-p:Version=$SelectedVersion",
         "-p:DebugSymbols=false",
         "-p:DebugType=None"
     )
@@ -377,6 +389,7 @@ try {
     Invoke-DotNet -Arguments (@("publish", "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj") + $publishCommon + @("-o", (Join-Path $PublishRoot "cli")))
     Invoke-DotNet -Arguments (@("publish", "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj") + $publishCommon + @("-o", (Join-Path $PublishRoot "api")))
     Invoke-DotNet -Arguments (@("publish", "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj") + $publishCommon + @("-o", (Join-Path $PublishRoot "mcp")))
+    Invoke-DotNet -Arguments (@("publish", "src/OpenCode.Workspace.RemoteBridge/OpenCode.Workspace.RemoteBridge.csproj") + $publishCommon + @("-o", (Join-Path $PublishRoot "remote-bridge")))
 
     $script:CurrentStage = "assemble"
     if (-not (Test-Path $ReleaseToolDll)) {
@@ -392,7 +405,13 @@ try {
         "--desktop-publish-dir", (Join-Path $PublishRoot "desktop"),
         "--cli-publish-dir", (Join-Path $PublishRoot "cli"),
         "--api-publish-dir", (Join-Path $PublishRoot "api"),
-        "--mcp-publish-dir", (Join-Path $PublishRoot "mcp")
+        "--mcp-publish-dir", (Join-Path $PublishRoot "mcp"),
+        "--remote-bridge-publish-dir", (Join-Path $PublishRoot "remote-bridge"),
+        "--archive-kind", $(if ($NoArchive) { "none" } else { "zip" }),
+        "--archive-output-root", $ResolvedOutputRoot,
+        "--git-commit", $GitCommit,
+        "--build-timestamp", $BuildTimestamp,
+        "--self-contained", "true"
     )
 
     if (-not (Test-Path $PackageDirectory)) {
@@ -403,30 +422,55 @@ try {
         (Join-Path $PackageDirectory "OpenCode.Workspace.exe"),
         (Join-Path $PackageDirectory "bin\cli\OpenCode.Workspace.Cli.exe"),
         (Join-Path $PackageDirectory "bin\local-host\OpenCode.Workspace.LocalHost.exe"),
-        (Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe")
+        (Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe"),
+        (Join-Path $PackageDirectory "bin\remote-bridge\OpenCode.Workspace.RemoteBridge.exe")
     )
     foreach ($packagedExecutable in $packagedExecutables) {
         if (-not (Test-Path $packagedExecutable)) {
             Fail "Expected packaged executable '$packagedExecutable' was not found after assembly."
         }
     }
+    if (-not (Test-Path (Join-Path $PackageDirectory "config\remote-bridge\appsettings.json"))) {
+        Fail "Expected packaged RemoteBridge configuration was not found after assembly."
+    }
 
     if ($ValidatePackageEnabled) {
         $script:CurrentStage = "package validation"
+        $ValidatedPackageDirectory = $PackageDirectory
+        if (-not $NoArchive) {
+            $checksumParts = (Get-Content -LiteralPath $ChecksumPath -Raw).Trim() -split '\s+', 2
+            $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
+            if ($checksumParts.Count -ne 2 -or $checksumParts[0].ToLowerInvariant() -ne $actualHash -or $checksumParts[1] -ne [System.IO.Path]::GetFileName($ArchivePath)) {
+                Fail "Archive checksum verification failed for '$ArchivePath'."
+            }
+
+            $ValidatedPackageDirectory = Join-Path $ValidationRoot "extracted package with spaces"
+            if (Test-Path $ValidatedPackageDirectory) {
+                Remove-Item -LiteralPath $ValidatedPackageDirectory -Recurse -Force
+            }
+            Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ValidatedPackageDirectory
+        }
+
         $outsideRepoWorkingRoot = Join-Path $ValidationRoot "outside-repo"
         $apiStateRoot = Join-Path $ValidationRoot "api-state"
         $apiArtifactsRoot = Join-Path $ValidationRoot "api-artifacts"
         $packageTestArtifactsRoot = Join-Path $ValidationRoot "package-test-artifacts"
         New-Item -ItemType Directory -Force -Path $outsideRepoWorkingRoot, $apiStateRoot, $apiArtifactsRoot, $packageTestArtifactsRoot | Out-Null
 
-        $cliExecutable = Join-Path $PackageDirectory "bin\cli\OpenCode.Workspace.Cli.exe"
-        $apiExecutable = Join-Path $PackageDirectory "bin\local-host\OpenCode.Workspace.LocalHost.exe"
-        $mcpExecutable = Join-Path $PackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe"
+        $cliExecutable = Join-Path $ValidatedPackageDirectory "bin\cli\OpenCode.Workspace.Cli.exe"
+        $apiExecutable = Join-Path $ValidatedPackageDirectory "bin\local-host\OpenCode.Workspace.LocalHost.exe"
+        $mcpExecutable = Join-Path $ValidatedPackageDirectory "bin\mcp\OpenCode.Workspace.Mcp.exe"
+        $remoteBridgeExecutable = Join-Path $ValidatedPackageDirectory "bin\remote-bridge\OpenCode.Workspace.RemoteBridge.exe"
 
-        foreach ($requiredExecutable in @($cliExecutable, $apiExecutable, $mcpExecutable)) {
+        foreach ($requiredExecutable in @($cliExecutable, $apiExecutable, $mcpExecutable, $remoteBridgeExecutable)) {
             if (-not (Test-Path $requiredExecutable)) {
                 Fail "Missing packaged executable '$requiredExecutable'."
             }
+        }
+
+        $remoteBridgeDisabled = Invoke-Native -FilePath $remoteBridgeExecutable -Arguments @("--RemoteAccess:Enabled=false") -WorkingDirectory $outsideRepoWorkingRoot -RedirectOutput -TimeoutSeconds 30
+        if ($remoteBridgeDisabled.ExitCode -ne 0) {
+            Fail "Disabled packaged RemoteBridge did not exit gracefully.`n$($remoteBridgeDisabled.StandardOutput)`n$($remoteBridgeDisabled.StandardError)"
         }
 
         $cliSmoke = Invoke-Native -FilePath $cliExecutable -Arguments @("smoke", "list", "--format", "json") -WorkingDirectory $outsideRepoWorkingRoot -RedirectOutput -TimeoutSeconds 60
@@ -485,23 +529,9 @@ try {
             "test", "tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj", "-c", $Configuration, "--no-build",
             "--filter", "FullyQualifiedName~PackagedDistributionTests.ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully"
         ) -Environment @{
-            OPENCODE_EXISTING_PACKAGE_ROOT = $PackageDirectory
+            OPENCODE_EXISTING_PACKAGE_ROOT = $ValidatedPackageDirectory
             OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT = $packageTestArtifactsRoot
         }
-    }
-
-    if (-not $NoArchive) {
-        $script:CurrentStage = "archive"
-        if (Test-Path $ArchivePath) {
-            Remove-Item -LiteralPath $ArchivePath -Force
-        }
-        if (Test-Path $ChecksumPath) {
-            Remove-Item -LiteralPath $ChecksumPath -Force
-        }
-
-        Compress-Archive -Path (Join-Path $PackageDirectory "*") -DestinationPath $ArchivePath -Force
-        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
-        Set-Content -LiteralPath $ChecksumPath -Value ("{0}  {1}" -f $hash, [System.IO.Path]::GetFileName($ArchivePath)) -NoNewline
     }
 
     Write-Host ""

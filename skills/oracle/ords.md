@@ -9,6 +9,7 @@ When to use:
 - debugging ORDS connectivity, configuration, or deployment issues
 
 Recommended documentation indexes:
+- `docs/reference/oracle-knowledge-map.yaml`
 - `docs/reference/oracle-ords-index.md`
 - `docs/reference/oracle-database-index.md` for underlying database setup questions
 
@@ -33,7 +34,6 @@ Version compatibility guidance:
 Troubleshooting guidance:
 - keep deployment and gateway questions in ORDS docs first
 - move to database docs for grants, users, services, and connectivity prerequisites
-- use version archives when examples from the latest docs do not match the local runtime
+- use version-matched Oracle archives when indexed examples do not match the local runtime
 
-Official documentation:
-- https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/25.1/orddg/
+Do not duplicate a fixed official-URL list here. Follow the knowledge map and ORDS index, then use official Oracle documentation matching the deployed ORDS version.

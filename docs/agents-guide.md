@@ -70,7 +70,7 @@ Read more:
 
 - [Philosophy](philosophy.md)
 - [Design Principles](design-principles.md)
-- [Portable Understanding](philosophy.md#portable-understanding)
+- [Visible and Transferable Knowledge](philosophy.md#visible-and-transferable-knowledge)
 - [Recovery Model](architecture/recovery-model.md)
 
 Repository-owned guidance is part of the system's visible map. Good agent onboarding should make important behavior inspectable and transferable instead of leaving it hidden in chat-only context.

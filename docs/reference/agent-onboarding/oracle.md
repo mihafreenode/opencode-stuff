@@ -1,6 +1,6 @@
 # Oracle Agent Onboarding
 
-Start with local workspace indexes before opening official Oracle documentation.
+Start with `docs/reference/oracle-knowledge-map.yaml`, determine the deployed product versions, and then use its local indexes to open version-matched official Oracle documentation.
 
 - `docs/reference/oracle-knowledge-map.yaml`
 - `docs/reference/oracle-plsql-index.md`
@@ -11,4 +11,4 @@ Start with local workspace indexes before opening official Oracle documentation.
 
 Use `skills/oracle/` for task-oriented repository guidance.
 
-This project references Oracle documentation. It does not mirror Oracle manuals.
+Official Oracle documentation is normative. Indexed release links are versioned references, not claims of universal currency. Optional retrieval copies, generated extracts, and test fixtures are non-authoritative and require provenance and licensing review under `docs/oracle-documentation-strategy.md`.

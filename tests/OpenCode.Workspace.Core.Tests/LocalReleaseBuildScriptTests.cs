@@ -35,7 +35,7 @@ public sealed class LocalReleaseBuildScriptTests
     }
 
     [Fact]
-    public void BuildReleaseScript_Publishes_All_Four_Hosts_And_Uses_ReleaseTool()
+    public void BuildReleaseScript_Publishes_All_Five_Hosts_And_Uses_ReleaseTool()
     {
         var script = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "tools", "build-release.ps1"));
         var ciWorkflow = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml"));
@@ -46,6 +46,7 @@ public sealed class LocalReleaseBuildScriptTests
             "src/OpenCode.Workspace.Cli/OpenCode.Workspace.Cli.csproj",
             "src/OpenCode.Workspace.Api/OpenCode.Workspace.Api.csproj",
             "src/OpenCode.Workspace.Mcp/OpenCode.Workspace.Mcp.csproj",
+            "src/OpenCode.Workspace.RemoteBridge/OpenCode.Workspace.RemoteBridge.csproj",
         };
 
         foreach (var projectPath in projectPaths)
@@ -60,8 +61,10 @@ public sealed class LocalReleaseBuildScriptTests
         Assert.Contains("OpenCode.Workspace.Cli.exe", script, StringComparison.Ordinal);
         Assert.Contains("OpenCode.Workspace.LocalHost.exe", script, StringComparison.Ordinal);
         Assert.Contains("OpenCode.Workspace.Mcp.exe", script, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.RemoteBridge.exe", script, StringComparison.Ordinal);
         Assert.Contains("Get-BooleanDefault -Value $SelfContained -Default $true", script, StringComparison.Ordinal);
         Assert.Contains("bin\\local-host", script, StringComparison.Ordinal);
+        Assert.Contains("bin\\remote-bridge", script, StringComparison.Ordinal);
         Assert.DoesNotContain("bin\\api\\", script, StringComparison.Ordinal);
     }
 
@@ -81,14 +84,25 @@ public sealed class LocalReleaseBuildScriptTests
     }
 
     [Fact]
-    public void ReleaseDocs_Reference_Local_Windows_And_Wsl_Build_Flow_And_Packaged_Mcp_Path()
+    public void PackagingDocs_Reference_Local_Windows_And_Wsl_Build_Flow_And_Packaged_Mcp_Path()
     {
-        var doc = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "docs", "testing", "release-candidate-checklist.md"));
+        var doc = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "docs", "development", "packaging.md"));
 
         Assert.Contains(".\\tools\\build-release.ps1 -Clean", doc, StringComparison.Ordinal);
         Assert.Contains("./tools/build-release-from-wsl.sh -Clean", doc, StringComparison.Ordinal);
-        Assert.Contains("powershell.exe -NoProfile -ExecutionPolicy Bypass", doc, StringComparison.Ordinal);
-        Assert.Contains("artifacts\\release\\win-x64\\package\\", doc, StringComparison.Ordinal);
-        Assert.Contains("bin\\mcp\\OpenCode.Workspace.Mcp.exe", doc, StringComparison.Ordinal);
+        Assert.Contains("artifacts/release/win-x64/package/", doc, StringComparison.Ordinal);
+        Assert.Contains("bin/mcp", doc, StringComparison.Ordinal);
+        Assert.Contains("freshly extracted archive", doc, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IntegrationScripts_UseCurrentCliAssemblyName()
+    {
+        foreach (var relativePath in new[] { "tools/test-integration.ps1", "tools/test-integration.sh" })
+        {
+            var script = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, relativePath));
+            Assert.Contains("OpenCode.Workspace.Cli.dll", script, StringComparison.Ordinal);
+            Assert.DoesNotContain("opencode.dll", script, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

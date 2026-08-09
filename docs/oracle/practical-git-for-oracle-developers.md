@@ -71,7 +71,7 @@ Common examples:
 
 In practice, the business risk is not just code loss. It is knowledge loss.
 
-When package bodies, APEX exports, ORDS modules, reports, test data scripts, and onboarding notes all live in a repository, the repository becomes the durable source of truth instead of one schema, one workstation, or one person's memory. That is the same repository-first model described in [Repository Workflows](../capabilities/repository.md) and [workspace.yaml](../workspace-yaml.md).
+When package bodies, APEX exports, ORDS modules, reports, test data scripts, and onboarding notes all live in a repository, the repository becomes the durable source of truth instead of one schema, one workstation, or one person's memory. That is the same repository-first model described in [Repository Workflows](../capabilities/repository.md) and [workspace.yaml](../reference/workspace-yaml.md).
 
 Valuable work should not exist only in a schema, a workstation, or someone's memory when it can be preserved as package history, APEX exports, ORDS definitions, deployment notes, and reviewable documentation.
 
@@ -136,7 +136,7 @@ A commit is not production.
 
 A commit is protection.
 
-That is why OpenCode uses the term [Save Point](../concepts/save-point.md). A Save Point usually maps to a Git commit, but the user-facing meaning is simpler: record progress so work can be recovered safely.
+That is why OpenCode uses the term [Save Point](../user/backup-and-publish.md). A Save Point usually maps to a Git commit, but the user-facing meaning is simpler: record progress so work can be recovered safely.
 
 For an Oracle developer, this means you do not wait until an entire package suite, APEX feature, or ORDS service is perfectly complete. You protect the work at useful checkpoints, much like taking a reliable backup before the next risky step.
 
@@ -234,7 +234,7 @@ Those changes can move forward separately and be reviewed separately.
 
 The point is not branch theory. The point is reducing accidental interference and making isolated work safer.
 
-OpenCode uses similar safety language through Working Copies and Save Points so users can work in isolated lines of work without treating Git as a dangerous expert-only tool. See [Repository Workflows](../capabilities/repository.md) and [Save Point](../concepts/save-point.md).
+OpenCode uses similar safety language through Working Copies and Save Points so users can work in isolated lines of work without treating Git as a dangerous expert-only tool. See [Repository Workflows](../capabilities/repository.md) and [Backup And Publish](../user/backup-and-publish.md).
 
 ## You Do Not Need To Be a Git Expert
 

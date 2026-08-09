@@ -1,5 +1,7 @@
 # Oracle APEX API package discovery map.
 # Reference-only metadata for humans and AI agents.
+# Resolve the deployed version through docs/reference/oracle-knowledge-map.yaml;
+# package deep links in the companion catalog currently target APEX 24.2.
 
 runtime:
   - APEX_APPLICATION

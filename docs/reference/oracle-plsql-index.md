@@ -3,6 +3,9 @@
 Purpose:
 Curated official references for PL/SQL language, packages, stored procedures, triggers, and error handling.
 
+Version note:
+The links in this index target Oracle Database 23. Start with `docs/reference/oracle-knowledge-map.yaml` and confirm language, package, and error behavior against the deployed database version.
+
 Intended use:
 - implementing and reviewing PL/SQL code
 - answering language and package behavior questions

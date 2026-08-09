@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OpenCode.Workspace.RemoteBridge</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenCode.Workspace.AppSupport\OpenCode.Workspace.AppSupport.csproj" />
+    <ProjectReference Include="..\OpenCode.Workspace.LocalClient\OpenCode.Workspace.LocalClient.csproj" />
+    <PackageReference Include="XtermBlazor" GeneratePathProperty="true" ExcludeAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgXtermBlazor)\staticwebassets\XtermBlazor.min.js" LogicalName="OpenCode.Workspace.RemoteBridge.WebAssets.xterm.js" />
+    <EmbeddedResource Include="$(PkgXtermBlazor)\staticwebassets\XtermBlazor.min.css" LogicalName="OpenCode.Workspace.RemoteBridge.WebAssets.xterm.css" />
+  </ItemGroup>
+</Project>

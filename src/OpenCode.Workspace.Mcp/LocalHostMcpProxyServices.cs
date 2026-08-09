@@ -125,6 +125,16 @@ public sealed class McpControllerSessionHostedService(LocalHostClientAccessor cl
 
 public sealed class LocalHostOperationStore(LocalHostClientAccessor clients, McpControllerSessionContext session)
 {
+    public async Task<McpOperationModel> StartCreateWorkspaceAsync(string templateId, string workspaceName, string destinationRoot, CancellationToken cancellationToken = default)
+        => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartCreateWorkspaceAsync(new WorkspaceCreateOperationRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            TemplateId = templateId,
+            WorkspaceName = workspaceName,
+            DestinationRoot = destinationRoot,
+            RequestedBy = session.ToInitiator(),
+        }, cancellationToken));
+
     public async Task<McpOperationModel> StartWorkspaceLifecycleAsync(string workspaceId, string action, CancellationToken cancellationToken = default)
         => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartWorkspaceLifecycleAsync(action, new WorkspaceLifecycleRequest
         {
@@ -161,6 +171,27 @@ public sealed class LocalHostOperationStore(LocalHostClientAccessor clients, Mcp
             RequestedBy = session.ToInitiator(),
         }, cancellationToken));
 
+    public async Task<McpOperationModel> StartCleanupSmokeResourcesAsync(bool dryRun, bool includeAll, string? runId, CancellationToken cancellationToken = default)
+        => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartCleanupSmokeResourcesAsync(new SmokeCleanupOperationRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            DryRun = dryRun,
+            IncludeAll = includeAll,
+            RunId = runId,
+            RequestedBy = session.ToInitiator(),
+        }, cancellationToken));
+
+    public async Task<McpOperationModel> StartProcessExcelArtifactAsync(string sourcePath, string? destinationWorkspaceId, string? processingTemplateId, string? outputLogicalName, CancellationToken cancellationToken = default)
+        => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).StartProcessExcelArtifactAsync(new ExcelProcessOperationRequest
+        {
+            CommandId = Guid.NewGuid().ToString("n"),
+            SourcePath = sourcePath,
+            DestinationWorkspaceId = destinationWorkspaceId,
+            ProcessingTemplateId = processingTemplateId,
+            OutputLogicalName = outputLogicalName,
+            RequestedBy = session.ToInitiator(),
+        }, cancellationToken));
+
     public async Task<IReadOnlyList<McpOperationModel>> ListAsync(CancellationToken cancellationToken = default)
         => (await (await clients.GetAsync(cancellationToken)).ListOperationsAsync(cancellationToken)).Select(McpCompatibilityMapper.ToMcpOperationModel).ToArray();
 
@@ -171,7 +202,7 @@ public sealed class LocalHostOperationStore(LocalHostClientAccessor clients, Mcp
         => McpCompatibilityMapper.ToMcpOperationModel(await (await clients.GetAsync(cancellationToken)).CancelOperationAsync(operationId, new OperationCommandRequest { CommandId = Guid.NewGuid().ToString("n"), RequestedBy = session.ToInitiator() }, cancellationToken));
 }
 
-public sealed class LocalHostMcpProxyService(LocalHostClientAccessor clients, OpenCodeWorkspaceMcpService fallbackService) : IOpenCodeWorkspaceMcpService
+public sealed class LocalHostMcpProxyService(LocalHostClientAccessor clients) : IOpenCodeWorkspaceMcpService
 {
     public async Task<IReadOnlyList<WorkspaceTemplateSummaryModel>> ListWorkspaceTemplatesAsync(CancellationToken cancellationToken = default)
         => Map<IReadOnlyList<WorkspaceTemplateSummaryModel>>(await (await clients.GetAsync(cancellationToken)).ListWorkspaceTemplatesAsync(cancellationToken));
@@ -318,7 +349,7 @@ public sealed class LocalHostMcpProxyService(LocalHostClientAccessor clients, Op
             var client = clients.GetAsync().GetAwaiter().GetResult();
             using var http = new HttpClient { BaseAddress = new Uri(client.BaseUrl, UriKind.Absolute) };
             var envelope = http.GetFromJsonAsync<CompatibilityEnvelope<ServerHealthModel>>("/api/v1/server/health", LocalHostContract.JsonOptions).GetAwaiter().GetResult();
-            var health = envelope?.Data ?? fallbackService.GetServerHealth();
+            var health = envelope?.Data ?? throw new InvalidOperationException("LocalHost did not return server health.");
             var catalogRoot = string.IsNullOrWhiteSpace(health.CatalogRoot)
                 ? OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory).CatalogRoot
                 : health.CatalogRoot;
@@ -332,23 +363,14 @@ public sealed class LocalHostMcpProxyService(LocalHostClientAccessor clients, Op
                 HttpBinding = "loopback-proxy",
             };
         }
-        catch
+        catch (Exception exception)
         {
-            var health = fallbackService.GetServerHealth();
-            return new ServerHealthModel
-            {
-                Transport = "stdio",
-                CatalogRoot = string.IsNullOrWhiteSpace(health.CatalogRoot) ? OpenCodeWorkspaceInstallationLayout.Resolve(AppContext.BaseDirectory).CatalogRoot : health.CatalogRoot,
-                WorkspaceStateRoot = health.WorkspaceStateRoot,
-                SmokeArtifactsRoot = health.SmokeArtifactsRoot,
-                HttpEnabled = true,
-                HttpBinding = "loopback-proxy",
-            };
+            throw new InvalidOperationException("Could not read canonical LocalHost server health.", exception);
         }
     }
 
     public Task<IReadOnlyList<WorkspaceSmokeDefinition>> SelectSmokeDefinitionsAsync(WorkspaceSmokeDefinitionSelectionRequest request, CancellationToken cancellationToken = default)
-        => fallbackService.SelectSmokeDefinitionsAsync(request, cancellationToken);
+        => throw new NotSupportedException("Smoke selection is performed by the canonical LocalHost smoke operation.");
 
     public Task<WorkspaceSmokeResult> RunSmokeAsync(WorkspaceSmokeSingleRunRequest request, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("Smoke runs are started through canonical LocalHost operations, not direct MCP execution.");
@@ -363,28 +385,31 @@ public sealed class LocalHostMcpProxyService(LocalHostClientAccessor clients, Op
         => await (await clients.GetAsync(cancellationToken)).RunRuntimeDoctorAsync(query.OwnerKind, query.RunId, query.Project, query.WorkspaceRoot, cancellationToken);
 
     public Task<SmokeCleanupResult> CleanupSmokeResourcesAsync(SmokeCleanupOptions options, CancellationToken cancellationToken = default)
-        => fallbackService.CleanupSmokeResourcesAsync(options, cancellationToken);
+        => throw new NotSupportedException("Smoke cleanup is started through a canonical LocalHost operation.");
 
-    public Task<IReadOnlyList<ArtifactListItem>> ListWorkspaceArtifactsAsync(string workspaceId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
-        => fallbackService.ListWorkspaceArtifactsAsync(workspaceId, relativePath, recursive, cancellationToken);
+    public async Task<IReadOnlyList<ArtifactListItem>> ListWorkspaceArtifactsAsync(string workspaceId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
+        => Map<IReadOnlyList<ArtifactListItem>>(await ProxyAsync(client => client.ListWorkspaceArtifactsAsync(workspaceId, relativePath, recursive, cancellationToken), cancellationToken));
 
-    public Task<ArtifactReadModel> GetWorkspaceArtifactAsync(string workspaceId, string relativePath, CancellationToken cancellationToken = default)
-        => fallbackService.GetWorkspaceArtifactAsync(workspaceId, relativePath, cancellationToken);
+    public async Task<ArtifactReadModel> GetWorkspaceArtifactAsync(string workspaceId, string relativePath, CancellationToken cancellationToken = default)
+        => Map<ArtifactReadModel>(await ProxyAsync(client => client.GetWorkspaceArtifactAsync(workspaceId, relativePath, cancellationToken), cancellationToken));
 
-    public Task<IReadOnlyList<ArtifactListItem>> ListSmokeArtifactsAsync(string runId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
-        => fallbackService.ListSmokeArtifactsAsync(runId, relativePath, recursive, cancellationToken);
+    public async Task<IReadOnlyList<ArtifactListItem>> ListSmokeArtifactsAsync(string runId, string? relativePath, bool recursive, CancellationToken cancellationToken = default)
+        => Map<IReadOnlyList<ArtifactListItem>>(await ProxyAsync(client => client.ListSmokeArtifactsAsync(runId, relativePath, recursive, cancellationToken), cancellationToken));
 
-    public Task<ArtifactReadModel> GetSmokeArtifactAsync(string runId, string relativePath, CancellationToken cancellationToken = default)
-        => fallbackService.GetSmokeArtifactAsync(runId, relativePath, cancellationToken);
+    public async Task<ArtifactReadModel> GetSmokeArtifactAsync(string runId, string relativePath, CancellationToken cancellationToken = default)
+        => Map<ArtifactReadModel>(await ProxyAsync(client => client.GetSmokeArtifactAsync(runId, relativePath, cancellationToken), cancellationToken));
 
-    public Task<ArtifactReadModel> ReadArtifactByResourceUriAsync(string resourceUri, CancellationToken cancellationToken = default)
-        => fallbackService.ReadArtifactByResourceUriAsync(resourceUri, cancellationToken);
+    public async Task<ArtifactReadModel> ReadArtifactByResourceUriAsync(string resourceUri, CancellationToken cancellationToken = default)
+        => Map<ArtifactReadModel>(await ProxyAsync(client => client.ReadArtifactByResourceUriAsync(resourceUri, cancellationToken), cancellationToken));
 
-    public Task<ArtifactResourceReadModel> ReadArtifactResourceAsync(string resourceUri, CancellationToken cancellationToken = default)
-        => fallbackService.ReadArtifactResourceAsync(resourceUri, cancellationToken);
+    public async Task<ArtifactResourceReadModel> ReadArtifactResourceAsync(string resourceUri, CancellationToken cancellationToken = default)
+        => Map<ArtifactResourceReadModel>(await ProxyAsync(client => client.ReadArtifactResourceAsync(resourceUri, cancellationToken), cancellationToken));
 
     public Task<ExcelProcessResultModel> ProcessExcelArtifactAsync(string sourcePath, string? destinationWorkspaceId, string? processingTemplateId, string? outputLogicalName, CancellationToken cancellationToken = default)
-        => fallbackService.ProcessExcelArtifactAsync(sourcePath, destinationWorkspaceId, processingTemplateId, outputLogicalName, cancellationToken);
+        => throw new NotSupportedException("Excel processing is started through a canonical LocalHost operation.");
+
+    private async Task<T> ProxyAsync<T>(Func<LocalHostClient, Task<T>> request, CancellationToken cancellationToken)
+        => await request(await clients.GetAsync(cancellationToken));
 
     private static T Map<T>(object source)
         => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(source, LocalHostContract.JsonOptions), LocalHostContract.JsonOptions)

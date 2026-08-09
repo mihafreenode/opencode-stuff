@@ -3,6 +3,9 @@
 Purpose:
 Curated entry points for Oracle REST Data Services configuration, deployment, and REST enablement topics.
 
+Version note:
+The primary link in this index targets ORDS 25.1. It is a maintained versioned reference, not a claim that 25.1 is universally current. Start with `docs/reference/oracle-knowledge-map.yaml` and use documentation matching the deployed ORDS version.
+
 Intended use:
 - ORDS onboarding for local Oracle workspaces
 - deployment and runtime troubleshooting

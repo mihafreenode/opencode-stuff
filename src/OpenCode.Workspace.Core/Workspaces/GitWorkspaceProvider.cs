@@ -24,7 +24,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
     {
         EnsureProviderType(definition);
 
-        if (!(await _gitRepositoryService.IsRepositoryAsync(paths.RootPath, cancellationToken)))
+        var gitMarker = Path.Combine(paths.RootPath, ".git");
+        if (!Directory.Exists(gitMarker) && !File.Exists(gitMarker))
         {
             await RunGitAsync(paths.RootPath, ["init", "-b", "main"], log, cancellationToken);
         }
@@ -414,7 +415,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
                     Source = isError ? "git:err" : "git",
                     Message = line,
                 }),
-                cancellationToken);
+                cancellationToken,
+                timeout: TimeSpan.FromSeconds(30));
         }
         catch (Exception exception)
         {
@@ -490,7 +492,8 @@ public sealed class GitWorkspaceProvider : IWorkspaceProvider
                 "git",
                 ["status", "--porcelain", "--untracked-files=all"],
                 workspaceRoot,
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                timeout: TimeSpan.FromSeconds(30));
 
             if (statusResult.IsSuccess)
             {

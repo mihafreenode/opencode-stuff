@@ -3,6 +3,9 @@
 Purpose:
 Curated official starting points for Oracle Database concepts, SQL, administration, and security.
 
+Version note:
+The links in this index target Oracle Database 23. Start with `docs/reference/oracle-knowledge-map.yaml` and use the documentation matching the target database version for version-sensitive behavior.
+
 Intended use:
 - grounding Oracle workspace work in official database documentation
 - answering schema, SQL, storage, and admin questions

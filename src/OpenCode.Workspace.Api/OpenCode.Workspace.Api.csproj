@@ -8,10 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="XtermBlazor" GeneratePathProperty="true" ExcludeAssets="all" />
     <ProjectReference Include="..\OpenCode.Workspace.AppSupport\OpenCode.Workspace.AppSupport.csproj" />
     <ProjectReference Include="..\OpenCode.Workspace.Core\OpenCode.Workspace.Core.csproj" />
     <ProjectReference Include="..\OpenCode.Workspace.LocalClient\OpenCode.Workspace.LocalClient.csproj" />
-    <ProjectReference Include="..\OpenCode.Workspace.Mcp\OpenCode.Workspace.Mcp.csproj" />
+    <ProjectReference Include="..\OpenCode.Workspace.Mcp\OpenCode.Workspace.Mcp.csproj" AdditionalProperties="OutputType=Library" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +24,11 @@
       <Link>catalog\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgXtermBlazor)\staticwebassets\XtermBlazor.min.js" LogicalName="OpenCode.Workspace.LocalHost.WebAssets.xterm.js" />
+    <EmbeddedResource Include="$(PkgXtermBlazor)\staticwebassets\XtermBlazor.min.css" LogicalName="OpenCode.Workspace.LocalHost.WebAssets.xterm.css" />
   </ItemGroup>
 
 </Project>

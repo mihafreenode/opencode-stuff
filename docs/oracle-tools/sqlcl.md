@@ -20,6 +20,8 @@ Use SQLcl when you want to:
 - Oracle APEX Demo: supports schema verification behind the browser application
 - Oracle APEXlang Demo: supports export/import automation around the same application
 
+The catalog also describes Oracle SQLcl MCP for environments where `sql -mcp` is available. That experimental integration is separate from the OpenCode Workspace MCP server and must not be described as the workspace lifecycle or Oracle Assistant MCP implementation.
+
 ## Example Commands
 
 ```bash

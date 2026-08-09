@@ -96,6 +96,17 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_CancelledChildExitNeverBecomesProcessFailure()
+    {
+        var runner = new ProcessRunner();
+        for (var iteration = 0; iteration < 10; iteration++)
+        {
+            using var cancellationSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runner.RunAsync(TestCommand.FileName, TestCommand.LongRunning, cancellationToken: cancellationSource.Token));
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_EmptyStreamsRemainEmpty()
     {
         var runner = new ProcessRunner();
@@ -130,6 +141,22 @@ public sealed class ProcessRunnerTests
             var result = await runner.RunAsync(TestCommand.FileName, TestCommand.StdoutAndStderrExitThree);
             Assert.Contains(result.StandardOutputLines, line => line.Trim() == "stdout-line");
             Assert.Contains(result.StandardErrorLines, line => line.Trim() == "stderr-line");
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_GitProbeOutsideRepositoryExitsPromptly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"process-runner-git-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var result = await new ProcessRunner().RunAsync("git", ["rev-parse", "--is-inside-work-tree"], root, timeout: TimeSpan.FromSeconds(10));
+            Assert.NotEqual(0, result.ExitCode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
         }
     }
 

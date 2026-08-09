@@ -181,23 +181,23 @@ public sealed class WorkspaceSmokeRunner
             Report("completed", failures.Length == 0 ? "Smoke run completed successfully." : "Smoke run completed with validation failures.");
             status = failures.Length == 0 ? WorkspaceSmokeStatus.Passed : WorkspaceSmokeStatus.Failed;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            Report("cleaningUp", "Smoke run was cancelled. Cleaning up owned resources.");
-            status = WorkspaceSmokeStatus.Cancelled;
-            failureClassification = WorkspaceSmokeFailureClassification.Cancelled;
-            failureMessage = "Smoke run was cancelled.";
-            originalFailureClassification = failureClassification;
-            originalFailureMessage = failureMessage;
-        }
         catch (Exception exception)
         {
-            status = WorkspaceSmokeStatus.Failed;
-            failureClassification = WorkspaceSmokeFailureClassifier.Classify(exception);
-            failureMessage = exception.Message;
+            status = WorkspaceSmokeExecutionOutcomeClassifier.ClassifyException(exception, cancellationToken);
+            if (status == WorkspaceSmokeStatus.Cancelled)
+            {
+                Report("cleaningUp", "Smoke run was cancelled. Cleaning up owned resources.");
+                failureClassification = WorkspaceSmokeFailureClassification.Cancelled;
+                failureMessage = "Smoke run was cancelled.";
+            }
+            else
+            {
+                failureClassification = WorkspaceSmokeFailureClassifier.Classify(exception);
+                failureMessage = exception.Message;
+                warnings.Add(exception.ToString());
+            }
             originalFailureClassification = failureClassification;
             originalFailureMessage = failureMessage;
-            warnings.Add(exception.ToString());
         }
         finally
         {
@@ -279,9 +279,10 @@ public sealed class WorkspaceSmokeRunner
 
 Finalize:
         var finalMessage = string.IsNullOrWhiteSpace(failureMessage) ? skipReason : failureMessage;
-        if (cleanupResult is { VerificationSucceeded: false } && status == WorkspaceSmokeStatus.Passed)
+        var terminalStatus = WorkspaceSmokeExecutionOutcomeClassifier.ResolveTerminalStatus(status, cleanupResult?.VerificationSucceeded ?? false);
+        if (terminalStatus != status)
         {
-            status = WorkspaceSmokeStatus.Failed;
+            status = terminalStatus;
             failureClassification = WorkspaceSmokeFailureClassification.CleanupFailure;
             finalMessage = "Run cleanup verification failed.";
             cleanupFailureClassification = WorkspaceSmokeFailureClassification.CleanupFailure;

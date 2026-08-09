@@ -1,0 +1,23 @@
+:root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background: #111714; color: #e7eee9; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 80% 0, #213b30 0, transparent 38%), #111714; }
+main { width: min(1180px, 100%); min-height: 100vh; margin: auto; padding: 32px clamp(16px, 4vw, 52px); display: grid; grid-template-rows: auto auto 1fr auto; gap: 16px; }
+header { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+.eyebrow { color: #8cbda5; font-size: 11px; letter-spacing: .22em; margin: 0 0 8px; }
+h1 { font-size: clamp(25px, 4vw, 43px); line-height: 1; letter-spacing: -.035em; margin: 0; }
+.state { display: flex; align-items: center; gap: 8px; color: #9ba9a0; font-size: 13px; }
+.state span { width: 9px; height: 9px; border-radius: 50%; background: #6c756f; box-shadow: 0 0 0 4px #6c756f20; }
+.state[data-state="connected"] span { background: #68d391; box-shadow: 0 0 0 4px #68d39120; }
+.state[data-state="error"] span { background: #fca5a5; box-shadow: 0 0 0 4px #fca5a520; }
+.toolbar { min-height: 46px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #35453c; padding-bottom: 13px; }
+button { border: 1px solid #94c7ab; background: #b7e4cb; color: #102019; padding: 8px 14px; border-radius: 4px; font: 600 13px inherit; cursor: pointer; }
+button.secondary { color: #d8e5dd; background: transparent; border-color: #4d6457; }
+button.danger { margin-left: auto; color: #fecaca; background: transparent; border-color: #7f4545; }
+button:disabled { cursor: not-allowed; opacity: .4; }
+#runtime { color: #7f9187; font: 11px "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.terminal { position: relative; min-height: 480px; overflow: hidden; padding: 14px; border: 1px solid #35453c; border-radius: 6px; background: #080c0aee; box-shadow: 0 22px 70px #0008; outline: none; }
+.terminal:focus { border-color: #6b9b80; }
+.terminal .xterm { height: 100%; }
+.terminal .xterm-viewport { border-radius: 3px; }
+.message { min-height: 20px; margin: 0; color: #91a097; font-size: 12px; }
+@media (max-width: 640px) { main { padding-top: 20px; } header { align-items: start; flex-direction: column; } button.danger { margin-left: 0; } .terminal { min-height: 60vh; } }

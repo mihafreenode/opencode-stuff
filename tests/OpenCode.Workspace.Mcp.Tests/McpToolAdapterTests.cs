@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using OpenCode.Workspace.Core.Models;
@@ -40,35 +39,15 @@ public sealed class McpToolAdapterTests
     }
 
     [Fact]
-    public async Task CreateWorkspace_MapsRequestIntoFacade()
+    public async Task ToolRegistration_DoesNotExposeTerminalControl()
     {
-        var fake = new FakeMcpService
-        {
-            CreateWorkspaceHandler = (templateId, name, root) => Task.FromResult(new OpenCode.Workspace.Mcp.WorkspaceRecordModel { WorkspaceId = $"{templateId}:{name}:{root}" }),
-        };
+        var stderrLines = new List<string>();
+        var transport = CreateStdioTransport(stderrLines.Add);
+        await using var client = await CreateClientAsync(transport, stderrLines);
+        var names = (await client.ListToolsAsync()).Select(item => item.Name).ToArray();
+        var forbidden = new[] { "terminal_start", "terminal_stop", "terminal_input", "terminal_output", "terminal_resize", "terminal_attach", "terminal_takeover", "pty" };
 
-        var result = await OpenCodeWorkspaceMcpTools.CreateWorkspace("empty-workspace", "demo", "/tmp/workspaces", fake);
-        var payload = ReadEnvelope<OpenCode.Workspace.Mcp.WorkspaceRecordModel>(result);
-
-        Assert.Equal("empty-workspace:demo:/tmp/workspaces", payload.Data.WorkspaceId);
-        Assert.Equal("1", payload.ContractVersion);
-    }
-
-    [Fact]
-    public async Task RunSmokeMatrix_UsesCoreSelectionAndStartsOperation()
-    {
-        var fake = new FakeMcpService
-        {
-            SelectSmokeDefinitionsHandler = request => Task.FromResult<IReadOnlyList<WorkspaceSmokeDefinition>>([new WorkspaceSmokeDefinition { TemplateId = "empty-workspace", DisplayName = "Empty", Family = request.Family ?? "lightweight", Supported = true }]),
-            RunSmokeMatrixHandler = request => Task.FromResult(new WorkspaceSmokeMatrixResult { MatrixRunId = "matrix-1", SelectedTemplates = request.TemplateIds, Status = WorkspaceSmokeStatus.Passed, ArtifactDirectory = "/tmp/matrix" }),
-        };
-        var operations = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
-
-        var result = await OpenCodeWorkspaceMcpTools.RunSmokeMatrixCompatibility(null, "lightweight", false, "00:10:00", fake, operations);
-        var payload = JsonSerializer.Deserialize<McpOperationModel>(result.StructuredContent!.Value.GetRawText())!;
-
-        Assert.Equal("run_smoke_matrix", payload.Kind);
-        Assert.Single(operations.List());
+        Assert.DoesNotContain(names, name => forbidden.Any(item => name.Contains(item, StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -94,42 +73,6 @@ public sealed class McpToolAdapterTests
     }
 
     [Fact]
-    public async Task CleanupSmokeResources_MapsDryRunRequest()
-    {
-        SmokeCleanupOptions? captured = null;
-        var fake = new FakeMcpService
-        {
-            CleanupSmokeResourcesHandler = options =>
-            {
-                captured = options;
-                return Task.FromResult(new SmokeCleanupResult { Succeeded = true, VerificationSucceeded = true });
-            },
-        };
-
-        await OpenCodeWorkspaceMcpTools.CleanupSmokeResources(true, true, "run-1", fake);
-
-        Assert.NotNull(captured);
-        Assert.True(captured!.DryRun);
-        Assert.True(captured.IncludeAll);
-        Assert.Equal("run-1", captured.RunId);
-    }
-
-    [Fact]
-    public void OperationStore_SupportsCancellation()
-    {
-        var store = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
-        var operation = store.Start("run_smoke", string.Empty, "running", async (_, token) =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(30), token);
-            return new RuntimeResourceInventory();
-        });
-
-        var cancelled = store.Cancel(operation.OperationId);
-
-        Assert.True(cancelled.CancellationRequested);
-    }
-
-    [Fact]
     public void McpSource_HasNoDirectConsoleWrites()
     {
         var sourceFiles = Directory.EnumerateFiles(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp"), "*.cs", SearchOption.AllDirectories);
@@ -141,115 +84,31 @@ public sealed class McpToolAdapterTests
     }
 
     [Fact]
-    public async Task OperationStore_RemovesExpiredCompletedOperations_ButKeepsActiveOnes()
+    public void ArchitectureGuard_ProductionMcpAdaptersDoNotOwnSharedExecution()
     {
-        var clock = new FakeClock(DateTimeOffset.UtcNow);
-        var options = new OpenCodeWorkspaceMcpOptions
+        var root = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Mcp");
+        var source = string.Join(Environment.NewLine, Directory.EnumerateFiles(root, "*.cs").Select(File.ReadAllText));
+
+        foreach (var forbidden in new[]
         {
-            Operations = new OpenCodeWorkspaceMcpOperationOptions { Retention = TimeSpan.FromMinutes(5), CleanupTimeout = TimeSpan.FromSeconds(5) },
-        };
-        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance, clock);
-        var completed = store.Start("run_smoke", string.Empty, "done", (_, _) => Task.FromResult<object>(new RuntimeResourceInventory()));
-        await Task.Delay(100);
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var active = store.Start("run_smoke", string.Empty, "active", async (_, token) =>
+            "WorkspaceOrchestrator",
+            "WorkspaceSmokeRunner",
+            "WorkspaceSmokeApplicationService",
+            "DockerContainerRuntime",
+            "RuntimeOwnershipService",
+            "SpreadsheetDocument",
+            "DesktopWorkspaceService",
+            "InteractiveTerminalRuntimeService",
+            "McpOperationStore",
+            "fallbackService",
+            "AddSingleton<OpenCodeWorkspaceMcpService>",
+        })
         {
-            await gate.Task.WaitAsync(token);
-            return new RuntimeResourceInventory();
-        });
+            Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+        }
 
-        clock.Advance(TimeSpan.FromHours(2));
-        store.TrimExpired();
-
-        Assert.DoesNotContain(store.List(), item => item.OperationId == completed.OperationId);
-        Assert.Contains(store.List(), item => item.OperationId == active.OperationId);
-        gate.SetCanceled();
-    }
-
-    [Fact]
-    public async Task OperationStore_StopAsync_CancelsActiveOperations()
-    {
-        var store = new McpOperationStore(new OpenCodeWorkspaceMcpOptions(), NullLogger<McpOperationStore>.Instance);
-        var operation = store.Start("run_smoke", string.Empty, "active", async (_, token) =>
-        {
-            await Task.Delay(TimeSpan.FromMinutes(5), token);
-            return new RuntimeResourceInventory();
-        });
-
-        await store.StopAsync(CancellationToken.None);
-        var stopped = store.Get(operation.OperationId);
-
-        Assert.True(stopped.CancellationRequested);
-        Assert.Equal(McpOperationStatus.Cancelled, stopped.Status);
-    }
-
-    [Fact]
-    public async Task OperationStore_BoundsRecentEvents_AndReportsTruncation()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "opencode-mcp-events", Guid.NewGuid().ToString("n"));
-        var options = new OpenCodeWorkspaceMcpOptions
-        {
-            WorkspaceStateRoot = root,
-            Operations = new OpenCodeWorkspaceMcpOperationOptions { MaxRecentEvents = 2 },
-        };
-        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance);
-
-        var operation = store.Start("run_smoke", string.Empty, "start", async (reporter, _) =>
-        {
-            reporter.ReportProgress("phase1", "first", currentStep: 1, totalSteps: 3);
-            reporter.ReportProgress("phase2", "second", currentStep: 2, totalSteps: 3);
-            reporter.ReportProgress("phase3", "third", currentStep: 3, totalSteps: 3);
-            await Task.Yield();
-            return new RuntimeResourceInventory();
-        });
-
-        await Task.Delay(250);
-        var current = store.Get(operation.OperationId);
-        Assert.Equal(5, current.LastEventSequence);
-        Assert.True(current.EventsTruncated);
-        Assert.Equal(2, current.RecentEvents.Count);
-        Assert.Equal("completed", current.RecentEvents[^1].Phase);
-        Assert.Equal([4L, 5L], current.RecentEvents.Select(item => item.Sequence).ToArray());
-
-        var incremental = store.Get(operation.OperationId, afterSequence: 4);
-        Assert.Single(incremental.RecentEvents);
-        Assert.Equal(5, incremental.RecentEvents[0].Sequence);
-        Assert.False(incremental.EventsTruncated);
-
-        var progressJsonl = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.jsonl", StringComparison.Ordinal));
-        var lines = File.ReadAllLines(progressJsonl);
-        Assert.Equal(5, lines.Length);
-        Assert.DoesNotContain(lines, line => line.Contains("password=secret", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public async Task OperationStore_WritesStructuredProgressLog_AndSanitizesSecrets()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "opencode-mcp-progress", Guid.NewGuid().ToString("n"));
-        var options = new OpenCodeWorkspaceMcpOptions
-        {
-            WorkspaceStateRoot = root,
-        };
-        var store = new McpOperationStore(options, NullLogger<McpOperationStore>.Instance);
-
-        var operation = store.Start("provision_workspace", "workspace-1", "start", async (reporter, _) =>
-        {
-            reporter.ReportProgress(new CommandLogEntry
-            {
-                Source = "docker",
-                Message = "Connecting with password=secret-value",
-                Phase = "startingOracleDatabase",
-            });
-            await Task.Yield();
-            return new WorkspaceRecordModel { WorkspaceId = "workspace-1" };
-        });
-
-        await Task.Delay(250);
-        var current = store.Get(operation.OperationId);
-        Assert.Contains(current.RecentEvents, item => item.Message.Contains("[redacted]", StringComparison.Ordinal));
-
-        var progressText = current.ArtifactReferences.Single(path => path.EndsWith("operation-progress.txt", StringComparison.Ordinal));
-        Assert.DoesNotContain("secret-value", File.ReadAllText(progressText), StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(root, "OpenCodeWorkspaceMcpService.cs")));
+        Assert.True(File.Exists(Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "LocalHostCanonicalWorkspaceService.cs")));
     }
 
     [Fact]
@@ -321,7 +180,7 @@ public sealed class McpToolAdapterTests
                 ["mcp__workspaceStateRoot"] = stateRoot,
                 ["mcp__smokeArtifactsRoot"] = smokeArtifactsRoot,
                 ["localHost__stateRoot"] = Path.Combine(root, "local-host-shared"),
-                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", "Release", "net10.0"),
+                ["localHost__executableDirectory"] = Path.Combine(TestPaths.RepositoryRoot, "src", "OpenCode.Workspace.Api", "bin", new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name, "net10.0"),
             });
     }
 
@@ -338,21 +197,6 @@ public sealed class McpToolAdapterTests
         }
     }
 
-}
-
-internal sealed class FakeClock : ISystemClock
-{
-    public FakeClock(DateTimeOffset utcNow)
-    {
-        UtcNow = utcNow;
-    }
-
-    public DateTimeOffset UtcNow { get; private set; }
-
-    public void Advance(TimeSpan duration)
-    {
-        UtcNow += duration;
-    }
 }
 
 internal sealed class FakeMcpService : IOpenCodeWorkspaceMcpService

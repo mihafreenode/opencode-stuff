@@ -4,15 +4,7 @@ Use this catalog before searching the repository or probing installed binaries.
 
 ## Getting Started
 
-If using a shell:
-
-```bash
-su opencode
-cd /workspace
-opencode -s resume
-```
-
-Docker Desktop Exec is a valid way to access a workspace, but the best onboarding experience starts from an OpenCode session rather than a root shell.
+Start through the managed workspace and session flow. Docker Desktop Exec is an advanced diagnostic fallback and may open a root shell that does not match the managed provider environment.
 
 Then review:
 
@@ -22,8 +14,10 @@ Then review:
 
 Read more:
 
-- [Team Onboarding](../team-onboarding.md)
-- [Workspace Sessions Troubleshooting](../troubleshooting/workspace-sessions.md)
+- [Getting Started](../getting-started.md)
+- [Sessions](../user/sessions.md)
+- [Troubleshooting](../user/troubleshooting.md)
+- [Oracle Team Onboarding](../oracle/team-onboarding.md)
 
 The capability catalog is intended to answer questions such as `Can I process Excel files?`, `What PDF tools are available?`, `What OCR tools are available?`, `What Oracle tooling exists?`, and `What onboarding materials are available?` without repository-wide searching.
 
@@ -36,24 +30,20 @@ Tool guidance:
 - agents should verify installed tools before claiming they are available
 - if a documented tool is missing, report that clearly instead of assuming it exists
 
-## Example
+## Catalog Capabilities
 
-This screenshot shows a real discoverability flow from Docker Desktop Exec, including a natural capability question about Excel processing and a missing-tool case where `weasyprint` was not installed.
+This list describes capabilities available in the repository catalog, not capabilities installed in every workspace. A tool is available only when the selected template/features include it and provisioning succeeds.
 
-![Capability discovery from Docker Desktop Exec](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)
-
-## Enabled Capabilities
-
-- [x] Repository Workflows
-- [x] Documentation
-- [x] Document Processing
-- [x] OCR
-- [x] Spell Checking
-- [x] Analytics
-- [x] Reporting
-- [x] Testing
-- [x] Localization
-- [x] Oracle
+- Repository Workflows
+- Documentation
+- Document Processing
+- OCR
+- Spell Checking
+- Analytics
+- Reporting
+- Testing
+- Localization
+- Oracle
 
 ## Repository Workflows
 

@@ -262,12 +262,11 @@ public sealed class OracleRuntimeSmokeToolTests
     }
 
     [Fact]
-    public void RuntimeSmokeDocs_ExplainWslAndWindowsHostSelection()
+    public void RuntimeSmokeDocs_LinkCurrentValidationAuthorityAndExplainHostSelection()
     {
         var root = TestPaths.RepositoryRoot;
         var smokeDoc = File.ReadAllText(Path.Combine(root, "docs", "testing", "oracle-apex-runtime-smoke.md"));
-        var agentsDoc = File.ReadAllText(Path.Combine(root, "AGENTS.md"));
-        var troubleshootingDoc = File.ReadAllText(Path.Combine(root, "docs", "troubleshooting", "wsl-windows-interop.md"));
+        var testingDoc = File.ReadAllText(Path.Combine(root, "docs", "development", "testing.md"));
 
         Assert.Contains("docker version", smokeDoc, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("powershell.exe -NoProfile -Command \"docker version\"", smokeDoc);
@@ -280,14 +279,9 @@ public sealed class OracleRuntimeSmokeToolTests
         Assert.Contains("Product Failure", smokeDoc);
         Assert.Contains("Oracle Runtime Failure", smokeDoc);
 
-        Assert.Contains("Runtime Validation: WSL vs Windows Host", agentsDoc);
-        Assert.Contains("Runtime Validation Ladder", agentsDoc);
-        Assert.Contains("Validation Tooling Is Part Of The Product", agentsDoc);
-        Assert.Contains("Use Windows Docker Desktop result as authoritative", agentsDoc);
-        Assert.Contains("tools/OracleRuntimeSmoke/", agentsDoc);
-        Assert.Contains("scripts/testing/oracle-runtime-smoke.ps1", agentsDoc);
-
-        Assert.Contains("Windows host validation as authoritative", troubleshootingDoc, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("docs/testing/smoke-cli-contract.md", smokeDoc, StringComparison.Ordinal);
+        Assert.Contains("Windows Docker Desktop is authoritative for the Windows product", testingDoc, StringComparison.Ordinal);
+        Assert.Contains("Live Oracle validation follows its dedicated checked-in tooling and documentation", testingDoc, StringComparison.Ordinal);
         Assert.Contains("official Oracle APEX ZIP placed under `.local/oracle/downloads/apex/`", smokeDoc);
     }
 

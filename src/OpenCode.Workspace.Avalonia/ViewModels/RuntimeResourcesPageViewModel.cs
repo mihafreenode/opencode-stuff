@@ -6,7 +6,8 @@ namespace OpenCode.Workspace.Avalonia.ViewModels;
 
 public sealed class RuntimeResourcesPageViewModel : PageViewModel
 {
-    private readonly IDesktopWorkspaceService _desktopWorkspaceService;
+    private readonly IRuntimeResourcesApplicationService _runtimeResourcesApplicationService;
+    private readonly IDesktopPlatformService _desktopPlatformService;
     private WorkspaceRuntimeWorkspaceEntry? _selectedWorkspace;
     private WorkspaceRuntimeResourceEntry? _selectedResource;
     private WorkspaceRuntimeConflictEntry? _selectedConflict;
@@ -14,10 +15,11 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
     private WorkspaceRuntimeHealthEntry? _selectedHealth;
     private string _statusMessage;
 
-    public RuntimeResourcesPageViewModel(IDesktopWorkspaceService desktopWorkspaceService)
+    public RuntimeResourcesPageViewModel(IRuntimeResourcesApplicationService runtimeResourcesApplicationService, IDesktopPlatformService desktopPlatformService)
         : base("Runtime Resources", "Workspace-centric runtime resources, ownership, conflicts, and cleanup guidance.")
     {
-        _desktopWorkspaceService = desktopWorkspaceService;
+        _runtimeResourcesApplicationService = runtimeResourcesApplicationService;
+        _desktopPlatformService = desktopPlatformService;
         _statusMessage = "Refresh runtime resources to inspect ownership, conflicts, and orphaned Docker resources.";
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         OpenOwningWorkspaceCommand = new AsyncRelayCommand(OpenOwningWorkspaceAsync, CanOpenOwningWorkspace);
@@ -160,7 +162,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
 
     public async Task RefreshAsync()
     {
-        var report = await _desktopWorkspaceService.GetRuntimeResourceExplorerAsync();
+        var report = await _runtimeResourcesApplicationService.GetRuntimeResourceExplorerAsync();
         ReplaceCollection(Workspaces, report.Workspaces);
         ReplaceCollection(Resources, report.Resources);
         ReplaceCollection(Conflicts, report.Conflicts);
@@ -306,7 +308,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var url = (_selectedResource ?? _selectedOrphanedResource)?.OpenUrl;
         if (!string.IsNullOrWhiteSpace(url))
         {
-            await _desktopWorkspaceService.OpenPathAsync(url);
+            await _desktopPlatformService.OpenPathAsync(url);
         }
     }
 
@@ -315,7 +317,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopWorkspaceService.StartWorkspaceAsync(rootPath);
+            await _runtimeResourcesApplicationService.StartRuntimeAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -325,7 +327,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopWorkspaceService.StopWorkspaceAsync(rootPath);
+            await _runtimeResourcesApplicationService.StopRuntimeAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -335,7 +337,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopWorkspaceService.ReleaseRuntimeResourcesAsync(rootPath);
+            await _runtimeResourcesApplicationService.ReleaseRuntimeResourcesAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -345,7 +347,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
         var rootPath = GetSelectedWorkspaceRootPath();
         if (!string.IsNullOrWhiteSpace(rootPath))
         {
-            await _desktopWorkspaceService.ResetRuntimeAsync(rootPath);
+            await _runtimeResourcesApplicationService.RebuildRuntimeAsync(rootPath);
             await RefreshAsync();
         }
     }
@@ -358,7 +360,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
             return;
         }
 
-        var inspect = await _desktopWorkspaceService.InspectRuntimeResourceAsync(resource);
+        var inspect = await _runtimeResourcesApplicationService.InspectRuntimeResourceAsync(resource);
         DetailTitle = inspect.Title;
         DetailSummary = inspect.Summary;
         DetailItems.Clear();
@@ -368,7 +370,7 @@ public sealed class RuntimeResourcesPageViewModel : PageViewModel
 
     private async Task CleanOrphanedResourcesAsync()
     {
-        await _desktopWorkspaceService.CleanOrphanedRuntimeResourcesAsync();
+        await _runtimeResourcesApplicationService.CleanOrphanedRuntimeResourcesAsync();
         await RefreshAsync();
     }
 

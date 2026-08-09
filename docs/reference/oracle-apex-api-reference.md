@@ -3,6 +3,9 @@
 Purpose:
 Curated entry points for Oracle APEX PL/SQL package documentation and API-oriented troubleshooting.
 
+Version note:
+The API links below target APEX 24.2 and the application-definition link targets APEXlang 26.1. These are versioned references, not universal current-version claims. Confirm the runtime version through `docs/reference/oracle-knowledge-map.yaml` before asserting package or syntax availability.
+
 When to use:
 - looking up APEX PL/SQL packages such as `APEX_UTIL`, `APEX_JSON`, or `APEX_WEB_SERVICE`
 - deciding which package family fits a runtime task

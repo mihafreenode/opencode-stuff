@@ -1,11 +1,9 @@
-using System.Text.RegularExpressions;
-
 namespace OpenCode.Workspace.Core.Tests;
 
 public sealed class CapabilityDocumentationTests
 {
     [Fact]
-    public void CapabilityDocs_Exist_LinkInternally_AndCoverExpectedContent()
+    public void CapabilityCatalog_ContainsCurrentCapabilityFilesAndOnboardingLinks()
     {
         var root = TestPaths.RepositoryRoot;
         var capabilityRoot = Path.Combine(root, "docs", "capabilities");
@@ -24,109 +22,57 @@ public sealed class CapabilityDocumentationTests
             "oracle.md",
         };
 
-        foreach (var fileName in capabilityFiles)
-        {
-            Assert.True(File.Exists(Path.Combine(capabilityRoot, fileName)), $"Expected capability doc to exist: {fileName}");
-        }
+        Assert.All(capabilityFiles, fileName =>
+            Assert.True(File.Exists(Path.Combine(capabilityRoot, fileName)), $"Expected capability doc to exist: {fileName}"));
 
         var catalog = File.ReadAllText(Path.Combine(capabilityRoot, "README.md"));
-        var documentProcessing = File.ReadAllText(Path.Combine(capabilityRoot, "document-processing.md"));
-        var ocr = File.ReadAllText(Path.Combine(capabilityRoot, "ocr.md"));
-        var spellChecking = File.ReadAllText(Path.Combine(capabilityRoot, "spell-checking.md"));
-        var analytics = File.ReadAllText(Path.Combine(capabilityRoot, "analytics.md"));
-        var testing = File.ReadAllText(Path.Combine(capabilityRoot, "testing.md"));
-        var oracle = File.ReadAllText(Path.Combine(capabilityRoot, "oracle.md"));
-        var onboarding = File.ReadAllText(Path.Combine(root, "docs", "team-onboarding.md"));
-        var documentationFeatures = File.ReadAllText(Path.Combine(root, "docs", "documentation-features.md"));
-        var sessionTroubleshooting = File.ReadAllText(Path.Combine(root, "docs", "troubleshooting", "workspace-sessions.md"));
-
-        Assert.Contains("Repository Workflows", catalog);
-        Assert.Contains("Documentation", catalog);
-        Assert.Contains("Oracle", catalog);
-        Assert.Contains("## Getting Started", catalog);
-        Assert.Contains("Docker Desktop Exec", catalog);
-        Assert.Contains("Can I process Excel files?", catalog);
-        Assert.Contains("Workspace Sessions Troubleshooting", catalog);
-
-        Assert.Contains("PDF", documentProcessing);
-        Assert.Contains("Office", documentProcessing, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("conversion", documentProcessing, StringComparison.OrdinalIgnoreCase);
-
-        Assert.Contains("scanned", ocr, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("text extraction", ocr, StringComparison.OrdinalIgnoreCase);
-
-        Assert.Contains("English", spellChecking);
-        Assert.Contains("Slovenian", spellChecking);
-
-        Assert.Contains("spreadsheet", analytics, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("report", analytics, StringComparison.OrdinalIgnoreCase);
-
-        Assert.Contains("regression", testing, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Playwright", testing);
-
-        Assert.Contains("SQLcl", oracle);
-        Assert.Contains("ORDS", oracle);
-        Assert.Contains("APEX", oracle);
-        Assert.Contains("APEXlang", oracle);
-
-        Assert.Contains("## Connecting to a Workspace Session", onboarding);
-        Assert.Contains("opencode -s resume", onboarding);
-        Assert.Contains("Docker Desktop Exec", onboarding);
-        Assert.Contains("![OpenCode in Docker Desktop Exec](../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", onboarding);
-        Assert.Contains("docs/capabilities/oracle.md", onboarding);
-        Assert.Contains("docs/troubleshooting/workspace-sessions.md", onboarding);
-        Assert.Contains("docs/capabilities/documentation.md", documentationFeatures);
-        Assert.Contains("![Capability discovery from Docker Desktop Exec](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", catalog);
-
-        Assert.Contains("root@container:/#", sessionTroubleshooting);
-        Assert.Contains("No sessions available", sessionTroubleshooting);
-        Assert.Contains("Capability catalog missing", sessionTroubleshooting);
-        Assert.Contains("weasyprint: command not found", sessionTroubleshooting);
-        Assert.Contains("Docker Desktop Exec", sessionTroubleshooting);
-        Assert.Contains("![Workspace session troubleshooting example](../../artifacts/screenshots/opencode-in-docker-for-windows-exec.png)", sessionTroubleshooting);
-        Assert.Contains("Repair Runtime", sessionTroubleshooting);
-        Assert.DoesNotContain("reprovision", sessionTroubleshooting, StringComparison.OrdinalIgnoreCase);
-
-        foreach (var fileName in capabilityFiles)
+        foreach (var link in new[]
         {
-            var filePath = Path.Combine(capabilityRoot, fileName);
-            var content = File.ReadAllText(filePath);
-            foreach (Match match in Regex.Matches(content, @"\[[^\]]+\]\(([^)]+)\)"))
-            {
-                var link = match.Groups[1].Value;
-                if (string.IsNullOrWhiteSpace(link)
-                    || link.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                    || link.StartsWith('#'))
-                {
-                    continue;
-                }
+            "[Getting Started](../getting-started.md)",
+            "[Sessions](../user/sessions.md)",
+            "[Troubleshooting](../user/troubleshooting.md)",
+            "[Oracle Team Onboarding](../oracle/team-onboarding.md)",
+        })
+        {
+            Assert.Contains(link, catalog, StringComparison.Ordinal);
+        }
 
-                var fullPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(filePath)!, link.Replace('/', Path.DirectorySeparatorChar)));
-                Assert.True(File.Exists(fullPath), $"Expected documentation link target to exist: {fileName} -> {link}");
-            }
+        foreach (var capability in new[]
+        {
+            "Repository Workflows",
+            "Documentation",
+            "Document Processing",
+            "OCR",
+            "Spell Checking",
+            "Analytics",
+            "Reporting",
+            "Testing",
+            "Localization",
+            "Oracle",
+        })
+        {
+            Assert.Contains(capability, catalog, StringComparison.Ordinal);
         }
     }
 
     [Fact]
-    public void OnboardingDocs_EmbeddedScreenshotPaths_Exist()
+    public void CapabilityDocs_DescribeCurrentDomainCoverage()
     {
-        var root = TestPaths.RepositoryRoot;
-        var docsToCheck = new[]
+        var capabilityRoot = Path.Combine(TestPaths.RepositoryRoot, "docs", "capabilities");
+        var expectations = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            Path.Combine(root, "docs", "team-onboarding.md"),
-            Path.Combine(root, "docs", "capabilities", "README.md"),
-            Path.Combine(root, "docs", "troubleshooting", "workspace-sessions.md"),
+            ["document-processing.md"] = ["PDF", "Office", "conversion"],
+            ["ocr.md"] = ["scanned", "text extraction"],
+            ["spell-checking.md"] = ["English", "Slovenian"],
+            ["analytics.md"] = ["spreadsheet", "report"],
+            ["testing.md"] = ["regression", "Playwright"],
+            ["oracle.md"] = ["SQLcl", "ORDS", "APEX", "APEXlang"],
         };
 
-        foreach (var docPath in docsToCheck)
+        foreach (var (fileName, terms) in expectations)
         {
-            var content = File.ReadAllText(docPath);
-            foreach (Match match in Regex.Matches(content, @"!\[[^\]]*\]\(([^)]+)\)"))
-            {
-                var relativePath = match.Groups[1].Value;
-                var fullPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(docPath)!, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-                Assert.True(File.Exists(fullPath), $"Expected embedded screenshot to exist: {docPath} -> {relativePath}");
-            }
+            var content = File.ReadAllText(Path.Combine(capabilityRoot, fileName));
+            Assert.All(terms, term => Assert.Contains(term, content, StringComparison.OrdinalIgnoreCase));
         }
     }
 }

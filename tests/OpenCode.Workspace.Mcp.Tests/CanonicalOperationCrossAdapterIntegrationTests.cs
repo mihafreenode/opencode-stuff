@@ -1,6 +1,8 @@
 using OpenCode.Workspace.Avalonia.Services;
 using OpenCode.Workspace.LocalClient;
 using OpenCode.Workspace.Mcp;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using System.Diagnostics;
 using System.Text.Json;
 using Xunit;
@@ -30,6 +32,7 @@ public sealed class CanonicalOperationCrossAdapterIntegrationTests
         var desktopObserved = await avalonia.GetOperationAsync(started.OperationId);
         AssertImmutableParity(started, desktopObserved);
         AssertEvolvingParity(started, desktopObserved);
+        Assert.Equal(controller.ClientInstanceId, desktopObserved.InitiatedBy.ClientInstanceId);
 
         var cancelled = await avalonia.CancelOperationAsync(started.OperationId);
         Assert.Equal(controller.ControllerSessionId, cancelled.InitiatedBy.ControllerSessionId);
@@ -39,6 +42,7 @@ public sealed class CanonicalOperationCrossAdapterIntegrationTests
         Assert.Equal(McpOperationStatus.Cancelled, mcpTerminal.Status);
         AssertTerminalParity(mcpTerminal, desktopTerminal);
         Assert.Equal(controller.ControllerSessionId, desktopTerminal.InitiatedBy.ControllerSessionId);
+        Assert.Equal(controller.ClientInstanceId, desktopTerminal.InitiatedBy.ClientInstanceId);
 
         await mcp.RequestGracefulShutdownByClosingStandardInputAsync(Timeout);
         await TeardownAssert.AssertControllerDisconnectedAsync(scope.Client(host), controller.ControllerSessionId, scope.Identity, mcp.StandardErrorLines, [], Timeout, CancellationToken.None);
@@ -85,6 +89,50 @@ public sealed class CanonicalOperationCrossAdapterIntegrationTests
         await TeardownAssert.AssertProcessExitedAsync(host, mcp.StandardErrorLines, externalHost.StandardErrorLines, Timeout, CancellationToken.None);
         await TeardownAssert.AssertDescriptorNotLiveAsync(scope.Identity, mcp.StandardErrorLines, externalHost.StandardErrorLines, Timeout, CancellationToken.None);
         await TeardownAssert.AssertHostLockReleasedAsync(scope.Identity, mcp.StandardErrorLines, externalHost.StandardErrorLines, Timeout, CancellationToken.None);
+    }
+
+    [Fact]
+    [Trait("Category", "CrossAdapterIntegration")]
+    public async Task McpStartedExcelOperation_HasCanonicalResultAndArtifactParityThroughLocalClient()
+    {
+        await using var scope = new LocalHostTeardownScope();
+        TeardownAssert.AssertNoLiveState(scope.Identity);
+        var sourcePath = Path.Combine(scope.ArtifactsRoot, "excel", "input.xlsx");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        CreateWorkbook(sourcePath);
+
+        await using var mcp = await scope.StartMcpAsync("mcp-excel-parity");
+        var host = await scope.WaitForIdentityAsync(mcp.StandardErrorLines);
+        var controller = await scope.WaitForControllerAsync(host, mcp.Report.ProcessId, mcp.StandardErrorLines);
+        await using var localClient = scope.Client(host);
+
+        var started = await CallMcpOperationAsync(mcp, 2, "process_excel_artifact", new
+        {
+            sourcePath,
+            processingTemplateId = "shared",
+            outputLogicalName = "processed",
+        });
+        Assert.Equal("process_excel_artifact", started.Kind);
+        Assert.Equal(controller.ControllerSessionId, started.ControllerSessionId);
+
+        var canonical = await WaitForLocalClientTerminalAsync(localClient, started.OperationId);
+        var throughMcp = await WaitForMcpTerminalAsync(mcp, started.OperationId, 3);
+        AssertTerminalParity(throughMcp, canonical);
+        Assert.Equal(controller.ControllerSessionId, canonical.InitiatedBy.ControllerSessionId);
+        Assert.Equal(controller.ClientInstanceId, canonical.InitiatedBy.ClientInstanceId);
+
+        var excel = canonical.Result!.Value.Deserialize<OpenCode.Workspace.LocalClient.ExcelProcessResultModel>(LocalHostContract.JsonOptions)!;
+        Assert.True(File.Exists(excel.OutputPath));
+        Assert.Contains(canonical.ArtifactReferences, item => item.SafeLocalReference == excel.OutputPath && item.Kind == "excel-workbook");
+        var artifact = await localClient.ReadArtifactByResourceUriAsync(excel.ResourceUri);
+        Assert.Equal(excel.OutputChecksumSha256, artifact.ChecksumSha256);
+        Assert.Equal(canonical.ArtifactReferences.Select(item => item.SafeLocalReference), throughMcp.ArtifactReferences);
+
+        await mcp.RequestGracefulShutdownByClosingStandardInputAsync(Timeout);
+        await TeardownAssert.AssertControllerDisconnectedAsync(localClient, controller.ControllerSessionId, scope.Identity, mcp.StandardErrorLines, [], Timeout, CancellationToken.None);
+        await TeardownAssert.AssertProcessExitedAsync(host, mcp.StandardErrorLines, [], Timeout, CancellationToken.None);
+        await TeardownAssert.AssertDescriptorNotLiveAsync(scope.Identity, mcp.StandardErrorLines, [], Timeout, CancellationToken.None);
+        await TeardownAssert.AssertHostLockReleasedAsync(scope.Identity, mcp.StandardErrorLines, [], Timeout, CancellationToken.None);
     }
 
     private static async Task<McpOperationModel> WaitForMcpTerminalAsync(PackagedProcessHarness mcp, string operationId, int requestId)
@@ -225,6 +273,33 @@ public sealed class CanonicalOperationCrossAdapterIntegrationTests
             await Task.Delay(100);
         }
         throw new TimeoutException($"Operation '{operationId}' did not reach a terminal state through the Avalonia LocalHost service.");
+    }
+
+    private static async Task<WorkspaceOperationRecord> WaitForLocalClientTerminalAsync(LocalHostClient client, string operationId)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < Timeout)
+        {
+            var operation = await client.GetOperationAsync(operationId);
+            if (operation.Status is WorkspaceOperationStatus.Succeeded or WorkspaceOperationStatus.Failed or WorkspaceOperationStatus.Cancelled)
+            {
+                return operation;
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"Operation '{operationId}' did not reach a terminal state through LocalClient.");
+    }
+
+    private static void CreateWorkbook(string path)
+    {
+        using var document = SpreadsheetDocument.Create(path, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook);
+        var workbookPart = document.AddWorkbookPart();
+        workbookPart.Workbook = new Workbook();
+        var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+        worksheetPart.Worksheet = new Worksheet(new SheetData());
+        var sheets = workbookPart.Workbook.AppendChild(new Sheets());
+        sheets.Append(new Sheet { Id = workbookPart.GetIdOfPart(worksheetPart), SheetId = 1, Name = "Sheet1" });
+        workbookPart.Workbook.Save();
     }
 
     private static int StatusRank(WorkspaceOperationStatus status)

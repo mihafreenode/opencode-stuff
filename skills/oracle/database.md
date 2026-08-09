@@ -9,6 +9,7 @@ When to use:
 - separating core database concerns from APEX and ORDS concerns
 
 Recommended documentation indexes:
+- `docs/reference/oracle-knowledge-map.yaml`
 - `docs/reference/oracle-database-index.md`
 - `docs/reference/oracle-plsql-index.md` for procedural code
 
@@ -17,8 +18,4 @@ Common workflows:
 - use Concepts for terminology and architecture questions
 - use Admin or Security guides for operational setup and privilege topics
 
-Official documentation:
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/cncpt/
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/sqlrf/
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/admin/
-- https://docs.oracle.com/en/database/oracle/oracle-database/23/dbseg/
+Resolve the deployed database version first. Follow the knowledge map and database index to version-matched official Oracle documentation rather than duplicating fixed URLs here.
