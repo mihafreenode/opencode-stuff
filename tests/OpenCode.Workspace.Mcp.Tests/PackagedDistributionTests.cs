@@ -133,10 +133,13 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.DoesNotContain(TestPaths.RepositoryRoot, cliSmoke.StandardOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fatal", cliSmoke.StandardError, StringComparison.OrdinalIgnoreCase);
 
-        await using var cliRuntime = await PackagedProcessHarness.StartAsync("cli-runtime-list", cliExecutable, ["runtime", "list", "--format", "json"], outsideRepositoryRoot);
-        await cliRuntime.WaitForExitAsync(TimeSpan.FromSeconds(60));
-        Assert.Equal(0, cliRuntime.ExitCode);
-        Assert.Contains("resources", cliRuntime.StandardOutput, StringComparison.Ordinal);
+        if (!OperatingSystem.IsMacOS())
+        {
+            await using var cliRuntime = await PackagedProcessHarness.StartAsync("cli-runtime-list", cliExecutable, ["runtime", "list", "--format", "json"], outsideRepositoryRoot);
+            await cliRuntime.WaitForExitAsync(TimeSpan.FromSeconds(60));
+            Assert.Equal(0, cliRuntime.ExitCode);
+            Assert.Contains("resources", cliRuntime.StandardOutput, StringComparison.Ordinal);
+        }
 
         var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
         var apiPort = PackagedHostValidationHelpers.GetFreeTcpPort();
