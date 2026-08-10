@@ -106,6 +106,66 @@ public sealed class ProcessRunnerTests
         }
     }
 
+    [SkippableFact]
+    public async Task RunAsync_CancellationTerminatesDescendantProcessTree()
+    {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Process-tree cancellation requires a Windows host.");
+        var runner = new ProcessRunner();
+        using var cancellationSource = new CancellationTokenSource();
+        var parentIdSource = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var childIdSource = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var treeReadySource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var streamedLines = new ConcurrentQueue<string>();
+        OwnedProcessIdentity? parentIdentity = null;
+        OwnedProcessIdentity? childIdentity = null;
+
+        var task = runner.RunAsync(
+            TestCommand.FileName,
+            TestCommand.DescendantProcessTree,
+            onOutput: (isError, line) =>
+            {
+                streamedLines.Enqueue($"{(isError ? "err" : "out")}:{line}");
+                TrySetProcessId(line, "PARENT:", parentIdSource);
+                TrySetProcessId(line, "CHILD:", childIdSource);
+                if (isError && string.Equals(line, "TREE-READY", StringComparison.Ordinal)) treeReadySource.TrySetResult();
+            },
+            cancellationToken: cancellationSource.Token);
+
+        try
+        {
+            var parentId = await parentIdSource.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var childId = await childIdSource.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await treeReadySource.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.NotEqual(parentId, childId);
+            parentIdentity = OwnedProcessIdentity.Capture(parentId);
+            childIdentity = OwnedProcessIdentity.Capture(childId);
+            Assert.True(parentIdentity.IsRunning());
+            Assert.True(childIdentity.IsRunning());
+            Assert.Contains("err:TREE-READY", streamedLines);
+
+            cancellationSource.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task.WaitAsync(TimeSpan.FromSeconds(15)));
+            await WaitForExitAsync(parentIdentity, TimeSpan.FromSeconds(10));
+            await WaitForExitAsync(childIdentity, TimeSpan.FromSeconds(10));
+            Assert.False(parentIdentity.IsRunning());
+            Assert.False(childIdentity.IsRunning());
+        }
+        finally
+        {
+            cancellationSource.Cancel();
+            if (childIdentity is not null) childIdentity.TerminateIfRunning();
+            if (parentIdentity is not null) parentIdentity.TerminateIfRunning();
+            try
+            {
+                await task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch
+            {
+            }
+        }
+    }
+
     [Fact]
     public async Task RunAsync_EmptyStreamsRemainEmpty()
     {
@@ -160,6 +220,68 @@ public sealed class ProcessRunnerTests
         }
     }
 
+    private static void TrySetProcessId(string line, string prefix, TaskCompletionSource<int> source)
+    {
+        if (line.StartsWith(prefix, StringComparison.Ordinal) && int.TryParse(line[prefix.Length..], out var processId))
+        {
+            source.TrySetResult(processId);
+        }
+    }
+
+    private static async Task WaitForExitAsync(OwnedProcessIdentity process, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline && process.IsRunning())
+        {
+            await Task.Delay(50);
+        }
+    }
+
+    private sealed record OwnedProcessIdentity(int ProcessId, DateTime StartTimeUtc)
+    {
+        public static OwnedProcessIdentity Capture(int processId)
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return new OwnedProcessIdentity(processId, process.StartTime.ToUniversalTime());
+        }
+
+        public bool IsRunning()
+        {
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(ProcessId);
+                return !process.HasExited && process.StartTime.ToUniversalTime() == StartTimeUtc;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        public void TerminateIfRunning()
+        {
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(ProcessId);
+                if (!process.HasExited && process.StartTime.ToUniversalTime() == StartTimeUtc)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+    }
+
     private static class TestCommand
     {
         public static string FileName => OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/sh";
@@ -187,6 +309,10 @@ public sealed class ProcessRunnerTests
         public static string[] LongRunning => Create(
             windows: "[Console]::Out.WriteLine('stdout-before-wait'); Start-Sleep -Seconds 30",
             unix: "printf 'stdout-before-wait\n'; sleep 30");
+
+        public static string[] DescendantProcessTree => Create(
+            windows: "$child = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 30\"' -PassThru; [Console]::Out.WriteLine(\"PARENT:$PID\"); [Console]::Out.WriteLine(\"CHILD:$($child.Id)\"); [Console]::Error.WriteLine('TREE-READY'); Start-Sleep -Seconds 30",
+            unix: "sleep 30");
 
         public static string[] NoOutput => Create(
             windows: "exit 0",

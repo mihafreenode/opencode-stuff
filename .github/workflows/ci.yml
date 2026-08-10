@@ -162,6 +162,13 @@ jobs:
           -c Release --no-build
           --filter "FullyQualifiedName=OpenCode.Workspace.Core.Tests.OraclePortConflictHandlingTests.ValidateVolatileEnvironmentAsync_UsesWslDockerForPortPreflightWhenWindowsDockerPsTimesOut|FullyQualifiedName=OpenCode.Workspace.Core.Tests.OraclePortConflictHandlingTests.ValidateVolatileEnvironmentAsync_UsesShortTimeoutForDockerPsPreflight|FullyQualifiedName=OpenCode.Workspace.Core.Tests.OraclePortConflictHandlingTests.RunSimpleDockerCommandAsync_WhenWindowsDockerUnavailableButWslDockerAvailable_ThrowsPreciseMessage"
 
+      - name: Run focused Windows ProcessRunner tests
+        if: matrix.runtime == 'win-x64'
+        run: >-
+          dotnet test tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj
+          -c Release --no-build
+          --filter "FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.RunAsync_CapturesStdoutAndStderrLines|FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.RunAsync_ImmediateExitStillCapturesBothStreams|FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.RunAsync_LargeOutputIsFullyDrained|FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.RunAsync_CancellationDoesNotDeadlockStreamCompletion|FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.RunAsync_CancellationTerminatesDescendantProcessTree"
+
       - name: Publish desktop
         run: >-
           dotnet publish src/OpenCode.Workspace.Avalonia/OpenCode.Workspace.Avalonia.csproj

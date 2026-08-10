@@ -174,6 +174,33 @@ public sealed class CiWorkflowTests
     }
 
     [Fact]
+    public void NativePackageLeg_RunsExactlyFocusedWindowsProcessRunnerCoverage()
+    {
+        var ci = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml"));
+        var processRunnerTests = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Core.Tests", "ProcessRunnerTests.cs"));
+        var step = Step(ci, "Run focused Windows ProcessRunner tests");
+        var methods = new[]
+        {
+            "RunAsync_CapturesStdoutAndStderrLines",
+            "RunAsync_ImmediateExitStillCapturesBothStreams",
+            "RunAsync_LargeOutputIsFullyDrained",
+            "RunAsync_CancellationDoesNotDeadlockStreamCompletion",
+            "RunAsync_CancellationTerminatesDescendantProcessTree",
+        };
+
+        Assert.Contains("if: matrix.runtime == 'win-x64'", step, StringComparison.Ordinal);
+        Assert.Contains("OpenCode.Workspace.Core.Tests.csproj", step, StringComparison.Ordinal);
+        Assert.Equal(5, Regex.Matches(step, "FullyQualifiedName=OpenCode\\.Workspace\\.Core\\.Tests\\.ProcessRunnerTests\\.").Count);
+        Assert.All(methods, method =>
+        {
+            Assert.Contains($"FullyQualifiedName=OpenCode.Workspace.Core.Tests.ProcessRunnerTests.{method}", step, StringComparison.Ordinal);
+            Assert.Contains($" {method}()", processRunnerTests, StringComparison.Ordinal);
+        });
+        Assert.DoesNotContain("Category=", step, StringComparison.Ordinal);
+        Assert.DoesNotContain("FullyQualifiedName~ProcessRunnerTests", step, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void IntegrationWorkflow_RequiresLightweightDockerOnMainAndVersionTagsOnly()
     {
         var ci = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml"));
