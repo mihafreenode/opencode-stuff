@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
@@ -12,11 +11,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_CreatesWorkspaceBranchWithoutChangingMain()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -53,11 +47,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_KeepsDirtyChangesWhenCreatingWorkspaceBranch()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -90,11 +79,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_CreatesWorkspaceYamlWhenMissing()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -126,11 +110,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_UsesSelectedToolsWhenCreatingWorkspaceYaml()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -173,11 +152,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_PreservesExistingWorkspaceYaml()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -238,11 +212,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_PredatingRuntimeStateSupport_OpensWithoutMigration()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -286,11 +255,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task InspectExistingGitCheckoutAsync_AllowsValidWorkspaceRootAfterRemovalFromIndex()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -342,11 +306,6 @@ public sealed class ExistingGitCheckoutImportTests
     [InlineData(".opencode/profile.yml")]
     public async Task ImportExistingGitCheckoutAsync_PreservesDiscoveredConfigurationPath(string relativePath)
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -398,11 +357,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task InspectExistingGitCheckoutAsync_InvalidDiscoveredConfiguration_ReturnsInvalid()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -433,11 +387,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_InvalidDiscoveredConfiguration_ThrowsAndDoesNotCreateWorkspaceYaml()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -471,11 +420,6 @@ public sealed class ExistingGitCheckoutImportTests
     [Fact]
     public async Task ImportExistingGitCheckoutAsync_PreservesUnrelatedYamlValuesWhenRefreshingGeneratedFiles()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         var appDataRoot = CreateTempPath();
         try
@@ -581,29 +525,6 @@ customSection:
         if (Directory.Exists(path))
         {
             TestFileSystem.DeleteDirectoryIfExists(path);
-        }
-    }
-
-    private static bool CanRunGit()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-
-            process?.WaitForExit(5000);
-            return process is not null && process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
         }
     }
 

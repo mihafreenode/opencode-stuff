@@ -254,13 +254,10 @@ public sealed class WindowsDockerIntegrationTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DockerComposeValidationFailure_WithPreferredWslDocker_PreservesComposeStderr()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker command translation requires a Windows host.");
 
         var root = Path.Combine(Path.GetTempPath(), $"ocwm-docker-wsl-validation-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -299,13 +296,10 @@ public sealed class WindowsDockerIntegrationTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DockerExecProvisionFailure_WithPreferredWslDocker_PreservesProvisionStderr()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker fallback behavior requires a Windows host.");
 
         var root = Path.Combine(Path.GetTempPath(), $"ocwm-docker-exec-stderr-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -344,13 +338,10 @@ public sealed class WindowsDockerIntegrationTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DockerExecProvisionTimeout_DoesNotFallbackToWslDocker()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker fallback behavior requires a Windows host.");
 
         var root = Path.Combine(Path.GetTempPath(), $"ocwm-docker-exec-timeout-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);

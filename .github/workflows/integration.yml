@@ -177,8 +177,8 @@ jobs:
           path: artifacts/ci/non-oracle
           retention-days: 14
 
-  oracle-smoke-matrix:
-    name: Oracle Smoke
+  oracle-smoke-sequential:
+    name: Oracle Smoke (Sequential)
     if: inputs.run_oracle
     runs-on:
       - self-hosted

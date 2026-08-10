@@ -56,13 +56,30 @@ shell wrapper takes the suite as its first argument:
 ```
 
 The release gate includes Core, CLI, Avalonia, RemoteBridge, MCP protocol/package, API
-`FastIntegration`, target-platform, and assembled-package validation. Use the release build or CI target
+`FastIntegration`, target-platform, and assembled-package validation. On Windows, the native package
+leg also runs `WindowsConPtyIntegration`, the three focused Oracle port-conflict fallback tests, and
+the packaged ConPTY handoff against the downloaded `win-x64` archive. The handoff test injects its
+deterministic child only into the extracted test copy; release archives do not contain test assets. Native package acceptance runs
+all `ExtractedDistribution_` tests on every packaged host, including macOS. Mandatory integration tests
+must not silently return when a prerequisite is missing; use an explicit skip for optional prerequisites
+and keep platform guards aligned with the runner that owns the test.
+
+The deterministic `PackageIntegration` category does not require Docker or Oracle. Native acceptance also
+selects a separate packaged environment check for runtime inventory, LocalHost readiness, and MCP Doctor.
+Those checks explicitly skip when Docker is unavailable; GitHub-hosted macOS currently has no supported
+Docker daemon, and LocalHost readiness includes Docker-backed runtime inspection. This is an environmental
+limitation, not a process-discovery exception, and must never be represented by an early successful return.
+
+Lightweight Docker integration is mandatory on pushes to `main` and on stable or RC `v*` tags. It
+remains disabled by default for pull requests and manual/reusable invocations. Release publication
+depends on integration validation and all three native package legs. Use the release build or CI target
 for the complete gate; an individual integration-wrapper suite is not a substitute for package and
 platform validation.
 
-The `live`, `non-oracle`, and `oracle` suites require environmental prerequisites and are optional/manual.
-They provide useful evidence when the environment is available, but Docker, non-Oracle, and Oracle
-environmental suites are not generic release gates.
+The complete non-Oracle smoke sequence and the sequential Oracle smoke job require environmental
+prerequisites and remain optional/manual. They provide useful evidence when the environment is available,
+but they are not generic release gates. This optionality does not apply to lightweight Docker integration
+on `main` and release-tag pushes.
 
 ## Platform compatibility
 

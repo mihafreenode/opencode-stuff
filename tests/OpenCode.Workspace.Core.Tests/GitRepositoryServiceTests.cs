@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using OpenCode.Workspace.Core.Models;
 using OpenCode.Workspace.Core.Runtime;
 using OpenCode.Workspace.Core.Workspaces;
@@ -10,11 +9,6 @@ public sealed class GitRepositoryServiceTests
     [Fact]
     public async Task InspectAsync_DetectsRepositoryBranchAndDirtyState()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         try
         {
@@ -42,11 +36,6 @@ public sealed class GitRepositoryServiceTests
     [Fact]
     public async Task CreateUniqueWorkspaceBranchNameAsync_AppendsSuffixWhenBranchExists()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         try
         {
@@ -72,11 +61,6 @@ public sealed class GitRepositoryServiceTests
     [Fact]
     public async Task ValidateBranchNameAsync_RejectsInvalidBranchNames()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var rootPath = CreateTempPath();
         try
         {
@@ -107,26 +91,4 @@ public sealed class GitRepositoryServiceTests
         }
     }
 
-    private static bool CanRunGit()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-
-            process?.WaitForExit(5000);
-            return process is not null && process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

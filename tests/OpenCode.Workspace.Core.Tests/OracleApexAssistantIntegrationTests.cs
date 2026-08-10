@@ -5,82 +5,65 @@ namespace OpenCode.Workspace.Core.Tests;
 
 public sealed class OracleApexAssistantIntegrationTests
 {
-    [Fact]
+    [SkippableFact]
     public async Task AssistantWorkflow_CanValidateRepairAndImportAgainstLocalEnvironment()
     {
-        var configuration = TryGetConfiguration();
-        if (configuration is null)
-        {
-            return;
-        }
+        var configuration = GetRequiredConfiguration();
         var doctor = new OracleApexEnvironmentDoctorService();
 
         var result = await doctor.DiagnoseAsync(configuration);
 
-        if (!result.IsSuccess)
-        {
-            return;
-        }
+        Skip.IfNot(result.IsSuccess, $"Oracle APEX environment doctor failed: {result.Summary}");
 
         Assert.True(result.IsSuccess);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AssistantWorkflow_CanRunPromptToPreviewSmokeAgainstLocalEnvironment()
     {
-        var configuration = TryGetConfiguration();
-        if (configuration is null)
-        {
-            return;
-        }
+        var configuration = GetRequiredConfiguration();
         var doctor = new OracleApexEnvironmentDoctorService();
 
         var result = await doctor.DiagnoseAsync(configuration);
 
-        if (!result.IsSuccess)
-        {
-            return;
-        }
+        Skip.IfNot(result.IsSuccess, $"Oracle APEX environment doctor failed: {result.Summary}");
 
         Assert.True(result.IsSuccess);
         Assert.True(File.Exists(Path.Combine(configuration.WorkspaceRoot, configuration.SourcePath.Replace('/', Path.DirectorySeparatorChar), "application.apx")));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AssistantWorkflow_CanRunReverseBuilderToGitSmokeAgainstLocalEnvironment()
     {
-        var configuration = TryGetConfiguration();
-        if (configuration is null || !string.Equals(Environment.GetEnvironmentVariable("OPENCODE_APEX_DEVLOOP_EXPECTS_BUILDER_CHANGE"), "1", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
+        var configuration = GetRequiredConfiguration();
+        Skip.IfNot(
+            string.Equals(Environment.GetEnvironmentVariable("OPENCODE_APEX_DEVLOOP_EXPECTS_BUILDER_CHANGE"), "1", StringComparison.OrdinalIgnoreCase),
+            "Reverse Builder smoke requires OPENCODE_APEX_DEVLOOP_EXPECTS_BUILDER_CHANGE=1.");
         var doctor = new OracleApexEnvironmentDoctorService();
 
         var result = await doctor.DiagnoseAsync(configuration);
 
-        if (!result.IsSuccess)
-        {
-            return;
-        }
+        Skip.IfNot(result.IsSuccess, $"Oracle APEX environment doctor failed: {result.Summary}");
 
         Assert.True(result.IsSuccess);
     }
 
-    [Fact]
+    [SkippableFact]
     public void AssistantWorkflow_CanValidateCloneAndReconnectPrerequisites()
     {
-        var configuration = TryGetConfiguration();
-        if (configuration is null)
-        {
-            return;
-        }
+        var configuration = GetRequiredConfiguration();
 
         Assert.True(File.Exists(Path.Combine(configuration.WorkspaceRoot, "workspace.yaml")));
     }
 
-    private static OracleApexDevelopmentEnvironmentConfiguration? TryGetConfiguration()
+    private static OracleApexDevelopmentEnvironmentConfiguration GetRequiredConfiguration()
     {
         var loader = new OracleApexDevelopmentEnvironmentConfigurationLoader();
-        return loader.IsEnabled() ? loader.TryLoad() : null;
+        Skip.IfNot(loader.IsEnabled(), $"Oracle APEX development-loop tests require {OracleApexDevelopmentEnvironmentConfigurationLoader.EnabledVariable}=1.");
+        var validation = loader.ValidateEnvironment();
+        Skip.If(
+            validation.MissingVariables.Count > 0,
+            $"Oracle APEX development-loop configuration is missing: {string.Join(", ", validation.MissingVariables.Select(item => item.Name))}.");
+        return loader.TryLoad() ?? throw new InvalidOperationException("Enabled Oracle APEX development-loop configuration could not be loaded.");
     }
 }

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
@@ -12,11 +11,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [Fact]
     public async Task EmptyExistingGitRepository_DiscoveryReturnsNotFound_AndDoesNotCreateWorkspaceYaml()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-discovery-empty-repo");
         var appDataRoot = CreateTempPath("workspace-discovery-empty-appdata");
 
@@ -53,11 +47,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [InlineData(".opencode/profile.yml")]
     public async Task RepositoryWithSupportedConfiguration_DiscoveryReturnsFound_AndLoadsWorkspaceDefinition(string relativePath)
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-discovery-found-repo");
         var appDataRoot = CreateTempPath("workspace-discovery-found-appdata");
 
@@ -99,11 +88,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [Fact]
     public async Task InvalidDiscoveredConfiguration_BlocksRepositoryManagedImport_WithoutFallbackOrReplacementYaml()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-discovery-invalid-repo");
         var appDataRoot = CreateTempPath("workspace-discovery-invalid-appdata");
 
@@ -143,11 +127,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [Fact]
     public async Task MultipleSupportedConfigurations_UseDocumentedDiscoveryPriority()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-discovery-priority-repo");
         var appDataRoot = CreateTempPath("workspace-discovery-priority-appdata");
 
@@ -181,11 +160,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [Fact]
     public async Task InspectExistingGitCheckoutAsync_UsesSelectedRootInsteadOfParentDirectory()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var parentRoot = CreateTempPath("workspace-discovery-parent-root");
         var repositoryRoot = Path.Combine(parentRoot, "child-repo");
         var appDataRoot = CreateTempPath("workspace-discovery-selected-root-appdata");
@@ -217,11 +191,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
     [Fact]
     public async Task InspectExistingGitCheckoutAsync_FailureReportsPathAndProbeCommand()
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-discovery-invalid-selected-root");
         var appDataRoot = CreateTempPath("workspace-discovery-invalid-selected-appdata");
 
@@ -293,29 +262,6 @@ public sealed class WorkspaceDiscoveryIntegrationTests
 
     private static async Task<ProcessResult> RunGitAsync(string workingDirectory, params string[] arguments)
         => await new ProcessRunner().RunAsync("git", arguments, workingDirectory);
-
-    private static bool CanRunGit()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-
-            process?.WaitForExit(5000);
-            return process is not null && process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     private static string CreateTempPath(string prefix) => Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
 

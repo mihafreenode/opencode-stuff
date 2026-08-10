@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using OpenCode.Workspace.Core.Catalog;
 using OpenCode.Workspace.Core.Generation;
 using OpenCode.Workspace.Core.Models;
@@ -16,11 +15,6 @@ public sealed class WorkspaceConfigurationPathRegressionTests
     [InlineData(".opencode/profile.yml", false)]
     public async Task SaveAndRegenerate_KeepUsingDiscoveredConfigurationPath(string relativePath, bool isRootWorkspaceYaml)
     {
-        if (!CanRunGit())
-        {
-            return;
-        }
-
         var repositoryRoot = CreateTempPath("workspace-config-path-repo");
         var appDataRoot = CreateTempPath("workspace-config-path-appdata");
 
@@ -103,29 +97,6 @@ public sealed class WorkspaceConfigurationPathRegressionTests
 
     private static async Task<ProcessResult> RunGitAsync(string workingDirectory, params string[] arguments)
         => await new ProcessRunner().RunAsync("git", arguments, workingDirectory);
-
-    private static bool CanRunGit()
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-
-            process?.WaitForExit(5000);
-            return process is not null && process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     private static string CreateTempPath(string prefix) => Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
 

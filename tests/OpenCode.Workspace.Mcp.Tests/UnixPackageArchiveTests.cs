@@ -9,10 +9,10 @@ public sealed class UnixPackageArchiveTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "unix package archive tests", Guid.NewGuid().ToString("n"));
 
-    [Fact]
+    [SkippableFact]
     public async Task DownloadedUnixPackage_ExtractsUsingNativeTarAfterSafeEntryValidation()
     {
-        if (OperatingSystem.IsWindows()) return;
+        Skip.If(OperatingSystem.IsWindows(), "Native tar package extraction requires a Unix host.");
 
         var existingArchive = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_UNIX_PACKAGE_ARCHIVE");
         var archivePath = string.IsNullOrWhiteSpace(existingArchive)
@@ -51,10 +51,10 @@ public sealed class UnixPackageArchiveTests : IDisposable
         Assert.Contains(entryName, exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [SkippableFact]
     public void ResolvePhysicalPath_NormalizesSymlinkedParentDirectory()
     {
-        if (OperatingSystem.IsWindows()) return;
+        Skip.If(OperatingSystem.IsWindows(), "Unix symlink path normalization requires a Unix host.");
 
         var physicalRoot = Path.Combine(_root, "physical");
         var nested = Path.Combine(physicalRoot, "nested");

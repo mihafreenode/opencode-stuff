@@ -297,13 +297,10 @@ public sealed class OraclePortConflictHandlingTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ValidateVolatileEnvironmentAsync_UsesWslDockerForPortPreflightWhenWindowsDockerPsTimesOut()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker port preflight fallback requires a Windows host.");
         var root = Path.Combine(Path.GetTempPath(), $"oracle-wsl-fallback-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
 
@@ -332,13 +329,10 @@ public sealed class OraclePortConflictHandlingTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ValidateVolatileEnvironmentAsync_UsesShortTimeoutForDockerPsPreflight()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker port preflight fallback requires a Windows host.");
         var root = Path.Combine(Path.GetTempPath(), $"oracle-docker-timeout-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
 
@@ -367,13 +361,10 @@ public sealed class OraclePortConflictHandlingTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RunSimpleDockerCommandAsync_WhenWindowsDockerUnavailableButWslDockerAvailable_ThrowsPreciseMessage()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsWindows(), "WSL Docker availability diagnostics require a Windows host.");
         var runner = new ScriptedProcessRunner(
             ExpectException("docker version", new TimeoutException("docker version timed out")),
             ExpectResult("wsl.exe -- docker ps --format", ProcessResultFor("wsl docker ps", 0)));

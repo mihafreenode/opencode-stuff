@@ -17,7 +17,6 @@ using Xunit;
 namespace OpenCode.Workspace.Mcp.Tests;
 
 [Collection("Packaged distribution")]
-[Trait("Category", "PackageIntegration")]
 public sealed class PackagedDistributionTests(PackagedDistributionFixture fixture) : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "opencode package tests", Guid.NewGuid().ToString("n"));
@@ -25,6 +24,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     private readonly string? _existingPackageRoot = Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ROOT");
 
     [Fact]
+    [Trait("Category", "PackageIntegration")]
     public async Task ExtractedDistribution_ResolvesPackagedContent_AndHostsExitGracefully()
     {
         var packageRoot = CreateExtractedDistribution();
@@ -133,14 +133,6 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.DoesNotContain(TestPaths.RepositoryRoot, cliSmoke.StandardOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fatal", cliSmoke.StandardError, StringComparison.OrdinalIgnoreCase);
 
-        if (!OperatingSystem.IsMacOS())
-        {
-            await using var cliRuntime = await PackagedProcessHarness.StartAsync("cli-runtime-list", cliExecutable, ["runtime", "list", "--format", "json"], outsideRepositoryRoot);
-            await cliRuntime.WaitForExitAsync(TimeSpan.FromSeconds(60));
-            Assert.Equal(0, cliRuntime.ExitCode);
-            Assert.Contains("resources", cliRuntime.StandardOutput, StringComparison.Ordinal);
-        }
-
         var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
         var apiPort = PackagedHostValidationHelpers.GetFreeTcpPort();
         await using var api = await PackagedProcessHarness.StartAsync(
@@ -158,11 +150,6 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         using var apiClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{apiPort}/") };
         await PackagedHostValidationHelpers.WaitForApiHealthyAsync(apiClient, TimeSpan.FromSeconds(60));
         Assert.Equal("live", (await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/live"))!.Status);
-        if (!OperatingSystem.IsMacOS())
-        {
-            var ready = await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/ready");
-            Assert.NotNull(ready);
-        }
         var apiTemplates = await apiClient.GetFromJsonAsync<ApiEnvelope<IReadOnlyList<WorkspaceTemplateSummaryModel>>>("api/v1/templates");
         Assert.Contains(apiTemplates!.Data, item => item.TemplateId == "empty-workspace");
         var smokeDefinitions = await apiClient.GetStringAsync("api/v1/smoke/definitions");
@@ -223,7 +210,8 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     }
 
     [Fact]
-    public async Task ExtractedDistribution_McpConfigureAndDoctor_UsePackagedPaths()
+    [Trait("Category", "PackageIntegration")]
+    public async Task ExtractedDistribution_McpConfigure_UsesPackagedPaths()
     {
         var packageRoot = CreateExtractedDistribution();
         var workingDirectory = Path.Combine(_root, "doctor path with spaces");
@@ -242,7 +230,51 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             Assert.DoesNotContain("bin/api", configure.StandardOutput, StringComparison.OrdinalIgnoreCase);
         }
 
-        if (OperatingSystem.IsMacOS()) return;
+    }
+
+    [SkippableFact]
+    [Trait("Category", "PackageEnvironmentIntegration")]
+    [Trait("Category", "LiveDockerIntegration")]
+    public async Task ExtractedDistribution_RuntimeReadinessAndMcpDoctor_UsePackagedPaths()
+    {
+        Skip.IfNot(
+            await DockerIsAvailableAsync(),
+            "Packaged runtime inventory, LocalHost readiness, and MCP doctor require an available Docker daemon because readiness includes runtime inspection.");
+
+        var packageRoot = CreateExtractedDistribution();
+        var workingDirectory = Path.Combine(_root, "environmental package checks with spaces");
+        Directory.CreateDirectory(workingDirectory);
+        var cli = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
+
+        await using (var runtime = await PackagedProcessHarness.StartAsync("cli-runtime-list", cli, ["runtime", "list", "--format", "json"], workingDirectory))
+        {
+            await runtime.WaitForExitAsync(TimeSpan.FromSeconds(60));
+            Assert.Equal(0, runtime.ExitCode);
+            Assert.Contains("resources", runtime.StandardOutput, StringComparison.Ordinal);
+        }
+
+        var apiExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
+        var apiPort = PackagedHostValidationHelpers.GetFreeTcpPort();
+        await using (var api = await PackagedProcessHarness.StartAsync(
+            "api-ready",
+            apiExecutable,
+            ["--shutdown-on-stdin-eof"],
+            workingDirectory,
+            new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_URLS"] = $"http://127.0.0.1:{apiPort}",
+                ["mcp__catalogRoot"] = null,
+                ["mcp__workspaceStateRoot"] = Path.Combine(_root, "api-ready-state"),
+                ["mcp__smokeArtifactsRoot"] = Path.Combine(_root, "api-ready-artifacts"),
+            }))
+        {
+            using var apiClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{apiPort}/") };
+            await PackagedHostValidationHelpers.WaitForApiHealthyAsync(apiClient, TimeSpan.FromSeconds(60));
+            var ready = await apiClient.GetFromJsonAsync<ApiHealthResponse>("api/v1/health/ready");
+            Assert.NotNull(ready);
+            await api.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
+            Assert.Equal(0, api.ExitCode);
+        }
 
         await using var doctor = await PackagedProcessHarness.StartAsync("mcp-doctor", cli, ["mcp", "doctor", "--install-root", packageRoot, "--json"], workingDirectory);
         await doctor.WaitForExitAsync(TimeSpan.FromSeconds(90));
@@ -255,10 +287,11 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         Assert.Contains(checks, item => item.GetProperty("Name").GetString() == "ControllerDisconnected" && item.GetProperty("Status").GetString() == "Passed");
     }
 
-    [Fact]
+    [SkippableFact]
+    [Trait("Category", "PackagedConPtyIntegration")]
     public async Task PackagedLocalHost_ConPtyHelper_Detaches_Reattaches_And_Stops_Cleanly()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        Skip.IfNot(OperatingSystem.IsWindows(), "Packaged ConPTY validation requires a Windows host.");
         var packageRoot = CreateExtractedDistribution();
         var workingDirectory = Path.Combine(_root, "packaged pty acceptance with spaces");
         var stateRoot = Path.Combine(_root, "packaged pty state");
@@ -266,7 +299,13 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         var workspaceId = $"pty-package-{Guid.NewGuid():N}";
         var hostExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host"), "OpenCode.Workspace.LocalHost");
         var cliExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "cli"), "OpenCode.Workspace.Cli");
-        var childExecutable = GetHostExecutablePath(Path.Combine(packageRoot, "bin", "local-host", "test-assets", "conpty-child"), "OpenCode.Workspace.ConPtyTestChild");
+        var packagedChildRoot = Path.Combine(packageRoot, "bin", "local-host", "test-assets", "conpty-child");
+        var externalChildRoot = Environment.GetEnvironmentVariable("OPENCODE_PACKAGE_CONPTY_TEST_ASSET_ROOT");
+        if (!string.IsNullOrWhiteSpace(externalChildRoot))
+        {
+            CopyDirectory(Path.GetFullPath(externalChildRoot), packagedChildRoot);
+        }
+        var childExecutable = GetHostExecutablePath(packagedChildRoot, "OpenCode.Workspace.ConPtyTestChild");
         Assert.True(File.Exists(childExecutable));
         var port = PackagedHostValidationHelpers.GetFreeTcpPort();
         await using var host = await PackagedProcessHarness.StartAsync("packaged-pty-host", hostExecutable, ["--shutdown-on-stdin-eof"], workingDirectory, new Dictionary<string, string?>
@@ -360,6 +399,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     }
 
     [Fact]
+    [Trait("Category", "PackageIntegration")]
     public async Task PackagedMcp_SimultaneousStartup_UsesOneCanonicalLocalHost_AndProtocolOnlyStdout()
     {
         var packageRoot = CreateExtractedDistribution();
@@ -413,6 +453,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     }
 
     [Fact]
+    [Trait("Category", "PackageIntegration")]
     public async Task PackagedMcp_OperationMatchesCanonicalLocalClient_AndCancellationConverges()
     {
         var packageRoot = CreateExtractedDistribution();
@@ -455,6 +496,7 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     }
 
     [Fact]
+    [Trait("Category", "PackageIntegration")]
     public async Task PackagedMcp_RawStdoutContainsOnlyProtocolFrames()
     {
         var packageRoot = CreateExtractedDistribution();
@@ -481,10 +523,16 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         await TeardownAssert.AssertHostLockReleasedAsync(identity, mcp.StandardErrorLines, [], TimeSpan.FromSeconds(30), CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
+    [Trait("Category", "PackageEnvironmentIntegration")]
+    [Trait("Category", "LiveDockerIntegration")]
     [Trait("Category", "LocalHostIntegration")]
     public async Task PackagedDoctor_ReusesExternalLocalHostWithoutStoppingIt()
     {
+        Skip.IfNot(
+            await DockerIsAvailableAsync(),
+            "Packaged MCP doctor requires an available Docker daemon because LocalHost readiness includes runtime inspection.");
+
         var packageRoot = CreateExtractedDistribution();
         var workingDirectory = Path.Combine(_root, "external doctor path with spaces");
         var stateRoot = Path.Combine(_root, "external-doctor-state");
@@ -510,14 +558,11 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
         await host.RequestGracefulShutdownByClosingStandardInputAsync(TimeSpan.FromSeconds(30));
     }
 
-    [Fact]
+    [SkippableFact]
     [Trait("Category", "LiveDockerIntegration")]
     public async Task PackagedMcp_RunSmoke_ReportsIncrementalProgress_AndShutsDownCleanly()
     {
-        if (!await DockerIsAvailableAsync())
-        {
-            return;
-        }
+        Skip.IfNot(await DockerIsAvailableAsync(), "Packaged Docker smoke requires an available Docker daemon.");
 
         var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo smoke");
@@ -732,14 +777,13 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     private static void WriteStaticTextArtifact(string directory, string fileName, string text)
         => File.WriteAllText(Path.Combine(directory, fileName), text);
 
-    [Fact]
+    [SkippableFact]
     [Trait("Category", "PackagedOracleMcpIntegration")]
     public async Task PackagedMcp_OracleApexlangProvisioning_ReportsProgress_AndCleansUp()
     {
-        if (!ShouldRunPackagedOracleValidation())
-        {
-            return;
-        }
+        Skip.IfNot(
+            ShouldRunPackagedOracleValidation(),
+            "Packaged Oracle MCP validation requires OPENCODE_RUN_PACKAGED_ORACLE_MCP=true.");
 
         var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo oracle");
