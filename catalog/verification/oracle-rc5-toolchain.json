@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1",
+  "kind": "oracleVerificationToolchain",
+  "release": "0.1.0-rc.5",
+  "sqlcl": {
+    "version": "26.1.2.0",
+    "build": "26.1.2.132.1334",
+    "archiveFilename": "sqlcl-26.1.2.132.1334.zip",
+    "downloadUrl": "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-26.1.2.132.1334.zip",
+    "sha256": "46acb619eac04c70ed9b0d50eb9638237d302f35f59dc358d357d01f1ebb0756"
+  },
+  "apex": {
+    "version": "26.1.0",
+    "mediaFilename": "apex_26.1.zip",
+    "downloadUrl": "https://download.oracle.com/otn_software/apex/apex_26.1.zip",
+    "sha256": "06df14e7c8465747ee45c36c5a0b09821bf2b244db0e201d3cc44abb0403f023"
+  },
+  "oracleDatabase": {
+    "version": "23.26.2",
+    "image": "gvenzl/oracle-free",
+    "tag": "23.26.2",
+    "digest": "sha256:e2763af84ecc345d48e4e3fe7999d0b7bb57885b6e0166051acd5f62e27eb605"
+  },
+  "ords": {
+    "version": "26.1.0",
+    "image": "container-registry.oracle.com/database/ords",
+    "tag": "26.1.0",
+    "digest": "sha256:c30fab02c34e45b165e4216e76ad97fe66f1dceb1eb8468b7b5d64b1bf3d2f83"
+  }
+}

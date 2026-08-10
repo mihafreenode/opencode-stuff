@@ -10,7 +10,7 @@ This is the authoritative map for Oracle Database and Oracle APEX integration in
 - **SQLcl tooling:** provisioning installs SQLcl from Oracle-provided sources and generates wrappers and tutorial commands for SQL and APEX automation.
 - **ORDS and APEX provisioning plan:** APEX-capable templates generate ORDS services, configuration, readiness checks, and APEX installation steps.
 - **Explicit APEX synchronization:** configured applications support status, validation, export, import, diff, pull, and push operations with drift and environment checks. These operations are user- or Assistant-initiated.
-- **Oracle Assistant:** the desktop and OpenCode Workspace MCP paths can plan and review APEX changes, apply approved plans, validate or import generated source, propose repairs, and roll back an Assistant execution. Environment and deployment safeguards still apply.
+- **Oracle Assistant:** the desktop path can plan and review APEX changes, apply approved plans, validate or import generated source, propose repairs, and roll back an Assistant execution. These packaged Oracle workflows use the canonical `LocalClient`/`LocalHost` routes. Environment and deployment safeguards still apply.
 - **APEXlang workspace support:** templates, reference indexes, generated source locations, SQLcl export/import commands, and Assistant-oriented editing support exist for APEXlang application definitions.
 - **Oracle onboarding templates:** `oracle-plsql-demo`, `oracle-apex-demo`, and `oracle-apexlang-demo` provide a progressive database-to-APEX learning path.
 
@@ -27,7 +27,7 @@ This is the authoritative map for Oracle Database and Oracle APEX integration in
 
 ### Experimental Or Scaffolding
 
-- **Oracle SQLcl MCP:** the catalog contains an Oracle SQLcl MCP entry for environments where `sql -mcp` is available. It is experimental/catalog-level integration and is not the OpenCode Workspace MCP server, which provides workspace lifecycle and Oracle Assistant tools.
+- **Oracle SQLcl MCP:** the catalog contains an Oracle SQLcl MCP entry for environments where `sql -mcp` is available. It is experimental/catalog-level integration and is not the packaged OpenCode Workspace MCP server.
 - **Data Pump helpers:** generated `export-datapump.sh` and `import-datapump.sh` are conceptual scaffolding. They print suggested `expdp` and `impdp` commands; they do not execute an export or import.
 - **Standalone APEX shape validation:** generated `scripts/validate-apex.sh` checks that a file exists and resembles an APEX artifact. It is not authoritative APEXlang semantic validation, SQLcl `apex validate`, compilation, or runtime validation.
 - **Development-loop wrapper:** `scripts/testing/oracle-apex-development-loop.ps1` checks required local environment variables and runs the Oracle APEX Assistant integration-test filter. It does not perform the complete Doctor, prompt, plan, validate, import, preview, or rollback workflow.
@@ -45,6 +45,8 @@ Oracle Database Free
 ```
 
 APEX Builder remains the browser development environment. APEXlang makes supported application definitions reviewable as source. Oracle Assistant operates on repository source through reviewable plans and explicit execution; it does not remove the need for version-matched validation or human review.
+
+The packaged OpenCode Workspace MCP server exposes workspace lifecycle and provisioning capabilities. It does not expose Oracle discovery, synchronization, or Oracle Assistant tools. Packaged verification of Oracle-specific behavior uses `LocalClient` against the canonical `LocalHost` routes, not MCP.
 
 ## Official Documentation Strategy
 

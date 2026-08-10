@@ -781,9 +781,20 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
     [Trait("Category", "PackagedOracleMcpIntegration")]
     public async Task PackagedMcp_OracleApexlangProvisioning_ReportsProgress_AndCleansUp()
     {
-        Skip.IfNot(
-            ShouldRunPackagedOracleValidation(),
-            "Packaged Oracle MCP validation requires OPENCODE_RUN_PACKAGED_ORACLE_MCP=true.");
+        var enabled = ShouldRunPackagedOracleValidation();
+        const string enablementMessage = "Packaged Oracle MCP validation requires OPENCODE_RUN_PACKAGED_ORACLE_MCP=true.";
+        if (IsOracleVerificationMode())
+        {
+            Assert.True(enabled, enablementMessage);
+            Assert.False(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ARCHIVE")),
+                "Oracle verification requires the built release archive through OPENCODE_EXISTING_PACKAGE_ARCHIVE.");
+            Assert.True(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCODE_EXISTING_PACKAGE_ROOT")),
+                "Oracle verification does not permit OPENCODE_EXISTING_PACKAGE_ROOT to override the release archive.");
+        }
+        else
+        {
+            Skip.IfNot(enabled, enablementMessage);
+        }
 
         var packageRoot = CreateExtractedDistribution();
         var outsideRepositoryRoot = Path.Combine(_root, "outside repo oracle");
@@ -803,110 +814,141 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
             },
             TimeSpan.FromSeconds(60));
 
-        var templates = await mcp.Client.CallToolAsync("list_workspace_templates");
-        WriteTextArtifact(artifactRoot, "templates.json", templates.StructuredContent!.Value.GetRawText());
+        WorkspaceRecordModel? workspace = null;
+        try
+        {
+            var templates = await mcp.Client.CallToolAsync("list_workspace_templates");
+            WriteTextArtifact(artifactRoot, "templates.json", templates.StructuredContent!.Value.GetRawText());
 
-        var create = await mcp.Client.CallToolAsync("create_workspace", new Dictionary<string, object?>
-        {
-            ["templateId"] = "oracle-apexlang-demo",
-            ["workspaceName"] = "packaged-oracle-apexlang",
-            ["destinationRoot"] = outsideRepositoryRoot,
-        });
-        var createOperation = JsonSerializer.Deserialize<McpOperationModel>(create.StructuredContent!.Value.GetRawText())!;
-        McpOperationModel createCurrent = createOperation;
-        var createDeadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(2);
-        while (DateTimeOffset.UtcNow < createDeadline)
-        {
-            var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = createOperation.OperationId });
-            createCurrent = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(polled.StructuredContent!.Value.GetRawText())!.Data;
-            if (createCurrent.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+            var create = await mcp.Client.CallToolAsync("create_workspace", new Dictionary<string, object?>
             {
-                break;
-            }
-            await Task.Delay(250);
-        }
-        Assert.Equal(McpOperationStatus.Succeeded, createCurrent.Status);
-        var workspace = createCurrent.Result!.Value.Deserialize<WorkspaceRecordModel>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
-        WriteJsonArtifact(artifactRoot, "workspace-created.json", workspace);
-
-        var provision = await mcp.Client.CallToolAsync("provision_workspace", new Dictionary<string, object?>
-        {
-            ["workspaceId"] = workspace.WorkspaceId,
-        });
-        var operation = JsonSerializer.Deserialize<McpOperationModel>(provision.StructuredContent!.Value.GetRawText())!;
-        WriteJsonArtifact(artifactRoot, "provision-operation-start.json", operation);
-
-        var seen = new HashSet<long>();
-        var oracleEvents = new List<WorkspaceOperationProgressEvent>();
-        var afterSequence = 0L;
-        McpOperationModel current = operation;
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(45);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?>
-            {
-                ["operationId"] = operation.OperationId,
-                ["afterSequence"] = afterSequence,
+                ["templateId"] = "oracle-apexlang-demo",
+                ["workspaceName"] = "packaged-oracle-apexlang",
+                ["destinationRoot"] = outsideRepositoryRoot,
             });
-            current = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(polled.StructuredContent!.Value.GetRawText())!.Data;
-            foreach (var progressEvent in current.RecentEvents)
+            var createOperation = JsonSerializer.Deserialize<McpOperationModel>(create.StructuredContent!.Value.GetRawText())!;
+            McpOperationModel createCurrent = createOperation;
+            var createDeadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(2);
+            while (DateTimeOffset.UtcNow < createDeadline)
             {
-                Assert.True(seen.Add(progressEvent.Sequence));
-                oracleEvents.Add(progressEvent);
+                var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = createOperation.OperationId });
+                createCurrent = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(polled.StructuredContent!.Value.GetRawText())!.Data;
+                if (createCurrent.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+                {
+                    break;
+                }
+                await Task.Delay(250);
+            }
+            Assert.Equal(McpOperationStatus.Succeeded, createCurrent.Status);
+            workspace = createCurrent.Result!.Value.Deserialize<WorkspaceRecordModel>(OpenCodeWorkspaceMcpContract.JsonOptions)!;
+            WriteJsonArtifact(artifactRoot, "workspace-created.json", workspace);
+
+            var provision = await mcp.Client.CallToolAsync("provision_workspace", new Dictionary<string, object?>
+            {
+                ["workspaceId"] = workspace.WorkspaceId,
+            });
+            var operation = JsonSerializer.Deserialize<McpOperationModel>(provision.StructuredContent!.Value.GetRawText())!;
+            WriteJsonArtifact(artifactRoot, "provision-operation-start.json", operation);
+
+            var seen = new HashSet<long>();
+            var oracleEvents = new List<WorkspaceOperationProgressEvent>();
+            var afterSequence = 0L;
+            McpOperationModel current = operation;
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(45);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var polled = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?>
+                {
+                    ["operationId"] = operation.OperationId,
+                    ["afterSequence"] = afterSequence,
+                });
+                current = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(polled.StructuredContent!.Value.GetRawText())!.Data;
+                foreach (var progressEvent in current.RecentEvents)
+                {
+                    Assert.True(seen.Add(progressEvent.Sequence));
+                    oracleEvents.Add(progressEvent);
+                }
+
+                afterSequence = current.LastEventSequence;
+                if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+                {
+                    break;
+                }
+
+                await Task.Delay(1000);
             }
 
-            afterSequence = current.LastEventSequence;
-            if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
-            {
-                break;
-            }
+            WriteJsonArtifact(artifactRoot, "provision-operation-final.json", current);
+            WriteJsonArtifact(artifactRoot, "provision-events.json", oracleEvents);
+            Assert.Equal(McpOperationStatus.Succeeded, current.Status);
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("preparing", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Preparing workspace", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("buildingWorkspaceImage", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Building workspace image", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("starting", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Starting Oracle", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("validatingXdb", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("XDB", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("installingApex", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("APEX", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(oracleEvents, item => item.Phase.Contains("configuringOrds", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("ORDS", StringComparison.OrdinalIgnoreCase));
 
-            await Task.Delay(1000);
+            var validate = await mcp.Client.CallToolAsync("validate_workspace", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
+            var validatedWorkspace = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceRecordModel>>(validate.StructuredContent!.Value.GetRawText())!.Data;
+            WriteJsonArtifact(artifactRoot, "workspace-validated.json", validatedWorkspace);
+
+            Assert.Contains(validatedWorkspace.Snapshot.Health.Services, item => item.ServiceId.Contains("oracle", StringComparison.OrdinalIgnoreCase) && item.Status is WorkspaceHealthStatus.Healthy or WorkspaceHealthStatus.Attention);
+            Assert.Contains(validatedWorkspace.Snapshot.AvailableServices, item => item.HostUrl.Contains("ords", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("APEX", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.Value));
+            Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("XDB", StringComparison.OrdinalIgnoreCase) && item.Value.Contains("VALID", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("ORDS", StringComparison.OrdinalIgnoreCase));
+            Assert.True(validatedWorkspace.Snapshot.Record.LastProvisioningHealth?.Succeeded ?? false);
+            Assert.False(string.IsNullOrWhiteSpace(validatedWorkspace.Snapshot.Record.LastProvisioningHealth?.ApexVersion));
         }
+        finally
+        {
+            if (workspace is not null)
+            {
+                var composeProject = WorkspacePathBuilder.Slugify(workspace.Name);
+                var composeResourcesBeforeCleanup = await ListDockerComposeResourcesAsync(composeProject);
+                WriteStaticTextArtifact(artifactRoot, "compose-resources-before-cleanup.txt", string.Join(Environment.NewLine, composeResourcesBeforeCleanup));
+                Assert.NotEmpty(composeResourcesBeforeCleanup);
 
-        WriteJsonArtifact(artifactRoot, "provision-operation-final.json", current);
-        WriteJsonArtifact(artifactRoot, "provision-events.json", oracleEvents);
-        Assert.Equal(McpOperationStatus.Succeeded, current.Status);
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("preparing", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Preparing workspace", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("buildingWorkspaceImage", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Building workspace image", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("starting", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("Starting Oracle", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("validatingXdb", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("XDB", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("installingApex", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("APEX", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(oracleEvents, item => item.Phase.Contains("configuringOrds", StringComparison.OrdinalIgnoreCase) || item.Message.Contains("ORDS", StringComparison.OrdinalIgnoreCase));
+                var runtimeInventory = await mcp.Client.CallToolAsync("list_runtime_resources", new Dictionary<string, object?> { ["workspaceRoot"] = workspace.WorkspaceRoot });
+                WriteTextArtifact(artifactRoot, "runtime-inventory-before-cleanup.json", runtimeInventory.StructuredContent!.Value.GetRawText());
 
-        var validate = await mcp.Client.CallToolAsync("validate_workspace", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
-        var validatedWorkspace = JsonSerializer.Deserialize<McpToolEnvelope<WorkspaceRecordModel>>(validate.StructuredContent!.Value.GetRawText())!.Data;
-        WriteJsonArtifact(artifactRoot, "workspace-validated.json", validatedWorkspace);
+                try
+                {
+                    var stop = await mcp.Client.CallToolAsync("stop_workspace", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
+                    WriteTextArtifact(artifactRoot, "workspace-stop.json", stop.StructuredContent!.Value.GetRawText());
+                    var stopOperation = JsonSerializer.Deserialize<McpOperationModel>(stop.StructuredContent!.Value.GetRawText())!;
+                    var stopCompleted = await WaitForPackagedOperationAsync(mcp, stopOperation.OperationId, TimeSpan.FromMinutes(5));
+                    WriteJsonArtifact(artifactRoot, "workspace-stop-final.json", stopCompleted);
+                    Assert.Equal(McpOperationStatus.Succeeded, stopCompleted.Status);
+                }
+                finally
+                {
+                    var remove = await mcp.Client.CallToolAsync("remove_workspace_runtime", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
+                    WriteTextArtifact(artifactRoot, "workspace-remove-runtime.json", remove.StructuredContent!.Value.GetRawText());
+                    var removeOperation = JsonSerializer.Deserialize<McpOperationModel>(remove.StructuredContent!.Value.GetRawText())!;
+                    var removeCompleted = await WaitForPackagedOperationAsync(mcp, removeOperation.OperationId, TimeSpan.FromMinutes(5));
+                    WriteJsonArtifact(artifactRoot, "workspace-remove-runtime-final.json", removeCompleted);
+                    Assert.Equal(McpOperationStatus.Succeeded, removeCompleted.Status);
 
-        Assert.Contains(validatedWorkspace.Snapshot.Health.Services, item => item.ServiceId.Contains("oracle", StringComparison.OrdinalIgnoreCase) && item.Status is WorkspaceHealthStatus.Healthy or WorkspaceHealthStatus.Attention);
-        Assert.Contains(validatedWorkspace.Snapshot.AvailableServices, item => item.HostUrl.Contains("ords", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("APEX", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.Value));
-        Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("XDB", StringComparison.OrdinalIgnoreCase) && item.Value.Contains("VALID", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(validatedWorkspace.Snapshot.Health.Services.SelectMany(item => item.Evidence), item => item.Label.Contains("ORDS", StringComparison.OrdinalIgnoreCase));
-        Assert.True(validatedWorkspace.Snapshot.Record.LastProvisioningHealth?.Succeeded ?? false);
-        Assert.False(string.IsNullOrWhiteSpace(validatedWorkspace.Snapshot.Record.LastProvisioningHealth?.ApexVersion));
+                    var finalDoctor = await mcp.Client.CallToolAsync("run_runtime_doctor", new Dictionary<string, object?> { ["workspaceRoot"] = workspace.WorkspaceRoot });
+                    var finalDoctorEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<RuntimeResourceInventory>>(finalDoctor.StructuredContent!.Value.GetRawText())!;
+                    WriteJsonArtifact(artifactRoot, "runtime-doctor-after-cleanup.json", finalDoctorEnvelope.Data);
+                    Assert.Empty(finalDoctorEnvelope.Data.Resources);
+                    Assert.Empty(finalDoctorEnvelope.Data.Orphans);
 
-        var runtimeInventory = await mcp.Client.CallToolAsync("list_runtime_resources", new Dictionary<string, object?> { ["owner"] = workspace.WorkspaceId });
-        WriteTextArtifact(artifactRoot, "runtime-inventory-before-cleanup.json", runtimeInventory.StructuredContent!.Value.GetRawText());
+                    var composeResourcesAfterCleanup = await ListDockerComposeResourcesAsync(composeProject);
+                    WriteStaticTextArtifact(artifactRoot, "compose-resources-after-cleanup.txt", string.Join(Environment.NewLine, composeResourcesAfterCleanup));
+                    Assert.Empty(composeResourcesAfterCleanup);
+                }
+            }
 
-        var stop = await mcp.Client.CallToolAsync("stop_workspace", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
-        WriteTextArtifact(artifactRoot, "workspace-stop.json", stop.StructuredContent!.Value.GetRawText());
-
-        var remove = await mcp.Client.CallToolAsync("remove_workspace_runtime", new Dictionary<string, object?> { ["workspaceId"] = workspace.WorkspaceId });
-        WriteTextArtifact(artifactRoot, "workspace-remove-runtime.json", remove.StructuredContent!.Value.GetRawText());
-
-        var finalDoctor = await mcp.Client.CallToolAsync("run_runtime_doctor", new Dictionary<string, object?> { ["owner"] = workspace.WorkspaceId });
-        var finalDoctorEnvelope = JsonSerializer.Deserialize<McpToolEnvelope<RuntimeResourceInventory>>(finalDoctor.StructuredContent!.Value.GetRawText())!;
-        WriteJsonArtifact(artifactRoot, "runtime-doctor-after-cleanup.json", finalDoctorEnvelope.Data);
-        Assert.Empty(finalDoctorEnvelope.Data.Resources);
-        Assert.Empty(finalDoctorEnvelope.Data.Orphans);
-
-        await mcp.DisposeClientAndTransportAsync(TimeSpan.FromSeconds(30));
-        Assert.False(mcp.Report.ForcedTerminationRequired);
-        Assert.NotNull(mcp.Report.ExitedUtc);
-        Assert.False(ProcessStillRunning(mcp.Report.ProcessId, mcp.Report.ExecutablePath));
-        WriteJsonArtifact(artifactRoot, "mcp-lifecycle.json", mcp.Report);
-        WriteTextArtifact(artifactRoot, "mcp-stderr.log", string.Join(Environment.NewLine, mcp.StandardErrorLines));
+            await mcp.DisposeClientAndTransportAsync(TimeSpan.FromSeconds(30));
+            Assert.False(mcp.Report.ForcedTerminationRequired);
+            Assert.NotNull(mcp.Report.ExitedUtc);
+            Assert.False(ProcessStillRunning(mcp.Report.ProcessId, mcp.Report.ExecutablePath));
+            WriteJsonArtifact(artifactRoot, "mcp-lifecycle.json", mcp.Report);
+            WriteTextArtifact(artifactRoot, "mcp-stderr.log", string.Join(Environment.NewLine, mcp.StandardErrorLines));
+        }
     }
 
     public void Dispose()
@@ -1166,6 +1208,73 @@ public sealed class PackagedDistributionTests(PackagedDistributionFixture fixtur
 
     private static bool ShouldRunPackagedOracleValidation()
         => string.Equals(Environment.GetEnvironmentVariable("OPENCODE_RUN_PACKAGED_ORACLE_MCP"), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOracleVerificationMode()
+        => string.Equals(Environment.GetEnvironmentVariable("OPENCODE_ORACLE_VERIFICATION_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<McpOperationModel> WaitForPackagedOperationAsync(PackagedMcpHarness mcp, string operationId, TimeSpan timeout)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        McpOperationModel? current = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var result = await mcp.Client.CallToolAsync("get_operation", new Dictionary<string, object?> { ["operationId"] = operationId });
+            current = JsonSerializer.Deserialize<McpToolEnvelope<McpOperationModel>>(result.StructuredContent!.Value.GetRawText())!.Data;
+            if (current.Status is McpOperationStatus.Succeeded or McpOperationStatus.Failed or McpOperationStatus.Cancelled)
+            {
+                return current;
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new TimeoutException($"Packaged operation '{operationId}' did not complete within {timeout}.");
+    }
+
+    private static async Task<IReadOnlyList<string>> ListDockerComposeResourcesAsync(string composeProject)
+    {
+        var resources = new List<string>();
+        foreach (var resourceType in new[] { "container", "network", "volume" })
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "docker",
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            };
+            startInfo.ArgumentList.Add(resourceType);
+            startInfo.ArgumentList.Add("ls");
+            if (resourceType == "container")
+            {
+                startInfo.ArgumentList.Add("--all");
+            }
+            startInfo.ArgumentList.Add("--quiet");
+            startInfo.ArgumentList.Add("--filter");
+            startInfo.ArgumentList.Add($"label=com.docker.compose.project={composeProject}");
+
+            using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Unable to start Docker resource inventory.");
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+                throw new TimeoutException($"Docker {resourceType} inventory timed out.");
+            }
+            var output = await standardOutput;
+            var error = await standardError;
+            Assert.True(process.ExitCode == 0, $"Docker {resourceType} inventory failed: {error}");
+            resources.AddRange(output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(item => $"{resourceType}:{item}"));
+        }
+
+        return resources;
+    }
 
     private static string BuildDistributionManifest(string packageRoot)
         => string.Join(

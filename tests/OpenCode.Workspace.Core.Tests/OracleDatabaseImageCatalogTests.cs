@@ -11,14 +11,14 @@ public sealed class OracleDatabaseImageCatalogTests
     {
         var definition = new WorkspaceDefinition();
 
-        Assert.Equal("gvenzl/oracle-free:23", OracleDatabaseImageCatalog.ResolveDatabaseImage(definition));
+        Assert.Equal("gvenzl/oracle-free:23.26.2@sha256:e2763af84ecc345d48e4e3fe7999d0b7bb57885b6e0166051acd5f62e27eb605", OracleDatabaseImageCatalog.ResolveDatabaseImage(definition));
     }
 
     [Fact]
     public void IsKnownApexIncompatibleImage_RecognizesFaststartImage()
     {
         Assert.True(OracleDatabaseImageCatalog.IsKnownApexIncompatibleImage("gvenzl/oracle-free:23-slim-faststart"));
-        Assert.False(OracleDatabaseImageCatalog.IsKnownApexIncompatibleImage("gvenzl/oracle-free:23"));
+        Assert.False(OracleDatabaseImageCatalog.IsKnownApexIncompatibleImage(OracleDatabaseImageCatalog.DefaultDatabaseImage));
     }
 
     [Fact]

@@ -269,13 +269,181 @@ jobs:
           -c Release --no-build
           --filter "Category=PackagedConPtyIntegration"
 
-  release-artifacts:
-    name: Attach Release Artifacts
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+  oracle-verification:
+    name: Full Oracle Verification
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v0.1.0-rc.5'
     needs:
       - release-metadata
       - integration-validation
       - package
+    runs-on:
+      - self-hosted
+      - oracle
+    timeout-minutes: 300
+    env:
+      DOTNET_NOLOGO: true
+      OPENCODE_ORACLE_VERIFICATION_MODE: "true"
+      OPENCODE_APEX_DEVLOOP_ENABLED: "1"
+      OPENCODE_APEX_DEVLOOP_EXPECTS_BUILDER_CHANGE: "1"
+      OPENCODE_RUN_PACKAGED_ORACLE_MCP: "true"
+      OPENCODE_EXISTING_PACKAGE_ARCHIVE: ${{ github.workspace }}/artifacts/downloaded/linux-x64/opencode-workspace-${{ needs.release-metadata.outputs.version }}-linux-x64.tar.gz
+      OPENCODE_PACKAGE_TEST_ARTIFACT_ROOT: ${{ github.workspace }}/artifacts/ci/oracle-verification/packaged-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.204
+
+      - name: Download exact release package
+        uses: actions/download-artifact@v4
+        with:
+          name: opencode-workspace-${{ needs.release-metadata.outputs.version }}-linux-x64
+          path: artifacts/downloaded/linux-x64
+
+      - name: Restore and build verification tests
+        run: |
+          dotnet restore OpenCode.Workspace.slnx
+          dotnet build OpenCode.Workspace.slnx -c Release --no-restore
+
+      - name: Oracle environment preflight
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ci/oracle-verification/preflight
+          required=(
+            OPENCODE_APEX_DEVLOOP_WORKSPACE_ROOT
+            OPENCODE_APEX_DEVLOOP_ENVIRONMENT
+            OPENCODE_APEX_DEVLOOP_SQLCL_PROFILE
+            OPENCODE_APEX_DEVLOOP_APPLICATION_ID
+            OPENCODE_APEX_DEVLOOP_SOURCE_PATH
+            OPENCODE_APEX_DEVLOOP_DEPLOYMENT_PROFILE
+            OPENCODE_APEX_DEVLOOP_BUILDER_URL
+            OPENCODE_APEX_DEVLOOP_APPLICATION_URL
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} )); then
+            printf 'Missing required Oracle variables: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          command -v docker >/dev/null
+          command -v sql >/dev/null
+          command -v python3 >/dev/null
+          docker info >/dev/null
+          test -f "$OPENCODE_EXISTING_PACKAGE_ARCHIVE"
+          test -f "$OPENCODE_APEX_DEVLOOP_WORKSPACE_ROOT/workspace.yaml"
+          apex_roots=()
+          for root in \
+            "$OPENCODE_APEX_DEVLOOP_WORKSPACE_ROOT/.local/oracle/downloads/apex" \
+            "${OPENCODE_STUFF_ORACLE_DOWNLOADS:-}" \
+            "$HOME/.opencode-stuff/oracle/downloads/apex"; do
+            if [[ -n "$root" ]]; then apex_roots+=(--apex-search-root "$root"); fi
+          done
+          if [[ -n "${OPENCODE_STUFF_ORACLE_DOWNLOADS:-}" ]]; then
+            apex_roots+=(--apex-search-root "$OPENCODE_STUFF_ORACLE_DOWNLOADS/APEX")
+          fi
+          python3 scripts/testing/verify-oracle-toolchain.py \
+            --provenance catalog/verification/oracle-rc5-toolchain.json \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --verify-live \
+            --github-env "$GITHUB_ENV" \
+            "${apex_roots[@]}" \
+            > artifacts/ci/oracle-verification/preflight/toolchain.json
+          disk_gb=$(df -Pk "$GITHUB_WORKSPACE" | awk 'NR==2 {print int($4 / 1024 / 1024)}')
+          memory_gb=$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)
+          (( disk_gb >= 40 ))
+          (( memory_gb >= 8 ))
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/oracle-verification/preflight/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle-verification/preflight/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/oracle-verification/preflight/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle-verification/preflight/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/oracle-verification/preflight/runtime-doctor.json
+          printf 'runner=available\ndocker=available\noracle_images=pinned\nsqlcl=pinned-package-build\napex_media=pinned\nrequired_variables=present\npackage=present\ndisk_gb=%s\nmemory_gb=%s\nstale_smoke_resources=none\n' "$disk_gb" "$memory_gb" > artifacts/ci/oracle-verification/preflight/status.txt
+
+      - name: Oracle APEX development-loop prerequisites
+        if: always() && steps.preflight.outcome == 'success'
+        run: >-
+          dotnet test tests/OpenCode.Workspace.Core.Tests/OpenCode.Workspace.Core.Tests.csproj
+          -c Release --no-build --filter "Category=OracleApexDevelopmentLoopIntegration"
+          --logger "trx;LogFileName=oracle-apex-development-loop.trx"
+          --results-directory artifacts/ci/oracle-verification/development-loop
+
+      - name: Oracle PL/SQL smoke
+        if: always() && steps.preflight.outcome == 'success'
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-plsql-demo --format json > artifacts/ci/oracle-verification/oracle-plsql-demo.json
+
+      - name: Oracle APEX smoke
+        if: always() && steps.preflight.outcome == 'success'
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-apex-demo --format json > artifacts/ci/oracle-verification/oracle-apex-demo.json
+
+      - name: Oracle APEXlang smoke
+        if: always() && steps.preflight.outcome == 'success'
+        run: dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke run oracle-apexlang-demo --format json > artifacts/ci/oracle-verification/oracle-apexlang-demo.json
+
+      - name: Packaged Oracle MCP from release archive
+        if: always() && steps.preflight.outcome == 'success'
+        env:
+          OPENCODE_EXISTING_PACKAGE_ROOT: ""
+        run: >-
+          dotnet test tests/OpenCode.Workspace.Mcp.Tests/OpenCode.Workspace.Mcp.Tests.csproj
+          -c Release --no-build --filter "Category=PackagedOracleMcpIntegration"
+          --logger "trx;LogFileName=packaged-oracle-mcp.trx"
+          --results-directory artifacts/ci/oracle-verification/packaged-mcp/results
+
+      - name: Verify required Oracle test totals
+        if: always() && steps.preflight.outcome == 'success'
+        shell: bash
+        run: |
+          python3 scripts/testing/summarize-oracle-verification.py \
+            --smoke artifacts/ci/oracle-verification/oracle-plsql-demo.json \
+            --smoke artifacts/ci/oracle-verification/oracle-apex-demo.json \
+            --smoke artifacts/ci/oracle-verification/oracle-apexlang-demo.json \
+            --trx artifacts/ci/oracle-verification/development-loop/oracle-apex-development-loop.trx \
+            --trx artifacts/ci/oracle-verification/packaged-mcp/results/packaged-oracle-mcp.trx \
+            --expected-selected 8 \
+            --output artifacts/ci/oracle-verification/summary.json
+          cat artifacts/ci/oracle-verification/summary.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Final Oracle cleanup verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ci/oracle-verification/final
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --all --format json > artifacts/ci/oracle-verification/final/cleanup.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime list --owner smoke --format json > artifacts/ci/oracle-verification/final/runtime-list.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll runtime doctor --owner smoke --format json > artifacts/ci/oracle-verification/final/runtime-doctor.json
+          dotnet src/OpenCode.Workspace.Cli/bin/Release/net10.0/OpenCode.Workspace.Cli.dll smoke cleanup --dry-run --all --format json > artifacts/ci/oracle-verification/final/cleanup-dry-run.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle-verification/final/runtime-list.json
+          grep -q '"orphans": \[\]' artifacts/ci/oracle-verification/final/runtime-doctor.json
+          grep -q '"resources": \[\]' artifacts/ci/oracle-verification/final/cleanup-dry-run.json
+
+      - name: Upload full Oracle verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: full-oracle-verification-artifacts
+          path: artifacts/ci/oracle-verification
+          retention-days: 30
+
+  release-artifacts:
+    name: Attach Release Artifacts
+    if: >-
+      ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      needs.release-metadata.result == 'success' && needs.integration-validation.result == 'success' &&
+      needs.package.result == 'success' &&
+      (github.ref != 'refs/tags/v0.1.0-rc.5' || needs.oracle-verification.result == 'success') }}
+    needs:
+      - release-metadata
+      - integration-validation
+      - package
+      - oracle-verification
     runs-on: ubuntu-latest
     permissions:
       contents: write

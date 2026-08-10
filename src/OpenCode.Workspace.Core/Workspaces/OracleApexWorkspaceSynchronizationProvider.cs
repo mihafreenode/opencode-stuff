@@ -39,6 +39,9 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     public bool CanHandle(WorkspaceDefinition definition)
         => OracleWorkspaceFamily.HasApex(definition) && definition.Oracle.Apex.Environments.Count > 0;
 
+    bool IOracleApexWorkspaceConnectionProvider.CanHandle(WorkspaceDefinition definition)
+        => OracleWorkspaceFamily.HasApex(definition);
+
     public async Task<WorkspaceSynchronizationStatusResult> GetStatusAsync(WorkspaceSynchronizationRequest request, CancellationToken cancellationToken = default)
     {
         var state = ReadState(request.Snapshot.Paths);
@@ -52,6 +55,7 @@ public sealed class OracleApexWorkspaceSynchronizationProvider : IWorkspaceSynch
     public async Task<OracleApexApplicationDiscoveryResult> DiscoverApplicationsAsync(OracleApexApplicationDiscoveryRequest request, CancellationToken cancellationToken = default)
     {
         var environment = NormalizeEnvironment(request.EnvironmentName, request.WorkspaceName, request.ParsingSchema, request.SqlclProfile, request.SourcePath);
+        _ = ResolveSourcePath(request.Snapshot.Paths.RootPath, environment.SourcePath);
         await EnsureSqlclAvailableAsync(request.Snapshot, cancellationToken).ConfigureAwait(false);
         await EnsureApexAvailableAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
         await EnsureSchemaExistsAsync(request.Snapshot, environment, cancellationToken).ConfigureAwait(false);
@@ -113,9 +117,10 @@ EXIT
             throw new InvalidOperationException($"Oracle APEX application '{request.ApplicationId}' was not found in workspace '{discovery.WorkspaceName}'.");
         }
 
+        var sourcePath = ResolveSourcePath(request.Snapshot.Paths.RootPath, discovery.SourcePath);
         var updatedDefinition = BuildConnectedDefinition(request.Snapshot.Definition, discovery, application);
         _workspaceYamlService.WriteToFile(request.Snapshot.Paths.WorkspaceYamlPath, updatedDefinition);
-        Directory.CreateDirectory(ResolveSourcePath(request.Snapshot.Paths.RootPath, discovery.SourcePath));
+        Directory.CreateDirectory(sourcePath);
 
         var state = UpdateEnvironmentState(new WorkspaceSynchronizationStateDocument(), discovery.EnvironmentName, current => current with
         {
@@ -1144,7 +1149,18 @@ exit
         => $"{scriptPath} '{sourcePath.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 
     private static string ResolveSourcePath(string rootPath, string sourcePath)
-        => Path.Combine(rootPath, sourcePath.Replace('/', Path.DirectorySeparatorChar));
+    {
+        var root = Path.GetFullPath(rootPath);
+        var candidate = Path.GetFullPath(Path.Combine(root, sourcePath.Replace('/', Path.DirectorySeparatorChar)));
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!candidate.StartsWith(rootPrefix, comparison))
+        {
+            throw new InvalidOperationException($"Oracle APEX source path '{sourcePath}' must resolve inside the workspace root.");
+        }
+
+        return candidate;
+    }
 
     private static string GetWorkspaceRelativePath(string rootPath, string path)
         => Path.GetRelativePath(rootPath, path).Replace(Path.DirectorySeparatorChar, '/');

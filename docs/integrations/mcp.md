@@ -9,6 +9,7 @@ This is the authoritative setup and architecture guide for the packaged OpenCode
 - stdout contains MCP protocol frames only; do not add banners, logs, or wrapper output
 - MCP has no HTTP listener, remote deployment, authentication boundary, or public exposure
 - MCP has no terminal or PTY API and cannot attach to, stream, resize, or take over an interactive terminal
+- MCP exposes workspace lifecycle and provisioning capabilities, but no Oracle discovery, synchronization, or Oracle Assistant tools
 - RemoteBridge and Cloudflare do not expose MCP
 
 The host reads a healthy LocalHost descriptor when one exists. Otherwise, startup is coordinated by a state-root startup lock, stale descriptors are discarded, and one client starts LocalHost on a dynamic loopback port. The executable is resolved from the extracted distribution, normally `bin/local-host/`. LocalHost remains the shared control plane even when several desktop or MCP clients are active.
@@ -81,11 +82,11 @@ Use protocol discovery as the exact contract instead of copying a static exhaust
 
 Resources expose server health, workspace and operation inventories/snapshots, template details, runtime inventory/doctor output, smoke summaries, and validated artifacts under `opencode://...` URIs. Artifact access is constrained to configured workspace and smoke roots; path traversal and arbitrary filesystem browsing are not exposed.
 
-## Implementation discrepancy
+Oracle discovery, synchronization, and Oracle Assistant operations are intentionally not part of the packaged MCP product surface. Packaged Oracle-specific verification uses `LocalClient` against the canonical `LocalHost` routes.
 
-The intended architecture is a thin MCP adapter over canonical LocalHost routes, but that migration is incomplete. The current proxy still uses the in-process service for smoke-definition selection, smoke cleanup, workspace and smoke artifact listing/reading, artifact-resource reads, and Excel processing. This is not a read-only fallback: `cleanup_smoke_resources` deletes owned runtime resources and `process_excel_artifact` writes an output workbook. These paths do not yet receive all LocalHost coordination and attribution guarantees and must be treated as known implementation defects, not intended architecture.
+## LocalHost routing
 
-Lifecycle operations, smoke starts, operation polling/cancellation, workspace inventory, and runtime inventory/doctor use LocalHost. Do not describe the remaining fallback as read-only until the implementation is changed.
+MCP routes its supported workspace lifecycle, provisioning, smoke, operation, runtime inventory/doctor, artifact, cleanup, and Excel capabilities through LocalHost. There is no supported in-process fallback for these paths.
 
 ## Security and troubleshooting
 

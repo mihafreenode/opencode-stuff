@@ -168,6 +168,8 @@ public sealed class PackagedDistributionFixture : IAsyncLifetime
                 Path.Combine(TestPaths.RepositoryRoot, "THIRD-PARTY-NOTICES.md"),
                 Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PackagedDistributionFixture.cs"),
                 Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PackagedDistributionTests.cs"),
+                Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PackagedOracleApexEndToEndAcceptanceTests.cs"),
+                Path.Combine(TestPaths.RepositoryRoot, "tests", "OpenCode.Workspace.Mcp.Tests", "PhasedAcceptanceRunner.cs"),
             })
             .OrderBy(path => path, StringComparer.Ordinal)
             .Select(path => $"{Path.GetRelativePath(TestPaths.RepositoryRoot, path)}\n{File.ReadAllText(path)}");

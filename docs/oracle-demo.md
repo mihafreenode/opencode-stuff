@@ -280,7 +280,7 @@ When present, the workspace shell exports `TNS_ADMIN` to that directory automati
 
 ## MCP Integration Notes
 
-The OpenCode Workspace MCP server is the implemented workspace lifecycle and Oracle Assistant integration. Oracle SQLcl MCP through `sql -mcp` is a separate catalog entry and remains experimental/environment-dependent; its availability does not imply that it is installed, configured, or the MCP server used by the workspace manager.
+The packaged OpenCode Workspace MCP server exposes workspace lifecycle and provisioning capabilities, but it does not expose Oracle discovery, synchronization, or Oracle Assistant tools. Packaged Oracle-specific verification uses `LocalClient` against the canonical `LocalHost` routes. Oracle SQLcl MCP through `sql -mcp` is a separate catalog entry and remains experimental/environment-dependent; its availability does not imply that it is installed, configured, or the MCP server used by the workspace manager.
 
 ## Presenter Demo Script
 

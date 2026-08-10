@@ -6,66 +6,76 @@ namespace OpenCode.Workspace.Core.Tests;
 
 public sealed class OracleApexValidationFeedbackServiceTests
 {
-    [Fact]
-    public void BuildValidationResult_ParsesStructuredDiagnosticsAndMapsToOperations()
+    public static TheoryData<string> DiagnosticPaths => new()
     {
-        var service = new OracleApexValidationFeedbackService();
-        var index = new OracleApexWorkspaceIndex
-        {
-            SourcePath = "src/apex",
-            Entries =
-            [
-                new OracleApexWorkspaceIndexEntry
-                {
-                    NodeId = "page:customers",
-                    SemanticType = "page",
-                    Identifier = "Customers",
-                    SourceFile = "src/apex/pages/p00003-customers.apx",
-                    Line = 1,
-                    EndLine = 10,
-                    Properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["id"] = "3" },
-                },
-            ],
-        };
-        var plan = new OracleApexEditPlan
-        {
-            Intent = "Build customer management module",
-            BlueprintModules = ["Customers Management"],
-            BlueprintEntities = ["Customer"],
-        };
-        plan.Operations.Add(new OracleApexPlannedOperation
-        {
-            Sequence = 1,
-            Title = "Create page 'Customers'",
-            TargetComponentType = "page",
-            TargetIdentifier = "Customers",
-            AffectedSymbols = ["Customers"],
-            ExpectedChangedFiles = ["src/apex/pages/p00003-customers.apx"],
-        });
-        var process = new ProcessResult
-        {
-            Command = "validate",
-            ExitCode = 1,
-            StandardError = "ERROR src/apex/pages/p00003-customers.apx:4:5 [APEX-1001] component=page property=alias - Missing required property 'alias'.",
-            StandardOutput = string.Empty,
-            StandardErrorLines = ["ERROR src/apex/pages/p00003-customers.apx:4:5 [APEX-1001] component=page property=alias - Missing required property 'alias'."],
-            StandardOutputLines = Array.Empty<string>(),
-            Duration = TimeSpan.Zero,
-        };
+        "pages/p00002-orders.apx",
+        "oracle/apex/source/pages/p00002-orders.apx",
+        "/workspace/oracle/apex/source/pages/p00002-orders.apx",
+        @"C:\workspace\oracle\apex\source\pages\p00002-orders.apx",
+    };
 
-        var result = service.BuildValidationResult(process, index, plan);
+    [Theory]
+    [MemberData(nameof(DiagnosticPaths))]
+    public void BuildValidationResult_NormalizesDiagnosticPathsAndMapsExactIndexedNode(string diagnosticPath)
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            const string sourcePath = "oracle/apex/source";
+            WriteIndexedPackage(root, sourcePath);
+            var index = new OracleApexWorkspaceIndexBuilder().Build(root, CreateEnvironment(sourcePath), "dev");
+            var expectedEntry = Assert.Single(index.Entries, entry => entry.Identifier == "Orders Report");
+            var plan = new OracleApexEditPlan { Intent = "Update orders report" };
+            plan.Operations.Add(new OracleApexPlannedOperation
+            {
+                Sequence = 7,
+                Title = "Update orders report",
+                TargetComponentType = "region",
+                TargetIdentifier = "Orders Report",
+                ExpectedChangedFiles = ["oracle/apex/source/pages/p00002-orders.apx"],
+            });
+            var line = $"ERROR {diagnosticPath}:5:9 [APEX-1001] component=region property=type - Invalid value for property 'type'.";
 
-        Assert.False(result.IsSuccess);
-        var diagnostic = Assert.Single(result.Diagnostics);
-        Assert.Equal("src/apex/pages/p00003-customers.apx", diagnostic.FilePath);
-        Assert.Equal(4, diagnostic.Line);
-        Assert.Equal("alias", diagnostic.Property);
-        Assert.Equal("APEX-1001", diagnostic.CompilerCode);
-        Assert.Equal("missing-required-property", diagnostic.Category);
-        var mapping = Assert.Single(result.Mappings);
-        Assert.Equal("page:customers", mapping.SemanticNodeId);
-        Assert.Equal(1, mapping.PlannedOperationSequence);
-        Assert.Equal("Customers Management", mapping.BlueprintModule);
+            var result = new OracleApexValidationFeedbackService().BuildValidationResult(CreateProcess(line), index, plan);
+
+            var diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("pages/p00002-orders.apx", diagnostic.FilePath);
+            Assert.Equal(5, diagnostic.Line);
+            Assert.Equal("APEX-1001", diagnostic.CompilerCode);
+            var mapping = Assert.Single(result.Mappings);
+            Assert.Equal(expectedEntry.NodeId, mapping.SemanticNodeId);
+            Assert.Equal("Orders Report", mapping.WorkspaceIdentifier);
+            Assert.Equal(7, mapping.PlannedOperationSequence);
+        }
+        finally { DeleteTempRoot(root); }
+    }
+
+    [Fact]
+    public void BuildValidationResult_DoesNotUseComponentFallbackForUnmatchedFilePath()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            const string sourcePath = "oracle/apex/source";
+            WriteIndexedPackage(root, sourcePath);
+            var index = new OracleApexWorkspaceIndexBuilder().Build(root, CreateEnvironment(sourcePath), "dev");
+            var plan = new OracleApexEditPlan();
+            plan.Operations.Add(new OracleApexPlannedOperation
+            {
+                Sequence = 1,
+                Title = "Update a region",
+                TargetComponentType = "region",
+                ExpectedChangedFiles = ["oracle/apex/source/pages/p00002-orders.apx"],
+            });
+            const string line = "ERROR oracle/apex/source-copy/pages/p00002-orders.apx:5:9 component=region - Invalid value.";
+
+            var result = new OracleApexValidationFeedbackService().BuildValidationResult(CreateProcess(line), index, plan);
+
+            var mapping = Assert.Single(result.Mappings);
+            Assert.Equal(string.Empty, mapping.SemanticNodeId);
+            Assert.Equal(0, mapping.PlannedOperationSequence);
+        }
+        finally { DeleteTempRoot(root); }
     }
 
     [Fact]
@@ -160,8 +170,29 @@ public sealed class OracleApexValidationFeedbackServiceTests
             AvailableServices = Array.Empty<WorkspaceServiceInfo>(),
         };
 
-    private static OracleApexEnvironmentPreferences CreateEnvironment()
-        => new() { ApplicationId = 100, Workspace = "TEST", ParsingSchema = "TESTSCHEMA", SourcePath = "src/apex" };
+    private static OracleApexEnvironmentPreferences CreateEnvironment(string sourcePath = "src/apex")
+        => new() { ApplicationId = 100, Workspace = "TEST", ParsingSchema = "TESTSCHEMA", SourcePath = sourcePath };
+
+    private static ProcessResult CreateProcess(string line)
+        => new()
+        {
+            Command = "validate",
+            ExitCode = 1,
+            StandardError = line,
+            StandardOutput = string.Empty,
+            StandardErrorLines = [line],
+            StandardOutputLines = Array.Empty<string>(),
+            Duration = TimeSpan.Zero,
+        };
+
+    private static void WriteIndexedPackage(string root, string sourcePath)
+    {
+        var sourceRoot = Path.Combine(root, sourcePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.Combine(sourceRoot, "pages"));
+        File.WriteAllText(Path.Combine(sourceRoot, "application.apx"), "application demo (\n    id: 100\n    name: Demo\n    alias: DEMO\n)\n");
+        File.WriteAllText(Path.Combine(sourceRoot, "pages", "p00001-home.apx"), "page home (\n    id: 1\n    name: Home\n    alias: HOME\n)\n");
+        File.WriteAllText(Path.Combine(sourceRoot, "pages", "p00002-orders.apx"), "page orders (\n    id: 2\n    name: Orders\n    alias: ORDERS\n    region orders-report (\n        title: Orders Report\n        type: Interactive Report\n    )\n)\n");
+    }
 
     private static void WritePackage(string root)
     {

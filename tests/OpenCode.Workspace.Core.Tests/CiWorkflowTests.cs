@@ -17,6 +17,7 @@ public sealed class CiWorkflowTests
         Assert.Contains("uses: ./.github/workflows/integration.yml", ci, StringComparison.Ordinal);
         Assert.Contains("- integration-validation", ci, StringComparison.Ordinal);
         Assert.Contains("- package", ci, StringComparison.Ordinal);
+        Assert.Contains("- oracle-verification", ci, StringComparison.Ordinal);
         Assert.Contains("--archive-kind ${{ matrix.archive_kind }}", ci, StringComparison.Ordinal);
         Assert.Contains("--self-contained true", ci, StringComparison.Ordinal);
         Assert.DoesNotContain("tar -C", ci, StringComparison.Ordinal);
@@ -92,7 +93,7 @@ public sealed class CiWorkflowTests
         Assert.Contains("runs_on: ubuntu-latest\n            runtime: linux-x64", ci, StringComparison.Ordinal);
         Assert.Contains("runs_on: macos-15\n            runtime: osx-arm64", ci, StringComparison.Ordinal);
         Assert.Equal(3, Regex.Matches(ci, "runtime: (win-x64|linux-x64|osx-arm64)").Count);
-        Assert.Contains("needs:\n      - release-metadata\n      - integration-validation\n      - package", ci, StringComparison.Ordinal);
+        Assert.Contains("needs:\n      - release-metadata\n      - integration-validation\n      - package\n      - oracle-verification", ci, StringComparison.Ordinal);
         Assert.DoesNotContain("continue-on-error", ci, StringComparison.Ordinal);
         foreach (var requiredGate in new[]
         {
@@ -314,7 +315,17 @@ public sealed class CiWorkflowTests
         Assert.Contains("name: Oracle Smoke (Sequential)", workflow, StringComparison.Ordinal);
         Assert.Contains("if: inputs.run_oracle", workflow, StringComparison.Ordinal);
         Assert.Contains("run_oracle:\n        type: boolean\n        default: false", workflow, StringComparison.Ordinal);
-        Assert.Contains("run_oracle: false", File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml")), StringComparison.Ordinal);
+        var ci = File.ReadAllText(Path.Combine(TestPaths.RepositoryRoot, ".github", "workflows", "ci.yml"));
+        Assert.Contains("run_oracle: false", ci, StringComparison.Ordinal);
+        Assert.Contains("if: github.event_name == 'push' && github.ref == 'refs/tags/v0.1.0-rc.5'", ci, StringComparison.Ordinal);
+        Assert.Contains("OPENCODE_ORACLE_VERIFICATION_MODE: \"true\"", ci, StringComparison.Ordinal);
+        Assert.Contains("verify-oracle-toolchain.py", ci, StringComparison.Ordinal);
+        Assert.Contains("catalog/verification/oracle-rc5-toolchain.json", ci, StringComparison.Ordinal);
+        Assert.DoesNotContain("sqlcl-latest.zip", ci, StringComparison.Ordinal);
+        Assert.DoesNotContain("database/ords:latest", ci, StringComparison.Ordinal);
+        Assert.Contains("OPENCODE_EXISTING_PACKAGE_ARCHIVE: ${{ github.workspace }}/artifacts/downloaded/linux-x64/", ci, StringComparison.Ordinal);
+        Assert.Contains("OPENCODE_EXISTING_PACKAGE_ROOT: \"\"", ci, StringComparison.Ordinal);
+        Assert.Contains("needs.oracle-verification.result == 'success'", ci, StringComparison.Ordinal);
         Assert.Contains("self-hosted", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("oracle-smoke-sequential:\n    strategy:", workflow, StringComparison.Ordinal);
         Assert.Contains("smoke run oracle-plsql-demo", workflow, StringComparison.Ordinal);

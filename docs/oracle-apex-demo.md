@@ -14,7 +14,7 @@ Place the official Oracle APEX ZIP under `.local/oracle/downloads/apex/` as `ape
 
 The default Oracle image for APEX-capable templates is:
 
-- `gvenzl/oracle-free:23`
+- `gvenzl/oracle-free:23.26.2` at the pinned digest recorded in `catalog/verification/oracle-rc5-toolchain.json`
 
 This is the default because fresh volumes created from `gvenzl/oracle-free:23-slim-faststart` expose `XDB` in the registry as `INVALID` even when `XMLType` and `DBMS_XDB` work. Oracle APEX 26.1.0 still rejects that database in `apxprereq.sql`, so the faststart image is not the generated default for APEX workspaces.
 
@@ -24,7 +24,7 @@ You can override the database image in `workspace.yaml`:
 
 ```yaml
 oracle:
-  databaseImage: gvenzl/oracle-free:23
+  databaseImage: gvenzl/oracle-free:23.26.2
 ```
 
 After changing `oracle.databaseImage`, reset the runtime so Oracle creates a fresh data volume for the new image.

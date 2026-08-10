@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using OpenCode.Workspace.Core.Workspaces;
 
 namespace OpenCode.Workspace.Core.Tests;
@@ -153,6 +155,47 @@ public sealed class OracleMediaLocatorTests
             Assert.Contains(repo, result.SearchedLocations);
             Assert.Contains(Path.Combine(repo, "APEX"), result.SearchedLocations);
             Assert.Contains(Path.Combine(repo, "apex"), result.SearchedLocations);
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public void LocateApexMedia_VerificationModeRequiresExactFilenameAndSha256()
+    {
+        var root = CreateTempRoot();
+        var localAppData = Path.Combine(root, "localappdata");
+        var userProfile = Path.Combine(root, "userprofile");
+        Directory.CreateDirectory(localAppData);
+        Directory.CreateDirectory(userProfile);
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(Path.Combine(root, "workspace"));
+            var shared = OracleMediaLocator.GetSharedApexCacheDirectory(localAppData);
+            Directory.CreateDirectory(shared);
+            File.WriteAllText(Path.Combine(shared, "apex-latest.zip"), "wrong artifact");
+            var expectedPath = Path.Combine(shared, "apex_26.1.zip");
+            File.WriteAllText(expectedPath, "pinned artifact");
+            var expectedHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("pinned artifact"))).ToLowerInvariant();
+            var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["OPENCODE_ORACLE_VERIFICATION_MODE"] = "true",
+                ["OPENCODE_ORACLE_APEX_MEDIA_FILENAME"] = "apex_26.1.zip",
+                ["OPENCODE_ORACLE_APEX_MEDIA_SHA256"] = expectedHash,
+            };
+
+            var result = new OracleMediaLocator(name => values.GetValueOrDefault(name), localAppData, userProfile).LocateApexMedia(paths);
+
+            Assert.Equal(expectedPath, result.ResolvedPath);
+            Assert.Equal(["apex_26.1.zip"], result.AcceptedFileNames);
+
+            values["OPENCODE_ORACLE_APEX_MEDIA_SHA256"] = new string('0', 64);
+            var exception = Assert.Throws<InvalidOperationException>(() => new OracleMediaLocator(name => values.GetValueOrDefault(name), localAppData, userProfile).LocateApexMedia(paths));
+            Assert.Contains("does not match", exception.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(expectedHash, exception.Message, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

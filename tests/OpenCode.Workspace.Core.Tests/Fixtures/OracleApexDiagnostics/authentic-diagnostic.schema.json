@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode-stuff.invalid/schemas/oracle-apex-authentic-diagnostic-v1.json",
+  "title": "Sanitized authentic Oracle APEX compiler diagnostic",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "captureTimestampUtc", "toolchain", "validationCommandShape", "exitCode", "sourceRootConvention", "defectDescription", "affectedRelativeSourceFile", "defectiveSourceExcerpt", "sourceTreeLayout", "rawStdout", "rawStderr", "expectedNormalizedDiagnostic", "expectedSemanticNode", "redactions"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "kind": { "const": "oracleApexAuthenticCompilerDiagnostic" },
+    "captureTimestampUtc": { "type": "string", "format": "date-time" },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sqlclVersion", "sqlclBuild", "apexVersion", "oracleDatabaseVersion", "ordsVersion"],
+      "properties": {
+        "sqlclVersion": { "type": "string" },
+        "sqlclBuild": { "type": "string" },
+        "apexVersion": { "type": "string" },
+        "oracleDatabaseVersion": { "type": "string" },
+        "ordsVersion": { "type": "string" }
+      }
+    },
+    "validationCommandShape": { "type": "string" },
+    "exitCode": { "type": "integer" },
+    "sourceRootConvention": { "type": "string" },
+    "defectDescription": { "type": "string" },
+    "affectedRelativeSourceFile": { "type": "string" },
+    "defectiveSourceExcerpt": { "type": "string" },
+    "sourceTreeLayout": { "type": "array", "items": { "type": "string" } },
+    "rawStdout": { "type": "string" },
+    "rawStderr": { "type": "string" },
+    "expectedNormalizedDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filePath", "line", "column", "severity", "compilerCode", "message", "category", "property", "component"],
+      "properties": {
+        "filePath": { "type": "string" },
+        "line": { "type": "integer" },
+        "column": { "type": "integer" },
+        "severity": { "type": "string" },
+        "compilerCode": { "type": "string" },
+        "message": { "type": "string" },
+        "category": { "type": "string" },
+        "property": { "type": "string" },
+        "component": { "type": "string" }
+      }
+    },
+    "expectedSemanticNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "semanticType", "identifier"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "semanticType": { "type": "string" },
+        "identifier": { "type": "string" }
+      }
+    },
+    "redactions": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -18,7 +18,7 @@ Current APEX smoke requires:
 - Oracle Database with APEX installed
 - ORDS configured for APEX
 
-Default APEX-capable smoke now uses `gvenzl/oracle-free:23`.
+Default APEX-capable smoke uses `gvenzl/oracle-free:23.26.2` pinned to the manifest-list digest recorded in `catalog/verification/oracle-rc5-toolchain.json`.
 
 `gvenzl/oracle-free:23-slim-faststart` is not the default for APEX smoke because fresh volumes can report `XDB` as registry `INVALID` while functional probes still succeed. Oracle APEX 26.1.0 `apxprereq.sql` rejects that state and refuses installation.
 

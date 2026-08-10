@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using OpenCode.Workspace.Core.Models;
 
 namespace OpenCode.Workspace.Core.Workspaces;
@@ -44,6 +45,11 @@ public sealed class OracleMediaLocator : IOracleMediaLocator
         var preferredSharedDirectory = GetSharedApexCacheDirectory(_localApplicationDataRoot);
         var searchLocations = GetSearchLocations(paths).ToList();
 
+        if (string.Equals(_getEnvironmentVariable("OPENCODE_ORACLE_VERIFICATION_MODE"), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            return LocatePinnedApexMedia(workspaceLocalDirectory, preferredSharedDirectory, searchLocations);
+        }
+
         foreach (var location in searchLocations)
         {
             var match = FindFirstMatchingFile(location);
@@ -69,6 +75,41 @@ public sealed class OracleMediaLocator : IOracleMediaLocator
             AcceptedFileNames = AcceptedApexFileNames,
         };
     }
+
+    private OracleMediaLocationResult LocatePinnedApexMedia(string workspaceLocalDirectory, string preferredSharedDirectory, IReadOnlyList<string> searchLocations)
+    {
+        var expectedFilename = RequireVerificationValue("OPENCODE_ORACLE_APEX_MEDIA_FILENAME");
+        var expectedSha256 = RequireVerificationValue("OPENCODE_ORACLE_APEX_MEDIA_SHA256");
+        var resolvedPath = searchLocations
+            .Select(location => Path.Combine(location, expectedFilename))
+            .FirstOrDefault(File.Exists);
+        if (resolvedPath is null)
+        {
+            throw new InvalidOperationException($"Oracle verification requires APEX media '{expectedFilename}' in a configured Oracle media location.");
+        }
+
+        using var stream = File.OpenRead(resolvedPath);
+        var actualSha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Oracle verification rejected APEX media '{expectedFilename}' because its SHA-256 does not match the pinned provenance.");
+        }
+
+        return new OracleMediaLocationResult
+        {
+            WorkspaceLocalDirectory = workspaceLocalDirectory,
+            PreferredSharedDirectory = preferredSharedDirectory,
+            ResolvedPath = resolvedPath,
+            SearchedLocations = searchLocations,
+            AcceptedFileNames = [expectedFilename],
+            IsWorkspaceLocalOverride = string.Equals(Path.GetDirectoryName(resolvedPath), workspaceLocalDirectory, StringComparison.OrdinalIgnoreCase),
+        };
+    }
+
+    private string RequireVerificationValue(string name)
+        => _getEnvironmentVariable(name) is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException($"Oracle verification mode requires {name} from the pinned toolchain provenance.");
 
     public static string GetWorkspaceLocalApexDirectory(WorkspacePaths paths)
         => Path.Combine(paths.RootPath, ".local", "oracle", "downloads", "apex");

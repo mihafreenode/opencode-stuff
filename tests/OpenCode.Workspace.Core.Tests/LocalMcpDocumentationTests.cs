@@ -39,16 +39,15 @@ public sealed class LocalMcpDocumentationTests
     }
 
     [Fact]
-    public void McpGuide_StatesSecurityBoundariesAndKnownInProcessDiscrepancy()
+    public void McpGuide_StatesSecurityAndOracleProductSurfaceBoundaries()
     {
         var doc = ReadGuide();
 
         Assert.Contains("MCP has no terminal or PTY API", doc, StringComparison.Ordinal);
         Assert.Contains("RemoteBridge and Cloudflare do not expose MCP", doc, StringComparison.Ordinal);
-        Assert.Contains("## Implementation discrepancy", doc, StringComparison.Ordinal);
-        Assert.Contains("current proxy still uses the in-process service", doc, StringComparison.Ordinal);
-        Assert.Contains("known implementation defects", doc, StringComparison.Ordinal);
-        Assert.Contains("not a read-only fallback", doc, StringComparison.Ordinal);
+        Assert.Contains("no Oracle discovery, synchronization, or Oracle Assistant tools", doc, StringComparison.Ordinal);
+        Assert.Contains("canonical `LocalHost` routes", doc, StringComparison.Ordinal);
+        Assert.Contains("There is no supported in-process fallback", doc, StringComparison.Ordinal);
     }
 
     private static string ReadGuide()

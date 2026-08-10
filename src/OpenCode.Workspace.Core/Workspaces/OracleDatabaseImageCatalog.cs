@@ -4,7 +4,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public static class OracleDatabaseImageCatalog
 {
-    public const string DefaultDatabaseImage = "gvenzl/oracle-free:23";
+    public const string DefaultDatabaseImage = "gvenzl/oracle-free:23.26.2@sha256:e2763af84ecc345d48e4e3fe7999d0b7bb57885b6e0166051acd5f62e27eb605";
     public const string KnownIncompatibleApexDatabaseImage = "gvenzl/oracle-free:23-slim-faststart";
 
     public static string ResolveDatabaseImage(WorkspaceDefinition definition)

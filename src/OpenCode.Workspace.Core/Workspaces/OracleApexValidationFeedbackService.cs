@@ -8,7 +8,7 @@ namespace OpenCode.Workspace.Core.Workspaces;
 
 public sealed class OracleApexValidationFeedbackService
 {
-    private static readonly Regex StructuredDiagnosticPattern = new(@"^(?<severity>ERROR|WARNING|INFO)\s+(?<file>[^:]+):(?<line>\d+):(?<column>\d+)(?:\s+\[(?<code>[^\]]+)\])?(?:\s+component=(?<component>[^\s]+))?(?:\s+property=(?<property>[^\s]+))?\s*[:-]\s*(?<message>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StructuredDiagnosticPattern = new(@"^(?<severity>ERROR|WARNING|INFO)\s+(?<file>.+?):(?<line>\d+):(?<column>\d+)(?:\s+\[(?<code>[^\]]+)\])?(?:\s+component=(?<component>[^\s]+))?(?:\s+property=(?<property>[^\s]+))?\s*[:-]\s*(?<message>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PositionalDiagnosticPattern = new(@"(?<file>[^:\r\n]+\.apx)[:(](?<line>\d+)[,:](?<column>\d+)\)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex CompilerCodePattern = new(@"\b(?<code>(?:ORA|APEX|SP2)-\d+)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex PropertyPattern = new(@"(?:property|attribute)\s+'(?<property>[^']+)'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -35,13 +35,16 @@ public sealed class OracleApexValidationFeedbackService
     }
 
     public OracleApexValidationResult MapValidationResult(OracleApexValidationResult validation, OracleApexWorkspaceIndex index, OracleApexEditPlan plan)
-        => new()
+    {
+        var diagnostics = validation.Diagnostics.Select(diagnostic => NormalizeDiagnostic(diagnostic, index.SourcePath)).ToList();
+        return new OracleApexValidationResult
         {
             IsSuccess = validation.IsSuccess,
             Summary = validation.Summary,
-            Diagnostics = validation.Diagnostics,
-            Mappings = validation.Diagnostics.Select(diagnostic => MapDiagnostic(diagnostic, index, plan)).ToList(),
+            Diagnostics = diagnostics,
+            Mappings = diagnostics.Select(diagnostic => MapDiagnostic(diagnostic, index, plan)).ToList(),
         };
+    }
 
     public void PersistEvidence(WorkspaceSnapshot snapshot, OracleApexValidationResult validation, OracleApexEditPlan? repairPlan = null)
     {
@@ -309,7 +312,7 @@ public sealed class OracleApexValidationFeedbackService
     private static OracleApexDiagnosticMapping MapDiagnostic(OracleApexCompilerDiagnostic diagnostic, OracleApexWorkspaceIndex index, OracleApexEditPlan plan)
     {
         var entry = ResolveEntry(diagnostic, index);
-        var operation = ResolveOperation(diagnostic, entry, plan);
+        var operation = ResolveOperation(diagnostic, entry, index, plan);
         return new OracleApexDiagnosticMapping
         {
             Diagnostic = diagnostic,
@@ -326,11 +329,20 @@ public sealed class OracleApexValidationFeedbackService
     private static OracleApexWorkspaceIndexEntry? ResolveEntry(OracleApexCompilerDiagnostic diagnostic, OracleApexWorkspaceIndex index)
     {
         var normalizedFile = diagnostic.FilePath.Replace('\\', '/');
-        var byLocation = index.Entries.FirstOrDefault(entry => string.Equals(entry.SourceFile, normalizedFile, StringComparison.OrdinalIgnoreCase)
-            && (diagnostic.Line == 0 || (entry.Line <= diagnostic.Line && entry.EndLine >= diagnostic.Line)));
+        var byLocation = index.Entries
+            .Where(entry => string.Equals(entry.SourceFile.Replace('\\', '/'), normalizedFile, StringComparison.OrdinalIgnoreCase)
+                && (diagnostic.Line == 0 || (entry.Line <= diagnostic.Line && entry.EndLine >= diagnostic.Line)))
+            .OrderByDescending(entry => entry.Line)
+            .ThenBy(entry => Math.Max(0, entry.EndLine - entry.Line))
+            .FirstOrDefault();
         if (byLocation is not null)
         {
             return byLocation;
+        }
+
+        if (!string.IsNullOrWhiteSpace(diagnostic.FilePath))
+        {
+            return null;
         }
 
         var quotedIdentifier = IdentifierPattern.Match(diagnostic.Message).Groups["identifier"].Value.Trim();
@@ -338,10 +350,10 @@ public sealed class OracleApexValidationFeedbackService
             || (!string.IsNullOrWhiteSpace(diagnostic.Component) && string.Equals(entry.SemanticType, diagnostic.Component, StringComparison.OrdinalIgnoreCase)));
     }
 
-    private static OracleApexPlannedOperation? ResolveOperation(OracleApexCompilerDiagnostic diagnostic, OracleApexWorkspaceIndexEntry? entry, OracleApexEditPlan plan)
+    private static OracleApexPlannedOperation? ResolveOperation(OracleApexCompilerDiagnostic diagnostic, OracleApexWorkspaceIndexEntry? entry, OracleApexWorkspaceIndex index, OracleApexEditPlan plan)
     {
-        var normalizedFile = diagnostic.FilePath.Replace('\\', '/');
-        return plan.Operations.FirstOrDefault(operation => operation.ExpectedChangedFiles.Any(file => string.Equals(file.Replace('\\', '/'), normalizedFile, StringComparison.OrdinalIgnoreCase))
+        var workspaceFile = ToWorkspaceRelativePath(diagnostic.FilePath, index.SourcePath, pathIsSourceRelative: true);
+        return plan.Operations.FirstOrDefault(operation => (workspaceFile?.Length > 0 && operation.ExpectedChangedFiles.Any(file => string.Equals(ToWorkspaceRelativePath(file, index.SourcePath, pathIsSourceRelative: true), workspaceFile, StringComparison.OrdinalIgnoreCase)))
             || (entry is not null && operation.AffectedSymbols.Any(symbol => string.Equals(symbol, entry.Identifier, StringComparison.OrdinalIgnoreCase)))
             || (!string.IsNullOrWhiteSpace(entry?.SemanticType) && string.Equals(operation.TargetComponentType, entry.SemanticType, StringComparison.OrdinalIgnoreCase)));
     }
@@ -353,19 +365,103 @@ public sealed class OracleApexValidationFeedbackService
 
     private static string NormalizeFilePath(string path, string sourcePath)
     {
-        var normalized = path.Trim().Replace('\\', '/');
-        if (normalized.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
+        var normalized = NormalizePath(path);
+        var sourceSegments = SplitSafePath(sourcePath);
+        var pathSegments = SplitSafePath(normalized);
+        if (pathSegments is null)
         {
-            return normalized[11..];
+            return normalized;
         }
 
-        if (normalized.Contains(sourcePath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+        if (sourceSegments is { Count: > 0 })
         {
-            var index = normalized.IndexOf(sourcePath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
-            return normalized[index..];
+            var sourceIndex = FindSourceRoot(pathSegments, sourceSegments);
+            if (sourceIndex >= 0)
+            {
+                return string.Join('/', pathSegments.Skip(sourceIndex + sourceSegments.Count));
+            }
         }
 
         return normalized;
+    }
+
+    private static string? ToWorkspaceRelativePath(string path, string sourcePath, bool pathIsSourceRelative)
+    {
+        var pathSegments = SplitSafePath(path);
+        var sourceSegments = SplitSafePath(sourcePath);
+        if (pathSegments is null || sourceSegments is null)
+        {
+            return null;
+        }
+
+        if (sourceSegments.Count == 0)
+        {
+            return string.Join('/', pathSegments);
+        }
+
+        var sourceIndex = FindSourceRoot(pathSegments, sourceSegments);
+        if (sourceIndex >= 0)
+        {
+            return string.Join('/', pathSegments.Skip(sourceIndex));
+        }
+
+        if (!pathIsSourceRelative || IsRootedPortable(path))
+        {
+            return null;
+        }
+
+        return string.Join('/', sourceSegments.Concat(pathSegments));
+    }
+
+    private static string NormalizePath(string path)
+        => path.Trim().Replace('\\', '/');
+
+    private static IReadOnlyList<string>? SplitSafePath(string path)
+    {
+        var segments = NormalizePath(path).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(segment => segment == ".."))
+        {
+            return null;
+        }
+
+        return segments.Where(segment => segment != ".").ToList();
+    }
+
+    private static int FindSourceRoot(IReadOnlyList<string> path, IReadOnlyList<string> source)
+    {
+        foreach (var index in new[] { 0, 1, 2 })
+        {
+            var hasKnownPrefix = index == 0
+                || index == 1 && path.Count > 0 && string.Equals(path[0], "workspace", StringComparison.OrdinalIgnoreCase)
+                || index == 2 && path.Count > 1 && path[0].Length == 2 && path[0][1] == ':' && string.Equals(path[1], "workspace", StringComparison.OrdinalIgnoreCase);
+            if (hasKnownPrefix && index + source.Count <= path.Count
+                && source.Select((segment, offset) => string.Equals(path[index + offset], segment, StringComparison.OrdinalIgnoreCase)).All(match => match))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static OracleApexCompilerDiagnostic NormalizeDiagnostic(OracleApexCompilerDiagnostic diagnostic, string sourcePath)
+        => new()
+        {
+            FilePath = string.IsNullOrWhiteSpace(diagnostic.FilePath) ? string.Empty : NormalizeFilePath(diagnostic.FilePath, sourcePath),
+            Line = diagnostic.Line,
+            Column = diagnostic.Column,
+            Component = diagnostic.Component,
+            Property = diagnostic.Property,
+            Severity = diagnostic.Severity,
+            CompilerCode = diagnostic.CompilerCode,
+            Message = diagnostic.Message,
+            Category = diagnostic.Category,
+        };
+
+    private static bool IsRootedPortable(string path)
+    {
+        var normalized = NormalizePath(path);
+        return normalized.StartsWith("/", StringComparison.Ordinal) || Regex.IsMatch(normalized, @"^[A-Za-z]:/");
     }
 
     private static string NormalizeSeverity(string value)

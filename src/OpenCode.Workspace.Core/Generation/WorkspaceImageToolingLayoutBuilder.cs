@@ -21,6 +21,13 @@ public sealed class WorkspaceImageToolingLayoutBuilder
         OracleToolingCategory,
     ];
 
+    private readonly Func<string, string?> _getEnvironmentVariable;
+
+    public WorkspaceImageToolingLayoutBuilder(Func<string, string?>? getEnvironmentVariable = null)
+    {
+        _getEnvironmentVariable = getEnvironmentVariable ?? Environment.GetEnvironmentVariable;
+    }
+
     public WorkspaceImageToolingLayout Build(ResolvedWorkspace workspace)
     {
         var collectors = new Dictionary<string, ToolingCollector>(StringComparer.OrdinalIgnoreCase)
@@ -249,12 +256,18 @@ public sealed class WorkspaceImageToolingLayoutBuilder
         collector.ValidationCommands.Add("opencode --version");
     }
 
-    private static void AddOracleTooling(ResolvedWorkspace workspace, ToolingCollector collector)
+    private void AddOracleTooling(ResolvedWorkspace workspace, ToolingCollector collector)
     {
         if (!OracleWorkspaceFamily.IsOracleWorkspace(workspace.Definition))
         {
             return;
         }
+
+        var verificationMode = string.Equals(_getEnvironmentVariable("OPENCODE_ORACLE_VERIFICATION_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+        var sqlclUrl = verificationMode
+            ? RequireVerificationValue("OPENCODE_ORACLE_SQLCL_DOWNLOAD_URL")
+            : "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip";
+        var sqlclSha256 = verificationMode ? RequireVerificationValue("OPENCODE_ORACLE_SQLCL_SHA256") : string.Empty;
 
         collector.ImageCommands.AddRange(
         [
@@ -312,10 +325,13 @@ public sealed class WorkspaceImageToolingLayoutBuilder
             "chmod +x /usr/local/bin/sqlplus",
             "oracle_sqlcl_download=/tmp/sqlcl.zip",
             "oracle_sqlcl_extract=/tmp/sqlcl-extract",
+            $"oracle_sqlcl_url='{sqlclUrl}'",
+            $"oracle_sqlcl_sha256='{sqlclSha256}'",
             "oracle_log_phase 'Downloading SQLcl'",
             "rm -rf \"${oracle_sqlcl_extract}\" /opt/sqlcl && mkdir -p \"${oracle_sqlcl_extract}\" /opt/sqlcl",
-            "curl -fsSL https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip -o \"${oracle_sqlcl_download}\"",
+            "curl -fsSL \"${oracle_sqlcl_url}\" -o \"${oracle_sqlcl_download}\"",
             "oracle_require_file \"${oracle_sqlcl_download}\" 'SQLcl archive'",
+            "if [ -n \"${oracle_sqlcl_sha256}\" ]; then printf '%s  %s\\n' \"${oracle_sqlcl_sha256}\" \"${oracle_sqlcl_download}\" | sha256sum --check --status || oracle_fail 'SQLcl archive SHA-256 does not match the RC5 verification provenance'; fi",
             "oracle_log_phase 'Extracting SQLcl'",
             "unzip -oq \"${oracle_sqlcl_download}\" -d \"${oracle_sqlcl_extract}\"",
             "if [ ! -d \"${oracle_sqlcl_extract}/sqlcl\" ]; then echo \"[oracle] SQLcl extraction did not produce ${oracle_sqlcl_extract}/sqlcl.\" >&2; find \"${oracle_sqlcl_extract}\" -maxdepth 3 -print >&2 || true; oracle_fail 'SQLcl extraction failed'; fi",
@@ -343,6 +359,11 @@ public sealed class WorkspaceImageToolingLayoutBuilder
         collector.ValidationCommands.Add("sql -version");
         collector.ValidationCommands.Add("sqlcl -version");
     }
+
+    private string RequireVerificationValue(string name)
+        => _getEnvironmentVariable(name) is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException($"Oracle verification mode requires {name} from the pinned toolchain provenance.");
 
     private static WorkspaceImageLayerScript? BuildLayerScript(string category, ToolingCollector collector)
     {

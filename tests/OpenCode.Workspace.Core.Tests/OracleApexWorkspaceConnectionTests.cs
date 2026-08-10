@@ -7,6 +7,130 @@ namespace OpenCode.Workspace.Core.Tests;
 public sealed class OracleApexWorkspaceConnectionTests
 {
     [Fact]
+    public async Task FreshApexWorkspace_DiscoverySelectsConnectionProvider_WithoutMutatingConfiguration()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            var definition = CreateDefinition("oracle-apexlang-demo");
+            var originalYaml = new WorkspaceYamlService().Write(definition);
+            File.WriteAllText(paths.WorkspaceYamlPath, originalYaml);
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var service = new OracleApexWorkspaceConnectionService([provider]);
+            var synchronizationService = new WorkspaceSynchronizationService([provider]);
+            var snapshot = CreateSnapshot(root, paths, definition);
+
+            var result = await service.DiscoverApplicationsAsync(new OracleApexApplicationDiscoveryRequest
+            {
+                Snapshot = snapshot,
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+            });
+            var synchronization = await synchronizationService.GetStatusAsync(new WorkspaceSynchronizationRequest { Snapshot = snapshot });
+
+            Assert.Single(result.Applications);
+            Assert.Equal(100, result.Applications[0].ApplicationId);
+            Assert.False(synchronization.Snapshot.IsSupported);
+            Assert.Equal(originalYaml, File.ReadAllText(paths.WorkspaceYamlPath));
+            Assert.Empty(definition.Oracle.Apex.Environments);
+            Assert.False(File.Exists(paths.ApexMetadataPath));
+            Assert.False(Directory.Exists(Path.Combine(root, "src", "apex")));
+            Assert.True(((IOracleApexWorkspaceConnectionProvider)provider).CanHandle(definition));
+            Assert.False(((IWorkspaceSynchronizationProvider)provider).CanHandle(definition));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task FreshApexWorkspace_ConnectRejectsStaleApplicationId_WithoutMutation()
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            var definition = CreateDefinition("oracle-apexlang-demo");
+            var originalYaml = new WorkspaceYamlService().Write(definition);
+            File.WriteAllText(paths.WorkspaceYamlPath, originalYaml);
+            var runtime = new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), runtime, new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var service = new OracleApexWorkspaceConnectionService([provider]);
+            var snapshot = CreateSnapshot(root, paths, definition);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ConnectExistingApplicationAsync(new OracleApexConnectExistingApplicationRequest
+            {
+                Snapshot = snapshot,
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                ApplicationId = 999,
+                ApplicationName = "Stale Client Selection",
+                Alias = "stale-client-selection",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = "src/apex",
+            }));
+
+            Assert.Contains("application '999' was not found", exception.Message, StringComparison.Ordinal);
+            Assert.Equal(originalYaml, File.ReadAllText(paths.WorkspaceYamlPath));
+            Assert.False(File.Exists(paths.ApexMetadataPath));
+            Assert.False(Directory.Exists(Path.Combine(root, "src", "apex")));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("..\\outside")]
+    [InlineData("/")]
+    public async Task FreshApexWorkspace_DiscoveryRejectsSourcePathOutsideWorkspace_WithoutMutation(string sourcePath)
+    {
+        var root = CreateTempRoot();
+
+        try
+        {
+            var paths = WorkspacePathBuilder.Build(root);
+            Directory.CreateDirectory(Path.GetDirectoryName(paths.ApexMetadataPath)!);
+            var definition = CreateDefinition("oracle-apexlang-demo");
+            var originalYaml = new WorkspaceYamlService().Write(definition);
+            File.WriteAllText(paths.WorkspaceYamlPath, originalYaml);
+            var provider = new OracleApexWorkspaceSynchronizationProvider(new WorkspaceSynchronizationStateService(), new ScriptedOracleApexContainerRuntime(root, workspaceMappingExists: true), new SuccessfulValidationProcessRunner(), new WorkspaceYamlService());
+            var service = new OracleApexWorkspaceConnectionService([provider]);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DiscoverApplicationsAsync(new OracleApexApplicationDiscoveryRequest
+            {
+                Snapshot = CreateSnapshot(root, paths, definition),
+                EnvironmentName = "dev",
+                WorkspaceName = "TEST",
+                ParsingSchema = "TESTSCHEMA",
+                SqlclProfile = "local-apex-dev",
+                SourcePath = sourcePath,
+            }));
+
+            Assert.Contains("inside the workspace root", exception.Message, StringComparison.Ordinal);
+            Assert.Equal(originalYaml, File.ReadAllText(paths.WorkspaceYamlPath));
+            Assert.False(File.Exists(paths.ApexMetadataPath));
+        }
+        finally
+        {
+            DeleteTempRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task ConnectExistingApplication_PersistsWorkspaceConfig_InitializesSyncState_AndExportsSource()
     {
         var root = CreateTempRoot();
@@ -58,6 +182,11 @@ public sealed class OracleApexWorkspaceConnectionTests
             Assert.True(File.Exists(Path.Combine(root, ".opencode", "knowledge", "apexlang-atlas", "atlas.json")));
             Assert.True(File.Exists(Path.Combine(root, "docs", "oracle-apex-atlas.md")));
             Assert.Contains("Connected Oracle APEX application 'Customer Orders Demo'", result.Message, StringComparison.Ordinal);
+            Assert.Contains(runtime.ExecutedCommands, command => command.Contains("${ORACLE_DEMO_PASSWORD:-demo_password}", StringComparison.Ordinal));
+            Assert.Contains(runtime.ExecutedCommands, command => command.Contains("/workspace/.opencode/apex/queries/", StringComparison.Ordinal));
+            Assert.DoesNotContain(runtime.ExecutedCommands, command => command.Contains(root, StringComparison.Ordinal));
+            Assert.DoesNotContain("ORACLE_DEMO_PASSWORD", File.ReadAllText(paths.WorkspaceYamlPath), StringComparison.Ordinal);
+            Assert.DoesNotContain(root, result.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -821,6 +950,7 @@ application customer-orders-demo (
         public int ImportCallCount { get; private set; }
         public string LastImportSql { get; private set; } = string.Empty;
         public string LastValidationSql { get; private set; } = string.Empty;
+        public List<string> ExecutedCommands { get; } = [];
 
         public ScriptedOracleApexContainerRuntime(string root, bool workspaceMappingExists)
         {
@@ -861,6 +991,7 @@ application customer-orders-demo (
         public Task<ProcessResult> RunSimpleDockerCommandAsync(IEnumerable<string> arguments, Action<CommandLogEntry>? log = null, CancellationToken cancellationToken = default)
         {
             var command = string.Join(" ", arguments);
+            ExecutedCommands.Add(command);
             if (command.Contains("scripts/sqlcl.sh -version", StringComparison.Ordinal))
             {
                 return Task.FromResult(Success("SQLcl 26.1"));

@@ -105,7 +105,7 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains("query_pdb_plugin_violations", script, StringComparison.Ordinal);
         Assert.Contains("ensure_apex_xdb_registry_valid", script, StringComparison.Ordinal);
         Assert.Contains("Oracle APEX prerequisite validation failed.", script, StringComparison.Ordinal);
-        Assert.Contains("oracle_apex_recommended_database_image='gvenzl/oracle-free:23'", script, StringComparison.Ordinal);
+        Assert.Contains($"oracle_apex_recommended_database_image='{OracleDatabaseImageCatalog.DefaultDatabaseImage}'", script, StringComparison.Ordinal);
         Assert.Contains("Use Oracle image ${oracle_apex_recommended_database_image} for APEX workspaces", script, StringComparison.Ordinal);
         Assert.Contains("XDB was initially INVALID but became VALID while Oracle initialization completed.", script, StringComparison.Ordinal);
         Assert.Contains("query-script", script, StringComparison.Ordinal);
@@ -166,7 +166,7 @@ public sealed class OracleSqlExecutionScriptSupportTests
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_STATE=new", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_RESET_ALLOWED=true", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_VOLUME_SCOPE=managed-workspace-exclusive", StringComparison.Ordinal));
-        Assert.Contains(runtime.LastArguments, item => string.Equals(item, "OPENCODE_ORACLE_DATABASE_IMAGE=gvenzl/oracle-free:23", StringComparison.Ordinal));
+        Assert.Contains(runtime.LastArguments, item => string.Equals(item, $"OPENCODE_ORACLE_DATABASE_IMAGE={OracleDatabaseImageCatalog.DefaultDatabaseImage}", StringComparison.Ordinal));
         Assert.Contains(runtime.LastArguments, item => string.Equals(item, "/opt/opencode-workspace/config/oracle-provision.sh", StringComparison.Ordinal));
     }
 

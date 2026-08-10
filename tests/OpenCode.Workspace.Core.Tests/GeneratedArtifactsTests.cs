@@ -646,6 +646,8 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("oracle_log_phase 'Installing Oracle runtime libraries'", script);
         Assert.Contains("oracle_log_phase 'Installing Java'", script);
         Assert.Contains("oracle_log_phase 'Downloading SQLcl'", script);
+        Assert.Contains("sqlcl-latest.zip", script);
+        Assert.Contains("SQLcl archive SHA-256 does not match the RC5 verification provenance", script);
         Assert.Contains("oracle_log_phase 'Extracting SQLcl'", script);
         Assert.Contains("oracle_log_phase 'Configuring SQLcl'", script);
         Assert.Contains("oracle_log_phase 'Configuring SQLPlus runtime libraries'", script);
@@ -697,6 +699,18 @@ public sealed class GeneratedArtifactsTests
         Assert.Contains("[oracle] ls -la /opt/oracle/instantclient/current", script);
         Assert.Contains("[oracle] ls -la ${client_home}", script);
         Assert.Contains("[oracle] ldd $(command -v sqlplus)", script);
+
+        var verificationValues = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["OPENCODE_ORACLE_VERIFICATION_MODE"] = "true",
+            ["OPENCODE_ORACLE_SQLCL_DOWNLOAD_URL"] = "https://download.example.invalid/sqlcl-pinned.zip",
+            ["OPENCODE_ORACLE_SQLCL_SHA256"] = new string('a', 64),
+        };
+        var verificationLayer = new WorkspaceImageToolingLayoutBuilder(name => verificationValues.GetValueOrDefault(name))
+            .Build(workspace).LayerScripts.Single(layer => layer.CategoryId == WorkspaceImageToolingLayoutBuilder.OracleToolingCategory).Content;
+        Assert.Contains("https://download.example.invalid/sqlcl-pinned.zip", verificationLayer, StringComparison.Ordinal);
+        Assert.Contains(new string('a', 64), verificationLayer, StringComparison.Ordinal);
+        Assert.DoesNotContain("sqlcl-latest.zip", verificationLayer, StringComparison.Ordinal);
         Assert.Contains("[oracle] Running validation command: sqlplus -version", script);
         Assert.Contains("[oracle] Running validation command: sql -version", script);
         Assert.Contains("[oracle] Running validation command: sqlcl -version", script);
